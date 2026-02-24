@@ -963,6 +963,33 @@ def delete_corridor(corridor_id: int, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
+# GFW Dark Vessel Import
+# ---------------------------------------------------------------------------
+
+@router.post("/gfw/import", tags=["ingestion"])
+async def import_gfw_detections(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Import pre-computed GFW vessel detection CSV (FR8).
+
+    Download from: https://globalfishingwatch.org/data-download/
+    Expected CSV columns: detect_id, timestamp, lat, lon, vessel_length_m, vessel_score, vessel_type
+    """
+    from app.modules.gfw_import import ingest_gfw_csv
+    import tempfile
+    import os
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+    try:
+        return ingest_gfw_csv(db, tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
+
+# ---------------------------------------------------------------------------
 # System / Health
 # ---------------------------------------------------------------------------
 
