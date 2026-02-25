@@ -371,7 +371,8 @@ def add_note(alert_id: int, note: dict, db: Session = Depends(get_db)):
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
-    alert.analyst_notes = note.get("text", "")
+    # Accept both "notes" (frontend) and "text" (legacy) keys
+    alert.analyst_notes = note.get("notes", note.get("text", ""))
     db.commit()
     return {"status": "ok"}
 
