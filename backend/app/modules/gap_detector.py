@@ -206,7 +206,12 @@ def detect_gaps_for_vessel(
             duration_minutes=duration_minutes,
             risk_score=0,  # scoring runs separately
             status="new",
-            impossible_speed_flag=(ratio > 1.1),  # was 1.0, now 1.1 for timestamp tolerance
+            # Threshold is 1.1 (not PRD's 1.0) to tolerate minor GPS/timestamp rounding
+            # errors: AIS timestamps have 1-second resolution, and great-circle vs. actual
+            # sailing path differences can produce ratios up to ~1.05 for legitimate voyages.
+            # A 10% buffer prevents false positives on clean vessels while still catching
+            # physically impossible reappearances (ratio >> 1.1).
+            impossible_speed_flag=(ratio > 1.1),
             velocity_plausibility_ratio=ratio,
             max_plausible_distance_nm=max_distance,
             actual_gap_distance_nm=actual_distance,
@@ -616,7 +621,7 @@ def run_spoofing_detection(
                     if len(slow_run) >= 2:
                         run_hours = (slow_run[-1].timestamp_utc - slow_run[0].timestamp_utc).total_seconds() / 3600
                         if run_hours >= 12:
-                            if not _is_near_port(db, statistics.mean(p.lat for p in slow_run), statistics.mean(p.lon for p in slow_run)):
+                            if not any(_is_near_port(db, p.lat, p.lon) for p in slow_run):
                                 existing = db.query(SpoofingAnomaly).filter(
                                     SpoofingAnomaly.vessel_id == vessel.vessel_id,
                                     SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.SLOW_ROLL,

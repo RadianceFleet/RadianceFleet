@@ -22,6 +22,8 @@ export interface AlertSummary {
   last_lon: number | null
   vessel_name: string | null
   vessel_mmsi: string | null
+  pre_gap_sog?: number
+  dark_zone_id?: number
 }
 
 export interface AISPointSummary {
@@ -142,6 +144,9 @@ export interface VesselDetail {
   flag_risk_category: string | null
   pi_coverage_status: string | null
   psc_detained_last_12m: boolean
+  psc_major_deficiencies_last_12m?: number
+  callsign?: string
+  owner_name?: string
   mmsi_first_seen_utc: string | null
   vessel_laid_up_30d: boolean
   vessel_laid_up_60d: boolean
@@ -226,4 +231,43 @@ export interface ExportResponse {
   content: string
   media_type: string
   evidence_card_id: number
+}
+
+// ---------------------------------------------------------------------------
+// v1.1 stub types (backend models exist, API not yet wired)
+// ---------------------------------------------------------------------------
+
+export interface DarkVesselDetection {
+  detection_id: number
+  scene_id: string
+  detection_lat: number
+  detection_lon: number
+  detection_time_utc: string
+  length_estimate_m: number | null
+  model_confidence: number
+  vessel_type_inferred: string | null
+  matched_vessel_id: number | null
+  corridor_id: number | null
+  is_dark: boolean
+}
+
+export interface HuntCandidate {
+  candidate_id: number
+  mission_id: number
+  vessel_id: number
+  detection_id: number | null
+  status: 'identified' | 'tracking' | 'confirmed' | 'dismissed'
+  confidence_score: number | null
+  notes: string | null
+}
+
+export interface SearchMission {
+  mission_id: number
+  name: string
+  status: 'planned' | 'active' | 'completed' | 'archived'
+  corridor_id: number | null
+  created_at: string
+  updated_at: string | null
+  target_count: number
+  candidate_count: number
 }

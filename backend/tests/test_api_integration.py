@@ -74,10 +74,13 @@ class TestAlertsPagination:
 
 class TestVesselsEndpoint:
     def test_vessels_returns_200(self, api_client, mock_db):
-        """GET /api/v1/vessels returns 200 with empty list."""
-        # vessels chain: db.query(Vessel).limit(20).all()
-        mock_db.query.return_value.limit.return_value.all.return_value = []
+        """GET /api/v1/vessels returns 200 with paginated response."""
+        # vessels chain: q.count() for total, q.offset(...).limit(...).all() for results
+        mock_db.query.return_value.count.return_value = 0
+        mock_db.query.return_value.offset.return_value.limit.return_value.all.return_value = []
         resp = api_client.get("/api/v1/vessels")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
-        assert resp.json() == []
+        data = resp.json()
+        assert "items" in data
+        assert "total" in data
+        assert data["items"] == []

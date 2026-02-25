@@ -79,3 +79,37 @@ def test_evidence_card_coverage_none_corridor():
     from app.modules.evidence_export import _corridor_coverage
     quality, desc = _corridor_coverage(None)
     assert quality == "UNKNOWN"
+
+
+def test_evidence_export_blocked_when_status_new():
+    """Evidence card export must be blocked when gap.status == 'new' (NFR7 analyst review gate)."""
+    from app.modules.evidence_export import export_evidence_card
+    gap = MagicMock()
+    gap.gap_event_id = 99
+    gap.status = "new"
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = gap
+
+    result = export_evidence_card(99, "md", db)
+    assert "error" in result
+    assert "analyst review" in result["error"].lower() or "status" in result["error"].lower()
+
+
+def test_evidence_card_score_snapshot_populated():
+    """After export, the EvidenceCard record should have score_snapshot and breakdown_snapshot."""
+    from app.modules.evidence_export import export_evidence_card
+
+    db, gap = _mock_db_for_export("Mediterranean STS Zone")
+    gap.risk_score = 72
+    gap.risk_breakdown_json = {"gap_duration_12h": 30, "corridor_sts_zone": 20}
+
+    result = export_evidence_card(42, "json", db)
+    assert "error" not in result
+
+    # Verify db.add was called with an EvidenceCard that has snapshots
+    add_calls = db.add.call_args_list
+    assert len(add_calls) > 0, "Expected db.add to be called with EvidenceCard"
+    card = add_calls[-1][0][0]  # last add() call, first positional arg
+    assert card.score_snapshot == 72
+    assert card.breakdown_snapshot == {"gap_duration_12h": 30, "corridor_sts_zone": 20}

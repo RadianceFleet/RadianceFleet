@@ -26,6 +26,7 @@ dependencies = [
     "rich>=13.9.0",
     "rapidfuzz>=3.0.0",
     "python-multipart>=0.0.20",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]

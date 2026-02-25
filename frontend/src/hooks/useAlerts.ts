@@ -75,3 +75,17 @@ export function useUpdateAlertNotes(id: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alert', id] }),
   })
 }
+
+export function useBulkUpdateAlertStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { alert_ids: number[]; status: string }) =>
+      apiFetch<{ updated: number }>('/alerts/bulk-status', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['alerts'] })
+    },
+  })
+}

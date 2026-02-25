@@ -4,6 +4,7 @@ import type { AlertStatus, ExportResponse } from '../types/api'
 import { useAlert, useUpdateAlertStatus, useUpdateAlertNotes } from '../hooks/useAlerts'
 import { apiFetch } from '../lib/api'
 import { AlertMap } from './AlertMap'
+import { ScoreBreakdown } from './ScoreBreakdown'
 import { Spinner } from './ui/Spinner'
 import { ScoreBadge } from './ui/ScoreBadge'
 
@@ -145,12 +146,7 @@ export function AlertDetail() {
           <ScoreBadge score={alert.risk_score} size="md" />
         </h3>
         {alert.risk_breakdown_json && Object.keys(alert.risk_breakdown_json).length > 0 && (
-          <details>
-            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>Score breakdown ▾</summary>
-            <pre style={{ fontSize: 11, color: 'var(--text-body)', overflowX: 'auto', maxHeight: 260, marginTop: 8 }}>
-              {JSON.stringify(alert.risk_breakdown_json, null, 2)}
-            </pre>
-          </details>
+          <ScoreBreakdown breakdown={alert.risk_breakdown_json as Record<string, unknown>} />
         )}
       </section>
 

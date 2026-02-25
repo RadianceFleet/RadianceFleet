@@ -14,6 +14,8 @@ from app.models.sts_transfer import StsTransferEvent
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.loitering_event import LoiteringEvent
 from app.models.port import Port
+from app.models.port_call import PortCall
+from app.models.vessel_owner import VesselOwner
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -32,6 +34,8 @@ __all__ = [
     "SpoofingAnomaly",
     "LoiteringEvent",
     "Port",
+    "PortCall",
+    "VesselOwner",
     "VesselTargetProfile",
     "SearchMission",
     "HuntCandidate",

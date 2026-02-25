@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAlerts, type AlertFilters } from '../hooks/useAlerts'
+import { useAlerts, useBulkUpdateAlertStatus, type AlertFilters } from '../hooks/useAlerts'
+import { useToast } from './ui/Toast'
 import { ScoreBadge } from './ui/ScoreBadge'
 import { StatusBadge } from './ui/StatusBadge'
 import { Spinner } from './ui/Spinner'
@@ -51,6 +52,10 @@ export function AlertListPage() {
   const [sortBy, setSortBy] = useState<SortField>('risk_score')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(0)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkStatus, setBulkStatus] = useState('under_review')
+  const bulkUpdate = useBulkUpdateAlertStatus()
+  const { addToast } = useToast()
 
   const filters: AlertFilters = {
     min_score: minScore || undefined,
@@ -146,9 +151,59 @@ export function AlertListPage() {
 
       {alerts.length > 0 && (
         <>
+          {/* Bulk action bar */}
+          {selected.size > 0 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 12px', marginBottom: 8,
+              background: 'var(--bg-card)', border: '1px solid var(--accent-primary)',
+              borderRadius: 'var(--radius-md)', fontSize: 13,
+            }}>
+              <span style={{ color: 'var(--text-body)' }}>{selected.size} selected</span>
+              <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={inputStyle}>
+                <option value="under_review">Under review</option>
+                <option value="needs_satellite_check">Needs satellite check</option>
+                <option value="documented">Documented</option>
+                <option value="dismissed">Dismissed</option>
+              </select>
+              <button
+                onClick={() => {
+                  bulkUpdate.mutate(
+                    { alert_ids: [...selected], status: bulkStatus },
+                    {
+                      onSuccess: (data) => {
+                        addToast(`Updated ${data.updated} alert(s) to "${bulkStatus}"`, 'success')
+                        setSelected(new Set())
+                      },
+                      onError: () => addToast('Failed to update alerts', 'error'),
+                    }
+                  )
+                }}
+                disabled={bulkUpdate.isPending}
+                style={{ ...btnStyle, background: 'var(--accent-primary)', color: '#fff', borderColor: 'var(--accent-primary)' }}
+              >
+                {bulkUpdate.isPending ? 'Updating...' : 'Apply'}
+              </button>
+              <button onClick={() => setSelected(new Set())} style={btnStyle}>Clear</button>
+            </div>
+          )}
+
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg-card)' }}>
+                <th style={{ ...thStyle, width: 36 }}>
+                  <input
+                    type="checkbox"
+                    checked={alerts.length > 0 && selected.size === alerts.length}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setSelected(new Set(alerts.map(a => a.gap_event_id)))
+                      } else {
+                        setSelected(new Set())
+                      }
+                    }}
+                  />
+                </th>
                 <th style={thStyle}>ID</th>
                 <th style={thStyle} onClick={() => toggleSort('risk_score')}>
                   Score{sortIndicator('risk_score')}
@@ -167,6 +222,18 @@ export function AlertListPage() {
             <tbody>
               {alerts.map(a => (
                 <tr key={a.gap_event_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={tdStyle}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(a.gap_event_id)}
+                      onChange={e => {
+                        const next = new Set(selected)
+                        if (e.target.checked) next.add(a.gap_event_id)
+                        else next.delete(a.gap_event_id)
+                        setSelected(next)
+                      }}
+                    />
+                  </td>
                   <td style={tdStyle}>
                     <Link to={`/alerts/${a.gap_event_id}`}>#{a.gap_event_id}</Link>
                   </td>

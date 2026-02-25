@@ -18,7 +18,8 @@ function formatType(raw: string): string {
 }
 
 export function CorridorsPage() {
-  const { data: corridors, isLoading, error } = useCorridors()
+  const { data, isLoading, error } = useCorridors()
+  const corridors = data?.items
 
   return (
     <div style={{ maxWidth: 1000 }}>

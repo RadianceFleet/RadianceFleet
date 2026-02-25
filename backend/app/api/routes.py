@@ -143,9 +143,17 @@ def get_loitering_events(vessel_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/sts-events", tags=["detection"])
-def get_sts_events(db: Session = Depends(get_db)):
+def get_sts_events(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
     from app.models.sts_transfer import StsTransferEvent
-    return db.query(StsTransferEvent).order_by(StsTransferEvent.start_time_utc.desc()).limit(100).all()
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
+    q = db.query(StsTransferEvent).order_by(StsTransferEvent.start_time_utc.desc())
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+    return {"items": items, "total": total}
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +469,27 @@ def add_note(alert_id: int, body: dict, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 
+@router.post("/alerts/bulk-status", tags=["alerts"])
+def bulk_update_alert_status(payload: dict, db: Session = Depends(get_db)):
+    """Bulk-update alert statuses for triage workflow."""
+    from app.models.gap_event import AISGapEvent
+
+    alert_ids = payload.get("alert_ids", [])
+    new_status = payload.get("status", "")
+    valid_statuses = {"new", "under_review", "needs_satellite_check", "documented", "dismissed"}
+
+    if not alert_ids:
+        raise HTTPException(status_code=422, detail="alert_ids must be a non-empty list")
+    if new_status not in valid_statuses:
+        raise HTTPException(status_code=422, detail=f"Invalid status '{new_status}'. Must be one of: {', '.join(sorted(valid_statuses))}")
+
+    updated = db.query(AISGapEvent).filter(
+        AISGapEvent.gap_event_id.in_(alert_ids)
+    ).update({"status": new_status}, synchronize_session="fetch")
+    db.commit()
+    return {"updated": updated}
+
+
 @router.post("/alerts/{alert_id}/satellite-check", tags=["alerts"])
 def prepare_satellite_check(alert_id: int, db: Session = Depends(get_db)):
     from app.modules.satellite_query import prepare_satellite_check as _prepare
@@ -485,7 +514,12 @@ def search_vessels(
     search: Optional[str] = Query(None, description="MMSI, IMO, or vessel name"),
     flag: Optional[str] = None,
     vessel_type: Optional[str] = None,
-    limit: int = 20,
+    min_dwt: Optional[float] = Query(None, description="Minimum deadweight tonnage"),
+    max_dwt: Optional[float] = Query(None, description="Maximum deadweight tonnage"),
+    min_year_built: Optional[int] = Query(None, description="Minimum year built"),
+    watchlist_only: bool = Query(False, description="Only vessels on active watchlists"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """Search vessels by MMSI, IMO, or name. Returns summary with last risk score."""
@@ -507,8 +541,21 @@ def search_vessels(
         q = q.filter(Vessel.flag == flag.upper())
     if vessel_type:
         q = q.filter(Vessel.vessel_type.ilike(f"%{vessel_type}%"))
+    if min_dwt is not None:
+        q = q.filter(Vessel.deadweight >= min_dwt)
+    if max_dwt is not None:
+        q = q.filter(Vessel.deadweight <= max_dwt)
+    if min_year_built is not None:
+        q = q.filter(Vessel.year_built >= min_year_built)
+    if watchlist_only:
+        q = q.filter(
+            Vessel.vessel_id.in_(
+                db.query(VesselWatchlist.vessel_id).filter(VesselWatchlist.is_active == True)
+            )
+        )
 
-    vessels = q.limit(limit).all()
+    total = q.count()
+    vessels = q.offset(skip).limit(limit).all()
     results = []
     for v in vessels:
         last_gap = (
@@ -533,7 +580,7 @@ def search_vessels(
             "last_risk_score": last_gap.risk_score if last_gap else None,
             "watchlist_status": on_watchlist,
         })
-    return results
+    return {"items": results, "total": total}
 
 
 @router.get("/vessels/{vessel_id}", tags=["vessels"])
@@ -710,12 +757,19 @@ async def import_watchlist_file(
 # ---------------------------------------------------------------------------
 
 @router.get("/corridors", tags=["corridors"])
-def list_corridors(db: Session = Depends(get_db)):
+def list_corridors(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
     """List all corridors with recent alert stats."""
     from app.models.corridor import Corridor
     from app.models.gap_event import AISGapEvent
 
-    corridors = db.query(Corridor).all()
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
+    q = db.query(Corridor)
+    total = q.count()
+    corridors = q.offset(skip).limit(limit).all()
     now = datetime.now(timezone.utc)
     result = []
     for c in corridors:
@@ -741,7 +795,7 @@ def list_corridors(db: Session = Depends(get_db)):
             "alert_count_30d": alert_30d,
             "avg_risk_score": round(float(avg_score), 1) if avg_score else None,
         })
-    return result
+    return {"items": result, "total": total}
 
 
 @router.get("/corridors/{corridor_id}", tags=["corridors"])
@@ -774,6 +828,42 @@ def get_corridor(corridor_id: int, db: Session = Depends(get_db)):
         "alert_count_7d": alert_7d,
         "alert_count_30d": alert_30d,
     }
+
+
+@router.get("/corridors/geojson", tags=["corridors"])
+def corridors_geojson(db: Session = Depends(get_db)):
+    """Return all corridors as a GeoJSON FeatureCollection for map overlay."""
+    from app.models.corridor import Corridor
+
+    corridors = db.query(Corridor).all()
+    features = []
+    for c in corridors:
+        geom_json = None
+        try:
+            from sqlalchemy import func as sa_func
+            from geoalchemy2.functions import ST_AsGeoJSON
+            row = db.query(ST_AsGeoJSON(c.geometry)).first()
+            if row and row[0]:
+                import json
+                geom_json = json.loads(row[0])
+        except Exception:
+            pass  # graceful degradation — geometry unavailable
+
+        if geom_json:
+            ct = str(c.corridor_type.value) if hasattr(c.corridor_type, "value") else c.corridor_type
+            features.append({
+                "type": "Feature",
+                "geometry": geom_json,
+                "properties": {
+                    "corridor_id": c.corridor_id,
+                    "name": c.name,
+                    "corridor_type": ct,
+                    "is_jamming_zone": c.is_jamming_zone,
+                    "risk_weight": c.risk_weight,
+                },
+            })
+
+    return {"type": "FeatureCollection", "features": features}
 
 
 # ---------------------------------------------------------------------------

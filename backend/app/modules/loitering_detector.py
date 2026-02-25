@@ -32,35 +32,34 @@ from app.models.vessel import Vessel
 
 logger = logging.getLogger(__name__)
 
-# ── Constants ──────────────────────────────────────────────────────────────────
+# ── Constants (loaded from config/risk_scoring.yaml with hardcoded fallbacks) ──
 
-# SOG threshold below which a vessel is considered to be loitering (knots)
-_SOG_LOITER_THRESHOLD_KN: float = 0.5
+def _load_loiter_thresholds() -> dict:
+    """Load loitering detection thresholds from YAML config, falling back to defaults."""
+    try:
+        from app.modules.risk_scoring import load_scoring_config
+        cfg = load_scoring_config()
+        return cfg.get("detection_thresholds", {}).get("loitering", {})
+    except Exception:
+        return {}
 
-# Minimum consecutive hours of low SOG to constitute a loitering event
-_MIN_LOITER_HOURS: int = 4
+_LOITER_CFG = _load_loiter_thresholds()
 
-# Hours threshold for "sustained" loitering (higher risk score)
-_SUSTAINED_LOITER_HOURS: int = 12
+_SOG_LOITER_THRESHOLD_KN: float = _LOITER_CFG.get("sog_threshold_kn", 0.5)
+_MIN_LOITER_HOURS: int = _LOITER_CFG.get("min_hours", 4)
+_SUSTAINED_LOITER_HOURS: int = _LOITER_CFG.get("sustained_hours", 12)
+_RISK_BASELINE: int = _LOITER_CFG.get("risk_baseline", 8)
+_RISK_SUSTAINED: int = _LOITER_CFG.get("risk_sustained", 20)
 
-# Risk score components
-_RISK_BASELINE: int = 8       # ≥4 h loitering
-_RISK_SUSTAINED: int = 20     # ≥12 h loitering in a corridor
-
-# Gap linkage window: scan for gaps within this many hours of loitering boundaries
 from app.config import settings as _settings
 _GAP_LINK_WINDOW_HOURS: int = _settings.LOITER_GAP_LINKAGE_HOURS
 
-# Minimum AIS points required to analyse a vessel
 _MIN_POINTS: int = 4
+_BBOX_TOLERANCE_DEG: float = _LOITER_CFG.get("laid_up_bbox_deg", 0.033)
 
-# Bounding-box tolerance for corridor overlap check (degrees; ~2 nm at mid-latitudes)
-_BBOX_TOLERANCE_DEG: float = 0.033
-
-# Laid-up detection constants
-_LAID_UP_30D_DAYS: int = 30
-_LAID_UP_60D_DAYS: int = 60
-_LAID_UP_BBOX_DEG: float = 0.033   # ±2 nm positional stability threshold
+_LAID_UP_30D_DAYS: int = _LOITER_CFG.get("laid_up_30d_days", 30)
+_LAID_UP_60D_DAYS: int = _LOITER_CFG.get("laid_up_60d_days", 60)
+_LAID_UP_BBOX_DEG: float = _LOITER_CFG.get("laid_up_bbox_deg", 0.033)
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────

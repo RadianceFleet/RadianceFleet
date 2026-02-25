@@ -1148,3 +1148,73 @@ def test_psc_major_deficiencies_below_threshold_no_signal():
     gap = _make_gap(duration_minutes=6 * 60, psc_major_deficiencies=2)
     _, bd = compute_gap_score(gap, config)
     assert "psc_major_deficiencies_3_plus" not in bd
+
+
+# ── Phase 4: Laid-up vessel scoring tests ─────────────────────────────────────
+
+def _make_mock_db_empty():
+    """Create a mock DB session that returns empty lists for all .query().filter().all() chains.
+
+    Needed because laid-up scoring lives inside `if db is not None:` block, so we
+    must provide a db but have all the preceding queries (spoofing, loitering, STS,
+    watchlist, identity changes) return nothing.
+    """
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = []
+    db.query.return_value.filter.return_value.first.return_value = None
+    db.query.return_value.filter.return_value.count.return_value = 0
+    return db
+
+
+def test_vessel_laid_up_30d_score():
+    """Vessel laid up 30+ days → +15 pts."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, vessel_laid_up_30d=True)
+    db = _make_mock_db_empty()
+    _, bd = compute_gap_score(gap, config, db=db)
+    assert bd.get("vessel_laid_up_30d") == 15
+
+
+def test_vessel_laid_up_60d_score():
+    """Vessel laid up 60+ days → +25 pts (overrides 30d)."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, vessel_laid_up_60d=True, vessel_laid_up_30d=True)
+    db = _make_mock_db_empty()
+    _, bd = compute_gap_score(gap, config, db=db)
+    assert bd.get("vessel_laid_up_60d") == 25
+    assert "vessel_laid_up_30d" not in bd
+
+
+def test_vessel_laid_up_in_sts_zone_score():
+    """Vessel laid up in STS zone → +30 pts (overrides 30d and 60d)."""
+    config = load_scoring_config()
+    gap = _make_gap(
+        duration_minutes=6 * 60,
+        vessel_laid_up_in_sts_zone=True,
+        vessel_laid_up_60d=True,
+        vessel_laid_up_30d=True,
+    )
+    db = _make_mock_db_empty()
+    _, bd = compute_gap_score(gap, config, db=db)
+    assert bd.get("vessel_laid_up_in_sts_zone") == 30
+    assert "vessel_laid_up_60d" not in bd
+    assert "vessel_laid_up_30d" not in bd
+
+
+# ── Phase 4: New MMSI + Russian-origin with Palau flag ───────────────────────
+
+def test_new_mmsi_palau_flag_stacking():
+    """New MMSI + Palau flag (PW) → assert individual values: new_mmsi=15, russian_origin=25."""
+    config = load_scoring_config()
+    scoring_date = datetime(2026, 2, 15)
+    first_seen = datetime(2026, 2, 5)  # 10 days — new MMSI
+
+    gap = _make_gap(
+        duration_minutes=6 * 60,
+        mmsi_first_seen_utc=first_seen,
+        flag="PW",   # Palau — on the Russian-origin flag list
+    )
+    _, bd = compute_gap_score(gap, config, scoring_date=scoring_date)
+
+    assert bd.get("new_mmsi_first_30d") == 15, f"Expected new_mmsi=15, got {bd.get('new_mmsi_first_30d')}"
+    assert bd.get("new_mmsi_russian_origin_flag") == 25, f"Expected russian_origin=25, got {bd.get('new_mmsi_russian_origin_flag')}"

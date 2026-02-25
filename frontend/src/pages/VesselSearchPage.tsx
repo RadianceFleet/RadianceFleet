@@ -31,6 +31,11 @@ export function VesselSearchPage() {
   const [search, setSearch] = useState('')
   const [flag, setFlag] = useState('')
   const [vesselType, setVesselType] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [minDwt, setMinDwt] = useState('')
+  const [maxDwt, setMaxDwt] = useState('')
+  const [minYearBuilt, setMinYearBuilt] = useState('')
+  const [watchlistOnly, setWatchlistOnly] = useState(false)
 
   const debouncedSearch = useDebouncedValue(search, 300)
 
@@ -38,12 +43,17 @@ export function VesselSearchPage() {
     search: debouncedSearch || undefined,
     flag: flag || undefined,
     vessel_type: vesselType || undefined,
+    min_dwt: minDwt || undefined,
+    max_dwt: maxDwt || undefined,
+    min_year_built: minYearBuilt || undefined,
+    watchlist_only: watchlistOnly || undefined,
     limit: 20,
   }
 
-  const { data: vessels, isLoading, error } = useVesselSearch(filters)
+  const { data, isLoading, error } = useVesselSearch(filters)
+  const vessels = data?.items
 
-  const hasFilters = !!(debouncedSearch || flag || vesselType)
+  const hasFilters = !!(debouncedSearch || flag || vesselType || minDwt || maxDwt || minYearBuilt || watchlistOnly)
 
   return (
     <div style={{ maxWidth: 1000 }}>
@@ -102,7 +112,30 @@ export function VesselSearchPage() {
               outline: 'none',
             }}
           />
+          <button
+            onClick={() => setShowAdvanced(p => !p)}
+            style={{
+              padding: '0.5rem 0.75rem', background: 'none', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontSize: '0.8125rem', cursor: 'pointer',
+            }}
+          >
+            {showAdvanced ? 'Hide' : 'Advanced'} Filters
+          </button>
         </div>
+        {showAdvanced && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+            <input type="number" placeholder="Min DWT" value={minDwt} onChange={e => setMinDwt(e.target.value)}
+              style={{ width: 110, padding: '0.5rem 0.75rem', background: 'var(--bg-base)', color: 'var(--text-body)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '0.8125rem' }} />
+            <input type="number" placeholder="Max DWT" value={maxDwt} onChange={e => setMaxDwt(e.target.value)}
+              style={{ width: 110, padding: '0.5rem 0.75rem', background: 'var(--bg-base)', color: 'var(--text-body)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '0.8125rem' }} />
+            <input type="number" placeholder="Built after" value={minYearBuilt} onChange={e => setMinYearBuilt(e.target.value)}
+              style={{ width: 110, padding: '0.5rem 0.75rem', background: 'var(--bg-base)', color: 'var(--text-body)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '0.8125rem' }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--text-body)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={watchlistOnly} onChange={e => setWatchlistOnly(e.target.checked)} />
+              Watchlist only
+            </label>
+          </div>
+        )}
       </Card>
 
       <Card>

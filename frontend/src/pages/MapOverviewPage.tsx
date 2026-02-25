@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import 'leaflet/dist/leaflet.css'
 import { MapContainer, Marker, Popup } from 'react-leaflet'
 import { useAlertMapPoints } from '../hooks/useAlerts'
 import { MapLayerControl } from '../components/map/LayerControl'
+import { CorridorZoneOverlay } from '../components/map/CorridorZoneOverlay'
 import { Link } from 'react-router-dom'
 import L from 'leaflet'
 import { Spinner } from '../components/ui/Spinner'
@@ -21,12 +23,28 @@ function scoreIcon(score: number) {
 
 export function MapOverviewPage() {
   const { data, isLoading } = useAlertMapPoints()
+  const [showCorridors, setShowCorridors] = useState(true)
 
   const alerts = (data?.points ?? []).filter(a => a.last_lat != null && a.last_lon != null)
 
   return (
-    <div style={{ height: 'calc(100vh - 120px)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+    <div style={{ height: 'calc(100vh - 120px)', borderRadius: 'var(--radius-md)', overflow: 'hidden', position: 'relative' }}>
       {isLoading && <Spinner text="Loading map data…" />}
+      <div style={{
+        position: 'absolute', top: 10, right: 10, zIndex: 1000,
+        background: 'var(--bg-card)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)', padding: '6px 10px', fontSize: 12,
+      }}>
+        <label style={{ cursor: 'pointer', color: 'var(--text-body)' }}>
+          <input
+            type="checkbox"
+            checked={showCorridors}
+            onChange={e => setShowCorridors(e.target.checked)}
+            style={{ marginRight: 6 }}
+          />
+          Corridors
+        </label>
+      </div>
       <MapContainer
         center={[40, 25]}
         zoom={4}
@@ -34,6 +52,7 @@ export function MapOverviewPage() {
         attributionControl={false}
       >
         <MapLayerControl />
+        {showCorridors && <CorridorZoneOverlay />}
 
         {alerts.map(a => (
           <Marker

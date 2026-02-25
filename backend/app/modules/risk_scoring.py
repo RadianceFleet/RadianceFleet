@@ -509,7 +509,18 @@ def compute_gap_score(
             meta_cfg = config.get("metadata", {})
             breakdown["callsign_change"] = meta_cfg.get("callsign_change", 20)
 
-    # TODO(v1.1): owner_or_manager_on_sanctions_list (+35) — requires owner entity model (v1.1).
+    # Owner sanctions check (v1.1 — VesselOwner model now exists)
+    if db is not None and vessel is not None:
+        from app.models.vessel_owner import VesselOwner
+        sanctioned_owner = db.query(VesselOwner).filter(
+            VesselOwner.vessel_id == vessel.vessel_id,
+            VesselOwner.is_sanctioned == True,
+        ).first()
+        if sanctioned_owner:
+            watchlist_cfg = config.get("watchlist", {})
+            breakdown["owner_or_manager_on_sanctions_list"] = watchlist_cfg.get(
+                "owner_or_manager_on_sanctions_list", 35
+            )
 
     # Phase 6.4: Spoofing signals (only linked to this gap or vessel-level within 2h of gap start)
     if db is not None:
@@ -690,7 +701,18 @@ def compute_gap_score(
             legitimacy_cfg = config.get("legitimacy", {})
             breakdown["legitimacy_white_flag_jurisdiction"] = legitimacy_cfg.get("white_flag_jurisdiction", -10)
 
-    # TODO(v1.1): consistent_eu_port_calls (-5/call) — needs PortCall model
+    # EU port call legitimacy signal (v1.1 — PortCall model now exists)
+    if db is not None and vessel is not None:
+        from app.models.port_call import PortCall
+        from app.models.port import Port
+        eu_calls = db.query(PortCall).join(Port, PortCall.port_id == Port.port_id).filter(
+            PortCall.vessel_id == vessel.vessel_id,
+            Port.is_eu == True,
+        ).count()
+        if isinstance(eu_calls, int) and eu_calls > 0:
+            legitimacy_cfg = config.get("legitimacy", {})
+            per_call = legitimacy_cfg.get("consistent_eu_port_calls", -5)
+            breakdown["legitimacy_eu_port_calls"] = per_call * min(eu_calls, 3)  # cap at 3 calls
     # TODO(v1.1): speed_variation_matches_weather (-8) — needs weather API integration
 
     # TODO(v1.1): flag_less_than_2y_old_AND_high_risk: +20

@@ -18,3 +18,4 @@ class Port(Base):
     country: Mapped[str] = mapped_column(String(10), nullable=False)
     geometry: Mapped[object] = mapped_column(Geometry("POINT", srid=4326), nullable=False)
     major_port: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_eu: Mapped[bool] = mapped_column(Boolean, default=False)

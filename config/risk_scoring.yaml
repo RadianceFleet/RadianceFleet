@@ -179,3 +179,16 @@ psc_detention:
 dark_vessel:
   unmatched_detection_in_corridor: 35  # satellite detection with no AIS match in known corridor
   unmatched_detection_outside_corridor: 20  # satellite detection with no AIS match
+
+# DETECTION THRESHOLDS — loitering detector constants
+# These are loaded at module init; code falls back to hardcoded defaults if missing.
+detection_thresholds:
+  loitering:
+    sog_threshold_kn: 0.5       # SOG below which vessel is considered loitering
+    min_hours: 4                # minimum consecutive hours for a loitering event
+    sustained_hours: 12         # hours threshold for "sustained" (higher risk)
+    risk_baseline: 8            # risk score component for ≥4h loitering
+    risk_sustained: 20          # risk score component for ≥12h in corridor
+    laid_up_30d_days: 30        # days threshold for 30d laid-up detection
+    laid_up_60d_days: 60        # days threshold for 60d laid-up detection
+    laid_up_bbox_deg: 0.033     # ±degrees positional stability (~2 nm at mid-lat)
