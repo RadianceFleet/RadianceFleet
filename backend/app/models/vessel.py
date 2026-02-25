@@ -47,3 +47,11 @@ class Vessel(Base):
     gap_events: Mapped[list] = relationship("AISGapEvent", back_populates="vessel", cascade="all, delete-orphan")
     history: Mapped[list] = relationship("VesselHistory", back_populates="vessel", cascade="all, delete-orphan")
     watchlist_entries: Mapped[list] = relationship("VesselWatchlist", back_populates="vessel", cascade="all, delete-orphan")
+    sts_events_as_vessel_1: Mapped[list] = relationship(
+        "StsTransferEvent", foreign_keys="StsTransferEvent.vessel_1_id",
+        back_populates="vessel_1", cascade="all, delete-orphan"
+    )
+    sts_events_as_vessel_2: Mapped[list] = relationship(
+        "StsTransferEvent", foreign_keys="StsTransferEvent.vessel_2_id",
+        back_populates="vessel_2", cascade="all, delete-orphan"
+    )

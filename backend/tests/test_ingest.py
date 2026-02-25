@@ -43,6 +43,36 @@ def test_track_field_change_skips_none_values():
     assert not mock_db.add.called, "Should skip when new_val is None"
 
 
+def test_negative_sog_rejected():
+    from app.modules.normalize import validate_ais_row
+    row = {"mmsi": "123456789", "lat": 55.0, "lon": 12.0, "sog": -1.0, "timestamp_utc": "2025-06-01T00:00:00Z"}
+    error = validate_ais_row(row)
+    assert error is not None
+    assert "Negative SOG" in error
+
+
+def test_boundary_lat_valid():
+    from app.modules.normalize import validate_ais_row
+    row = {"mmsi": "123456789", "lat": 90.0, "lon": 180.0, "sog": 5.0, "timestamp_utc": "2025-06-01T00:00:00Z"}
+    error = validate_ais_row(row)
+    assert error is None
+
+
+def test_lat_out_of_bounds():
+    from app.modules.normalize import validate_ais_row
+    row = {"mmsi": "123456789", "lat": 91.0, "lon": 12.0, "sog": 5.0, "timestamp_utc": "2025-06-01T00:00:00Z"}
+    error = validate_ais_row(row)
+    assert error is not None
+    assert "Latitude out of range" in error
+
+
+def test_boundary_negative_coords_valid():
+    from app.modules.normalize import validate_ais_row
+    row = {"mmsi": "123456789", "lat": -90.0, "lon": -180.0, "sog": 0.0, "timestamp_utc": "2025-06-01T00:00:00Z"}
+    error = validate_ais_row(row)
+    assert error is None
+
+
 def test_track_field_change_skips_same_value():
     """_track_field_change skips when old and new values are identical (case-insensitive)."""
     from app.modules.ingest import _track_field_change

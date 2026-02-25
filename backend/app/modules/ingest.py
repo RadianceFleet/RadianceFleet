@@ -127,7 +127,9 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
         "duplicates": duplicates,
         "replaced": replaced_count,
         "ignored": ignored_count,
-        "errors": errors[:50],  # cap error list for response size
+        "errors": errors[:50],
+        "errors_truncated": len(errors) > 50,
+        "total_errors": len(errors),
     }
 
 

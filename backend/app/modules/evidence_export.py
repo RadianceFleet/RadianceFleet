@@ -5,6 +5,7 @@ See PRD §7.7 for evidence card specification.
 """
 from __future__ import annotations
 
+import functools
 import json
 import logging
 from datetime import datetime, timezone
@@ -19,24 +20,46 @@ from app.models.vessel import Vessel
 logger = logging.getLogger(__name__)
 
 # PRD §4.12, NFR7: honest regional AIS coverage displayed in every evidence card
-_REGIONAL_COVERAGE: dict[str, tuple[str, str]] = {
-    "Baltic": ("GOOD", "DMA CSV + aisstream.io — good terrestrial coverage"),
-    "Turkish Straits": ("GOOD", "aisstream.io — well-monitored chokepoint"),
-    "Black Sea": ("POOR", "No adequate free source; AIS heavily falsified in Russian-controlled areas"),
-    "Persian Gulf": ("NONE", "No free AIS source; commercial subscription (Spire/exactEarth) required"),
-    "Singapore": ("PARTIAL", "aisstream.io partial — gaps in outer anchorage areas"),
-    "Mediterranean": ("MODERATE", "aisstream.io partial — good near ports, sparse open sea"),
-    "Far East": ("PARTIAL", "aisstream.io — limited coverage outside port approaches"),
-    "Nakhodka": ("PARTIAL", "aisstream.io — limited coverage outside port approaches"),
-}
+# Loaded from config/coverage.yaml; fallback to hardcoded dict if YAML missing.
+
+@functools.lru_cache(maxsize=1)
+def _load_regional_coverage() -> dict[str, tuple[str, str]]:
+    """Load regional coverage from YAML config, with hardcoded fallback."""
+    from pathlib import Path
+    import yaml
+    from app.config import settings
+
+    config_path = Path(settings.COVERAGE_CONFIG)
+    if config_path.exists():
+        with open(config_path) as f:
+            raw = yaml.safe_load(f) or {}
+        result = {
+            k: (v.get("quality", "UNKNOWN"), v.get("description", ""))
+            for k, v in raw.items()
+            if isinstance(v, dict)
+        }
+    else:
+        logger.warning("coverage.yaml not found at %s — using hardcoded defaults", config_path)
+        result = {
+            "Baltic": ("GOOD", "DMA CSV + aisstream.io — good terrestrial coverage"),
+            "Turkish Straits": ("GOOD", "aisstream.io — well-monitored chokepoint"),
+            "Black Sea": ("POOR", "No adequate free source; AIS heavily falsified in Russian-controlled areas"),
+            "Persian Gulf": ("NONE", "No free AIS source; commercial subscription required"),
+            "Singapore": ("PARTIAL", "aisstream.io partial — gaps in outer anchorage areas"),
+            "Mediterranean": ("MODERATE", "aisstream.io partial — good near ports, sparse open sea"),
+            "Far East": ("PARTIAL", "aisstream.io — limited coverage outside port approaches"),
+            "Nakhodka": ("PARTIAL", "aisstream.io — limited coverage outside port approaches"),
+        }
+    return result
 
 
 def _corridor_coverage(corridor_name: str | None) -> tuple[str, str]:
     """Return (quality, description) for the corridor's region."""
+    coverage = _load_regional_coverage()
     if not corridor_name:
         return ("UNKNOWN", "No corridor assigned — coverage quality not determined")
     name_lower = corridor_name.lower()
-    for key, val in _REGIONAL_COVERAGE.items():
+    for key, val in coverage.items():
         if key.lower() in name_lower:
             return val
     return ("UNKNOWN", "Region not in coverage database — verify AIS source manually")

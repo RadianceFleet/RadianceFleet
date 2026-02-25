@@ -1,0 +1,24 @@
+Baltic:
+  quality: GOOD
+  description: "DMA CSV + aisstream.io — good terrestrial coverage"
+Turkish Straits:
+  quality: GOOD
+  description: "aisstream.io — well-monitored chokepoint"
+Black Sea:
+  quality: POOR
+  description: "No adequate free source; AIS heavily falsified in Russian-controlled areas"
+Persian Gulf:
+  quality: NONE
+  description: "No free AIS source; commercial subscription required"
+Singapore:
+  quality: PARTIAL
+  description: "aisstream.io partial — gaps in outer anchorage areas"
+Mediterranean:
+  quality: MODERATE
+  description: "aisstream.io partial — good near ports, sparse open sea"
+Far East:
+  quality: PARTIAL
+  description: "aisstream.io — limited coverage outside port approaches"
+Nakhodka:
+  quality: PARTIAL
+  description: "aisstream.io — limited coverage outside port approaches"

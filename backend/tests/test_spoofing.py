@@ -388,8 +388,12 @@ def test_erratic_nav_status_continuous_episode_one_anomaly():
 
 
 def test_anchor_spoof_suppressed_in_anchorage_holding_corridor():
-    """_is_in_anchorage_corridor() returns True when position is inside an anchorage_holding corridor bbox."""
-    from app.modules.gap_detector import _is_in_anchorage_corridor
+    """_is_in_anchorage_corridor_bbox() returns True when position is inside an anchorage_holding corridor bbox.
+
+    Tests the bbox fallback path (used for SQLite/non-spatial DB).
+    The spatial ST_Contains path is tested via integration tests with PostGIS.
+    """
+    from app.modules.gap_detector import _is_in_anchorage_corridor_bbox
 
     # Create a corridor mock: anchorage_holding type, WKT polygon around (37°N, 22°E)
     # (Laconian Gulf area)
@@ -407,9 +411,9 @@ def test_anchor_spoof_suppressed_in_anchorage_holding_corridor():
     mock_db.query.side_effect = query_side_effect
 
     # Position inside the corridor bbox
-    result_inside = _is_in_anchorage_corridor(mock_db, lat=37.0, lon=22.0)
+    result_inside = _is_in_anchorage_corridor_bbox(mock_db, lat=37.0, lon=22.0)
     assert result_inside, "Position inside anchorage corridor bbox should return True"
 
     # Position outside the corridor bbox
-    result_outside = _is_in_anchorage_corridor(mock_db, lat=50.0, lon=10.0)
+    result_outside = _is_in_anchorage_corridor_bbox(mock_db, lat=50.0, lon=10.0)
     assert not result_outside, "Position outside anchorage corridor bbox should return False"

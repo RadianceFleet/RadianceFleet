@@ -4,13 +4,19 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Integer, String, DateTime, ForeignKey, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
 
 class VesselHistory(Base):
     __tablename__ = "vessel_history"
+    __table_args__ = (
+        UniqueConstraint(
+            "vessel_id", "field_changed", "old_value", "new_value", "observed_at",
+            name="uq_vessel_history_dedup"
+        ),
+    )
 
     vessel_history_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)

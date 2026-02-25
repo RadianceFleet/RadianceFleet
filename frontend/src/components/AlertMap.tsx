@@ -1,7 +1,9 @@
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Polyline } from 'react-leaflet'
+import { MapContainer, Marker, Popup, GeoJSON, Polyline } from 'react-leaflet'
 import type { AISPointSummary, MovementEnvelope } from '../types/api'
+import { useCorridorDetail } from '../hooks/useCorridors'
+import { MapLayerControl } from './map/LayerControl'
 
 // Fix Leaflet default icon paths broken by Vite bundler (use CDN fallback)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -24,15 +26,28 @@ interface Props {
   lastPoint: AISPointSummary | null
   firstPointAfter: AISPointSummary | null
   envelope: MovementEnvelope | null
+  corridorId?: number
 }
 
-export function AlertMap({ lastPoint, firstPointAfter, envelope }: Props) {
+function CorridorOverlay({ corridorId }: { corridorId: number }) {
+  const { data: corridor } = useCorridorDetail(String(corridorId))
+  const geometry = (corridor as Record<string, unknown> | undefined)?.geometry as GeoJSON.GeoJsonObject | undefined
+  if (!geometry) return null
+  return (
+    <GeoJSON
+      data={geometry}
+      style={{ color: '#f59e0b', weight: 2, fillColor: '#f59e0b', fillOpacity: 0.08, dashArray: '6 4' }}
+    />
+  )
+}
+
+export function AlertMap({ lastPoint, firstPointAfter, envelope, corridorId }: Props) {
   if (!lastPoint && !firstPointAfter) {
     return (
       <div style={{
-        height: 280, background: '#1e293b', borderRadius: 8,
+        height: 280, background: 'var(--bg-card)', borderRadius: 'var(--radius-md)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#64748b', fontSize: 13, marginBottom: 16,
+        color: 'var(--text-dim)', fontSize: 13, marginBottom: 16,
       }}>
         No AIS boundary points — map unavailable
       </div>
@@ -48,9 +63,11 @@ export function AlertMap({ lastPoint, firstPointAfter, envelope }: Props) {
   ) ?? null
 
   return (
-    <div style={{ height: 280, borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+    <div style={{ height: 280, borderRadius: 'var(--radius-md)', overflow: 'hidden', marginBottom: 16 }}>
       <MapContainer center={center} zoom={6} style={{ height: '100%', width: '100%' }} attributionControl={false}>
-        <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+        <MapLayerControl />
+
+        {corridorId != null && <CorridorOverlay corridorId={corridorId} />}
 
         {lastPoint && (
           <Marker position={[lastPoint.lat, lastPoint.lon]} icon={dotIcon('#16a34a')}>

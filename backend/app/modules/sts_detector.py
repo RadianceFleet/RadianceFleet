@@ -39,8 +39,9 @@ logger = logging.getLogger(__name__)
 
 _NM_TO_METERS: float = 1852.0
 _BUCKET_MINUTES: int = 15          # width of each time bucket
-_MIN_CONSECUTIVE_WINDOWS: int = 8  # 8 × 15 min = 2 h sustained proximity
-_PROXIMITY_METERS: float = 200.0   # maximum inter-vessel distance
+from app.config import settings as _settings
+_MIN_CONSECUTIVE_WINDOWS: int = _settings.STS_MIN_WINDOWS
+_PROXIMITY_METERS: float = _settings.STS_PROXIMITY_METERS
 _SOG_STATIONARY: float = 1.0       # knots — Phase A "not moving"
 _SOG_STATIONARY_B: float = 0.5     # knots — Phase B "anchor-like"
 _SOG_APPROACHING_MIN: float = 0.5  # knots

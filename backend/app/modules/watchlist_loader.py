@@ -39,7 +39,8 @@ from app.models.vessel_watchlist import VesselWatchlist
 logger = logging.getLogger(__name__)
 
 # Fuzzy match threshold (0-100).
-_FUZZY_THRESHOLD: int = 85
+from app.config import settings as _settings
+_FUZZY_THRESHOLD: int = _settings.FUZZY_MATCH_THRESHOLD
 
 # Compiled regex for MMSI validation (exactly 9 digits).
 _MMSI_RE = re.compile(r"^\d{9}$")

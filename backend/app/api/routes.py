@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -9,12 +10,20 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+def _validate_date_range(date_from: Optional[date], date_to: Optional[date]) -> None:
+    """Reject if date_from is after date_to."""
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="date_from must be <= date_to")
 
 
 def _check_upload_size(file: UploadFile) -> None:
@@ -154,16 +163,22 @@ def list_alerts(
     status: Optional[str] = None,
     sort_by: str = Query("risk_score", description="Field to sort by: risk_score|gap_start_utc|duration_minutes|vessel_name"),
     sort_order: str = Query("desc", description="asc or desc"),
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """List AIS gap alerts with sorting and filtering."""
     from app.models.gap_event import AISGapEvent
     from app.models.vessel import Vessel
 
+    _validate_date_range(date_from, date_to)
+
     limit = min(limit, settings.MAX_QUERY_LIMIT)
-    q = db.query(AISGapEvent)
+
+    q = db.query(AISGapEvent).options(
+        joinedload(AISGapEvent.vessel),
+        joinedload(AISGapEvent.start_point),
+    )
     if date_from:
         q = q.filter(AISGapEvent.gap_start_utc >= datetime.combine(date_from, datetime.min.time()))
     if date_to:
@@ -192,7 +207,19 @@ def list_alerts(
     else:
         q = q.order_by(sort_col.desc())
 
-    return q.offset(skip).limit(limit).all()
+    total = q.count()
+    results = q.offset(skip).limit(limit).all()
+    items = []
+    for r in results:
+        item = {
+            c.name: getattr(r, c.name) for c in r.__table__.columns
+        }
+        item["last_lat"] = r.start_point.lat if r.start_point else None
+        item["last_lon"] = r.start_point.lon if r.start_point else None
+        item["vessel_name"] = r.vessel.name if r.vessel else None
+        item["vessel_mmsi"] = r.vessel.mmsi if r.vessel else None
+        items.append(item)
+    return {"items": items, "total": total}
 
 
 @router.get("/alerts/export", tags=["alerts"])
@@ -206,6 +233,8 @@ def export_alerts_csv(
     """Bulk export alerts as publication-ready CSV."""
     from app.models.gap_event import AISGapEvent
     from app.models.vessel import Vessel
+
+    _validate_date_range(date_from, date_to)
 
     q = db.query(AISGapEvent)
     if status:
@@ -231,26 +260,29 @@ def export_alerts_csv(
         output.seek(0)
         output.truncate(0)
 
-        for alert in alerts:
-            vessel = alert.vessel
-            corridor = alert.corridor
-            writer.writerow([
-                alert.gap_event_id,
-                vessel.mmsi if vessel else "",
-                vessel.name if vessel else "",
-                vessel.flag if vessel else "",
-                vessel.deadweight if vessel else "",
-                alert.gap_start_utc.isoformat() if alert.gap_start_utc else "",
-                alert.gap_end_utc.isoformat() if alert.gap_end_utc else "",
-                round(alert.duration_minutes / 60, 2) if alert.duration_minutes else "",
-                corridor.name if corridor else "",
-                alert.risk_score,
-                alert.status,
-                alert.analyst_notes or "",
-            ])
-            yield output.getvalue()
-            output.seek(0)
-            output.truncate(0)
+        try:
+            for alert in alerts:
+                vessel = alert.vessel
+                corridor = alert.corridor
+                writer.writerow([
+                    alert.gap_event_id,
+                    vessel.mmsi if vessel else "",
+                    vessel.name if vessel else "",
+                    vessel.flag if vessel else "",
+                    vessel.deadweight if vessel else "",
+                    alert.gap_start_utc.isoformat() if alert.gap_start_utc else "",
+                    alert.gap_end_utc.isoformat() if alert.gap_end_utc else "",
+                    round(alert.duration_minutes / 60, 2) if alert.duration_minutes else "",
+                    corridor.name if corridor else "",
+                    alert.risk_score,
+                    alert.status,
+                    alert.analyst_notes or "",
+                ])
+                yield output.getvalue()
+                output.seek(0)
+                output.truncate(0)
+        except Exception as e:
+            logger.error("CSV export error mid-stream: %s", e, exc_info=True)
 
     filename = f"radiancefleet_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.csv"
     return StreamingResponse(
@@ -365,35 +397,38 @@ def update_alert_status(
     """Explicitly set alert status. Body: {status: '...', reason: '...'}"""
     from app.models.gap_event import AISGapEvent
     from app.models.base import AlertStatusEnum
+    from app.schemas.gap_event import AlertStatusUpdate
+    body = AlertStatusUpdate(**body)
 
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
-    new_status = body.get("status")
     valid_statuses = [e.value for e in AlertStatusEnum]
-    if new_status not in valid_statuses:
+    if body.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
 
-    alert.status = new_status
-    reason = body.get("reason")
-    if reason:
+    alert.status = body.status
+    if body.reason:
         existing_notes = alert.analyst_notes or ""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-        alert.analyst_notes = f"{existing_notes}\n[{timestamp}] Status → {new_status}: {reason}".strip()
+        alert.analyst_notes = f"{existing_notes}\n[{timestamp}] Status → {body.status}: {body.reason}".strip()
 
     db.commit()
-    return {"status": "ok", "new_status": new_status}
+    return {"status": "ok", "new_status": body.status}
 
 
 @router.post("/alerts/{alert_id}/notes", tags=["alerts"])
-def add_note(alert_id: int, note: dict, db: Session = Depends(get_db)):
+def add_note(alert_id: int, body: dict, db: Session = Depends(get_db)):
     from app.models.gap_event import AISGapEvent
+    from app.schemas.gap_event import AlertNoteUpdate
+    body = AlertNoteUpdate(**body)
+
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     # Accept both "notes" (frontend) and "text" (legacy) keys
-    alert.analyst_notes = note.get("notes", note.get("text", ""))
+    alert.analyst_notes = body.notes if body.notes is not None else (body.text or "")
     db.commit()
     return {"status": "ok"}
 
@@ -762,6 +797,8 @@ def get_stats(
     )
     multi_gap_vessels = db.query(func.count()).select_from(multi_gap_subq).scalar() or 0
 
+    distinct_vessels = db.query(func.count(func.distinct(AISGapEvent.vessel_id))).scalar() or 0
+
     return {
         "alert_counts": {
             "total": total,
@@ -773,6 +810,7 @@ def get_stats(
         "by_status": by_status,
         "by_corridor": by_corridor,
         "vessels_with_multiple_gaps_7d": multi_gap_vessels,
+        "distinct_vessels": distinct_vessels,
     }
 
 
@@ -807,8 +845,8 @@ def add_to_watchlist(body: dict, db: Session = Depends(get_db)):
 
 @router.get("/watchlist", tags=["watchlist"])
 def list_watchlist(
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """List all watchlist entries (paginated)."""

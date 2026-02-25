@@ -48,7 +48,8 @@ _RISK_BASELINE: int = 8       # ≥4 h loitering
 _RISK_SUSTAINED: int = 20     # ≥12 h loitering in a corridor
 
 # Gap linkage window: scan for gaps within this many hours of loitering boundaries
-_GAP_LINK_WINDOW_HOURS: int = 48
+from app.config import settings as _settings
+_GAP_LINK_WINDOW_HOURS: int = _settings.LOITER_GAP_LINKAGE_HOURS
 
 # Minimum AIS points required to analyse a vessel
 _MIN_POINTS: int = 4

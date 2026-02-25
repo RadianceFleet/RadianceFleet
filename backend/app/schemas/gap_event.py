@@ -78,3 +78,13 @@ class GapEventDetailRead(GapEventRead):
 class GapEventStatusUpdate(BaseModel):
     status: str
     analyst_notes: Optional[str] = None
+
+
+class AlertStatusUpdate(BaseModel):
+    status: str
+    reason: Optional[str] = None
+
+
+class AlertNoteUpdate(BaseModel):
+    notes: Optional[str] = None
+    text: Optional[str] = None  # legacy key

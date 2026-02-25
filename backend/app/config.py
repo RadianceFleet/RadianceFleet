@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     # STS proximity (meters)
     STS_PROXIMITY_METERS: float = 200.0
     STS_MIN_WINDOWS: int = 8  # 8 × 15 min = 2 hours sustained
+    # Class B noise filter (seconds) — gaps shorter than this are artifacts
+    CLASS_B_NOISE_FILTER_SECONDS: int = 180
+    # Loiter-gap linkage window (hours)
+    LOITER_GAP_LINKAGE_HOURS: int = 48
+    # Watchlist fuzzy match threshold (0-100)
+    FUZZY_MATCH_THRESHOLD: int = 85
+    # Regional AIS coverage config
+    COVERAGE_CONFIG: str = "config/coverage.yaml"
     # Upload and query limits
     MAX_UPLOAD_SIZE_MB: int = 500
     MAX_QUERY_LIMIT: int = 500

@@ -55,7 +55,25 @@ def load_scoring_config() -> dict[str, Any]:
         missing = [s for s in _EXPECTED_SECTIONS if s not in _SCORING_CONFIG]
         if missing:
             logger.warning("risk_scoring.yaml missing sections: %s", ", ".join(missing))
+        # Validate numeric values in scoring ranges
+        for section_name in _EXPECTED_SECTIONS:
+            section = _SCORING_CONFIG.get(section_name, {})
+            if isinstance(section, dict):
+                for key, val in section.items():
+                    if isinstance(val, (int, float)):
+                        if section_name in ("corridor", "vessel_size_multiplier"):
+                            if not (0 <= val <= 10):
+                                logger.warning("risk_scoring.yaml %s.%s=%s outside [0,10]", section_name, key, val)
+                        elif not (-50 <= val <= 200):
+                            logger.warning("risk_scoring.yaml %s.%s=%s outside [-50,200]", section_name, key, val)
     return _SCORING_CONFIG
+
+
+def reload_scoring_config() -> dict[str, Any]:
+    """Force-reload scoring config from disk (e.g. after YAML edits)."""
+    global _SCORING_CONFIG
+    _SCORING_CONFIG = None
+    return load_scoring_config()
 
 
 def score_all_alerts(db: Session) -> dict:
@@ -104,7 +122,7 @@ def rescore_all_alerts(db: Session, clear_detections: bool = False) -> dict:
             records before re-scoring. Requires re-running detection pipeline after rescore.
             Default False for backward compatibility.
     """
-    config = load_scoring_config()
+    config = reload_scoring_config()
     config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
 
     if clear_detections:

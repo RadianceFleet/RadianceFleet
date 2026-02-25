@@ -76,6 +76,8 @@ def validate_ais_row(row: dict[str, Any]) -> str | None:
             sog = float(sog)
         except (TypeError, ValueError):
             return f"Invalid SOG: {sog}"
+        if sog < 0:
+            return f"Negative SOG: {sog}"
         if sog > 35:
             return f"SOG exceeds physical limit: {sog} knots"
 

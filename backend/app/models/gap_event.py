@@ -37,6 +37,12 @@ class AISGapEvent(Base):
 
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="gap_events")
     corridor: Mapped[Optional["Corridor"]] = relationship("Corridor", back_populates="gap_events")
+    start_point: Mapped[Optional["AISPoint"]] = relationship(
+        "AISPoint", foreign_keys=[start_point_id], lazy="joined"
+    )
+    end_point: Mapped[Optional["AISPoint"]] = relationship(
+        "AISPoint", foreign_keys=[end_point_id], lazy="joined"
+    )
     satellite_checks: Mapped[list] = relationship("SatelliteCheck", back_populates="gap_event", cascade="all, delete-orphan")
     movement_envelopes: Mapped[list] = relationship("MovementEnvelope", back_populates="gap_event", cascade="all, delete-orphan")
     evidence_cards: Mapped[list] = relationship("EvidenceCard", back_populates="gap_event", cascade="all, delete-orphan")
