@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+.env
+!.env.example
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# Data files (never commit AIS data)
+data/
+*.csv
+*.json.gz
+
+# Secrets
+*.pem
+*.key
+secrets/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic generated (keep env.py and versions/)
+backend/alembic/versions/*.py
+!backend/alembic/versions/.gitkeep
+
+# Worktrees (if using git worktrees)
+.worktrees/
+PRD.md

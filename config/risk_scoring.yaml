@@ -1,0 +1,165 @@
+# RadianceFleet Risk Scoring Configuration
+# All weights are calibrated against legitimate tanker baseline (~0–15 points for clean vessel).
+# Edit these values to tune sensitivity. See PRD §7.5 for full rationale.
+#
+# Score bands:
+#   low:      0–20    no action needed
+#   medium:   21–50   investigate; check satellite data
+#   high:     51–75   high confidence anomaly; publication-ready with analyst review
+#   critical: 76+     strong shadow fleet indicators; escalate
+
+# GAP DURATION
+# Windward research: 8h is legitimate median. Threshold below 8h captures normal ops.
+gap_duration:
+  2h_to_4h: 5       # normal, track but don't elevate
+  4h_to_8h: 12      # above median, worth noting
+  8h_to_12h: 25     # elevated — investigate
+  12h_to_24h: 40    # suspicious
+  24h_plus: 55      # high-confidence indicator
+
+# GAP FREQUENCY (rolling window, cumulative)
+gap_frequency:
+  2_gaps_in_7d: 18
+  3_gaps_in_14d: 32
+  5_gaps_in_30d: 50
+
+# SPEED ANOMALY (class-specific tanker max speeds per IMO class)
+speed_anomaly:
+  vlcc_200k_plus_dwt:
+    spike_threshold_kn: 18
+    spoof_threshold_kn: 22
+  suezmax_120_200k_dwt:
+    spike_threshold_kn: 19
+    spoof_threshold_kn: 23
+  aframax_80_120k_dwt:
+    spike_threshold_kn: 20
+    spoof_threshold_kn: 24
+  panamax_60_80k_dwt:
+    spike_threshold_kn: 20
+    spoof_threshold_kn: 24
+  # Points
+  speed_spike: 8             # > class spike threshold
+  speed_spoof: 25            # > class spoof threshold
+  speed_impossible: 40       # > 30 knots (any tanker)
+  gap_preceded_by_speed_spike_multiplier: 1.4
+
+# MOVEMENT ENVELOPE PLAUSIBILITY
+movement_envelope:
+  impossible_reappear: 40        # velocity_plausibility_ratio > 1.0
+  near_impossible_reappear: 15   # ratio 0.7–1.0
+
+# AIS SPOOFING DETECTIONS
+spoofing:
+  anchor_in_open_ocean: 10
+  circle_pattern: 35
+  slow_roll: 12
+  mmsi_reuse_implied_speed_30kn: 40
+  mmsi_reuse_implied_speed_100kn: 55
+  nav_status_speed_mismatch: 15
+  erratic_nav_status: 12
+  dual_transmission_candidate: 30
+
+# VESSEL IDENTITY CHANGES
+metadata:
+  single_flag_change_last_12m: 0
+  flag_change_in_last_30d: 25
+  flag_change_in_last_7d: 35
+  flag_AND_name_change_within_48h: 30
+  3_plus_flag_changes_in_90d: 40
+  name_change_during_active_voyage: 30
+  mmsi_change_mapped_same_position: 45
+  callsign_change: 20
+
+# VESSEL CHARACTERISTICS
+vessel_age:
+  age_0_to_10y: -5
+  age_10_to_20y: 0
+  age_20_to_25y: 10
+  age_25_plus_y: 20
+  age_25_plus_AND_high_risk_flag: 30
+
+# FLAG STATE RISK
+# High-risk registries per Paris MOU grey/black lists and investigative research
+flag_state:
+  white_list_flag: -10    # Norway, Denmark, Germany, Japan, Netherlands
+  neutral_flag: 0         # Malta, Cyprus, Bahamas, Marshall Islands
+  high_risk_registry: 15  # Cameroon, Gabon, Comoros, Gambia, Palau, Sierra Leone, Tanzania, Honduras
+  flag_less_than_2y_old_AND_high_risk: 20
+
+# VESSEL SIZE MULTIPLIER (applied to total score before bands)
+vessel_size_multiplier:
+  panamax_60_80k_dwt: 0.8
+  aframax_80_120k_dwt: 1.0
+  suezmax_120_200k_dwt: 1.3    # most common shadow fleet class
+  vlcc_200k_plus_dwt: 1.5
+
+# WATCHLIST / SANCTIONS
+watchlist:
+  vessel_on_ofac_sdn_list: 50
+  vessel_on_eu_sanctions_list: 50
+  vessel_on_kse_shadow_fleet_list: 30
+  owner_or_manager_on_sanctions_list: 35
+
+# DARK ZONE CONTEXT
+dark_zone:
+  gap_in_known_jamming_zone: -10          # REDUCES score (expected gap)
+  gap_immediately_before_dark_zone_entry: 20
+  vessel_exits_dark_zone_with_impossible_jump: 35
+
+# STS TRANSFER INDICATORS
+sts:
+  sts_event_detected_ais_visible: 25
+  sts_event_in_known_sts_zone: 35
+  one_vessel_dark_during_proximity: 15
+  gap_in_sts_tagged_corridor: 30
+  loitering_4h_plus_in_corridor: 8
+  loitering_12h_plus_in_sts_corridor: 20
+  loiter_gap_loiter_pattern_48h_window: 15
+
+# BEHAVIORAL PATTERNS
+behavioral:
+  new_mmsi_first_30d: 15
+  new_mmsi_plus_russian_origin_zone: 25
+  vessel_laid_up_30d_plus: 15
+  vessel_laid_up_60d_plus: 25
+  vessel_laid_up_in_sts_zone: 30
+
+# NEGATIVE SCORING (legitimacy signals — reduce false positives)
+legitimacy:
+  gap_free_90d_clean: -15
+  white_flag_jurisdiction: -10
+  consistent_eu_port_calls: -5    # per documented port call
+  speed_variation_matches_weather: -8
+  ais_class_a_consistent: -5
+
+# CORRIDOR RISK MULTIPLIER
+corridor:
+  known_sts_zone: 2.0
+  high_risk_export_corridor: 1.5
+  standard_corridor: 1.0
+  legitimate_trade_route: 0.7
+
+# SCORE BANDS
+score_bands:
+  low:
+    min: 0
+    max: 20
+    label: "No action needed"
+  medium:
+    min: 21
+    max: 50
+    label: "Investigate — check satellite data"
+  high:
+    min: 51
+    max: 75
+    label: "High confidence anomaly — publication-ready with analyst review"
+  critical:
+    min: 76
+    max: 999
+    label: "Strong shadow fleet indicators — escalate"
+
+# AIS CLASS MISMATCH
+ais_class:
+  large_tanker_using_class_b: 50     # mandatory Class A for >300GT; Class B = red flag
+  class_switching_a_to_b: 25
+  transmission_frequency_mismatch: 8

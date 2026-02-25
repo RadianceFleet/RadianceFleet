@@ -1,0 +1,100 @@
+# RadianceFleet Corridor Configuration
+# Seed data from PRD §7.1 — zones of interest for Russian oil export monitoring.
+# Add/edit polygons via the UI or CLI: radiancefleet corridors import ./config/corridors.yaml
+#
+# corridor_type: export_route | sts_zone | import_route | anchorage_holding | dark_zone
+# risk_weight: multiplier applied to gap scores inside this corridor
+# is_jamming_zone: true reduces expected gap scores (expected noise from GPS jamming)
+
+corridors:
+
+  # --- EXPORT ROUTES ---
+  - name: "Baltic Export Gate — Primorsk / Ust-Luga"
+    geometry: "POLYGON((24.5 59.3, 25.5 59.3, 25.5 60.2, 24.5 60.2, 24.5 59.3))"
+    corridor_type: export_route
+    risk_weight: 1.5
+    is_jamming_zone: false
+    description: "Approaches to Primorsk and Ust-Luga, Russia's main Baltic crude export terminals"
+    tags: [russian_ports, sanctions_sensitive]
+
+  - name: "Turkish Straits — Bosphorus / Dardanelles"
+    geometry: "POLYGON((26.5 40.0, 29.5 40.0, 29.5 41.5, 26.5 41.5, 26.5 40.0))"
+    corridor_type: export_route
+    risk_weight: 1.4
+    is_jamming_zone: false
+    description: "Key chokepoint for Black Sea Russian crude; Turkish straits inspection zone"
+    tags: [chokepoint, transit]
+
+  - name: "Black Sea — Kavkaz / Novorossiysk Approaches"
+    geometry: "POLYGON((37.0 44.5, 39.0 44.5, 39.0 45.5, 37.0 45.5, 37.0 44.5))"
+    corridor_type: export_route
+    risk_weight: 1.5
+    is_jamming_zone: false
+    description: "Russian Black Sea export terminals; heavy AIS falsification documented (SkyTruth, Feb 2025)"
+    tags: [russian_ports, ais_falsification_known]
+
+  - name: "Nakhodka / Kozmino — Russian Far East Export"
+    geometry: "POLYGON((132.5 42.5, 133.5 42.5, 133.5 43.5, 132.5 43.5, 132.5 42.5))"
+    corridor_type: export_route
+    risk_weight: 1.4
+    is_jamming_zone: false
+    description: "ESPO pipeline export terminal; major Russia-to-China route origin"
+    tags: [russian_ports, far_east]
+
+  # --- STS ZONES ---
+  - name: "Mediterranean STS — Western (Spain/Algeria)"
+    geometry: "POLYGON((-1.0 37.0, 6.0 37.0, 6.0 40.0, -1.0 40.0, -1.0 37.0))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Active STS transfer area off Spain/Algeria. EU now requires physical inspection during STS operations."
+    tags: [ship_to_ship, documented]
+
+  - name: "Ceuta / Gibraltar STS Anchorage"
+    geometry: "POLYGON((-5.8 35.8, -5.2 35.8, -5.2 36.2, -5.8 36.2, -5.8 35.8))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "High-traffic STS anchorage; extensively documented in investigative reporting"
+    tags: [ship_to_ship, documented, anchorage]
+
+  - name: "Laconian Gulf (Greece) — STS Zone"
+    geometry: "POLYGON((22.5 36.2, 23.5 36.2, 23.5 36.8, 22.5 36.8, 22.5 36.2))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Active STS hotspot; Russian crude transfers documented by CREA and Greenpeace"
+    tags: [ship_to_ship, documented]
+
+  - name: "Hurd's Bank — Malta STS Anchorage"
+    geometry: "POLYGON((14.5 35.5, 15.5 35.5, 15.5 36.0, 14.5 36.0, 14.5 35.5))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Malta offshore STS area; commonly used for Russian crude transfers in Mediterranean"
+    tags: [ship_to_ship]
+
+  - name: "Singapore Strait — Outer Port Limits"
+    geometry: "POLYGON((103.5 1.0, 104.5 1.0, 104.5 1.7, 103.5 1.7, 103.5 1.0))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "OFAC-designated high-risk STS zone (outer port limits of Singapore)"
+    tags: [ship_to_ship, ofac_designated]
+
+  # --- DARK ZONES (GPS jamming / systematic AIS blackout) ---
+  - name: "Strait of Hormuz — GPS Jamming Zone"
+    geometry: "POLYGON((55.5 25.5, 57.5 25.5, 57.5 27.5, 55.5 27.5, 55.5 25.5))"
+    corridor_type: dark_zone
+    risk_weight: 1.0
+    is_jamming_zone: true
+    description: "Active GPS jamming affecting 1000+ vessels/day (Windward 2025). Gaps here are EXPECTED — reduce false positives."
+    tags: [jamming, persian_gulf]
+
+  - name: "Black Sea — Crimea / Russian EEZ Jamming"
+    geometry: "POLYGON((33.0 43.5, 37.0 43.5, 37.0 45.5, 33.0 45.5, 33.0 43.5))"
+    corridor_type: dark_zone
+    risk_weight: 1.0
+    is_jamming_zone: true
+    description: "Systematic Russian GPS jamming in Black Sea/Crimea region. Score gaps lower here."
+    tags: [jamming, russian_eez]
