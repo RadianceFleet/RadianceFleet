@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
+import type { VesselSummary, VesselDetail, VesselHistoryEntry } from '../types/api'
 
 export interface VesselSearchFilters {
   search?: string
@@ -16,7 +17,7 @@ export function useVesselSearch(filters: VesselSearchFilters) {
   params.set('limit', String(filters.limit ?? 20))
   return useQuery({
     queryKey: ['vessels', filters],
-    queryFn: () => apiFetch<Record<string, unknown>[]>(`/vessels?${params}`),
+    queryFn: () => apiFetch<VesselSummary[]>(`/vessels?${params}`),
     enabled: !!(filters.search || filters.flag || filters.vessel_type),
   })
 }
@@ -24,7 +25,7 @@ export function useVesselSearch(filters: VesselSearchFilters) {
 export function useVesselDetail(id: string | undefined) {
   return useQuery({
     queryKey: ['vessel', id],
-    queryFn: () => apiFetch<Record<string, unknown>>(`/vessels/${id}`),
+    queryFn: () => apiFetch<VesselDetail>(`/vessels/${id}`),
     enabled: !!id,
   })
 }
@@ -32,7 +33,7 @@ export function useVesselDetail(id: string | undefined) {
 export function useVesselHistory(id: string | undefined) {
   return useQuery({
     queryKey: ['vessel-history', id],
-    queryFn: () => apiFetch<Record<string, unknown>[]>(`/vessels/${id}/history`),
+    queryFn: () => apiFetch<VesselHistoryEntry[]>(`/vessels/${id}/history`),
     enabled: !!id,
   })
 }

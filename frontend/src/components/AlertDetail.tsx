@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import type { AlertDetail as AlertDetailType, AlertStatus } from '../types/api'
+import type { AlertStatus, ExportResponse } from '../types/api'
 import { useAlert, useUpdateAlertStatus, useUpdateAlertNotes } from '../hooks/useAlerts'
 import { apiFetch } from '../lib/api'
 import { AlertMap } from './AlertMap'
@@ -24,8 +24,7 @@ export function AlertDetail() {
   const [satLoading, setSatLoading] = useState(false)
   const [satResult, setSatResult] = useState<string | null>(null)
 
-  const { data: alertRaw, isLoading, error } = useAlert(id)
-  const alert = alertRaw as AlertDetailType | undefined
+  const { data: alert, isLoading, error } = useAlert(id)
   const statusMutation = useUpdateAlertStatus(id ?? '')
   const notesMutation = useUpdateAlertNotes(id ?? '')
 
@@ -43,8 +42,8 @@ export function AlertDetail() {
   const handleExport = async (fmt: 'md' | 'json') => {
     setExportError(null)
     try {
-      const data = await apiFetch<Record<string, unknown>>(`/alerts/${id}/export?format=${fmt}`, { method: 'POST' })
-      const content = (data.content as string) ?? JSON.stringify(data, null, 2)
+      const data = await apiFetch<ExportResponse>(`/alerts/${id}/export?format=${fmt}`, { method: 'POST' })
+      const content = data.content ?? JSON.stringify(data, null, 2)
       const blob = new Blob([content], { type: fmt === 'json' ? 'application/json' : 'text/markdown' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')

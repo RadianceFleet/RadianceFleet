@@ -1,6 +1,6 @@
 import 'leaflet/dist/leaflet.css'
 import { MapContainer, Marker, Popup } from 'react-leaflet'
-import { useAlerts } from '../hooks/useAlerts'
+import { useAlertMapPoints } from '../hooks/useAlerts'
 import { MapLayerControl } from '../components/map/LayerControl'
 import { Link } from 'react-router-dom'
 import L from 'leaflet'
@@ -20,9 +20,9 @@ function scoreIcon(score: number) {
 }
 
 export function MapOverviewPage() {
-  const { data, isLoading } = useAlerts({ limit: 500 })
+  const { data, isLoading } = useAlertMapPoints()
 
-  const alerts = (data?.items ?? []).filter(a => a.last_lat != null && a.last_lon != null)
+  const alerts = (data?.points ?? []).filter(a => a.last_lat != null && a.last_lon != null)
 
   return (
     <div style={{ height: 'calc(100vh - 120px)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>

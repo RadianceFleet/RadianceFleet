@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
+import type { AlertSummary, AlertDetail, AlertMapPoint } from '../types/api'
 
 export interface AlertFilters {
   min_score?: string
@@ -13,23 +14,6 @@ export interface AlertFilters {
   sort_order?: string
   skip?: number
   limit?: number
-}
-
-export interface AlertSummary {
-  gap_event_id: number
-  vessel_id: number
-  gap_start_utc: string
-  gap_end_utc: string
-  duration_minutes: number
-  risk_score: number
-  status: string
-  corridor_id: number | null
-  impossible_speed_flag: boolean
-  in_dark_zone: boolean
-  last_lat: number | null
-  last_lon: number | null
-  vessel_name: string | null
-  vessel_mmsi: string | null
 }
 
 export interface AlertListResponse {
@@ -59,7 +43,7 @@ export function useAlerts(filters: AlertFilters) {
 export function useAlert(id: string | undefined) {
   return useQuery({
     queryKey: ['alert', id],
-    queryFn: () => apiFetch<Record<string, unknown>>(`/alerts/${id}`),
+    queryFn: () => apiFetch<AlertDetail>(`/alerts/${id}`),
     enabled: !!id,
   })
 }
@@ -73,6 +57,13 @@ export function useUpdateAlertStatus(id: string) {
       qc.invalidateQueries({ queryKey: ['alert', id] })
       qc.invalidateQueries({ queryKey: ['alerts'] })
     },
+  })
+}
+
+export function useAlertMapPoints() {
+  return useQuery({
+    queryKey: ['alerts-map'],
+    queryFn: () => apiFetch<{ points: AlertMapPoint[] }>('/alerts/map'),
   })
 }
 

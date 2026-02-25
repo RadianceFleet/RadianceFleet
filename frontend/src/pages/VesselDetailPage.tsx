@@ -89,34 +89,14 @@ export function VesselDetailPage() {
     )
   }
 
-  /* Cast API fields for convenient access */
-  const v = vessel as Record<string, unknown>
-
-  const mmsi = v.mmsi as string | null
-  const imo = v.imo as string | null
-  const name = (v.name as string | null) ?? 'Unknown vessel'
-  const flag = v.flag as string | null
-  const vesselType = v.vessel_type as string | null
-  const deadweight = v.deadweight as number | null
-  const yearBuilt = v.year_built as number | null
-  const aisClass = v.ais_class as string | null
-  const flagRisk = (v.flag_risk_category as string | null) ?? 'unknown'
-  const piStatus = (v.pi_coverage_status as string | null) ?? 'unknown'
-  const pscDetained = v.psc_detained_last_12m as boolean | null
-  const mmsiFirstSeen = v.mmsi_first_seen_utc as string | null
-  const laidUp30d = v.vessel_laid_up_30d as boolean
-  const laidUp60d = v.vessel_laid_up_60d as boolean
-  const laidUpSts = v.vessel_laid_up_in_sts_zone as boolean
-
-  const watchlistEntries = (v.watchlist_entries ?? []) as Array<Record<string, unknown>>
-  const spoofingAnomalies = (v.spoofing_anomalies_30d ?? []) as Array<Record<string, unknown>>
-  const loiteringEvents = (v.loitering_events_30d ?? []) as Array<Record<string, unknown>>
-  const stsEvents = (v.sts_events_60d ?? []) as Array<Record<string, unknown>>
-  const totalGaps7d = (v.total_gaps_7d as number | null) ?? 0
-  const totalGaps30d = (v.total_gaps_30d as number | null) ?? 0
+  const name = vessel.name ?? 'Unknown vessel'
+  const flagRisk = vessel.flag_risk_category ?? 'unknown'
+  const piStatus = vessel.pi_coverage_status ?? 'unknown'
+  const totalGaps7d = vessel.total_gaps_7d ?? 0
+  const totalGaps30d = vessel.total_gaps_30d ?? 0
 
   const alerts = alertsData?.items ?? []
-  const historyEntries = (history ?? []) as Array<Record<string, unknown>>
+  const historyEntries = history ?? []
 
   return (
     <div style={{ maxWidth: 960 }}>
@@ -145,8 +125,8 @@ export function VesselDetailPage() {
         )}
       </div>
       <p style={{ color: 'var(--text-dim)', margin: '0 0 20px', fontSize: 13 }}>
-        MMSI {mmsi ?? '?'} &middot; IMO {imo ?? '?'} &middot; {flag ?? '??'}
-        {deadweight != null && ` · ${deadweight.toLocaleString()} DWT`}
+        MMSI {vessel.mmsi ?? '?'} &middot; IMO {vessel.imo ?? '?'} &middot; {vessel.flag ?? '??'}
+        {vessel.deadweight != null && ` · ${vessel.deadweight.toLocaleString()} DWT`}
       </p>
 
       {/* ---- Risk badge: gap counts ---- */}
@@ -172,14 +152,14 @@ export function VesselDetailPage() {
       <Card style={{ marginBottom: 16 }}>
         <h3 style={sectionHead}>Vessel Profile</h3>
         <table><tbody>
-          <tr><td style={labelCell}>MMSI</td><td style={valueCell}>{mmsi ?? '--'}</td></tr>
-          <tr><td style={labelCell}>IMO</td><td style={valueCell}>{imo ?? '--'}</td></tr>
+          <tr><td style={labelCell}>MMSI</td><td style={valueCell}>{vessel.mmsi ?? '--'}</td></tr>
+          <tr><td style={labelCell}>IMO</td><td style={valueCell}>{vessel.imo ?? '--'}</td></tr>
           <tr><td style={labelCell}>Name</td><td style={valueCell}>{name}</td></tr>
-          <tr><td style={labelCell}>Flag</td><td style={valueCell}>{flag ?? '--'}</td></tr>
-          <tr><td style={labelCell}>Vessel Type</td><td style={valueCell}>{vesselType ?? '--'}</td></tr>
-          <tr><td style={labelCell}>Deadweight (DWT)</td><td style={valueCell}>{deadweight != null ? deadweight.toLocaleString() : '--'}</td></tr>
-          <tr><td style={labelCell}>Year Built</td><td style={valueCell}>{yearBuilt ?? '--'}</td></tr>
-          <tr><td style={labelCell}>AIS Class</td><td style={valueCell}>{aisClass ?? '--'}</td></tr>
+          <tr><td style={labelCell}>Flag</td><td style={valueCell}>{vessel.flag ?? '--'}</td></tr>
+          <tr><td style={labelCell}>Vessel Type</td><td style={valueCell}>{vessel.vessel_type ?? '--'}</td></tr>
+          <tr><td style={labelCell}>Deadweight (DWT)</td><td style={valueCell}>{vessel.deadweight != null ? vessel.deadweight.toLocaleString() : '--'}</td></tr>
+          <tr><td style={labelCell}>Year Built</td><td style={valueCell}>{vessel.year_built ?? '--'}</td></tr>
+          <tr><td style={labelCell}>AIS Class</td><td style={valueCell}>{vessel.ais_class ?? '--'}</td></tr>
           <tr>
             <td style={labelCell}>Flag Risk Category</td>
             <td style={valueCell}>
@@ -199,21 +179,19 @@ export function VesselDetailPage() {
           <tr>
             <td style={labelCell}>PSC Detained (12 mo)</td>
             <td style={valueCell}>
-              {pscDetained === true
+              {vessel.psc_detained_last_12m
                 ? <span style={{ color: 'var(--score-critical)', fontWeight: 600 }}>Yes</span>
-                : pscDetained === false
-                  ? <span style={{ color: 'var(--text-muted)' }}>No</span>
-                  : '--'}
+                : <span style={{ color: 'var(--text-muted)' }}>No</span>}
             </td>
           </tr>
-          <tr><td style={labelCell}>MMSI First Seen</td><td style={valueCell}>{formatTimestamp(mmsiFirstSeen)}</td></tr>
+          <tr><td style={labelCell}>MMSI First Seen</td><td style={valueCell}>{formatTimestamp(vessel.mmsi_first_seen_utc)}</td></tr>
           <tr>
             <td style={labelCell}>Laid Up (30d / 60d)</td>
             <td style={valueCell}>
-              {laidUp30d ? <span style={{ color: 'var(--warning)' }}>Yes (30d)</span> : 'No'}
+              {vessel.vessel_laid_up_30d ? <span style={{ color: 'var(--warning)' }}>Yes (30d)</span> : 'No'}
               {' / '}
-              {laidUp60d ? <span style={{ color: 'var(--warning)' }}>Yes (60d)</span> : 'No'}
-              {laidUpSts && <span style={{ color: 'var(--score-critical)', marginLeft: 8 }}> (in STS zone)</span>}
+              {vessel.vessel_laid_up_60d ? <span style={{ color: 'var(--warning)' }}>Yes (60d)</span> : 'No'}
+              {vessel.vessel_laid_up_in_sts_zone && <span style={{ color: 'var(--score-critical)', marginLeft: 8 }}> (in STS zone)</span>}
             </td>
           </tr>
         </tbody></table>
@@ -222,7 +200,7 @@ export function VesselDetailPage() {
       {/* ---- Watchlist entries ---- */}
       <Card style={{ marginBottom: 16 }}>
         <h3 style={sectionHead}>Watchlist Entries</h3>
-        {watchlistEntries.length === 0
+        {vessel.watchlist_entries.length === 0
           ? <EmptyState title="No watchlist entries" description="This vessel is not on any known watchlists." />
           : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -235,19 +213,19 @@ export function VesselDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {watchlistEntries.map((w, i) => (
-                  <tr key={(w.watchlist_entry_id as number) ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
+                {vessel.watchlist_entries.map((w, i) => (
+                  <tr key={w.watchlist_entry_id ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
                     <td style={tdStyle}>
                       <span style={{ color: 'var(--score-critical)', fontWeight: 600 }}>
-                        {w.watchlist_source as string}
+                        {w.watchlist_source}
                       </span>
                     </td>
                     <td style={{ ...tdStyle, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {(w.reason as string) ?? '--'}
+                      {w.reason ?? '--'}
                     </td>
-                    <td style={tdStyle}>{formatDate(w.date_listed as string)}</td>
+                    <td style={tdStyle}>{formatDate(w.date_listed)}</td>
                     <td style={tdStyle}>
-                      {(w.is_active as boolean)
+                      {w.is_active
                         ? <span style={{ color: 'var(--score-critical)' }}>Active</span>
                         : <span style={{ color: 'var(--text-dim)' }}>Inactive</span>}
                     </td>
@@ -277,7 +255,7 @@ export function VesselDetailPage() {
               background: 'var(--border)',
             }} />
             {historyEntries.map((h, i) => (
-              <div key={(h.history_id as number) ?? i} style={{ position: 'relative', marginBottom: 16 }}>
+              <div key={h.vessel_history_id ?? i} style={{ position: 'relative', marginBottom: 16 }}>
                 {/* Timeline dot */}
                 <div style={{
                   position: 'absolute',
@@ -290,16 +268,16 @@ export function VesselDetailPage() {
                   border: '2px solid var(--bg-card)',
                 }} />
                 <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 2 }}>
-                  {formatTimestamp(h.observed_at as string)}
+                  {formatTimestamp(h.observed_at)}
                 </div>
                 <div style={{ fontSize: 13 }}>
-                  <span style={{ color: 'var(--text-muted)' }}>{h.field_changed as string}:</span>{' '}
+                  <span style={{ color: 'var(--text-muted)' }}>{h.field_changed}:</span>{' '}
                   <span style={{ color: 'var(--score-medium)', textDecoration: 'line-through' }}>
-                    {(h.old_value as string) || '(none)'}
+                    {h.old_value || '(none)'}
                   </span>
                   {' '}&rarr;{' '}
                   <span style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                    {(h.new_value as string) || '(none)'}
+                    {h.new_value || '(none)'}
                   </span>
                 </div>
               </div>
@@ -311,7 +289,7 @@ export function VesselDetailPage() {
       {/* ---- Spoofing anomalies (30d) ---- */}
       <Card style={{ marginBottom: 16 }}>
         <h3 style={sectionHead}>Spoofing Anomalies (30 days)</h3>
-        {spoofingAnomalies.length === 0
+        {vessel.spoofing_anomalies_30d.length === 0
           ? <EmptyState title="No spoofing anomalies detected" />
           : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -324,9 +302,9 @@ export function VesselDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {spoofingAnomalies.map((s, i) => (
-                  <tr key={(s.anomaly_id as number) ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={tdStyle}>#{s.anomaly_id as number}</td>
+                {vessel.spoofing_anomalies_30d.map((s, i) => (
+                  <tr key={s.anomaly_id ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={tdStyle}>#{s.anomaly_id}</td>
                     <td style={tdStyle}>
                       <span style={{
                         display: 'inline-block',
@@ -337,12 +315,12 @@ export function VesselDetailPage() {
                         border: '1px solid var(--border)',
                         color: 'var(--warning)',
                       }}>
-                        {(s.anomaly_type as string).replace(/_/g, ' ')}
+                        {s.anomaly_type.replace(/_/g, ' ')}
                       </span>
                     </td>
-                    <td style={tdStyle}>{formatTimestamp(s.start_time_utc as string)}</td>
+                    <td style={tdStyle}>{formatTimestamp(s.start_time_utc)}</td>
                     <td style={tdStyle}>
-                      <ScoreBadge score={s.risk_score_component as number} size="sm" />
+                      <ScoreBadge score={s.risk_score_component} size="sm" />
                     </td>
                   </tr>
                 ))}
@@ -354,7 +332,7 @@ export function VesselDetailPage() {
       {/* ---- Loitering events (30d) ---- */}
       <Card style={{ marginBottom: 16 }}>
         <h3 style={sectionHead}>Loitering Events (30 days)</h3>
-        {loiteringEvents.length === 0
+        {vessel.loitering_events_30d.length === 0
           ? <EmptyState title="No loitering events detected" />
           : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -367,18 +345,18 @@ export function VesselDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {loiteringEvents.map((l, i) => (
-                  <tr key={(l.loiter_id as number) ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={tdStyle}>#{l.loiter_id as number}</td>
-                    <td style={tdStyle}>{formatTimestamp(l.start_time_utc as string)}</td>
+                {vessel.loitering_events_30d.map((l, i) => (
+                  <tr key={l.loiter_id ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={tdStyle}>#{l.loiter_id}</td>
+                    <td style={tdStyle}>{formatTimestamp(l.start_time_utc)}</td>
                     <td style={tdStyle}>
-                      {(l.duration_hours as number) != null
-                        ? `${(l.duration_hours as number).toFixed(1)}h`
+                      {l.duration_hours != null
+                        ? `${l.duration_hours.toFixed(1)}h`
                         : '--'}
                     </td>
                     <td style={tdStyle}>
-                      {(l.corridor_id as number | null) != null
-                        ? <Link to={`/corridors/${l.corridor_id}`}>Corridor #{l.corridor_id as number}</Link>
+                      {l.corridor_id != null
+                        ? <Link to={`/corridors/${l.corridor_id}`}>Corridor #{l.corridor_id}</Link>
                         : <span style={{ color: 'var(--text-dim)' }}>--</span>}
                     </td>
                   </tr>
@@ -391,7 +369,7 @@ export function VesselDetailPage() {
       {/* ---- STS events (60d) ---- */}
       <Card style={{ marginBottom: 16 }}>
         <h3 style={sectionHead}>Ship-to-Ship Events (60 days)</h3>
-        {stsEvents.length === 0
+        {vessel.sts_events_60d.length === 0
           ? <EmptyState title="No STS events detected" />
           : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -404,17 +382,15 @@ export function VesselDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {stsEvents.map((s, i) => {
-                  const vessel1 = s.vessel_1_id as number
-                  const vessel2 = s.vessel_2_id as number
-                  const partnerId = vessel1 === Number(id) ? vessel2 : vessel1
+                {vessel.sts_events_60d.map((s, i) => {
+                  const partnerId = s.vessel_1_id === Number(id) ? s.vessel_2_id : s.vessel_1_id
                   return (
-                    <tr key={(s.sts_id as number) ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={tdStyle}>#{s.sts_id as number}</td>
+                    <tr key={s.sts_id ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={tdStyle}>#{s.sts_id}</td>
                       <td style={tdStyle}>
                         <Link to={`/vessels/${partnerId}`}>Vessel #{partnerId}</Link>
                       </td>
-                      <td style={tdStyle}>{formatTimestamp(s.start_time_utc as string)}</td>
+                      <td style={tdStyle}>{formatTimestamp(s.start_time_utc)}</td>
                       <td style={tdStyle}>
                         <span style={{
                           display: 'inline-block',
@@ -425,7 +401,7 @@ export function VesselDetailPage() {
                           border: '1px solid var(--border)',
                           color: 'var(--text-body)',
                         }}>
-                          {(s.detection_type as string).replace(/_/g, ' ')}
+                          {s.detection_type.replace(/_/g, ' ')}
                         </span>
                       </td>
                     </tr>

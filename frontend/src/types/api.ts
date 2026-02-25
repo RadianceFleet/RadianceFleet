@@ -1,3 +1,7 @@
+// ---------------------------------------------------------------------------
+// Alert types
+// ---------------------------------------------------------------------------
+
 export interface AlertSummary {
   gap_event_id: number
   vessel_id: number
@@ -14,6 +18,10 @@ export interface AlertSummary {
   max_plausible_distance_nm: number | null
   actual_gap_distance_nm: number | null
   risk_breakdown_json: Record<string, unknown> | null
+  last_lat: number | null
+  last_lon: number | null
+  vessel_name: string | null
+  vessel_mmsi: string | null
 }
 
 export interface AISPointSummary {
@@ -64,3 +72,158 @@ export type AlertStatus =
   | 'needs_satellite_check'
   | 'documented'
   | 'dismissed'
+
+export interface AlertMapPoint {
+  gap_event_id: number
+  last_lat: number | null
+  last_lon: number | null
+  risk_score: number
+  vessel_name: string | null
+  gap_start_utc: string
+  duration_minutes: number
+}
+
+// ---------------------------------------------------------------------------
+// Vessel types
+// ---------------------------------------------------------------------------
+
+export interface VesselSummary {
+  vessel_id: number
+  mmsi: string
+  imo: string | null
+  name: string | null
+  flag: string | null
+  vessel_type: string | null
+  deadweight: number | null
+  last_risk_score: number | null
+  watchlist_status: boolean
+}
+
+export interface WatchlistEntry {
+  watchlist_entry_id: number
+  watchlist_source: string
+  reason: string | null
+  date_listed: string | null
+  is_active: boolean
+}
+
+export interface SpoofingAnomaly {
+  anomaly_id: number
+  anomaly_type: string
+  start_time_utc: string
+  risk_score_component: number
+}
+
+export interface LoiteringEvent {
+  loiter_id: number
+  start_time_utc: string
+  duration_hours: number | null
+  corridor_id: number | null
+}
+
+export interface StsEventNested {
+  sts_id: number
+  vessel_1_id: number
+  vessel_2_id: number
+  start_time_utc: string
+  detection_type: string
+}
+
+export interface VesselDetail {
+  vessel_id: number
+  mmsi: string
+  imo: string | null
+  name: string | null
+  flag: string | null
+  vessel_type: string | null
+  deadweight: number | null
+  year_built: number | null
+  ais_class: string | null
+  flag_risk_category: string | null
+  pi_coverage_status: string | null
+  psc_detained_last_12m: boolean
+  mmsi_first_seen_utc: string | null
+  vessel_laid_up_30d: boolean
+  vessel_laid_up_60d: boolean
+  vessel_laid_up_in_sts_zone: boolean
+  watchlist_entries: WatchlistEntry[]
+  spoofing_anomalies_30d: SpoofingAnomaly[]
+  loitering_events_30d: LoiteringEvent[]
+  sts_events_60d: StsEventNested[]
+  total_gaps_7d: number
+  total_gaps_30d: number
+}
+
+export interface VesselHistoryEntry {
+  vessel_history_id: number
+  field_changed: string
+  old_value: string | null
+  new_value: string | null
+  observed_at: string
+  source: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Corridor types
+// ---------------------------------------------------------------------------
+
+export interface CorridorSummary {
+  corridor_id: number
+  name: string
+  corridor_type: string
+  risk_weight: number | null
+  is_jamming_zone: boolean
+  description: string | null
+  alert_count_7d: number
+  alert_count_30d: number
+  avg_risk_score: number | null
+}
+
+export interface CorridorDetail {
+  corridor_id: number
+  name: string
+  corridor_type: string
+  risk_weight: number | null
+  is_jamming_zone: boolean
+  description: string | null
+  alert_count_7d: number
+  alert_count_30d: number
+}
+
+export interface CorridorUpdatePayload {
+  name: string
+  risk_weight: number
+  description: string
+  is_jamming_zone: boolean
+}
+
+// ---------------------------------------------------------------------------
+// STS types
+// ---------------------------------------------------------------------------
+
+export interface StsEventSummary {
+  sts_id: number
+  vessel_1_id: number
+  vessel_2_id: number
+  detection_type: string
+  start_time_utc: string
+  end_time_utc: string
+  duration_minutes: number | null
+  mean_proximity_meters: number | null
+  mean_lat: number | null
+  mean_lon: number | null
+  corridor_id: number | null
+  satellite_confirmation_status: string | null
+  eta_minutes: number | null
+  risk_score_component: number
+}
+
+// ---------------------------------------------------------------------------
+// Export types
+// ---------------------------------------------------------------------------
+
+export interface ExportResponse {
+  content: string
+  media_type: string
+  evidence_card_id: number
+}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useCorridorDetail } from '../hooks/useCorridors'
 import { useUpdateCorridor } from '../hooks/useCorridorMutation'
+import type { CorridorUpdatePayload } from '../types/api'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 
@@ -81,7 +82,7 @@ export function CorridorDetailPage() {
   }
 
   function handleSave() {
-    const payload: Record<string, unknown> = {
+    const payload: CorridorUpdatePayload = {
       name: editName,
       risk_weight: parseFloat(editRiskWeight),
       description: editDescription,

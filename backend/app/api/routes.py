@@ -222,6 +222,34 @@ def list_alerts(
     return {"items": items, "total": total}
 
 
+@router.get("/alerts/map", tags=["alerts"])
+def list_alert_map_points(db: Session = Depends(get_db)):
+    """Lightweight map-only projection: returns only fields needed for map markers."""
+    from app.models.gap_event import AISGapEvent
+
+    results = (
+        db.query(AISGapEvent)
+        .options(joinedload(AISGapEvent.vessel), joinedload(AISGapEvent.start_point))
+        .order_by(AISGapEvent.risk_score.desc())
+        .limit(min(500, settings.MAX_QUERY_LIMIT))
+        .all()
+    )
+    return {
+        "points": [
+            {
+                "gap_event_id": r.gap_event_id,
+                "last_lat": r.start_point.lat if r.start_point else None,
+                "last_lon": r.start_point.lon if r.start_point else None,
+                "risk_score": r.risk_score,
+                "vessel_name": r.vessel.name if r.vessel else None,
+                "gap_start_utc": r.gap_start_utc,
+                "duration_minutes": r.duration_minutes,
+            }
+            for r in results
+        ]
+    }
+
+
 @router.get("/alerts/export", tags=["alerts"])
 def export_alerts_csv(
     status: Optional[str] = None,
