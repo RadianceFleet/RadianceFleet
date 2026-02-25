@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, File, Request
@@ -12,8 +12,21 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.config import settings
 
 router = APIRouter()
+
+
+def _check_upload_size(file: UploadFile) -> None:
+    """Reject uploads exceeding MAX_UPLOAD_SIZE_MB."""
+    file.file.seek(0, 2)  # seek to end
+    size_mb = file.file.tell() / (1024 * 1024)
+    file.file.seek(0)  # reset
+    if size_mb > settings.MAX_UPLOAD_SIZE_MB:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({size_mb:.1f} MB). Max: {settings.MAX_UPLOAD_SIZE_MB} MB.",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -28,6 +41,8 @@ def import_ais(
 ):
     """Ingest AIS records from CSV. Updates ingestion status on app.state."""
     from app.modules.ingest import ingest_ais_csv
+
+    _check_upload_size(file)
 
     # Update in-memory status
     state = getattr(request.app, "state", None)
@@ -134,6 +149,7 @@ def list_alerts(
     date_to: Optional[date] = None,
     corridor_id: Optional[int] = None,
     vessel_id: Optional[int] = None,
+    vessel_name: Optional[str] = None,
     min_score: Optional[int] = None,
     status: Optional[str] = None,
     sort_by: str = Query("risk_score", description="Field to sort by: risk_score|gap_start_utc|duration_minutes|vessel_name"),
@@ -146,6 +162,7 @@ def list_alerts(
     from app.models.gap_event import AISGapEvent
     from app.models.vessel import Vessel
 
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
     q = db.query(AISGapEvent)
     if date_from:
         q = q.filter(AISGapEvent.gap_start_utc >= datetime.combine(date_from, datetime.min.time()))
@@ -155,6 +172,10 @@ def list_alerts(
         q = q.filter(AISGapEvent.corridor_id == corridor_id)
     if vessel_id is not None:
         q = q.filter(AISGapEvent.vessel_id == vessel_id)
+    if vessel_name:
+        q = q.join(Vessel, AISGapEvent.vessel_id == Vessel.vessel_id).filter(
+            Vessel.name.ilike(f"%{vessel_name}%")
+        )
     if min_score is not None:
         q = q.filter(AISGapEvent.risk_score >= min_score)
     if status:
@@ -231,7 +252,7 @@ def export_alerts_csv(
             output.seek(0)
             output.truncate(0)
 
-    filename = f"radiancefleet_export_{datetime.utcnow().strftime('%Y%m%d_%H%M')}.csv"
+    filename = f"radiancefleet_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.csv"
     return StreamingResponse(
         generate(),
         media_type="text/csv",
@@ -358,7 +379,7 @@ def update_alert_status(
     reason = body.get("reason")
     if reason:
         existing_notes = alert.analyst_notes or ""
-        timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         alert.analyst_notes = f"{existing_notes}\n[{timestamp}] Status → {new_status}: {reason}".strip()
 
     db.commit()
@@ -409,6 +430,7 @@ def search_vessels(
     from app.models.gap_event import AISGapEvent
     from app.models.vessel_watchlist import VesselWatchlist
 
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
     q = db.query(Vessel)
     if search:
         q = q.filter(
@@ -465,7 +487,7 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
     if not vessel:
         raise HTTPException(status_code=404, detail="Vessel not found")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     gaps_7d = db.query(AISGapEvent).filter(
         AISGapEvent.vessel_id == vessel_id,
@@ -600,6 +622,7 @@ async def import_watchlist_file(
     db: Session = Depends(get_db),
 ):
     """Batch-import watchlist from CSV file. source: ofac | kse | opensanctions"""
+    _check_upload_size(file)
     from app.modules.watchlist_loader import load_ofac_sdn, load_kse_list, load_opensanctions
     import tempfile
     import os
@@ -630,7 +653,7 @@ def list_corridors(db: Session = Depends(get_db)):
     from app.models.gap_event import AISGapEvent
 
     corridors = db.query(Corridor).all()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     result = []
     for c in corridors:
         alert_7d = db.query(AISGapEvent).filter(
@@ -668,7 +691,7 @@ def get_corridor(corridor_id: int, db: Session = Depends(get_db)):
     if not corridor:
         raise HTTPException(status_code=404, detail="Corridor not found")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     alert_7d = db.query(AISGapEvent).filter(
         AISGapEvent.corridor_id == corridor_id,
         AISGapEvent.gap_start_utc >= now - timedelta(days=7),
@@ -729,7 +752,7 @@ def get_stats(
         by_corridor[key] = by_corridor.get(key, 0) + 1
 
     # Vessels with multiple gaps in last 7 days
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     multi_gap_subq = (
         db.query(AISGapEvent.vessel_id)
         .filter(AISGapEvent.gap_start_utc >= now - timedelta(days=7))
@@ -977,6 +1000,7 @@ async def import_gfw_detections(
     Download from: https://globalfishingwatch.org/data-download/
     Expected CSV columns: detect_id, timestamp, lat, lon, vessel_length_m, vessel_score, vessel_type
     """
+    _check_upload_size(file)
     from app.modules.gfw_import import ingest_gfw_csv
     import tempfile
     import os

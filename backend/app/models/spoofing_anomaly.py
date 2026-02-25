@@ -27,3 +27,4 @@ class SpoofingAnomaly(Base):
     risk_score_component: Mapped[int] = mapped_column(Integer, default=0)
 
     vessel: Mapped["Vessel"] = relationship("Vessel")
+    gap_event: Mapped[Optional["AISGapEvent"]] = relationship("AISGapEvent", back_populates="spoofing_anomalies")

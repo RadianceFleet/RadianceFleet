@@ -37,6 +37,9 @@ def _make_gap(
     vessel_laid_up_30d=False,
     vessel_laid_up_60d=False,
     vessel_laid_up_in_sts_zone=False,
+    pi_coverage_status="active",
+    psc_detained=False,
+    psc_major_deficiencies=0,
 ):
     """Build a fully-featured mock AISGapEvent for scoring tests.
 
@@ -53,6 +56,9 @@ def _make_gap(
     vessel.vessel_laid_up_30d = vessel_laid_up_30d
     vessel.vessel_laid_up_60d = vessel_laid_up_60d
     vessel.vessel_laid_up_in_sts_zone = vessel_laid_up_in_sts_zone
+    vessel.pi_coverage_status = pi_coverage_status
+    vessel.psc_detained_last_12m = psc_detained
+    vessel.psc_major_deficiencies_last_12m = psc_major_deficiencies
     vessel.vessel_id = 1
 
     corridor = None
@@ -470,6 +476,115 @@ def test_critical_score_sts_vlcc_from_extended_helper():
     assert breakdown["_vessel_size_multiplier"] == 1.5
 
 
+# ── Phase 1: Multiplier asymmetry tests ──────────────────────────────────
+
+def test_legitimacy_not_amplified_by_corridor():
+    """STS zone 2.0× corridor multiplier should NOT double the -15 legitimacy deduction.
+
+    Legitimacy signals always deduct their face value regardless of zone.
+    """
+    config = load_scoring_config()
+    # 6h gap, STS zone, gap-free 90d → legitimacy -15 should be exactly -15
+    gap_sts = _make_gap(duration_minutes=6 * 60, corridor_type="sts_zone")
+    gap_none = _make_gap(duration_minutes=6 * 60, corridor_type=None)
+
+    # Use a mock db that returns 0 recent gaps (legitimacy_gap_free_90d fires)
+    # and Class A AIS points (legitimacy_ais_class_a_consistent fires)
+    mock_db = _make_full_mock_db(recent_gap_count=0, all_class_a=True)
+
+    _, bd_sts = compute_gap_score(gap_sts, config, db=mock_db)
+    mock_db2 = _make_full_mock_db(recent_gap_count=0, all_class_a=True)
+    _, bd_none = compute_gap_score(gap_none, config, db=mock_db2)
+
+    # Both should have the same legitimacy deduction values
+    assert bd_sts.get("legitimacy_gap_free_90d") == -15, \
+        "STS zone should NOT amplify the -15 deduction"
+    assert bd_none.get("legitimacy_gap_free_90d") == -15
+
+
+def test_legitimacy_not_amplified_by_vessel_size():
+    """VLCC 1.5× size multiplier should NOT amplify the -15 legitimacy deduction."""
+    config = load_scoring_config()
+    gap_vlcc = _make_gap(duration_minutes=6 * 60, deadweight=250_000)
+    gap_small = _make_gap(duration_minutes=6 * 60, deadweight=None)
+
+    mock_db1 = _make_full_mock_db(recent_gap_count=0, all_class_a=True)
+    mock_db2 = _make_full_mock_db(recent_gap_count=0, all_class_a=True)
+
+    score_vlcc, bd_vlcc = compute_gap_score(gap_vlcc, config, db=mock_db1)
+    score_small, bd_small = compute_gap_score(gap_small, config, db=mock_db2)
+
+    # Legitimacy deduction should be identical regardless of vessel size
+    assert bd_vlcc.get("legitimacy_gap_free_90d") == bd_small.get("legitimacy_gap_free_90d") == -15
+    # But the risk signals should be amplified differently
+    assert bd_vlcc["_vessel_size_multiplier"] == 1.5
+    assert bd_small["_vessel_size_multiplier"] == 1.0
+
+
+def test_vlcc_in_sts_zone_with_legitimacy():
+    """Integration test: VLCC in STS zone with legitimacy signals.
+
+    Risk signals should be amplified by 2.0 × 1.5 = 3.0×.
+    Legitimacy signals should be at face value (-15, -5).
+    """
+    config = load_scoring_config()
+    gap = _make_gap(
+        duration_minutes=6 * 60,
+        corridor_type="sts_zone",
+        deadweight=250_000,
+    )
+    mock_db = _make_full_mock_db(recent_gap_count=0, all_class_a=True)
+    score, bd = compute_gap_score(gap, config, db=mock_db)
+
+    # Verify multipliers
+    assert bd["_corridor_multiplier"] == 2.0
+    assert bd["_vessel_size_multiplier"] == 1.5
+
+    # Verify legitimacy not amplified: sum of negative signals
+    neg_sum = sum(v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v < 0)
+    pos_sum = sum(v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v > 0)
+
+    # final_score = round(pos_sum * 2.0 * 1.5 + neg_sum)
+    expected = max(0, round(pos_sum * 2.0 * 1.5 + neg_sum))
+    assert score == expected, f"Expected {expected}, got {score}"
+
+
+def _make_full_mock_db(recent_gap_count=5, all_class_a=False):
+    """Build a mock db that handles all the query patterns in compute_gap_score.
+
+    Args:
+        recent_gap_count: Number of recent gaps to return (0 triggers legitimacy_gap_free_90d).
+        all_class_a: If True, return None for non-A AIS point query (triggers ais_class_a_consistent).
+    """
+    from app.models.gap_event import AISGapEvent as _GE
+    from app.models.ais_point import AISPoint as _AP
+
+    def query_side_effect(model):
+        mock_chain = MagicMock()
+        if model is _GE:
+            # For gap frequency count queries
+            mock_chain.filter.return_value.count.return_value = recent_gap_count
+            mock_chain.filter.return_value.all.return_value = []
+            mock_chain.filter.return_value.first.return_value = None
+        elif model is _AP:
+            if all_class_a:
+                mock_chain.filter.return_value.first.return_value = None  # no non-A points
+            else:
+                mock_chain.filter.return_value.first.return_value = MagicMock()
+            mock_chain.filter.return_value.all.return_value = []
+            mock_chain.filter.return_value.count.return_value = 0
+        else:
+            # SpoofingAnomaly, LoiteringEvent, StsTransferEvent, VesselWatchlist, etc.
+            mock_chain.filter.return_value.all.return_value = []
+            mock_chain.filter.return_value.first.return_value = None
+            mock_chain.filter.return_value.count.return_value = 0
+        return mock_chain
+
+    mock_db = MagicMock()
+    mock_db.query.side_effect = query_side_effect
+    return mock_db
+
+
 def test_all_metadata_prefixed_keys_are_not_summed():
     """Keys starting with _ must not appear in the additive signals subtotal."""
     config = load_scoring_config()
@@ -670,6 +785,148 @@ def test_mmsi_change_adds_45():
     assert breakdown["mmsi_change"] == 45
 
 
+# ── Phase 2: Detection logic fix tests ────────────────────────────────────
+
+def test_sts_pairwise_dedup_3_vessel_cluster():
+    """3-vessel cluster creates 2 STS events per vessel — only max score counts."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60)
+
+    # Simulate 2 STS events (vessel is in A-B and A-C pairs) with different scores
+    sts1 = MagicMock()
+    sts1.sts_id = 101
+    sts1.risk_score_component = 35  # highest — in STS zone
+    sts2 = MagicMock()
+    sts2.sts_id = 102
+    sts2.risk_score_component = 25  # lower — visible-visible
+
+    def query_side_effect(model):
+        mock_chain = MagicMock()
+        from app.models.sts_transfer import StsTransferEvent
+        if model is StsTransferEvent:
+            mock_chain.filter.return_value.all.return_value = [sts1, sts2]
+        else:
+            mock_chain.filter.return_value.all.return_value = []
+            mock_chain.filter.return_value.first.return_value = None
+            mock_chain.filter.return_value.count.return_value = 0
+        return mock_chain
+
+    mock_db = MagicMock()
+    mock_db.query.side_effect = query_side_effect
+
+    _, bd = compute_gap_score(gap, config, db=mock_db)
+
+    # Should have only 1 STS signal at the max value, not 2 summed
+    sts_keys = [k for k in bd if k.startswith("sts_event_")]
+    assert len(sts_keys) == 1, f"Expected 1 STS signal (deduped), got {len(sts_keys)}: {sts_keys}"
+    assert bd[sts_keys[0]] == 35, "Should take the max STS score (35), not sum (60)"
+
+
+def test_loiter_gap_loiter_full_cycle_25():
+    """Loitering event with BOTH preceding and following gap → full cycle (+25)."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60)
+
+    le = MagicMock()
+    le.loiter_id = 1
+    le.vessel_id = 1
+    le.duration_hours = 8.0
+    le.corridor_id = 1
+    le.preceding_gap_id = 10
+    le.following_gap_id = 20
+    le.start_time_utc = datetime(2026, 1, 15, 10, 0)
+    le.end_time_utc = datetime(2026, 1, 15, 18, 0)
+
+    def query_side_effect(model):
+        mock_chain = MagicMock()
+        from app.models.loitering_event import LoiteringEvent
+        if model is LoiteringEvent:
+            mock_chain.filter.return_value.all.return_value = [le]
+        else:
+            mock_chain.filter.return_value.all.return_value = []
+            mock_chain.filter.return_value.first.return_value = None
+            mock_chain.filter.return_value.count.return_value = 0
+        return mock_chain
+
+    mock_db = MagicMock()
+    mock_db.query.side_effect = query_side_effect
+
+    _, bd = compute_gap_score(gap, config, db=mock_db)
+
+    assert "loiter_gap_loiter_full_1" in bd, "Full cycle key expected"
+    assert bd["loiter_gap_loiter_full_1"] == 25
+    assert "loiter_gap_pattern_1" not in bd, "One-sided key should NOT be present"
+
+
+def test_loiter_gap_loiter_one_sided_15():
+    """Loitering event with only preceding gap → one-sided pattern (+15)."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60)
+
+    le = MagicMock()
+    le.loiter_id = 2
+    le.vessel_id = 1
+    le.duration_hours = 8.0
+    le.corridor_id = 1
+    le.preceding_gap_id = 10
+    le.following_gap_id = None
+    le.start_time_utc = datetime(2026, 1, 15, 10, 0)
+    le.end_time_utc = datetime(2026, 1, 15, 18, 0)
+
+    def query_side_effect(model):
+        mock_chain = MagicMock()
+        from app.models.loitering_event import LoiteringEvent
+        if model is LoiteringEvent:
+            mock_chain.filter.return_value.all.return_value = [le]
+        else:
+            mock_chain.filter.return_value.all.return_value = []
+            mock_chain.filter.return_value.first.return_value = None
+            mock_chain.filter.return_value.count.return_value = 0
+        return mock_chain
+
+    mock_db = MagicMock()
+    mock_db.query.side_effect = query_side_effect
+
+    _, bd = compute_gap_score(gap, config, db=mock_db)
+
+    assert "loiter_gap_pattern_2" in bd, "One-sided pattern key expected"
+    assert bd["loiter_gap_pattern_2"] == 15
+    assert "loiter_gap_loiter_full_2" not in bd, "Full cycle key should NOT be present"
+
+
+def test_dark_zone_high_speed_entry_scores_suspicious():
+    """High pre-gap SOG into a dark zone with short duration → entry (+20), not interior (-10)."""
+    config = load_scoring_config()
+    # 45-min gap, dark zone, pre-gap SOG of 22 kn (above spike threshold)
+    gap = _make_gap(
+        duration_minutes=45,
+        in_dark_zone=True,
+        dark_zone_id=1,
+        impossible_speed_flag=False,
+    )
+    _, bd = compute_gap_score(gap, config, pre_gap_sog=22.0)
+
+    assert "dark_zone_entry" in bd, "High-speed entry should score as suspicious"
+    assert "dark_zone_deduction" not in bd, "Should NOT get interior deduction"
+    assert bd["dark_zone_entry"] == 20
+
+
+def test_dark_zone_slow_drift_interior_deduction():
+    """Low pre-gap SOG into dark zone with short duration → interior deduction (-10)."""
+    config = load_scoring_config()
+    gap = _make_gap(
+        duration_minutes=45,
+        in_dark_zone=True,
+        dark_zone_id=1,
+        impossible_speed_flag=False,
+    )
+    _, bd = compute_gap_score(gap, config, pre_gap_sog=3.0)
+
+    assert "dark_zone_deduction" in bd, "Slow drift should get interior deduction"
+    assert bd["dark_zone_deduction"] == -10
+    assert "dark_zone_entry" not in bd
+
+
 def test_one_vessel_dark_increments_sts_score():
     """_apply_dark_vessel_bonus: overlapping AIS gap → sts_event.risk_score_component increases by 15."""
     from app.modules.sts_detector import _apply_dark_vessel_bonus
@@ -794,3 +1051,100 @@ def test_pre_gap_sog_stored_at_detection():
     assert len(gap_events) >= 1, "Expected at least one AISGapEvent to be created"
     assert gap_events[0].pre_gap_sog == p1.sog, \
         f"Expected pre_gap_sog={p1.sog}, got {gap_events[0].pre_gap_sog}"
+
+
+# ── Phase 5: Scoring edge cases ──────────────────────────────────────────
+
+def test_deadweight_none_consistent_classification():
+    """DWT=None vessel gets consistent speed thresholds across gap_detector and risk_scoring."""
+    from app.utils.vessel import classify_vessel_speed
+    from app.modules.gap_detector import _class_speed
+
+    shared_speeds = classify_vessel_speed(None)
+    detector_speeds = _class_speed(None)
+    assert shared_speeds == detector_speeds, \
+        f"Inconsistent: shared={shared_speeds}, detector={detector_speeds}"
+
+
+def test_rescore_idempotency():
+    """Scoring the same gap twice produces identical results."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=12 * 60, corridor_type="sts_zone", deadweight=150_000)
+
+    score1, bd1 = compute_gap_score(gap, config)
+    score2, bd2 = compute_gap_score(gap, config)
+
+    assert score1 == score2
+    assert bd1 == bd2
+
+
+def test_zero_duration_gap():
+    """Gap with 0 minutes should still score (vessel signals still apply)."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=0, flag_risk="high_risk", year_built=1995)
+
+    score, bd = compute_gap_score(gap, config)
+    # Should still pick up vessel-level signals even with no duration signal
+    assert "flag_high_risk" in bd or "vessel_age_25plus_high_risk" in bd
+
+
+def test_no_multiplier_amplification():
+    """When both multipliers are 1.0, final = additive subtotal."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, corridor_type=None, deadweight=None)
+
+    score, bd = compute_gap_score(gap, config)
+
+    assert bd["_corridor_multiplier"] == 1.0
+    assert bd["_vessel_size_multiplier"] == 1.0
+    # With both at 1.0, final should equal risk signals + legitimacy
+    risk = sum(v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v > 0)
+    legit = sum(v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v < 0)
+    assert score == max(0, round(risk + legit))
+
+
+# ── Phase 4: P&I insurance and PSC detention tests ───────────────────────
+
+def test_pi_coverage_lapsed_adds_20():
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, pi_coverage_status="lapsed")
+    _, bd = compute_gap_score(gap, config)
+    assert bd.get("pi_coverage_lapsed") == 20
+
+
+def test_pi_coverage_unknown_adds_5():
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, pi_coverage_status="unknown")
+    _, bd = compute_gap_score(gap, config)
+    assert bd.get("pi_coverage_unknown") == 5
+
+
+def test_pi_coverage_active_no_signal():
+    """Active P&I coverage should not add any P&I signal."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, pi_coverage_status="active")
+    _, bd = compute_gap_score(gap, config)
+    assert "pi_coverage_lapsed" not in bd
+    assert "pi_coverage_unknown" not in bd
+
+
+def test_psc_detained_adds_15():
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, psc_detained=True)
+    _, bd = compute_gap_score(gap, config)
+    assert bd.get("psc_detained_last_12m") == 15
+
+
+def test_psc_major_deficiencies_adds_10():
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, psc_major_deficiencies=3)
+    _, bd = compute_gap_score(gap, config)
+    assert bd.get("psc_major_deficiencies_3_plus") == 10
+
+
+def test_psc_major_deficiencies_below_threshold_no_signal():
+    """Fewer than 3 major deficiencies should not trigger the signal."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, psc_major_deficiencies=2)
+    _, bd = compute_gap_score(gap, config)
+    assert "psc_major_deficiencies_3_plus" not in bd

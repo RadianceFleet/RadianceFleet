@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -83,12 +83,14 @@ def export_evidence_card(alert_id: int, format: str, db: Session) -> dict[str, A
     else:
         return {"error": f"Unsupported format: {format}. Use 'json' or 'md'."}
 
-    # Persist record
+    # Persist record with score snapshot (so rescoring won't retroactively alter exports)
     card = EvidenceCard(
         gap_event_id=alert_id,
         version=1,
         export_format=format,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        score_snapshot=gap.risk_score,
+        breakdown_snapshot=gap.risk_breakdown_json,
     )
     db.add(card)
     db.commit()
@@ -171,11 +173,17 @@ def _build_card(gap: AISGapEvent, vessel: Vessel | None, corridor=None, db: Sess
         } if first_point_after else None,
         "satellite_check_status": sat_check.review_status if sat_check else "not_checked",
         "satellite_scene_refs": sat_check.scene_refs_json if sat_check else [],
+        "data_sources": {
+            "ais_source": (vessel.ais_source if vessel and hasattr(vessel, "ais_source") else None) or "unknown",
+            "satellite_scene_refs": sat_check.scene_refs_json if sat_check else [],
+            "provider": sat_check.provider if sat_check else None,
+        },
         "analyst_notes": gap.analyst_notes,
         "status": gap.status,
-        "exported_at": datetime.utcnow().isoformat(),
+        "exported_at": datetime.now(timezone.utc).isoformat(),
         "disclaimer": DISCLAIMER,
         "corridor_name": corridor.name if corridor else None,
+        "corridor_type": str(corridor.corridor_type.value if hasattr(corridor.corridor_type, "value") else corridor.corridor_type) if corridor else None,
         "coverage": _corridor_coverage(corridor.name if corridor else None),
     }
 
@@ -317,7 +325,7 @@ def export_gov_package(
         "hunt_context": hunt_context,
         "package_metadata": {
             "package_version": "1.0",
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "alert_id": alert_id,
             "vessel_mmsi": vessel.mmsi if vessel else None,
             "disclaimer": DISCLAIMER,

@@ -103,6 +103,9 @@ def _make_mock_gap(
     vessel.flag_risk_category = flag_risk   # plain string, not enum
     vessel.year_built = year_built
     vessel.ais_class = ais_class            # plain string, not enum
+    vessel.pi_coverage_status = "active"     # no P&I signal by default
+    vessel.psc_detained_last_12m = False
+    vessel.psc_major_deficiencies_last_12m = 0
 
     corridor = None
     if corridor_type is not None:

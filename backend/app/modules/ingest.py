@@ -7,7 +7,7 @@ See PRD §7.2 for validation rules.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from io import IOBase
 from typing import Any
 
@@ -24,6 +24,52 @@ logger = logging.getLogger(__name__)
 TANKER_TYPE_CODES = set(range(80, 90))  # 80–89 = tanker types
 
 REQUIRED_COLUMNS = {"mmsi", "timestamp", "lat", "lon"}
+
+# PRD §7.2: AIS source quality ranking (higher index = higher quality)
+_SOURCE_QUALITY = {
+    "csv_import": 0,
+    "terrestrial": 1,
+    "aisstream": 2,
+    "satellite": 3,
+    "exactearth": 4,
+    "spire": 4,
+}
+
+# PRD §7.2: class-specific SOG thresholds for ingestion-time flagging
+_CLASS_SOG_LIMITS: list[tuple[float, float | None, float, str]] = [
+    # (min_dwt, max_dwt_or_None, max_sog_kn, label)
+    (200_000, None,    18, "VLCC"),
+    (120_000, 200_000, 19, "Suezmax"),
+    (80_000,  120_000, 20, "Aframax"),
+    (60_000,  80_000,  20, "Panamax"),
+]
+
+
+def _is_higher_quality_source(new_source: str, existing_source: str) -> bool:
+    """Return True if new_source is higher quality than existing_source."""
+    return _SOURCE_QUALITY.get(new_source, 0) > _SOURCE_QUALITY.get(existing_source, 0)
+
+
+def _check_sog_class_limit(vessel: Vessel, sog: float | None) -> None:
+    """PRD §7.2: log warning if SOG exceeds class-specific limit (never reject)."""
+    if sog is None or vessel.deadweight is None:
+        return
+    dwt = vessel.deadweight
+    for min_dwt, max_dwt, max_sog, label in _CLASS_SOG_LIMITS:
+        if max_dwt is None and dwt >= min_dwt:
+            if sog > max_sog:
+                logger.warning(
+                    "SOG %.1f kn exceeds %s limit (%d kn) for MMSI %s (DWT=%d)",
+                    sog, label, max_sog, vessel.mmsi, dwt,
+                )
+            return
+        if max_dwt is not None and min_dwt <= dwt < max_dwt:
+            if sog > max_sog:
+                logger.warning(
+                    "SOG %.1f kn exceeds %s limit (%d kn) for MMSI %s (DWT=%d)",
+                    sog, label, max_sog, vessel.mmsi, dwt,
+                )
+            return
 
 
 def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
@@ -44,7 +90,8 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
 
     accepted = 0
     rejected = 0
-    duplicates = 0
+    replaced_count = 0
+    ignored_count = 0
     errors: list[str] = []
 
     df_normalized = normalize_ais_dataframe(df)
@@ -58,18 +105,28 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
             continue
 
         vessel = _get_or_create_vessel(db, row)
-        ais_point = _create_ais_point(db, vessel, row)
-        if ais_point is None:
-            duplicates += 1
+        _check_sog_class_limit(vessel, row.get("sog"))
+        result = _create_ais_point(db, vessel, row)
+        if result is None:
+            ignored_count += 1
+            continue
+        if result == "replaced":
+            replaced_count += 1
             continue
         accepted += 1
 
     db.commit()
-    logger.info("Ingestion complete: %d accepted, %d rejected, %d duplicates", accepted, rejected, duplicates)
+    duplicates = replaced_count + ignored_count
+    logger.info(
+        "Ingestion complete: %d accepted, %d rejected, %d duplicates (replaced=%d, ignored=%d)",
+        accepted, rejected, duplicates, replaced_count, ignored_count,
+    )
     return {
         "accepted": accepted,
         "rejected": rejected,
         "duplicates": duplicates,
+        "replaced": replaced_count,
+        "ignored": ignored_count,
         "errors": errors[:50],  # cap error list for response size
     }
 
@@ -128,7 +185,7 @@ def _parse_timestamp(row: dict):
             pass
     if isinstance(ts, datetime):
         return ts
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _track_field_change(
@@ -168,6 +225,18 @@ def _track_field_change(
                 except TypeError:
                     pass
 
+        # Dedup: skip if an identical record exists within 24h (prevents re-import inflation)
+        existing = db.query(VesselHistory).filter(
+            VesselHistory.vessel_id == vessel.vessel_id,
+            VesselHistory.field_changed == field,
+            VesselHistory.old_value == old_str,
+            VesselHistory.new_value == new_str,
+            VesselHistory.observed_at >= observed_at - timedelta(hours=24),
+            VesselHistory.observed_at <= observed_at + timedelta(hours=24),
+        ).first()
+        if existing:
+            return
+
         db.add(VesselHistory(
             vessel_id=vessel.vessel_id,
             field_changed=field,
@@ -178,7 +247,14 @@ def _track_field_change(
         ))
 
 
-def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | None:
+def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str | None:
+    """Create or replace an AIS point.
+
+    Returns:
+        AISPoint if a new point was created,
+        "replaced" if an existing point was updated with higher-quality data,
+        None if the duplicate was ignored (existing source was equal or better).
+    """
     ts = _parse_timestamp(row)
 
     # Duplicate check: same MMSI + timestamp
@@ -191,6 +267,21 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | None
         .first()
     )
     if existing:
+        # PRD §7.2: keep highest-quality record; prefer satellite AIS over terrestrial
+        new_source = row.get("source", "csv_import")
+        if _is_higher_quality_source(new_source, existing.source):
+            existing.lat = float(row["lat"])
+            existing.lon = float(row["lon"])
+            existing.sog = float(row.get("sog") or 0)
+            existing.cog = float(row.get("cog") or 0)
+            existing.heading = row.get("heading")
+            existing.nav_status = row.get("nav_status")
+            existing.ais_class = row.get("ais_class", existing.ais_class)
+            old_source = existing.source
+            existing.source = new_source
+            logger.debug("Replaced AIS point (vessel=%s, ts=%s): %s > %s",
+                         vessel.mmsi, ts, new_source, old_source)
+            return "replaced"
         return None
 
     point = AISPoint(

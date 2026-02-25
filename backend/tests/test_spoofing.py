@@ -207,9 +207,13 @@ def test_nav_status_mismatch_not_fired_different_status():
 # ── Circle spoof detection tests ──────────────────────────────────────────────
 
 def test_circle_spoof_cluster():
-    """Points with SOG > 3 kn but tight positional cluster → circle_spoof conditions met."""
-    lats = [55.100, 55.101, 55.099, 55.100, 55.102, 55.098]
-    lons = [24.500, 24.501, 24.499, 24.500, 24.501, 24.499]
+    """Points with SOG > 3 kn but tight positional cluster → circle_spoof conditions met.
+
+    PRD §7.4.5: std_dev < 0.02° (~2nm) for circle spoof detection.
+    """
+    # Very tight cluster: ~0.001° spread → well under 0.02° threshold
+    lats = [55.1000, 55.1003, 55.0997, 55.1001, 55.1004, 55.0998]
+    lons = [24.5000, 24.5002, 24.4998, 24.5001, 24.5003, 24.4999]
     sogs = [4.0, 4.1, 3.9, 4.0, 4.2, 3.8]
 
     std_lat = statistics.stdev(lats)
@@ -217,9 +221,9 @@ def test_circle_spoof_cluster():
     std_lon = statistics.stdev(lons)
     std_lon_corrected = std_lon * math.cos(math.radians(mean_lat))
 
-    # All three conditions for circle_spoof must hold
-    assert std_lat < 0.05, f"std_lat={std_lat:.6f} should be < 0.05"
-    assert std_lon_corrected < 0.05, f"std_lon_corrected={std_lon_corrected:.6f} should be < 0.05"
+    # All three conditions for circle_spoof must hold (PRD §7.4.5: < 0.02°)
+    assert std_lat < 0.02, f"std_lat={std_lat:.6f} should be < 0.02"
+    assert std_lon_corrected < 0.02, f"std_lon_corrected={std_lon_corrected:.6f} should be < 0.02"
     assert statistics.median(sogs) > 3.0, f"median sog={statistics.median(sogs)} should be > 3"
 
 
@@ -232,42 +236,46 @@ def test_circle_spoof_not_fired_normal_transit():
     std_lat = statistics.stdev(lats)
 
     # Large std_dev → circle spoof conditions NOT met
-    assert std_lat >= 0.05, f"std_lat={std_lat:.4f} should be >= 0.05 for a transit"
+    assert std_lat >= 0.02, f"std_lat={std_lat:.4f} should be >= 0.02 for a transit"
 
 
 def test_circle_spoof_not_fired_low_sog():
     """Tight cluster but median SOG <= 3 kn → circle spoof NOT triggered."""
-    lats = [55.100, 55.101, 55.099, 55.100, 55.102, 55.098]
-    lons = [24.500, 24.501, 24.499, 24.500, 24.501, 24.499]
+    lats = [55.1000, 55.1003, 55.0997, 55.1001, 55.1004, 55.0998]
+    lons = [24.5000, 24.5002, 24.4998, 24.5001, 24.5003, 24.4999]
     sogs = [0.5, 0.3, 0.4, 0.2, 0.6, 0.1]
 
     std_lat = statistics.stdev(lats)
     mean_lat = statistics.mean(lats)
     std_lon_corrected = statistics.stdev(lons) * math.cos(math.radians(mean_lat))
 
-    # Position cluster is tight enough
-    assert std_lat < 0.05
-    assert std_lon_corrected < 0.05
+    # Position cluster is tight enough (PRD §7.4.5: < 0.02°)
+    assert std_lat < 0.02
+    assert std_lon_corrected < 0.02
 
     # But median SOG is not above 3 kn → no circle spoof
     assert statistics.median(sogs) <= 3.0
 
 
 def test_circle_spoof_lon_correction_matters():
-    """At high latitudes, the cos(lat) correction significantly shrinks std_lon."""
+    """At high latitudes, the cos(lat) correction significantly shrinks std_lon.
+
+    PRD §7.4.5 threshold: 0.02° (~2nm). The cos(lat) correction is essential at
+    high latitudes where longitude degrees are physically shorter.
+    """
     lat_high = 70.0  # High Arctic — cos(70°) ≈ 0.342
     lat_mid = 45.0   # Mid-latitude — cos(45°) ≈ 0.707
 
-    raw_std_lon = 0.08  # Would fail the < 0.05 test without correction at mid-lat
+    raw_std_lon = 0.04  # Would fail the < 0.02 test at mid-lat, but passes at 70°N
 
     corrected_high = raw_std_lon * math.cos(math.radians(lat_high))
     corrected_mid = raw_std_lon * math.cos(math.radians(lat_mid))
 
-    # At 70°N the correction brings 0.08 down to ~0.027 → passes threshold
-    assert corrected_high < 0.05
+    # At 70°N the correction brings 0.04 down to ~0.014 → passes threshold
+    assert corrected_high < 0.02
 
-    # At 45°N 0.08 * 0.707 ≈ 0.057 → still above threshold
-    assert corrected_mid >= 0.05
+    # At 45°N 0.04 * 0.707 ≈ 0.028 → still above threshold
+    assert corrected_mid >= 0.02
 
 
 # ── Haversine sanity test (used by spoofing engine) ───────────────────────────

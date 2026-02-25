@@ -21,8 +21,8 @@ class LoiteringEvent(Base):
     mean_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     mean_lon: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     corridor_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("corridors.corridor_id"), nullable=True)
-    preceding_gap_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("ais_gap_events.gap_event_id"), nullable=True)
-    following_gap_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("ais_gap_events.gap_event_id"), nullable=True)
+    preceding_gap_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("ais_gap_events.gap_event_id", ondelete="SET NULL"), nullable=True)
+    following_gap_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("ais_gap_events.gap_event_id", ondelete="SET NULL"), nullable=True)
     risk_score_component: Mapped[int] = mapped_column(Integer, default=0)
 
     vessel: Mapped["Vessel"] = relationship("Vessel")

@@ -43,7 +43,7 @@ class Vessel(Base):
     )
 
     # Relationships
-    ais_points: Mapped[list] = relationship("AISPoint", back_populates="vessel")
-    gap_events: Mapped[list] = relationship("AISGapEvent", back_populates="vessel")
-    history: Mapped[list] = relationship("VesselHistory", back_populates="vessel")
-    watchlist_entries: Mapped[list] = relationship("VesselWatchlist", back_populates="vessel")
+    ais_points: Mapped[list] = relationship("AISPoint", back_populates="vessel", cascade="all, delete-orphan")
+    gap_events: Mapped[list] = relationship("AISGapEvent", back_populates="vessel", cascade="all, delete-orphan")
+    history: Mapped[list] = relationship("VesselHistory", back_populates="vessel", cascade="all, delete-orphan")
+    watchlist_entries: Mapped[list] = relationship("VesselWatchlist", back_populates="vessel", cascade="all, delete-orphan")

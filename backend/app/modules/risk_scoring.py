@@ -5,10 +5,13 @@ for each AIS gap event. See PRD §7.5 for the full scoring specification.
 
 Scoring uses three-phase composition:
   Phase 1 — Additive signals (flat points each; gap_duration gets ×1.4 if speed spike preceded)
-  Phase 2 — Corridor multiplier  (additive_subtotal × corridor_factor)
+  Phase 2 — Corridor multiplier  (risk_signals × corridor_factor)
   Phase 3 — Vessel size multiplier (corridor_adjusted × vessel_size_factor)
 
-final_score = round(additive_subtotal × corridor_factor × vessel_size_factor)
+Multipliers apply ONLY to positive (risk) signals. Legitimacy deductions (negative values)
+are added after amplification so they always deduct their face value regardless of zone/size.
+
+final_score = round(risk_signals × corridor_factor × vessel_size_factor + legitimacy_signals)
 No hard cap; 76+ is "critical" regardless of upper bound.
 """
 from __future__ import annotations
@@ -16,7 +19,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timedelta
+import statistics as _stats
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +34,13 @@ logger = logging.getLogger(__name__)
 
 _SCORING_CONFIG: dict[str, Any] | None = None
 
+_EXPECTED_SECTIONS = [
+    "gap_duration", "gap_frequency", "speed_anomaly", "movement_envelope",
+    "spoofing", "metadata", "vessel_age", "flag_state", "vessel_size_multiplier",
+    "watchlist", "dark_zone", "sts", "behavioral", "legitimacy", "corridor",
+    "score_bands", "ais_class", "dark_vessel", "pi_insurance", "psc_detention",
+]
+
 
 def load_scoring_config() -> dict[str, Any]:
     global _SCORING_CONFIG
@@ -41,6 +52,9 @@ def load_scoring_config() -> dict[str, Any]:
         else:
             with open(config_path) as f:
                 _SCORING_CONFIG = yaml.safe_load(f) or {}
+        missing = [s for s in _EXPECTED_SECTIONS if s not in _SCORING_CONFIG]
+        if missing:
+            logger.warning("risk_scoring.yaml missing sections: %s", ", ".join(missing))
     return _SCORING_CONFIG
 
 
@@ -82,10 +96,27 @@ def score_all_alerts(db: Session) -> dict:
     return {"scored": scored}
 
 
-def rescore_all_alerts(db: Session) -> dict:
-    """Clear and re-compute all risk scores. Use after risk_scoring.yaml changes."""
+def rescore_all_alerts(db: Session, clear_detections: bool = False) -> dict:
+    """Clear and re-compute all risk scores. Use after risk_scoring.yaml changes.
+
+    Args:
+        clear_detections: If True, also delete SpoofingAnomaly/LoiteringEvent/StsTransferEvent
+            records before re-scoring. Requires re-running detection pipeline after rescore.
+            Default False for backward compatibility.
+    """
     config = load_scoring_config()
     config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:8]
+
+    if clear_detections:
+        from app.models.spoofing_anomaly import SpoofingAnomaly
+        from app.models.loitering_event import LoiteringEvent
+        from app.models.sts_transfer import StsTransferEvent
+        db.query(SpoofingAnomaly).delete()
+        db.query(LoiteringEvent).delete()
+        db.query(StsTransferEvent).delete()
+        db.commit()
+        logger.info("Cleared detection signals (clear_detections=True)")
+
     # Reset all scores to 0 first
     alerts = db.query(AISGapEvent).all()
     for a in alerts:
@@ -95,6 +126,7 @@ def rescore_all_alerts(db: Session) -> dict:
     result = score_all_alerts(db)
     result["config_hash"] = config_hash
     result["rescored"] = result.pop("scored")
+    result["detections_cleared"] = clear_detections
     logger.info("Rescored %d alerts (config hash: %s)", result["rescored"], config_hash)
     return result
 
@@ -198,7 +230,7 @@ def compute_gap_score(
         speed_spike_precedes: True if the AIS point immediately before the gap
             had a speed above the vessel's class-specific spike threshold.
         scoring_date: Datetime to use as "now" for age calculations.
-            Defaults to datetime.utcnow() if not provided (Phase 6.1 reproducibility).
+            Defaults to datetime.now(timezone.utc) if not provided (Phase 6.1 reproducibility).
         db: Optional SQLAlchemy session for DB-backed signal integration.
             If None, all DB-dependent phases are skipped gracefully.
 
@@ -211,7 +243,7 @@ def compute_gap_score(
     """
     # Phase 6.1: Reproducible scoring date
     if scoring_date is None:
-        scoring_date = datetime.utcnow()
+        scoring_date = datetime.now(timezone.utc).replace(tzinfo=None)
     current_year = scoring_date.year
 
     breakdown: dict[str, Any] = {}
@@ -280,6 +312,11 @@ def compute_gap_score(
         # Legacy bool path (pre_gap_sog unavailable)
         _speed_spike_triggered = True
 
+    # speed_impossible: any SOG > 30kn (universal, class-independent)
+    if pre_sog is not None and pre_sog > 30:
+        breakdown["speed_impossible"] = speed_cfg.get("speed_impossible", 40)
+        _speed_spike_triggered = True
+
     # Speed spike bonus: gap_duration sub-score ×1.4 if preceded by speed spike/spoof
     if _speed_spike_triggered and gap_duration_pts > 0:
         spike_mult = speed_cfg.get("gap_preceded_by_speed_spike_multiplier", 1.4)
@@ -300,13 +337,30 @@ def compute_gap_score(
     if gap.in_dark_zone:
         # Use isinstance to guard against MagicMock in tests; only real int FK IDs qualify
         _has_dz_id = isinstance(gap.dark_zone_id, int)
-        if gap.impossible_speed_flag and _has_dz_id:
+        _impossible = bool(gap.impossible_speed_flag) if gap.impossible_speed_flag is not None else False
+        if _impossible and _has_dz_id:
             # Vessel exits dark zone with impossible position jump (+35)
             breakdown["dark_zone_exit_impossible"] = dz_cfg.get("vessel_exits_dark_zone_with_impossible_jump", 35)
-        elif _has_dz_id and not gap.impossible_speed_flag:
-            # Gap ends in dark zone (entry scenario) or is entirely inside
-            # Score as interior deduction only if duration is short (< 1h), else entry
-            if (gap.duration_minutes or 0) < 60:
+        elif _has_dz_id and not _impossible:
+            # Check entry speed: high pre-gap SOG into a dark zone is suspicious
+            # even if the gap is short. A vessel speeding into a jamming zone and
+            # going quiet for <2h is intentional evasion, not ambient noise.
+            _pre_sog_dz = pre_sog if pre_sog is not None else 0.0
+            # Use vessel-class-specific spike threshold (consistent with speed anomaly logic)
+            _dz_dwt = vessel_for_speed.deadweight if vessel_for_speed is not None and isinstance(getattr(vessel_for_speed, 'deadweight', None), (int, float)) else 0
+            if _dz_dwt >= 200_000:
+                spike_thresh = speed_cfg.get("vlcc_200k_plus_dwt", {}).get("spike_threshold_kn", 18)
+            elif _dz_dwt >= 120_000:
+                spike_thresh = speed_cfg.get("suezmax_120_200k_dwt", {}).get("spike_threshold_kn", 19)
+            elif _dz_dwt >= 80_000:
+                spike_thresh = speed_cfg.get("aframax_80_120k_dwt", {}).get("spike_threshold_kn", 20)
+            elif _dz_dwt >= 60_000:
+                spike_thresh = speed_cfg.get("panamax_60_80k_dwt", {}).get("spike_threshold_kn", 20)
+            else:
+                spike_thresh = 20
+            if _pre_sog_dz > spike_thresh and (gap.duration_minutes or 0) < 120:
+                breakdown["dark_zone_entry"] = dz_cfg.get("gap_immediately_before_dark_zone_entry", 20)
+            elif (gap.duration_minutes or 0) < 60:
                 breakdown["dark_zone_deduction"] = dz_cfg.get("gap_in_known_jamming_zone", -10)
             else:
                 breakdown["dark_zone_entry"] = dz_cfg.get("gap_immediately_before_dark_zone_entry", 20)
@@ -384,6 +438,46 @@ def compute_gap_score(
             ais_cfg = config.get("ais_class", {})
             breakdown["ais_class_mismatch"] = ais_cfg.get("large_tanker_using_class_b", 50)
 
+        # P&I insurance coverage scoring (PRD: 82% shadow fleet lacks reputable P&I)
+        pi_status = str(
+            vessel.pi_coverage_status.value
+            if hasattr(vessel.pi_coverage_status, "value")
+            else vessel.pi_coverage_status
+        )
+        pi_cfg = config.get("pi_insurance", {})
+        if pi_status == "lapsed":
+            breakdown["pi_coverage_lapsed"] = pi_cfg.get("pi_coverage_lapsed", 20)
+        elif pi_status == "unknown":
+            breakdown["pi_coverage_unknown"] = pi_cfg.get("pi_coverage_unknown", 5)
+
+        # PSC detention scoring
+        psc_cfg = config.get("psc_detention", {})
+        if vessel.psc_detained_last_12m:
+            breakdown["psc_detained_last_12m"] = psc_cfg.get("psc_detained_last_12m", 15)
+        if isinstance(vessel.psc_major_deficiencies_last_12m, int) and vessel.psc_major_deficiencies_last_12m >= 3:
+            breakdown["psc_major_deficiencies_3_plus"] = psc_cfg.get("psc_major_deficiencies_3_plus", 10)
+
+    # class_switching_a_to_b: query VesselHistory for ais_class changes within 90d
+    if db is not None and vessel is not None:
+        from app.models.vessel_history import VesselHistory as _VH
+        ais_class_changes = db.query(_VH).filter(
+            _VH.vessel_id == vessel.vessel_id,
+            _VH.field_changed == "ais_class",
+            _VH.observed_at >= gap.gap_start_utc - timedelta(days=90),
+        ).all()
+        for ch in ais_class_changes:
+            old_cls = (ch.old_value or "").strip().upper()
+            new_cls = (ch.new_value or "").strip().upper()
+            if old_cls == "A" and new_cls == "B":
+                ais_cfg = config.get("ais_class", {})
+                breakdown["class_switching_a_to_b"] = ais_cfg.get("class_switching_a_to_b", 25)
+                break
+
+    # TODO(v1.1): dual_transmission_candidate (+30) — needs new detection logic
+    #   to identify simultaneous positions from the same MMSI at different locations.
+    # TODO(v1.1): callsign_change (+20) — requires adding callsign field to Vessel model.
+    # TODO(v1.1): owner_or_manager_on_sanctions_list (+35) — requires owner entity model (v1.1).
+
     # Phase 6.4: Spoofing signals (only linked to this gap or vessel-level within 2h of gap start)
     if db is not None:
         from app.models.spoofing_anomaly import SpoofingAnomaly
@@ -436,8 +530,16 @@ def compute_gap_score(
                 breakdown[loiter_key] = 20
             elif le.duration_hours >= 4 and le.corridor_id:
                 breakdown[loiter_key] = 8
-            if le.preceding_gap_id or le.following_gap_id:
-                breakdown[f"loiter_gap_loiter_{le.loiter_id}"] = 15
+            # Loiter-gap-loiter pattern: full cycle (both gaps) scores higher than one-sided
+            sts_cfg = config.get("sts", {})
+            if le.preceding_gap_id and le.following_gap_id:
+                breakdown[f"loiter_gap_loiter_full_{le.loiter_id}"] = sts_cfg.get(
+                    "loiter_gap_loiter_full_cycle", 25
+                )
+            elif le.preceding_gap_id or le.following_gap_id:
+                breakdown[f"loiter_gap_pattern_{le.loiter_id}"] = sts_cfg.get(
+                    "loiter_gap_loiter_pattern_48h_window", 15
+                )
 
         # Laid-up vessel scoring
         if vessel is not None:
@@ -449,6 +551,8 @@ def compute_gap_score(
                 breakdown["vessel_laid_up_30d"] = 15
 
     # Phase 6.6: STS transfer signal integration
+    # Dedup: in a 3+ vessel cluster, pairwise events create redundant records per vessel.
+    # Take max(risk_score_component) across all STS events for this gap to prevent 2×-3× inflation.
     if db is not None:
         from app.models.sts_transfer import StsTransferEvent
         from sqlalchemy import or_
@@ -460,8 +564,9 @@ def compute_gap_score(
             StsTransferEvent.start_time_utc >= gap.gap_start_utc - timedelta(days=7),
             StsTransferEvent.end_time_utc <= gap.gap_end_utc + timedelta(days=7),
         ).all()
-        for sts in sts_events:
-            breakdown[f"sts_event_{sts.sts_id}"] = sts.risk_score_component
+        if sts_events:
+            best_sts = max(sts_events, key=lambda s: s.risk_score_component)
+            breakdown[f"sts_event_{best_sts.sts_id}"] = best_sts.risk_score_component
 
     # Phase 6.7: Watchlist scoring
     if db is not None and vessel is not None:
@@ -546,12 +651,40 @@ def compute_gap_score(
             legitimacy_cfg = config.get("legitimacy", {})
             breakdown["legitimacy_ais_class_a_consistent"] = legitimacy_cfg.get("ais_class_a_consistent", -5)
 
+    # TODO(v1.1): consistent_eu_port_calls (-5/call) — needs PortCall model
+    # TODO(v1.1): speed_variation_matches_weather (-8) — needs weather API integration
+
     # TODO(v1.1): flag_less_than_2y_old_AND_high_risk: +20
     # Deferred: no authoritative data source reliably maps each ISO flag code to the year
     # its maritime registry became operationally active for shadow fleet use. Hardcoding
     # incorrect years would generate false signals. Requires external registry dataset
     # (UNCTAD, Paris MOU historical records, or KSE Institute research).
     # See risk_scoring.yaml flag_state.flag_less_than_2y_old_AND_high_risk for the weight.
+
+    # Transmission frequency mismatch: Class A vessel transmitting at Class B intervals
+    # Class A should transmit every 2-10s; if median interval > 25s, flag it
+    if db is not None and vessel is not None:
+        ais_cls_str = str(
+            vessel.ais_class.value if hasattr(vessel.ais_class, "value") else vessel.ais_class
+        )
+        if ais_cls_str == "A":
+            from app.models.ais_point import AISPoint as _AP2
+            recent_points = db.query(_AP2).filter(
+                _AP2.vessel_id == vessel.vessel_id,
+                _AP2.timestamp_utc >= gap.gap_start_utc - timedelta(hours=24),
+                _AP2.timestamp_utc <= gap.gap_start_utc,
+            ).order_by(_AP2.timestamp_utc.asc()).all()
+            if len(recent_points) >= 3:
+                intervals = [
+                    (recent_points[i+1].timestamp_utc - recent_points[i].timestamp_utc).total_seconds()
+                    for i in range(len(recent_points) - 1)
+                ]
+                median_interval = _stats.median(intervals)
+                if median_interval > 25:
+                    ais_cfg = config.get("ais_class", {})
+                    breakdown["transmission_frequency_mismatch"] = ais_cfg.get(
+                        "transmission_frequency_mismatch", 8
+                    )
 
     # Phase 6.10: New MMSI scoring
     if vessel is not None:
@@ -591,14 +724,19 @@ def compute_gap_score(
                     "unmatched_detection_outside_corridor", 20
                 )
 
-    # ── Phase 2: Corridor multiplier ─────────────────────────────────────────
-    additive_subtotal = sum(v for v in breakdown.values() if isinstance(v, (int, float)))
-    corridor_mult, corridor_type = _corridor_multiplier(gap.corridor, config)
-    corridor_adjusted = additive_subtotal * corridor_mult
+    # ── Phase 2+3: Multiplier composition (asymmetric) ─────────────────────
+    # Multipliers amplify ONLY risk signals (positive); legitimacy deductions
+    # (negative) are added at face value so they always mean exactly what
+    # risk_scoring.yaml says regardless of corridor zone or vessel size.
+    risk_signals = sum(v for v in breakdown.values() if isinstance(v, (int, float)) and v > 0)
+    legitimacy_signals = sum(v for v in breakdown.values() if isinstance(v, (int, float)) and v < 0)
+    additive_subtotal = risk_signals + legitimacy_signals
 
-    # ── Phase 3: Vessel size multiplier ──────────────────────────────────────
+    corridor_mult, corridor_type = _corridor_multiplier(gap.corridor, config)
     vessel_size_mult, vessel_size_class = _vessel_size_multiplier(gap.vessel, config)
-    final_score = max(0, round(corridor_adjusted * vessel_size_mult))
+
+    amplified_risk = risk_signals * corridor_mult * vessel_size_mult
+    final_score = max(0, round(amplified_risk + legitimacy_signals))
 
     # Metadata (prefixed with _ so UI does not sum them as signal points)
     breakdown["_corridor_type"] = corridor_type

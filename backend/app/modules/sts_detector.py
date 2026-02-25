@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import math
 from collections import defaultdict
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -105,16 +105,12 @@ def detect_sts_events(
 # ── Geometry helpers ──────────────────────────────────────────────────────────
 
 def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance in metres between two WGS-84 coordinates."""
-    R = 6_371_000.0  # Earth mean radius in metres
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dphi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    )
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    """Great-circle distance in metres between two WGS-84 coordinates.
+
+    Thin wrapper around app.utils.geo.haversine_meters for backward compatibility.
+    """
+    from app.utils.geo import haversine_meters
+    return haversine_meters(lat1, lon1, lat2, lon2)
 
 
 def _heading_to_point(
@@ -430,8 +426,8 @@ def _phase_a(
                     run = windows[run_start:idx]
                     start_bk = run[0][0]
                     end_bk = run[-1][0]
-                    start_dt = datetime.utcfromtimestamp(start_bk * 60)
-                    end_dt = datetime.utcfromtimestamp((end_bk + _BUCKET_MINUTES) * 60)
+                    start_dt = datetime.fromtimestamp(start_bk * 60, tz=timezone.utc)
+                    end_dt = datetime.fromtimestamp((end_bk + _BUCKET_MINUTES) * 60, tz=timezone.utc)
 
                     if _overlap_exists(db, vid1, vid2, start_dt, end_dt):
                         run_start = idx
@@ -551,8 +547,8 @@ def _phase_b(
             # Canonical pair ordering.
             vid1 = min(stat_pt.vessel_id, mov_pt.vessel_id)
             vid2 = max(stat_pt.vessel_id, mov_pt.vessel_id)
-            eta_end = datetime.utcfromtimestamp(
-                event_time.timestamp() + eta_minutes * 60
+            eta_end = datetime.fromtimestamp(
+                event_time.timestamp() + eta_minutes * 60, tz=timezone.utc
             )
 
             if _overlap_exists(db, vid1, vid2, event_time, eta_end):

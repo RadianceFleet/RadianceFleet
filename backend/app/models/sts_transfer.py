@@ -13,8 +13,8 @@ class StsTransferEvent(Base):
     __tablename__ = "sts_transfer_events"
 
     sts_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    vessel_1_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False)
-    vessel_2_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False)
+    vessel_1_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)
+    vessel_2_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)
     detection_type: Mapped[str] = mapped_column(
         SAEnum(STSDetectionTypeEnum), nullable=False, default=STSDetectionTypeEnum.VISIBLE_VISIBLE
     )

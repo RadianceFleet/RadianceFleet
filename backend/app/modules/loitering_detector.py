@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 import polars as pl
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.models.ais_point import AISPoint
@@ -75,7 +76,7 @@ def _parse_corridor_bbox(corridor: Corridor) -> Optional[tuple[float, float, flo
         shape = to_shape(corridor.geometry)
         min_lon, min_lat, max_lon, max_lat = shape.bounds
         return (min_lat, max_lat, min_lon, max_lon)
-    except Exception:
+    except (ImportError, ValueError, TypeError, AttributeError):
         return None
 
 
@@ -232,7 +233,7 @@ def detect_loitering_for_vessel(
     # ── 4. Load corridors once for corridor linkage ────────────────────────────
     try:
         corridors: list[Corridor] = db.query(Corridor).all()
-    except Exception as exc:
+    except OperationalError as exc:
         logger.warning("Could not load corridors for loitering correlation: %s", exc)
         corridors = []
 
@@ -298,8 +299,8 @@ def detect_loitering_for_vessel(
         matched_corridor: Optional[Corridor] = None
         try:
             matched_corridor = _find_corridor_for_position(mean_lat, mean_lon, corridors)
-        except Exception as exc:
-            logger.debug("Corridor lookup failed for vessel %d: %s", vessel.vessel_id, exc)
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.warning("Corridor lookup failed for vessel %d: %s", vessel.vessel_id, exc)
 
         # ── 5c. Risk score component ───────────────────────────────────────────
         if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor is not None:
@@ -410,7 +411,7 @@ def detect_laid_up_vessels(db: Session) -> dict:
         all_corridors: list[Corridor] = db.query(Corridor).all()
         from app.models.base import CorridorTypeEnum
         sts_corridors = [c for c in all_corridors if c.corridor_type == CorridorTypeEnum.STS_ZONE]
-    except Exception as exc:
+    except (OperationalError, ImportError) as exc:
         logger.warning("Could not load corridors for laid-up STS check: %s", exc)
         all_corridors = []
         sts_corridors = []
@@ -526,8 +527,8 @@ def detect_laid_up_vessels(db: Session) -> dict:
         if run_lat is not None and run_lon is not None and sts_corridors:
             try:
                 in_sts = _find_corridor_for_position(run_lat, run_lon, sts_corridors) is not None
-            except Exception as exc:
-                logger.debug("STS zone check failed for vessel %d: %s", vessel.vessel_id, exc)
+            except (ValueError, TypeError, AttributeError) as exc:
+                logger.warning("STS zone check failed for vessel %d: %s", vessel.vessel_id, exc)
 
         # Only update DB row if a flag value actually changes
         changed = False

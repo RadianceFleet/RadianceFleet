@@ -19,11 +19,11 @@ class AISGapEvent(Base):
     gap_start_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     gap_end_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
-    corridor_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("corridors.corridor_id"), nullable=True)
+    corridor_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("corridors.corridor_id"), nullable=True, index=True)
     risk_score: Mapped[int] = mapped_column(Integer, default=0, index=True)
     risk_breakdown_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(
-        SAEnum(AlertStatusEnum), nullable=False, default=AlertStatusEnum.NEW
+        SAEnum(AlertStatusEnum), nullable=False, default=AlertStatusEnum.NEW, index=True
     )
     analyst_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     impossible_speed_flag: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -37,6 +37,7 @@ class AISGapEvent(Base):
 
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="gap_events")
     corridor: Mapped[Optional["Corridor"]] = relationship("Corridor", back_populates="gap_events")
-    satellite_checks: Mapped[list] = relationship("SatelliteCheck", back_populates="gap_event")
-    movement_envelopes: Mapped[list] = relationship("MovementEnvelope", back_populates="gap_event")
-    evidence_cards: Mapped[list] = relationship("EvidenceCard", back_populates="gap_event")
+    satellite_checks: Mapped[list] = relationship("SatelliteCheck", back_populates="gap_event", cascade="all, delete-orphan")
+    movement_envelopes: Mapped[list] = relationship("MovementEnvelope", back_populates="gap_event", cascade="all, delete-orphan")
+    evidence_cards: Mapped[list] = relationship("EvidenceCard", back_populates="gap_event", cascade="all, delete-orphan")
+    spoofing_anomalies: Mapped[list] = relationship("SpoofingAnomaly", back_populates="gap_event", cascade="all, delete-orphan")

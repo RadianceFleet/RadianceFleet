@@ -119,6 +119,9 @@ def prepare_satellite_check(alert_id: int, db: Session) -> dict[str, Any]:
             "from": time_from.isoformat(),
             "to": time_to.isoformat(),
         },
+        "sensor_preference": "Sentinel-1 SAR (all-weather, day/night)",
+        "cloud_cover_max": 100,  # SAR is cloud-penetrating; irrelevant but PRD mandates field
+        "expected_vessel_count": 1,  # single vessel tracking; analyst may adjust
         "data_source_coverage": {
             "ais_provider": (gap.vessel.ais_source if gap.vessel else None) or "unknown",
             "ais_region": "Baltic Sea (DMA historical)" if is_baltic else "Unknown",

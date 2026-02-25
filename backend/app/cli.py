@@ -9,12 +9,15 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
 import typer
 from pathlib import Path
 from typing import Optional
 from datetime import date
 from rich.console import Console
 from rich.table import Table
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(
     name="radiancefleet",
@@ -204,13 +207,33 @@ def corridors_import(
         upserted = 0
         for c_data in corridors_data:
             existing = db.query(Corridor).filter(Corridor.name == c_data["name"]).first()
-            # Build geometry if provided as GeoJSON-like dict
             geom = None
-            if c_data.get("geometry"):
-                try:
-                    geom = from_shape(shape(c_data["geometry"]), srid=4326)
-                except Exception:
-                    pass
+            raw_geom = c_data.get("geometry")
+            if raw_geom:
+                if isinstance(raw_geom, str):
+                    # WKT string — validate prefix
+                    upper = raw_geom.strip().upper()
+                    if upper.startswith("POLYGON") or upper.startswith("MULTIPOLYGON"):
+                        try:
+                            from shapely import wkt as shapely_wkt
+                            geom = from_shape(shapely_wkt.loads(raw_geom), srid=4326)
+                        except Exception as exc:
+                            logger.warning(
+                                "Corridor '%s': invalid WKT geometry — %s", c_data.get("name"), exc
+                            )
+                    else:
+                        logger.warning(
+                            "Corridor '%s': geometry WKT must start with POLYGON or MULTIPOLYGON, got: %.40s",
+                            c_data.get("name"), raw_geom,
+                        )
+                elif isinstance(raw_geom, dict):
+                    # GeoJSON-like dict
+                    try:
+                        geom = from_shape(shape(raw_geom), srid=4326)
+                    except Exception as exc:
+                        logger.warning(
+                            "Corridor '%s': invalid GeoJSON geometry — %s", c_data.get("name"), exc
+                        )
 
             if existing:
                 existing.corridor_type = c_data.get("corridor_type", existing.corridor_type)

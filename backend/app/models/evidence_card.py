@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Integer, String, DateTime, ForeignKey, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
@@ -18,5 +18,8 @@ class EvidenceCard(Base):
     export_format: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     export_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
+    # Snapshot fields: capture score at export time so rescoring doesn't retroactively alter cards
+    score_snapshot: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    breakdown_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     gap_event: Mapped["AISGapEvent"] = relationship("AISGapEvent", back_populates="evidence_cards")

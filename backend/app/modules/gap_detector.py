@@ -10,6 +10,7 @@ import statistics
 from datetime import datetime, date, timedelta
 from typing import Optional
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -20,7 +21,9 @@ from app.models.gap_event import AISGapEvent
 logger = logging.getLogger(__name__)
 
 
-# (min_dwt, max_dwt or None): (max_kn, spoof_threshold_kn)
+from app.utils.vessel import classify_vessel_speed
+
+# Legacy alias — kept for backward compat; delegates to shared util
 CLASS_SPEEDS: list[tuple[tuple[float, float | None], tuple[float, float]]] = [
     ((200_000, None),    (18, 22)),   # VLCC
     ((120_000, 200_000), (19, 23)),   # Suezmax
@@ -32,14 +35,7 @@ CLASS_SPEEDS: list[tuple[tuple[float, float | None], tuple[float, float]]] = [
 
 def _class_speed(dwt: float | None) -> tuple[float, float]:
     """Return (max_speed_kn, spoof_threshold_kn) for given DWT."""
-    if dwt is None:
-        return 17.0, 22.0
-    for (min_dw, max_dw), speeds in CLASS_SPEEDS:
-        if max_dw is None and dwt >= min_dw:
-            return speeds
-        if max_dw is not None and min_dw <= dwt < max_dw:
-            return speeds
-    return 17.0, 22.0
+    return classify_vessel_speed(dwt)
 
 
 def compute_max_distance_nm(vessel_dwt: float | None, elapsed_hours: float) -> float:
@@ -62,7 +58,7 @@ def _is_near_port(db: Session, lat: float, lon: float, radius_deg: float = 0.1) 
             func.abs(func.ST_X(Port.geometry) - lon) < radius_deg,
         ).first()
         return count is not None
-    except Exception:
+    except (ImportError, OperationalError):
         return False
 
 
@@ -94,7 +90,7 @@ def _is_in_anchorage_corridor(db: Session, lat: float, lon: float, tolerance: fl
             if min_lon <= lon <= max_lon and min_lat <= lat <= max_lat:
                 return True
         return False
-    except Exception:
+    except (ImportError, OperationalError):
         return False
 
 
@@ -201,8 +197,8 @@ def detect_gaps_for_vessel(
             if dark_zone:
                 gap.dark_zone_id = dark_zone.zone_id
                 gap.in_dark_zone = True
-        except Exception as e:
-            logger.debug("Corridor correlation skipped: %s", e)
+        except (ImportError, OperationalError) as e:
+            logger.warning("Corridor correlation skipped: %s", e)
 
         _create_movement_envelope(db, gap, vessel)
         gap_count += 1
@@ -252,14 +248,12 @@ def _create_movement_envelope(db: Session, gap: AISGapEvent, vessel: Vessel) -> 
 
 
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Compute great-circle distance in nautical miles (Haversine formula)."""
-    import math
-    R_nm = 3440.065  # Earth radius in nautical miles
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    return R_nm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    """Compute great-circle distance in nautical miles (Haversine formula).
+
+    Thin wrapper around app.utils.geo.haversine_nm for backward compatibility.
+    """
+    from app.utils.geo import haversine_nm
+    return haversine_nm(lat1, lon1, lat2, lon2)
 
 
 def run_spoofing_detection(
@@ -272,7 +266,7 @@ def run_spoofing_detection(
 
     Typologies:
     - anchor_spoof: nav_status=1 for >=72h, SOG<0.1, NOT near major port
-    - circle_spoof: SOG>3kn but positions cluster tightly (std_dev<0.05 deg)
+    - circle_spoof: SOG>3kn but positions cluster tightly (std_dev<0.02 deg, ~2nm per PRD §7.4.5)
     - slow_roll: 0.5<=SOG<=2.0 for >=12h, tanker type
     - mmsi_reuse: implied speed >30kn between consecutive points
     - nav_status_mismatch: nav_status=1 AND SOG>2kn
@@ -370,18 +364,25 @@ def run_spoofing_detection(
                                     anomaly_type=SpoofingTypeEnum.ANCHOR_SPOOF,
                                     start_time_utc=anchor_run[0].timestamp_utc,
                                     end_time_utc=anchor_run[-1].timestamp_utc,
-                                    risk_score_component=10,
+                                    risk_score_component=20,
                                     evidence_json={"run_hours": run_hours, "mean_lat": mean_lat, "mean_lon": mean_lon},
                                 ))
                                 anomalies_created += 1
                 anchor_run = []
 
         # --- Type 2: Circle Spoof ---
-        # 6h rolling windows, SOG>3kn but tight cluster
-        window_size = 6  # 6 points minimum in 6h window (roughly)
-        if len(points) >= window_size:
-            for i in range(len(points) - window_size + 1):
-                window = points[i:i + window_size]
+        # Time-based 6h sliding window anchored on each point's timestamp.
+        # Collect all points within 6h forward of the anchor; require >= 6 points.
+        # This handles irregular AIS intervals correctly (unlike fixed point-count windows).
+        _CIRCLE_WINDOW_H = 6
+        _CIRCLE_MIN_POINTS = 6
+        if len(points) >= _CIRCLE_MIN_POINTS:
+            for i in range(len(points)):
+                anchor_time = points[i].timestamp_utc
+                window_end_time = anchor_time + timedelta(hours=_CIRCLE_WINDOW_H)
+                window = [p for p in points[i:] if p.timestamp_utc <= window_end_time]
+                if len(window) < _CIRCLE_MIN_POINTS:
+                    continue
                 window_hours = (window[-1].timestamp_utc - window[0].timestamp_utc).total_seconds() / 3600
                 if window_hours < 4 or window_hours > 8:
                     continue
@@ -398,7 +399,7 @@ def run_spoofing_detection(
                 import math
                 mean_lat = statistics.mean(lats)
                 std_lon_corrected = std_lon * math.cos(math.radians(mean_lat))
-                if std_lat < 0.05 and std_lon_corrected < 0.05:
+                if std_lat < 0.02 and std_lon_corrected < 0.02:
                     if not _is_near_port(db, mean_lat, statistics.mean(lons)):
                         existing = db.query(SpoofingAnomaly).filter(
                             SpoofingAnomaly.vessel_id == vessel.vessel_id,

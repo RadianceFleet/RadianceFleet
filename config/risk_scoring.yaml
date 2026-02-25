@@ -50,7 +50,7 @@ movement_envelope:
 
 # AIS SPOOFING DETECTIONS
 spoofing:
-  anchor_in_open_ocean: 10
+  anchor_in_open_ocean: 20
   circle_pattern: 35
   slow_roll: 12
   mmsi_reuse_implied_speed_30kn: 40
@@ -115,6 +115,7 @@ sts:
   loitering_4h_plus_in_corridor: 8
   loitering_12h_plus_in_sts_corridor: 20
   loiter_gap_loiter_pattern_48h_window: 15
+  loiter_gap_loiter_full_cycle: 25     # both preceding AND following gap linked
 
 # BEHAVIORAL PATTERNS
 behavioral:
@@ -163,6 +164,16 @@ ais_class:
   large_tanker_using_class_b: 50     # mandatory Class A for >300GT; Class B = red flag
   class_switching_a_to_b: 25
   transmission_frequency_mismatch: 8
+
+# P&I INSURANCE COVERAGE
+pi_insurance:
+  pi_coverage_lapsed: 20
+  pi_coverage_unknown: 5
+
+# PSC DETENTION
+psc_detention:
+  psc_detained_last_12m: 15
+  psc_major_deficiencies_3_plus: 10
 
 # DARK VESSEL DETECTIONS (satellite detection with no AIS match)
 dark_vessel:
