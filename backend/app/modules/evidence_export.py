@@ -278,3 +278,103 @@ def _render_markdown(card: dict[str, Any]) -> str:
         f"> {card['disclaimer']}",
     ]
     return "\n".join(lines)
+
+
+def export_gov_package(
+    alert_id: int, db: Session, include_hunt_context: bool = True
+) -> dict[str, Any]:
+    """FR10: Export a structured package combining evidence card + hunt context.
+
+    Returns a JSON-serializable dict with:
+      - evidence_card: the full card dict
+      - hunt_context: mission/candidate data if available
+      - package_metadata: timestamps, version, disclaimer
+    """
+    gap = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
+    if not gap:
+        return {"error": "Alert not found"}
+
+    if gap.status == "new":
+        return {
+            "error": "Package cannot be exported without analyst review. "
+                     "Set alert status before exporting."
+        }
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == gap.vessel_id).first()
+    from app.models.corridor import Corridor
+    corridor = (
+        db.query(Corridor).filter(Corridor.corridor_id == gap.corridor_id).first()
+        if gap.corridor_id else None
+    )
+    card_data = _build_card(gap, vessel, corridor=corridor, db=db)
+
+    hunt_context = None
+    if include_hunt_context and vessel:
+        hunt_context = _build_hunt_context(vessel.vessel_id, db)
+
+    return {
+        "evidence_card": card_data,
+        "hunt_context": hunt_context,
+        "package_metadata": {
+            "package_version": "1.0",
+            "exported_at": datetime.utcnow().isoformat(),
+            "alert_id": alert_id,
+            "vessel_mmsi": vessel.mmsi if vessel else None,
+            "disclaimer": DISCLAIMER,
+        },
+    }
+
+
+def _build_hunt_context(vessel_id: int, db: Session) -> dict[str, Any] | None:
+    """Gather hunt mission/candidate data for a vessel, if any exists."""
+    from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate
+
+    profile = (
+        db.query(VesselTargetProfile)
+        .filter(VesselTargetProfile.vessel_id == vessel_id)
+        .first()
+    )
+    if not profile:
+        return None
+
+    missions = (
+        db.query(SearchMission)
+        .filter(SearchMission.vessel_id == vessel_id)
+        .order_by(SearchMission.created_at.desc())
+        .all()
+    )
+    if not missions:
+        return {"profile_id": profile.profile_id, "missions": []}
+
+    mission_data = []
+    for m in missions:
+        candidates = (
+            db.query(HuntCandidate)
+            .filter(HuntCandidate.mission_id == m.mission_id)
+            .all()
+        )
+        cand_list = [
+            {
+                "candidate_id": c.candidate_id,
+                "hunt_score": c.hunt_score,
+                "score_breakdown": c.score_breakdown_json,
+                "detection_lat": c.detection_lat,
+                "detection_lon": c.detection_lon,
+                "analyst_review_status": c.analyst_review_status,
+            }
+            for c in candidates
+        ]
+        mission_data.append({
+            "mission_id": m.mission_id,
+            "status": m.status,
+            "max_radius_nm": m.max_radius_nm,
+            "elapsed_hours": m.elapsed_hours,
+            "center_lat": m.center_lat,
+            "center_lon": m.center_lon,
+            "candidates": cand_list,
+        })
+
+    return {
+        "profile_id": profile.profile_id,
+        "missions": mission_data,
+    }

@@ -990,6 +990,168 @@ async def import_gfw_detections(
         os.unlink(tmp_path)
 
 
+# ─── Dark Vessel Detections ───────────────────────────────────────────────────
+
+@router.get("/dark-vessels")
+def list_dark_vessels(
+    ais_match_result: Optional[str] = None,
+    corridor_id: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    from app.models.stubs import DarkVesselDetection
+    q = db.query(DarkVesselDetection)
+    if ais_match_result:
+        q = q.filter(DarkVesselDetection.ais_match_result == ais_match_result)
+    if corridor_id:
+        q = q.filter(DarkVesselDetection.corridor_id == corridor_id)
+    return q.offset(skip).limit(limit).all()
+
+
+@router.get("/dark-vessels/{detection_id}")
+def get_dark_vessel(detection_id: int, db: Session = Depends(get_db)):
+    from app.models.stubs import DarkVesselDetection
+    det = (
+        db.query(DarkVesselDetection)
+        .filter(DarkVesselDetection.detection_id == detection_id)
+        .first()
+    )
+    if not det:
+        raise HTTPException(status_code=404, detail="Detection not found")
+    return det
+
+
+# ─── Vessel Hunt (FR9) ────────────────────────────────────────────────────────
+
+@router.post("/hunt/targets", status_code=201, tags=["hunt"])
+def create_hunt_target(vessel_id: int, db: Session = Depends(get_db)):
+    """Register a vessel as a hunt target."""
+    from app.modules.vessel_hunt import create_target_profile
+    try:
+        profile = create_target_profile(vessel_id, db)
+        return {
+            "profile_id": profile.profile_id,
+            "vessel_id": profile.vessel_id,
+            "deadweight_dwt": profile.deadweight_dwt,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/hunt/targets", tags=["hunt"])
+def list_hunt_targets(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    """List all hunt target profiles."""
+    from app.models.stubs import VesselTargetProfile
+    return db.query(VesselTargetProfile).offset(skip).limit(limit).all()
+
+
+@router.get("/hunt/targets/{profile_id}", tags=["hunt"])
+def get_hunt_target(profile_id: int, db: Session = Depends(get_db)):
+    """Get a hunt target profile by ID."""
+    from app.models.stubs import VesselTargetProfile
+    profile = db.query(VesselTargetProfile).filter(
+        VesselTargetProfile.profile_id == profile_id
+    ).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Target profile not found")
+    return profile
+
+
+@router.post("/hunt/missions", status_code=201, tags=["hunt"])
+def create_hunt_mission(
+    target_profile_id: int,
+    search_start_utc: str,
+    search_end_utc: str,
+    db: Session = Depends(get_db),
+):
+    """Create a search mission with drift ellipse."""
+    from app.modules.vessel_hunt import create_search_mission
+    try:
+        start = datetime.fromisoformat(search_start_utc)
+        end = datetime.fromisoformat(search_end_utc)
+        mission = create_search_mission(target_profile_id, start, end, db)
+        return {
+            "mission_id": mission.mission_id,
+            "vessel_id": mission.vessel_id,
+            "max_radius_nm": mission.max_radius_nm,
+            "elapsed_hours": mission.elapsed_hours,
+            "status": mission.status,
+            "search_ellipse_wkt": mission.search_ellipse_wkt,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/hunt/missions/{mission_id}", tags=["hunt"])
+def get_hunt_mission(mission_id: int, db: Session = Depends(get_db)):
+    """Get a search mission by ID."""
+    from app.models.stubs import SearchMission
+    mission = db.query(SearchMission).filter(
+        SearchMission.mission_id == mission_id
+    ).first()
+    if not mission:
+        raise HTTPException(status_code=404, detail="Mission not found")
+    return mission
+
+
+@router.post("/hunt/missions/{mission_id}/find-candidates", status_code=201, tags=["hunt"])
+def run_find_candidates(mission_id: int, db: Session = Depends(get_db)):
+    """Find and score dark vessel detections within mission drift ellipse."""
+    from app.modules.vessel_hunt import find_hunt_candidates
+    try:
+        candidates = find_hunt_candidates(mission_id, db)
+        return [
+            {
+                "candidate_id": c.candidate_id,
+                "hunt_score": c.hunt_score,
+                "score_breakdown_json": c.score_breakdown_json,
+                "detection_lat": c.detection_lat,
+                "detection_lon": c.detection_lon,
+                "analyst_review_status": c.analyst_review_status,
+            }
+            for c in candidates
+        ]
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/hunt/missions/{mission_id}/candidates", tags=["hunt"])
+def list_hunt_candidates(mission_id: int, db: Session = Depends(get_db)):
+    """List all candidates for a mission."""
+    from app.models.stubs import HuntCandidate
+    return db.query(HuntCandidate).filter(
+        HuntCandidate.mission_id == mission_id
+    ).all()
+
+
+@router.post("/hunt/missions/{mission_id}/confirm/{candidate_id}", tags=["hunt"])
+def confirm_hunt_candidate(mission_id: int, candidate_id: int, db: Session = Depends(get_db)):
+    """Confirm a hunt candidate and finalize the mission."""
+    from app.modules.vessel_hunt import finalize_mission
+    try:
+        mission = finalize_mission(mission_id, candidate_id, db)
+        return {
+            "mission_id": mission.mission_id,
+            "status": mission.status,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+# ─── Gov Alert Package (FR10) ────────────────────────────────────────────────
+
+@router.post("/alerts/{alert_id}/export/gov-package", tags=["export"])
+def export_gov_package(alert_id: int, db: Session = Depends(get_db)):
+    """Export a structured gov alert package combining evidence card + hunt context."""
+    from app.modules.evidence_export import export_gov_package as _export_gov
+
+    result = _export_gov(alert_id, db)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
 # ---------------------------------------------------------------------------
 # System / Health
 # ---------------------------------------------------------------------------

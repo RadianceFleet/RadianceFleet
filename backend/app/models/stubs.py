@@ -41,6 +41,8 @@ class SearchMission(Base):
     mission_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False)
     profile_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("vessel_target_profiles.profile_id"), nullable=True)
+    search_start_utc: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    search_end_utc: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     analyst_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     search_ellipse_wkt: Mapped[Optional[str]] = mapped_column(String(5000), nullable=True)

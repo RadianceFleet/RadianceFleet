@@ -52,6 +52,9 @@ app.add_typer(export_app, name="export")
 gfw_app = typer.Typer(help="Global Fishing Watch data commands")
 app.add_typer(gfw_app, name="gfw")
 
+hunt_app = typer.Typer(help="Vessel hunt commands (FR9)")
+app.add_typer(hunt_app, name="hunt")
+
 
 @ingest_app.command("ais")
 def ingest_ais(
@@ -486,6 +489,38 @@ def cli_export_evidence(
         typer.echo(content)
 
 
+@export_app.command("gov-package")
+def cli_export_gov_package(
+    alert: int = typer.Option(..., "--alert", help="Alert ID (gap_event_id)"),
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Write to file (default: stdout)"),
+):
+    """Export gov alert package (evidence card + hunt context) as JSON.
+
+    Alert must not be in 'new' status (requires analyst review first — NFR7).
+    """
+    from app.modules.evidence_export import export_gov_package
+    from app.database import SessionLocal
+    import json
+
+    db = SessionLocal()
+    try:
+        result = export_gov_package(alert, db)
+    finally:
+        db.close()
+
+    if "error" in result:
+        typer.echo(f"[error] {result['error']}", err=True)
+        raise typer.Exit(1)
+
+    content = json.dumps(result, indent=2, default=str)
+    if output:
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(content)
+        typer.echo(f"[ok] Gov package written to {output}")
+    else:
+        typer.echo(content)
+
+
 @gfw_app.command("import")
 def cli_gfw_import(
     filepath: str = typer.Argument(..., help="Path to GFW vessel detections CSV"),
@@ -509,3 +544,143 @@ def cli_gfw_import(
         f"{stats['matched']} AIS-matched, {stats['dark']} dark ships, "
         f"{stats['rejected']} rejected"
     )
+
+
+# ---------------------------------------------------------------------------
+# Vessel Hunt (FR9)
+# ---------------------------------------------------------------------------
+
+@hunt_app.command("create-target")
+def hunt_create_target(
+    vessel: str = typer.Option(..., "--vessel", help="Vessel ID or MMSI"),
+):
+    """Register a vessel as a hunt target."""
+    from app.database import SessionLocal
+    from app.modules.vessel_hunt import create_target_profile
+    from app.models.vessel import Vessel as VesselModel
+
+    db = SessionLocal()
+    try:
+        # Try as vessel_id first, then as MMSI
+        try:
+            vessel_id = int(vessel)
+        except ValueError:
+            v = db.query(VesselModel).filter(VesselModel.mmsi == vessel).first()
+            if not v:
+                console.print(f"[red]Vessel not found: {vessel}[/red]")
+                raise typer.Exit(1)
+            vessel_id = v.vessel_id
+
+        profile = create_target_profile(vessel_id, db)
+        console.print(f"[green]Target profile created: profile_id={profile.profile_id}[/green]")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        db.close()
+
+
+@hunt_app.command("create-mission")
+def hunt_create_mission(
+    target: int = typer.Option(..., "--target", help="Target profile ID"),
+    date_from: str = typer.Option(..., "--from", help="Search start (ISO 8601)"),
+    date_to: str = typer.Option(..., "--to", help="Search end (ISO 8601)"),
+):
+    """Create a search mission with drift ellipse for a target."""
+    from app.database import SessionLocal
+    from app.modules.vessel_hunt import create_search_mission
+    from datetime import datetime as dt
+
+    db = SessionLocal()
+    try:
+        start = dt.fromisoformat(date_from)
+        end = dt.fromisoformat(date_to)
+        mission = create_search_mission(target, start, end, db)
+        console.print(f"[green]Mission created: mission_id={mission.mission_id}, "
+                      f"radius={mission.max_radius_nm:.1f} nm, "
+                      f"elapsed={mission.elapsed_hours:.1f}h[/green]")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        db.close()
+
+
+@hunt_app.command("find-candidates")
+def hunt_find_candidates(
+    mission: int = typer.Option(..., "--mission", help="Mission ID"),
+):
+    """Find and score dark vessel detections within mission drift ellipse."""
+    from app.database import SessionLocal
+    from app.modules.vessel_hunt import find_hunt_candidates
+
+    db = SessionLocal()
+    try:
+        candidates = find_hunt_candidates(mission, db)
+        console.print(f"[green]Found {len(candidates)} candidates[/green]")
+        for c in candidates:
+            band = (c.score_breakdown_json or {}).get("band", "?")
+            console.print(f"  candidate_id={c.candidate_id} score={c.hunt_score:.1f} band={band}")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        db.close()
+
+
+@hunt_app.command("list-missions")
+def hunt_list_missions(
+    status: Optional[str] = typer.Option(None, "--status", help="Filter by status: pending_imagery, reviewed"),
+):
+    """List vessel hunt missions."""
+    from app.database import SessionLocal
+    from app.models.stubs import SearchMission
+
+    db = SessionLocal()
+    try:
+        q = db.query(SearchMission)
+        if status:
+            q = q.filter(SearchMission.status == status)
+        missions = q.order_by(SearchMission.created_at.desc()).all()
+
+        if not missions:
+            console.print("[yellow]No missions found[/yellow]")
+            return
+
+        table = Table(title="Hunt Missions")
+        table.add_column("ID", style="cyan")
+        table.add_column("Vessel ID")
+        table.add_column("Status")
+        table.add_column("Radius (nm)")
+        table.add_column("Created")
+        for m in missions:
+            table.add_row(
+                str(m.mission_id),
+                str(m.vessel_id),
+                m.status,
+                f"{m.max_radius_nm:.1f}" if m.max_radius_nm else "?",
+                str(m.created_at)[:19] if m.created_at else "",
+            )
+        console.print(table)
+    finally:
+        db.close()
+
+
+@hunt_app.command("confirm")
+def hunt_confirm(
+    mission: int = typer.Option(..., "--mission", help="Mission ID"),
+    candidate: int = typer.Option(..., "--candidate", help="Candidate ID"),
+):
+    """Confirm a hunt candidate and finalize the mission."""
+    from app.database import SessionLocal
+    from app.modules.vessel_hunt import finalize_mission
+
+    db = SessionLocal()
+    try:
+        result = finalize_mission(mission, candidate, db)
+        console.print(f"[green]Mission {result.mission_id} finalized — status: {result.status}[/green]")
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        db.close()

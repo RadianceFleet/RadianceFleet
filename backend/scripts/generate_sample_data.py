@@ -182,3 +182,51 @@ with open(OUTPUT_PATH, "w", newline="") as f:
 print(f"Sample data written to {OUTPUT_PATH}")
 print(f"Total AIS points: {len(rows)}")
 print(f"Vessels: A (26h gap), B (circle spoof), C (STS), D (watchlist), E (new MMSI), F (clean), G (impossible reappear)")
+
+
+# ─── Dark vessel detections (DB insert — run after ingest so vessel IDs exist) ─
+# Import and run this block after `radiancefleet ingest` so vessel rows exist.
+#
+# Example (run in a Python shell or a post-ingest script):
+#
+#   from app.database import get_engine
+#   from app.models.stubs import DarkVesselDetection
+#   from sqlalchemy.orm import Session
+#
+#   with Session(get_engine()) as db:
+#       # Vessel A (MMSI 636017000, 26h gap): unmatched detection in Baltic corridor during gap
+#       # gap_start ≈ BASE_DATE + 16h = 2026-01-15T16:00Z
+#       # gap_end   ≈ BASE_DATE + 42h = 2026-01-16T18:00Z
+#       dv1 = DarkVesselDetection(
+#           scene_id="S1A_IW_20260116T060000",
+#           detection_lat=58.9,
+#           detection_lon=23.5,
+#           detection_time_utc=datetime(2026, 1, 16, 6, 0),   # mid-gap for vessel A
+#           length_estimate_m=330.0,
+#           vessel_type_inferred="tanker",
+#           ais_match_attempted=True,
+#           ais_match_result="unmatched",
+#           matched_vessel_id=None,   # set to vessel A vessel_id after ingest
+#           corridor_id=1,            # first Baltic export corridor seed
+#           model_confidence=0.87,
+#       )
+#
+#       # Vessel C (MMSI 374140000, STS pair): unmatched detection in STS zone
+#       # STS window ≈ BASE_DATE + 24h to +34h
+#       dv2 = DarkVesselDetection(
+#           scene_id="S1A_IW_20260116T100000",
+#           detection_lat=35.0,
+#           detection_lon=23.2,
+#           detection_time_utc=datetime(2026, 1, 16, 10, 0),  # during STS window for vessel C
+#           length_estimate_m=250.0,
+#           vessel_type_inferred="tanker",
+#           ais_match_attempted=True,
+#           ais_match_result="unmatched",
+#           matched_vessel_id=None,   # set to vessel C vessel_id after ingest
+#           corridor_id=2,            # second corridor (STS zone seed)
+#           model_confidence=0.91,
+#       )
+#
+#       db.add_all([dv1, dv2])
+#       db.commit()
+#       print("Dark vessel detections inserted.")

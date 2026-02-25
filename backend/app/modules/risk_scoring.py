@@ -569,6 +569,28 @@ def compute_gap_score(
                 if vessel.flag and vessel.flag.upper() in RUSSIAN_ORIGIN_FLAGS:
                     breakdown["new_mmsi_russian_origin_flag"] = behavioral_cfg.get("new_mmsi_plus_russian_origin_zone", 25)
 
+    # Phase 6.12: Dark vessel detection signal
+    if db is not None and gap.vessel_id is not None:
+        from app.models.stubs import DarkVesselDetection
+        dark_detections = db.query(DarkVesselDetection).filter(
+            DarkVesselDetection.matched_vessel_id == gap.vessel_id,
+            DarkVesselDetection.ais_match_result == "unmatched",
+            DarkVesselDetection.detection_time_utc >= gap.gap_start_utc - timedelta(days=30),
+            DarkVesselDetection.detection_time_utc <= gap.gap_end_utc + timedelta(days=7),
+        ).all()
+        dv_cfg = config.get("dark_vessel", {})
+        # Pick the highest-scoring detection: in-corridor (35 pts) > outside (20 pts)
+        has_corridor_det = any(d.corridor_id is not None for d in dark_detections)
+        if dark_detections:
+            if has_corridor_det:
+                breakdown["dark_vessel_unmatched_in_corridor"] = dv_cfg.get(
+                    "unmatched_detection_in_corridor", 35
+                )
+            else:
+                breakdown["dark_vessel_unmatched"] = dv_cfg.get(
+                    "unmatched_detection_outside_corridor", 20
+                )
+
     # ── Phase 2: Corridor multiplier ─────────────────────────────────────────
     additive_subtotal = sum(v for v in breakdown.values() if isinstance(v, (int, float)))
     corridor_mult, corridor_type = _corridor_multiplier(gap.corridor, config)

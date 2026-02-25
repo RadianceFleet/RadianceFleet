@@ -42,6 +42,15 @@ def _class_speed(dwt: float | None) -> tuple[float, float]:
     return 17.0, 22.0
 
 
+def compute_max_distance_nm(vessel_dwt: float | None, elapsed_hours: float) -> float:
+    """Maximum plausible drift distance for a vessel class over elapsed time.
+
+    Reused by: gap detection, vessel hunt drift ellipse calculation.
+    """
+    max_speed_kn, _ = _class_speed(vessel_dwt)
+    return max_speed_kn * elapsed_hours
+
+
 def _is_near_port(db: Session, lat: float, lon: float, radius_deg: float = 0.1) -> bool:
     """Check if a position is within ~6nm of any known major port."""
     try:
@@ -160,8 +169,8 @@ def detect_gaps_for_vessel(
 
         duration_minutes = int(delta_seconds / 60)
         actual_distance = _haversine_nm(p1.lat, p1.lon, p2.lat, p2.lon)
-        max_speed_kn, _ = _class_speed(vessel.deadweight)
-        max_distance = max_speed_kn * (delta_seconds / 3600)
+        duration_h = delta_seconds / 3600
+        max_distance = compute_max_distance_nm(vessel.deadweight, duration_h)
         ratio = actual_distance / max_distance if max_distance > 0 else 0.0
 
         gap = AISGapEvent(
@@ -209,8 +218,7 @@ def _create_movement_envelope(db: Session, gap: AISGapEvent, vessel: Vessel) -> 
     from app.models.base import EstimatedMethodEnum
 
     duration_h = gap.duration_minutes / 60
-    max_speed_kn, _ = _class_speed(vessel.deadweight if vessel else None)
-    max_dist_nm = max_speed_kn * duration_h
+    max_dist_nm = compute_max_distance_nm(vessel.deadweight if vessel else None, duration_h)
 
     semi_major = 0.7 * max_dist_nm
     semi_minor = 0.3 * max_dist_nm

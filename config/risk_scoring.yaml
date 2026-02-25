@@ -163,3 +163,8 @@ ais_class:
   large_tanker_using_class_b: 50     # mandatory Class A for >300GT; Class B = red flag
   class_switching_a_to_b: 25
   transmission_frequency_mismatch: 8
+
+# DARK VESSEL DETECTIONS (satellite detection with no AIS match)
+dark_vessel:
+  unmatched_detection_in_corridor: 35  # satellite detection with no AIS match in known corridor
+  unmatched_detection_outside_corridor: 20  # satellite detection with no AIS match

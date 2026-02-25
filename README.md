@@ -1,5 +1,9 @@
 # RadianceFleet
 
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Tests](https://img.shields.io/badge/tests-115%20passing-brightgreen)
+
 Open-source AIS anomaly detection for Russian shadow fleet triage.
 For investigative journalists, OSINT researchers, and NGO analysts.
 
@@ -18,9 +22,40 @@ For investigative journalists, OSINT researchers, and NGO analysts.
 - Exports evidence cards (JSON + Markdown) with mandatory analyst disclaimer
 - Imports GFW pre-computed vessel detections to identify dark ships (FR8)
 
-## Quick start
+## Quick start in 3 commands
 
-See [docs/quickstart.md](docs/quickstart.md).
+```bash
+docker compose up -d && cd backend && uv sync && source .venv/bin/activate
+radiancefleet init-db && radiancefleet corridors import config/corridors.yaml
+radiancefleet ingest ais <your_ais_file.csv> && radiancefleet score-alerts
+```
+
+Then open http://localhost:5173, go to AlertList, and filter by score >= 50.
+
+For a full walkthrough including the detection pipeline and analyst workflow, see [docs/quickstart.md](docs/quickstart.md).
+
+## Screenshot
+
+*(Screenshot coming after UI polish — see [docs/quickstart.md](docs/quickstart.md) for a step-by-step walkthrough)*
+
+## Used for investigating
+
+RadianceFleet is designed to support investigative journalism and open-source
+intelligence research into Russian oil export evasion. Typical use cases include:
+
+- Identifying tankers with unexplained AIS gaps on routes out of Primorsk,
+  Novorossiysk, or Nakhodka
+- Finding vessels that appear in the KSE shadow fleet list or OFAC SDN list
+  and are still actively transiting monitored corridors
+- Documenting ship-to-ship transfers in the Mediterranean and Gibraltar Strait
+- Building evidence packages for publication that include satellite imagery
+  cross-checks and mandatory analyst disclaimers
+
+**Before publishing any findings, read [docs/overclaiming-guide.md](docs/overclaiming-guide.md).**
+A high risk score is a signal to investigate further — not a finding in itself.
+AIS gaps have many innocent explanations (equipment failure, GPS jamming, poor
+coverage at sea). All exported evidence cards carry a mandatory disclaimer.
+Consult a maritime law expert before making sanctions or legal claims.
 
 ## Data coverage
 
