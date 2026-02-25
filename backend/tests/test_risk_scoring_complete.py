@@ -336,8 +336,8 @@ def test_dark_zone_exit_impossible_adds_35():
     assert breakdown["dark_zone_exit_impossible"] == 35
 
 
-def test_dark_zone_entry_long_gap_adds_20():
-    """Long gap (> 60 min) in dark zone with dark_zone_id, no impossible speed → +20 (entry)."""
+def test_dark_zone_long_gap_normal_speed_deduction():
+    """Long gap (> 60 min) in dark zone with dark_zone_id, no impossible speed, normal speed → -10 (jamming noise)."""
     config = load_scoring_config()
 
     gap = _make_gap(
@@ -348,9 +348,9 @@ def test_dark_zone_entry_long_gap_adds_20():
     )
     _, breakdown = compute_gap_score(gap, config)
 
-    assert "dark_zone_entry" in breakdown, \
-        "Expected dark_zone_entry signal for long gap with dark zone id"
-    assert breakdown["dark_zone_entry"] == 20
+    assert "dark_zone_deduction" in breakdown, \
+        "Expected dark_zone_deduction for normal-speed long gap in dark zone"
+    assert breakdown["dark_zone_deduction"] == -10
 
 
 def test_dark_zone_deduction_no_dark_zone_id():

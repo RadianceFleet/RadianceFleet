@@ -353,6 +353,45 @@ def run_spoofing_detection(
                 ))
                 anomalies_created += 1
 
+        # --- Type 7: Dual Transmission Candidate ---
+        # Two positions from same MMSI with <30min delta but impossible speed (>30kn)
+        # within a 1h sliding window. Indicates two physical transmitters.
+        _DUAL_WINDOW_H = 1
+        _DUAL_MAX_DELTA_MIN = 30
+        for i in range(len(points)):
+            anchor_time = points[i].timestamp_utc
+            window_end = anchor_time + timedelta(hours=_DUAL_WINDOW_H)
+            for j in range(i + 1, len(points)):
+                if points[j].timestamp_utc > window_end:
+                    break
+                dt_s = (points[j].timestamp_utc - points[i].timestamp_utc).total_seconds()
+                if dt_s <= 0 or dt_s > _DUAL_MAX_DELTA_MIN * 60:
+                    continue
+                dist_nm = _haversine_nm(points[i].lat, points[i].lon, points[j].lat, points[j].lon)
+                implied_speed = dist_nm / (dt_s / 3600)
+                if implied_speed > 30:
+                    existing_dual = db.query(SpoofingAnomaly).filter(
+                        SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.DUAL_TRANSMISSION,
+                        SpoofingAnomaly.start_time_utc == points[i].timestamp_utc,
+                    ).first()
+                    if not existing_dual:
+                        db.add(SpoofingAnomaly(
+                            vessel_id=vessel.vessel_id,
+                            anomaly_type=SpoofingTypeEnum.DUAL_TRANSMISSION,
+                            start_time_utc=points[i].timestamp_utc,
+                            end_time_utc=points[j].timestamp_utc,
+                            implied_speed_kn=implied_speed,
+                            risk_score_component=30,
+                            evidence_json={
+                                "implied_speed_kn": round(implied_speed, 1),
+                                "delta_minutes": round(dt_s / 60, 1),
+                                "dist_nm": round(dist_nm, 1),
+                            },
+                        ))
+                        anomalies_created += 1
+                    break  # one detection per anchor point
+
         # --- Type 5: Nav Status Mismatch ---
         for p in points:
             if p.nav_status == 1 and p.sog is not None and p.sog > 2.0:

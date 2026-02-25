@@ -304,7 +304,7 @@ def detect_loitering_for_vessel(
             logger.warning("Corridor lookup failed for vessel %d: %s", vessel.vessel_id, exc)
 
         # ── 5c. Risk score component ───────────────────────────────────────────
-        if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor is not None:
+        if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor is not None and str(matched_corridor.corridor_type.value if hasattr(matched_corridor.corridor_type, "value") else matched_corridor.corridor_type) == "sts_zone":
             risk_score_component = _RISK_SUSTAINED
         else:
             risk_score_component = _RISK_BASELINE

@@ -24,5 +24,6 @@ class SatelliteCheck(Base):
     sentinel_scene_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     image_quality_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     cloud_cover_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    copernicus_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     gap_event: Mapped["AISGapEvent"] = relationship("AISGapEvent", back_populates="satellite_checks")

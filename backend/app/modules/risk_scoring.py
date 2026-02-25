@@ -76,8 +76,13 @@ def reload_scoring_config() -> dict[str, Any]:
     return load_scoring_config()
 
 
-def score_all_alerts(db: Session) -> dict:
-    """Score all unscored gap events."""
+def score_all_alerts(db: Session, scoring_date: datetime = None) -> dict:
+    """Score all unscored gap events.
+
+    Args:
+        scoring_date: Fixed datetime for reproducible scoring (NFR3).
+            Defaults to now if not provided.
+    """
     config = load_scoring_config()
     alerts = db.query(AISGapEvent).filter(AISGapEvent.risk_score == 0).all()
     scored = 0
@@ -103,6 +108,7 @@ def score_all_alerts(db: Session) -> dict:
             gaps_in_7d=gaps_7d,
             gaps_in_14d=gaps_14d,
             gaps_in_30d=gaps_30d,
+            scoring_date=scoring_date,
             db=db,
             pre_gap_sog=getattr(alert, "pre_gap_sog", None),
         )
@@ -135,12 +141,12 @@ def rescore_all_alerts(db: Session, clear_detections: bool = False) -> dict:
         db.commit()
         logger.info("Cleared detection signals (clear_detections=True)")
 
-    # Reset all scores to 0 first
+    # Reset all scores to 0 first (no intermediate commit — if scoring fails,
+    # the entire transaction rolls back instead of leaving zeroed scores)
     alerts = db.query(AISGapEvent).all()
     for a in alerts:
         a.risk_score = 0
         a.risk_breakdown_json = None
-    db.commit()
     result = score_all_alerts(db)
     result["config_hash"] = config_hash
     result["rescored"] = result.pop("scored")
@@ -378,10 +384,10 @@ def compute_gap_score(
                 spike_thresh = 20
             if _pre_sog_dz > spike_thresh and (gap.duration_minutes or 0) < 120:
                 breakdown["dark_zone_entry"] = dz_cfg.get("gap_immediately_before_dark_zone_entry", 20)
-            elif (gap.duration_minutes or 0) < 60:
-                breakdown["dark_zone_deduction"] = dz_cfg.get("gap_in_known_jamming_zone", -10)
             else:
-                breakdown["dark_zone_entry"] = dz_cfg.get("gap_immediately_before_dark_zone_entry", 20)
+                # Normal-speed gap in dark zone: expected noise from jamming (-10),
+                # regardless of duration. Only high-speed entry gets +20.
+                breakdown["dark_zone_deduction"] = dz_cfg.get("gap_in_known_jamming_zone", -10)
         else:
             # in_dark_zone=True but no explicit dark_zone_id — corridor is_jamming_zone=True
             breakdown["dark_zone_deduction"] = dz_cfg.get("gap_in_known_jamming_zone", -10)
@@ -491,9 +497,18 @@ def compute_gap_score(
                 breakdown["class_switching_a_to_b"] = ais_cfg.get("class_switching_a_to_b", 25)
                 break
 
-    # TODO(v1.1): dual_transmission_candidate (+30) — needs new detection logic
-    #   to identify simultaneous positions from the same MMSI at different locations.
-    # TODO(v1.1): callsign_change (+20) — requires adding callsign field to Vessel model.
+    # callsign_change: query VesselHistory for callsign changes within 90d
+    if db is not None and vessel is not None:
+        from app.models.vessel_history import VesselHistory as _VH2
+        callsign_changes = db.query(_VH2).filter(
+            _VH2.vessel_id == vessel.vessel_id,
+            _VH2.field_changed == "callsign",
+            _VH2.observed_at >= gap.gap_start_utc - timedelta(days=90),
+        ).first()
+        if callsign_changes:
+            meta_cfg = config.get("metadata", {})
+            breakdown["callsign_change"] = meta_cfg.get("callsign_change", 20)
+
     # TODO(v1.1): owner_or_manager_on_sanctions_list (+35) — requires owner entity model (v1.1).
 
     # Phase 6.4: Spoofing signals (only linked to this gap or vessel-level within 2h of gap start)
@@ -668,6 +683,12 @@ def compute_gap_score(
         if non_a is None:
             legitimacy_cfg = config.get("legitimacy", {})
             breakdown["legitimacy_ais_class_a_consistent"] = legitimacy_cfg.get("ais_class_a_consistent", -5)
+
+        # white_flag_jurisdiction: white-list flag registries (PRD §7.5)
+        _WHITE_FLAGS = {"NO", "DK", "DE", "JP", "NL"}
+        if vessel.flag and vessel.flag.upper() in _WHITE_FLAGS:
+            legitimacy_cfg = config.get("legitimacy", {})
+            breakdown["legitimacy_white_flag_jurisdiction"] = legitimacy_cfg.get("white_flag_jurisdiction", -10)
 
     # TODO(v1.1): consistent_eu_port_calls (-5/call) — needs PortCall model
     # TODO(v1.1): speed_variation_matches_weather (-8) — needs weather API integration

@@ -56,6 +56,7 @@ class SpoofingTypeEnum(str, enum.Enum):
     MMSI_REUSE = "mmsi_reuse"
     NAV_STATUS_MISMATCH = "nav_status_mismatch"
     ERRATIC_NAV_STATUS = "erratic_nav_status"
+    DUAL_TRANSMISSION = "dual_transmission"
     # Sub-types (extended_restricted_maneuverability, nav_status_15) are stored
     # in evidence_json["subtype"] on an ERRATIC_NAV_STATUS anomaly record.
 

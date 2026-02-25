@@ -146,6 +146,7 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel:
             vessel_type=row.get("vessel_type") or row.get("ship_type"),
             deadweight=row.get("deadweight"),
             ais_class=row.get("ais_class", "unknown"),
+            callsign=row.get("callsign"),
             mmsi_first_seen_utc=ts,
         )
         db.add(vessel)
@@ -163,17 +164,23 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel:
     _track_field_change(db, vessel, "ais_class",
                         vessel.ais_class, row.get("ais_class"),
                         ts, "ais_csv")
+    _track_field_change(db, vessel, "callsign",
+                        vessel.callsign, row.get("callsign"),
+                        ts, "ais_csv")
 
     # Update mutable fields
     new_name = row.get("vessel_name") or row.get("shipname")
     new_flag = row.get("flag") or row.get("country")
     new_ais_class = row.get("ais_class")
+    new_callsign = row.get("callsign")
     if new_name:
         vessel.name = new_name
     if new_flag:
         vessel.flag = new_flag
     if new_ais_class:
         vessel.ais_class = new_ais_class
+    if new_callsign:
+        vessel.callsign = new_callsign
 
     return vessel
 

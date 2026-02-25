@@ -33,6 +33,8 @@ class Vessel(Base):
     psc_major_deficiencies_last_12m: Mapped[int] = mapped_column(Integer, default=0)
     # Set on first ingestion, never updated — enables new-MMSI scoring (Phase 6.10)
     mmsi_first_seen_utc: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    callsign: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    owner_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     ais_source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     # Laid-up detection flags (Phase 4.2)
     vessel_laid_up_30d: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -4,13 +4,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, String, DateTime, ForeignKey, JSON, func
+from sqlalchemy import Integer, String, DateTime, ForeignKey, JSON, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
 
 class EvidenceCard(Base):
     __tablename__ = "evidence_cards"
+    __table_args__ = (
+        UniqueConstraint("gap_event_id", "export_format", "version", name="uq_evidence_gap_format_version"),
+    )
 
     evidence_card_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     gap_event_id: Mapped[int] = mapped_column(Integer, ForeignKey("ais_gap_events.gap_event_id"), nullable=False)

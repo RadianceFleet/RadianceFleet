@@ -126,7 +126,6 @@ def _st_intersects_trajectory(
     )
     return (
         db.query(model)
-        .filter(model.geometry.isnot(None))
         .filter(func.ST_Intersects(trajectory, model.geometry))
         .all()
     )

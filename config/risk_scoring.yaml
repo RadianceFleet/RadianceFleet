@@ -50,7 +50,7 @@ movement_envelope:
 
 # AIS SPOOFING DETECTIONS
 spoofing:
-  anchor_in_open_ocean: 20
+  anchor_in_open_ocean: 10
   circle_pattern: 35
   slow_roll: 12
   mmsi_reuse_implied_speed_30kn: 40

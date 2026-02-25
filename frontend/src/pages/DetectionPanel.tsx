@@ -99,8 +99,8 @@ export function DetectionPanel() {
     const steps = [
       { name: 'Gap detection', fn: () => gapDetect.mutateAsync(Object.keys(dateBody).length ? dateBody : undefined) },
       { name: 'Spoofing detection', fn: () => spoofDetect.mutateAsync(Object.keys(dateBody).length ? dateBody : undefined) },
-      { name: 'Loitering detection', fn: () => loiterDetect.mutateAsync(undefined) },
-      { name: 'STS detection', fn: () => stsDetect.mutateAsync(undefined) },
+      { name: 'Loitering detection', fn: () => loiterDetect.mutateAsync(Object.keys(dateBody).length ? dateBody : undefined) },
+      { name: 'STS detection', fn: () => stsDetect.mutateAsync(Object.keys(dateBody).length ? dateBody : undefined) },
       { name: 'Scoring alerts', fn: () => scoreAlerts.mutateAsync(undefined) },
     ]
 
@@ -170,8 +170,8 @@ export function DetectionPanel() {
         <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Individual Detections</h3>
         <DetectionButton label="Detect Gaps" mutation={gapDetect} body={Object.keys(dateBody).length ? dateBody : undefined} />
         <DetectionButton label="Detect Spoofing" mutation={spoofDetect} body={Object.keys(dateBody).length ? dateBody : undefined} />
-        <DetectionButton label="Detect Loitering" mutation={loiterDetect} />
-        <DetectionButton label="Detect STS" mutation={stsDetect} />
+        <DetectionButton label="Detect Loitering" mutation={loiterDetect} body={Object.keys(dateBody).length ? dateBody : undefined} />
+        <DetectionButton label="Detect STS" mutation={stsDetect} body={Object.keys(dateBody).length ? dateBody : undefined} />
         <DetectionButton label="Score Alerts" mutation={scoreAlerts} />
         <DetectionButton label="Rescore All Alerts" mutation={rescoreAll} />
       </Card>

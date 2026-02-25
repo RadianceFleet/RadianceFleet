@@ -13,8 +13,8 @@ class Corridor(Base):
 
     corridor_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    geometry: Mapped[Optional[object]] = mapped_column(
-        Geometry(geometry_type="POLYGON", srid=4326), nullable=True
+    geometry: Mapped[object] = mapped_column(
+        Geometry(geometry_type="POLYGON", srid=4326), nullable=False
     )
     risk_weight: Mapped[float] = mapped_column(Float, default=1.0)
     tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)

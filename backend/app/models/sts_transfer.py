@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Integer, Float, String, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy import Integer, Float, String, DateTime, ForeignKey, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, STSDetectionTypeEnum
 
@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 
 class StsTransferEvent(Base):
     __tablename__ = "sts_transfer_events"
+    __table_args__ = (
+        UniqueConstraint("vessel_1_id", "vessel_2_id", "start_time_utc", name="uq_sts_vessel_pair_time"),
+    )
 
     sts_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vessel_1_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)
