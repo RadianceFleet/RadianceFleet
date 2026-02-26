@@ -19,3 +19,4 @@ class Port(Base):
     geometry: Mapped[object] = mapped_column(Geometry("POINT", srid=4326), nullable=False)
     major_port: Mapped[bool] = mapped_column(Boolean, default=True)
     is_eu: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_russian_oil_terminal: Mapped[bool] = mapped_column(Boolean, default=False)

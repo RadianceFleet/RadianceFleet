@@ -114,3 +114,106 @@ def enrich_vessels_from_gfw(
     db.commit()
     logger.info("GFW vessel enrichment: %s", stats)
     return stats
+
+
+def infer_ais_class(db: Session, vessel) -> str | None:
+    """Infer AIS class from transmission intervals.
+
+    Class A: 2-10s intervals (median ≤10s).
+    Class B: 30s+ intervals (median >25s).
+    Returns 'A', 'B', or None if insufficient data.
+    """
+    from app.models.ais_point import AISPoint
+
+    points = (
+        db.query(AISPoint)
+        .filter(AISPoint.vessel_id == vessel.vessel_id)
+        .order_by(AISPoint.timestamp_utc.desc())
+        .limit(20)
+        .all()
+    )
+    if len(points) < 5:
+        return None
+
+    intervals = [
+        (points[i].timestamp_utc - points[i + 1].timestamp_utc).total_seconds()
+        for i in range(len(points) - 1)
+    ]
+    # Filter out outliers (negative or very large gaps that represent actual AIS gaps)
+    intervals = [iv for iv in intervals if 0 < iv < 600]
+    if len(intervals) < 3:
+        return None
+
+    median = sorted(intervals)[len(intervals) // 2]
+    if median > 25:
+        return "B"
+    if median <= 10:
+        return "A"
+    return None
+
+
+def infer_ais_class_batch(db: Session) -> dict[str, int]:
+    """Infer AIS class for all vessels with UNKNOWN class.
+
+    Returns {"updated": int, "skipped": int}.
+    """
+    from app.models.vessel import Vessel
+    from app.models.base import AISClassEnum
+
+    vessels = (
+        db.query(Vessel)
+        .filter(Vessel.ais_class.in_([AISClassEnum.UNKNOWN, None]))
+        .all()
+    )
+
+    stats = {"updated": 0, "skipped": 0}
+    for vessel in vessels:
+        inferred = infer_ais_class(db, vessel)
+        if inferred:
+            vessel.ais_class = inferred
+            stats["updated"] += 1
+        else:
+            stats["skipped"] += 1
+
+    db.commit()
+    logger.info("AIS class inference: %s", stats)
+    return stats
+
+
+def infer_pi_coverage(db: Session) -> dict[str, int]:
+    """Infer P&I coverage status for all vessels based on sanctions watchlist.
+
+    IG P&I clubs include sanctions exclusion clauses — sanctioned vessel = IG P&I void.
+    Non-sanctioned vessels with no other data stay UNKNOWN.
+
+    Returns {"lapsed": int, "unchanged": int}.
+    """
+    from app.models.vessel import Vessel
+    from app.models.vessel_watchlist import VesselWatchlist
+    from app.models.base import PIStatusEnum
+
+    stats = {"lapsed": 0, "unchanged": 0}
+
+    # Only check vessels that don't already have explicit P&I status
+    vessels = (
+        db.query(Vessel)
+        .filter(Vessel.pi_coverage_status.in_([PIStatusEnum.UNKNOWN, None]))
+        .all()
+    )
+
+    for vessel in vessels:
+        has_sanctions_hit = db.query(VesselWatchlist).filter(
+            VesselWatchlist.vessel_id == vessel.vessel_id,
+            VesselWatchlist.is_active == True,
+            VesselWatchlist.watchlist_source.in_(["OFAC_SDN", "EU_COUNCIL"]),
+        ).first()
+
+        if has_sanctions_hit:
+            vessel.pi_coverage_status = PIStatusEnum.LAPSED
+            stats["lapsed"] += 1
+        else:
+            stats["unchanged"] += 1
+
+    db.commit()
+    logger.info("P&I coverage inference: %s", stats)
+    return stats

@@ -757,7 +757,7 @@ def setup(
     """
     import sys
 
-    total_steps = 11
+    total_steps = 12
     console.print("[bold cyan]RadianceFleet Setup[/bold cyan]\n")
 
     # 1. Check Python version
@@ -993,10 +993,38 @@ def setup(
         else:
             console.print("[dim]  GFW_API_TOKEN not set — skipping enrichment[/dim]")
 
-        # 9. Sample data fallback (if no AIS data yet)
+        # 8.6. Re-match watchlists against vessels created during AIS streaming
+        if not skip_fetch:
+            from app.models.vessel import Vessel as _VesselCount
+            vessel_count = db.query(_VesselCount).count()
+            console.print(f"\n[cyan]Step 9/{total_steps}: Re-matching watchlists ({vessel_count} vessels)...[/cyan]")
+            try:
+                from app.modules.data_fetcher import _find_latest
+                from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions
+                from app.config import settings as _wl_settings
+
+                data_dir = Path(_wl_settings.DATA_DIR)
+                ofac_file = _find_latest(data_dir, "ofac_sdn_")
+                if ofac_file:
+                    result = load_ofac_sdn(db, str(ofac_file))
+                    console.print(f"[green]✓[/green] OFAC re-match: {result.get('matched', 0)} matched")
+
+                os_file = _find_latest(data_dir, "opensanctions_vessels_")
+                if os_file:
+                    result = load_opensanctions(db, str(os_file))
+                    console.print(f"[green]✓[/green] OpenSanctions re-match: {result.get('matched', 0)} matched")
+
+                if not ofac_file and not os_file:
+                    console.print("[dim]  No watchlist files to re-match[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Watchlist re-match failed: {e}[/yellow]")
+        else:
+            console.print(f"\n[dim]Step 9/{total_steps}: Skipping watchlist re-match (--skip-fetch)[/dim]")
+
+        # 10. Sample data fallback (if no AIS data yet)
         from app.models.ais_point import AISPoint
         ais_count = db.query(AISPoint).count()
-        console.print(f"\n[cyan]Step 9/{total_steps}: Sample data...[/cyan]")
+        console.print(f"\n[cyan]Step 10/{total_steps}: Sample data...[/cyan]")
         if with_sample_data and ais_count == 0:
             try:
                 from app.modules.ingest import ingest_ais_csv
@@ -1035,7 +1063,7 @@ def setup(
 
         # 10. Run detection pipeline (only if we have AIS data)
         ais_count = db.query(AISPoint).count()  # re-check after possible ingest
-        console.print(f"\n[cyan]Step 10/{total_steps}: Running detection pipeline...[/cyan]")
+        console.print(f"\n[cyan]Step 11/{total_steps}: Running detection pipeline...[/cyan]")
         if ais_count == 0:
             console.print("[dim]  No AIS data loaded — skipping detection pipeline[/dim]")
         else:
@@ -1071,7 +1099,7 @@ def setup(
         db.close()
 
     # Summary
-    console.print(f"\n[cyan]Step 11/{total_steps}: Summary[/cyan]")
+    console.print(f"\n[cyan]Step 12/{total_steps}: Summary[/cyan]")
     console.print("─" * 50)
     console.print("[bold green]Setup complete![/bold green]")
     console.print("\nNext steps:")

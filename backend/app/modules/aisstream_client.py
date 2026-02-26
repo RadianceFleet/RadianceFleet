@@ -152,7 +152,7 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
     """
     from app.models.vessel import Vessel
     from app.models.ais_point import AISPoint
-    from app.modules.ingest import _parse_timestamp
+    from app.modules.ingest import _parse_timestamp, _track_field_change
 
     stored = 0
     vessels_updated = 0
@@ -162,15 +162,34 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
         vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
         if vessel:
             changed = False
+            ts = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            # IMO: only fill if empty (IMO is permanent — changes indicate data error)
             if sdata.get("imo") and not vessel.imo:
                 vessel.imo = sdata["imo"]
                 changed = True
-            if sdata.get("vessel_type") and not vessel.vessel_type:
+
+            # vessel_type: compare-and-track
+            if sdata.get("vessel_type") and sdata["vessel_type"] != vessel.vessel_type:
+                if vessel.vessel_type:
+                    _track_field_change(db, vessel, "vessel_type", vessel.vessel_type, sdata["vessel_type"], ts, "aisstream")
                 vessel.vessel_type = sdata["vessel_type"]
                 changed = True
-            if sdata.get("callsign") and not vessel.callsign:
+
+            # callsign: compare-and-track
+            if sdata.get("callsign") and sdata["callsign"] != vessel.callsign:
+                if vessel.callsign:
+                    _track_field_change(db, vessel, "callsign", vessel.callsign, sdata["callsign"], ts, "aisstream")
                 vessel.callsign = sdata["callsign"]
                 changed = True
+
+            # vessel name: compare-and-track
+            if sdata.get("vessel_name") and sdata["vessel_name"] != vessel.name:
+                if vessel.name:
+                    _track_field_change(db, vessel, "name", vessel.name, sdata["vessel_name"], ts, "aisstream")
+                vessel.name = sdata["vessel_name"]
+                changed = True
+
             if changed:
                 vessels_updated += 1
 

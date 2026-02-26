@@ -4,6 +4,7 @@ import pytest
 from app.utils.vessel_identity import (
     mmsi_to_flag,
     flag_to_risk_category,
+    is_suspicious_mid,
     RUSSIAN_ORIGIN_FLAGS,
     MID_TO_FLAG,
 )
@@ -106,5 +107,40 @@ class TestRussianOriginFlags:
         assert isinstance(RUSSIAN_ORIGIN_FLAGS, frozenset)
 
     def test_expected_flags_present(self):
-        expected = {"PW", "MH", "KM", "SL", "HN", "GA", "CM", "TZ"}
+        expected = {"PW", "MH", "KM", "SL", "HN", "GA", "CM", "TZ", "ST", "GM", "CK", "GQ"}
         assert RUSSIAN_ORIGIN_FLAGS == expected
+
+    @pytest.mark.parametrize("flag", ["ST", "GM", "CK", "GQ"])
+    def test_new_shadow_fleet_flags_are_high_risk(self, flag: str):
+        """Newly added shadow fleet haven flags classify as HIGH_RISK."""
+        assert flag_to_risk_category(flag) == FlagRiskEnum.HIGH_RISK
+
+    @pytest.mark.parametrize("flag", ["ST", "GM", "CK", "GQ"])
+    def test_new_flags_have_mids(self, flag: str):
+        """Each new flag should have at least one MID mapping."""
+        found = any(v == flag for v in MID_TO_FLAG.values())
+        assert found, f"Flag {flag} has no MID mapping"
+
+
+class TestSuspiciousMid:
+    """Test unallocated/stateless MID detection."""
+
+    def test_unallocated_mid_is_suspicious(self):
+        """MMSI with MID not in MID_TO_FLAG → suspicious."""
+        # MID 999 is not allocated to any country
+        assert is_suspicious_mid("999000000") is True
+
+    def test_known_stateless_mid_646(self):
+        """MID 646 (documented stateless shadow fleet pattern) → suspicious."""
+        assert is_suspicious_mid("646123456") is True
+
+    def test_allocated_mid_not_suspicious(self):
+        """MMSI with known MID → not suspicious."""
+        assert is_suspicious_mid("273123456") is False  # Russia
+        assert is_suspicious_mid("351000000") is False  # Panama
+
+    def test_invalid_mmsi_not_suspicious(self):
+        """Invalid MMSI → not suspicious (returns False, not error)."""
+        assert is_suspicious_mid("") is False
+        assert is_suspicious_mid("12") is False
+        assert is_suspicious_mid(None) is False

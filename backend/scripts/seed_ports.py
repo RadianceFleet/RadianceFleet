@@ -38,6 +38,10 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Nakhodka/Kozmino", "RU", 42.76, 132.87),
     ("Vysotsk", "RU", 60.63, 28.55),
     ("St Petersburg", "RU", 59.95, 30.20),
+    ("Tuapse", "RU", 44.10, 39.07),
+    ("Murmansk", "RU", 68.97, 33.05),
+    ("De-Kastri", "RU", 51.47, 140.78),
+    ("Varandey", "RU", 68.82, 58.07),
 
     # ── Major EU ports ─────────────────────────────────────────────────────────
     ("Rotterdam", "NL", 51.94, 4.14),
@@ -105,10 +109,24 @@ _EU_COUNTRIES = {
 }
 
 
+# Major Russian crude oil export terminals (for russian_port_call scoring signal)
+_RUSSIAN_OIL_TERMINALS: set[str] = {
+    "Primorsk",       # Baltic, crude
+    "Ust-Luga",       # Baltic, crude + products
+    "Novorossiysk",   # Black Sea, crude
+    "Tuapse",         # Black Sea, products
+    "Nakhodka/Kozmino",  # Pacific, crude (ESPO)
+    "Murmansk",       # Arctic, crude
+    "De-Kastri",      # Sakhalin, crude
+    "Varandey",       # Arctic, crude
+}
+
+
 def seed_ports(db: Session) -> dict:
     """Insert major ports if not already present. Idempotent — skips existing by name.
 
     Sets is_eu=True for ports in EU member states (needed for legitimacy scoring).
+    Sets is_russian_oil_terminal=True for major Russian crude export terminals.
     """
     from app.models.port import Port
 
@@ -126,14 +144,20 @@ def seed_ports(db: Session) -> dict:
     inserted = 0
     skipped = 0
     updated_eu = 0
+    updated_terminal = 0
     for name, country, lat, lon in MAJOR_PORTS:
         is_eu = country in _EU_COUNTRIES
+        is_oil_terminal = name in _RUSSIAN_OIL_TERMINALS
         existing = db.query(Port).filter(Port.name == name).first()
         if existing:
             # Fix existing ports that should have is_eu=True
             if is_eu and not existing.is_eu:
                 existing.is_eu = True
                 updated_eu += 1
+            # Fix existing ports that should be marked as oil terminals
+            if is_oil_terminal and not existing.is_russian_oil_terminal:
+                existing.is_russian_oil_terminal = True
+                updated_terminal += 1
             skipped += 1
             continue
         port = Port(
@@ -142,10 +166,14 @@ def seed_ports(db: Session) -> dict:
             geometry=make_point(lat, lon),
             major_port=True,
             is_eu=is_eu,
+            is_russian_oil_terminal=is_oil_terminal,
         )
         db.add(port)
         inserted += 1
 
     db.commit()
-    logger.info("seed_ports: inserted=%d skipped=%d updated_eu=%d", inserted, skipped, updated_eu)
-    return {"inserted": inserted, "skipped": skipped, "updated_eu": updated_eu}
+    logger.info(
+        "seed_ports: inserted=%d skipped=%d updated_eu=%d updated_terminal=%d",
+        inserted, skipped, updated_eu, updated_terminal,
+    )
+    return {"inserted": inserted, "skipped": skipped, "updated_eu": updated_eu, "updated_terminal": updated_terminal}

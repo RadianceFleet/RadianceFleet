@@ -29,6 +29,17 @@ OPENSANCTIONS_URL = (
     "https://data.opensanctions.org/datasets/latest/vessels/entities.json"
 )
 
+# PSC detention data sources (FTM JSON format from OpenSanctions)
+PSC_FTM_URLS: dict[str, str] = {
+    "tokyo_mou": "https://data.opensanctions.org/datasets/latest/tokyo_mou_detention/entities.ftm.json",
+    "black_sea_mou": "https://data.opensanctions.org/datasets/latest/black_sea_mou_detention/entities.ftm.json",
+    "abuja_mou": "https://data.opensanctions.org/datasets/latest/abuja_mou_detention/entities.ftm.json",
+    "paris_mou_banned": "https://data.opensanctions.org/datasets/latest/paris_mou_banned/entities.ftm.json",
+}
+
+# EMSA ship ban API (canonical Paris MOU banned vessels — clean JSON)
+EMSA_BAN_URL = "https://portal.emsa.europa.eu/o/portlet-public/rest/ban/getBanShips.json"
+
 # ── Metadata cache ───────────────────────────────────────────────────────────
 
 _METADATA_FILENAME = ".fetch_metadata.json"
@@ -308,6 +319,84 @@ def fetch_all(
         errors.append(f"OpenSanctions: {opensanctions['error']}")
 
     return {"ofac": ofac, "opensanctions": opensanctions, "errors": errors}
+
+
+def fetch_psc_ftm(
+    output_dir: Path | str | None = None,
+    *,
+    force: bool = False,
+    timeout: float | None = None,
+) -> dict:
+    """Download PSC detention FTM JSON files from OpenSanctions.
+
+    Returns ``{"files": {source: path_or_none}, "errors": [str]}``.
+    """
+    output_dir = Path(output_dir or settings.DATA_DIR)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metadata = _load_metadata(output_dir)
+
+    today = date.today().isoformat()
+    files: dict[str, Path | None] = {}
+    errors: list[str] = []
+
+    for source_key, url in PSC_FTM_URLS.items():
+        filename = f"psc_{source_key}_{today}.json"
+        output_path = output_dir / filename
+        meta_key = f"psc_{source_key}"
+
+        path, error = _download_file(
+            url, output_path, meta_key, metadata, force=force, timeout=timeout
+        )
+
+        if error:
+            errors.append(f"{source_key}: {error}")
+            files[source_key] = None
+        elif path is None:
+            # 304 Not Modified
+            files[source_key] = _find_latest(output_dir, f"psc_{source_key}_")
+        else:
+            files[source_key] = path
+
+    _save_metadata(output_dir, metadata)
+    return {"files": files, "errors": errors}
+
+
+def fetch_emsa_bans(
+    output_dir: Path | str | None = None,
+    *,
+    force: bool = False,
+    timeout: float | None = None,
+) -> dict:
+    """Download EMSA ship ban list (Paris MOU banned vessels).
+
+    Returns ``{"path": Path|None, "status": str, "error": str|None}``.
+    """
+    output_dir = Path(output_dir or settings.DATA_DIR)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metadata = _load_metadata(output_dir)
+
+    today = date.today().isoformat()
+    filename = f"emsa_bans_{today}.json"
+    output_path = output_dir / filename
+
+    path, error = _download_file(
+        EMSA_BAN_URL, output_path, "emsa_bans", metadata, force=force, timeout=timeout
+    )
+
+    if error:
+        return {"path": None, "status": "error", "error": error}
+
+    if path is None:
+        _save_metadata(output_dir, metadata)
+        return {
+            "path": _find_latest(output_dir, "emsa_bans_"),
+            "status": "up_to_date",
+            "error": None,
+        }
+
+    _save_metadata(output_dir, metadata)
+    logger.info("EMSA bans downloaded to %s", path)
+    return {"path": path, "status": "downloaded", "error": None}
 
 
 def _find_latest(directory: Path, prefix: str) -> Path | None:

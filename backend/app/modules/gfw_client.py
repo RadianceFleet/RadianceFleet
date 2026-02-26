@@ -80,6 +80,7 @@ def search_vessel(
             "vessel_type": ship.get("vesselType") or ship.get("geartype"),
             "length_m": ship.get("lengthM"),
             "tonnage_gt": ship.get("tonnageGt"),
+            "year_built": ship.get("builtYear"),
         })
     return results
 

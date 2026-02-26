@@ -20,6 +20,10 @@ RUSSIAN_ORIGIN_FLAGS: frozenset[str] = frozenset({
     "GA",  # Gabon
     "CM",  # Cameroon
     "TZ",  # Tanzania
+    "ST",  # São Tomé and Príncipe — 385% registration increase 2025
+    "GM",  # Gambia — cited in KSE shadow fleet reports
+    "CK",  # Cook Islands — expelled from RISC 2025
+    "GQ",  # Equatorial Guinea — cited in CSIS shadow fleet reports
 })
 
 # Western / major registries with strong oversight
@@ -35,6 +39,7 @@ MID_TO_FLAG: dict[str, str] = {
     # Shadow fleet convenience flags
     "511": "PW", "538": "MH", "620": "KM", "667": "SL",
     "334": "HN", "626": "GA", "613": "CM", "674": "TZ",
+    "668": "ST", "629": "GM", "518": "CK", "631": "GQ",
     # Major open registries
     "351": "PA", "352": "PA", "353": "PA", "354": "PA", "355": "PA", "356": "PA", "357": "PA",
     "636": "LR", "637": "LR",
@@ -96,6 +101,23 @@ def mmsi_to_flag(mmsi: str) -> str | None:
         return None
     mid = mmsi[:3]
     return MID_TO_FLAG.get(mid)
+
+
+# MIDs known to be unallocated or used by stateless shadow fleet vessels
+_KNOWN_STATELESS_MIDS: frozenset[str] = frozenset({"646"})
+
+
+def is_suspicious_mid(mmsi: str) -> bool:
+    """Check if an MMSI uses an unallocated or known-stateless MID.
+
+    Returns True for:
+    - MIDs not in MID_TO_FLAG (unallocated by ITU)
+    - MID 646 specifically (documented stateless shadow fleet pattern)
+    """
+    if not mmsi or not mmsi.isdigit() or len(mmsi) < 3:
+        return False
+    mid = mmsi[:3]
+    return mid not in MID_TO_FLAG or mid in _KNOWN_STATELESS_MIDS
 
 
 def flag_to_risk_category(flag: str | None) -> FlagRiskEnum:

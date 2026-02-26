@@ -212,6 +212,88 @@ def _vessel_size_multiplier(vessel: Any, config: dict) -> tuple[float, str]:
     return 1.0, "sub_panamax"
 
 
+def _sts_with_watchlisted_vessel(db: Session, vessel) -> tuple[int, str | None]:
+    """Check if vessel has done STS with any watchlisted vessel.
+
+    Returns (points, watchlist_source) or (0, None) if no match.
+    Sanctioned (OFAC/EU) partners score higher than shadow fleet list (KSE/OpenSanctions).
+    """
+    from app.models.sts_transfer import StsTransferEvent
+    from app.models.vessel_watchlist import VesselWatchlist
+    from sqlalchemy import or_
+
+    sts_events = db.query(StsTransferEvent).filter(
+        or_(
+            StsTransferEvent.vessel_1_id == vessel.vessel_id,
+            StsTransferEvent.vessel_2_id == vessel.vessel_id,
+        )
+    ).all()
+
+    if not sts_events:
+        return 0, None
+
+    best_score = 0
+    best_source = None
+    _SANCTIONED_SOURCES = {"OFAC_SDN", "EU_COUNCIL"}
+
+    for sts in sts_events:
+        partner_id = (
+            sts.vessel_2_id if sts.vessel_1_id == vessel.vessel_id else sts.vessel_1_id
+        )
+        watchlist_hit = db.query(VesselWatchlist).filter(
+            VesselWatchlist.vessel_id == partner_id,
+            VesselWatchlist.is_active == True,
+        ).all()
+
+        for w in watchlist_hit:
+            if w.watchlist_source in _SANCTIONED_SOURCES and best_score < 30:
+                best_score = 30
+                best_source = w.watchlist_source
+            elif w.watchlist_source not in _SANCTIONED_SOURCES and best_score < 20:
+                best_score = 20
+                best_source = w.watchlist_source
+
+    return best_score, best_source
+
+
+def _had_russian_port_call(db: Session, vessel, gap_start: datetime, days_before: int = 30) -> bool:
+    """Check if vessel was near a Russian oil terminal in the N days before gap_start.
+
+    Uses AIS position history within 5nm of any port with is_russian_oil_terminal=True.
+    """
+    from app.models.port import Port
+    from app.models.ais_point import AISPoint
+    from app.utils.geo import haversine_nm
+
+    terminals = db.query(Port).filter(Port.is_russian_oil_terminal == True).all()
+    if not terminals:
+        return False
+
+    window_start = gap_start - timedelta(days=days_before)
+    points = (
+        db.query(AISPoint)
+        .filter(
+            AISPoint.vessel_id == vessel.vessel_id,
+            AISPoint.timestamp_utc >= window_start,
+            AISPoint.timestamp_utc <= gap_start,
+        )
+        .all()
+    )
+
+    for pt in points:
+        for terminal in terminals:
+            # Extract lat/lon from port geometry
+            try:
+                from geoalchemy2.shape import to_shape
+                port_shape = to_shape(terminal.geometry)
+                port_lat, port_lon = port_shape.y, port_shape.x
+            except Exception:
+                continue
+            if haversine_nm(pt.lat, pt.lon, port_lat, port_lon) <= 5.0:
+                return True
+    return False
+
+
 def _score_band(score: int) -> str:
     """Return human-readable band label for a final score.
 
@@ -836,6 +918,43 @@ def compute_gap_score(
                 from app.utils.vessel_identity import RUSSIAN_ORIGIN_FLAGS
                 if vessel.flag and vessel.flag.upper() in RUSSIAN_ORIGIN_FLAGS:
                     breakdown["new_mmsi_russian_origin_flag"] = behavioral_cfg.get("new_mmsi_plus_russian_origin_zone", 25)
+
+    # Suspicious MID: unallocated or known-stateless MMSI
+    if vessel is not None and vessel.mmsi:
+        from app.utils.vessel_identity import is_suspicious_mid
+        if is_suspicious_mid(vessel.mmsi):
+            behavioral_cfg = config.get("behavioral", {})
+            breakdown["suspicious_mid"] = behavioral_cfg.get("suspicious_mid", 25)
+
+    # Russian port call composite signal (highest-value shadow fleet indicator)
+    if db is not None and vessel is not None:
+        russian_port = _had_russian_port_call(db, vessel, gap.gap_start_utc)
+        if russian_port:
+            # Check if gap is also in an STS corridor (composite signal)
+            _in_sts = False
+            if gap.corridor is not None:
+                _ct = str(
+                    gap.corridor.corridor_type.value
+                    if hasattr(gap.corridor.corridor_type, "value")
+                    else gap.corridor.corridor_type
+                )
+                _in_sts = _ct == "sts_zone"
+            behavioral_cfg = config.get("behavioral", {})
+            if _in_sts:
+                # Full composite: Russian port → gap → STS zone
+                breakdown["russian_port_gap_sts"] = behavioral_cfg.get("russian_port_gap_sts", 40)
+            else:
+                breakdown["russian_port_recent"] = behavioral_cfg.get("russian_port_recent", 25)
+
+    # STS network association: guilt-by-association with watchlisted partners
+    if db is not None and vessel is not None:
+        sts_assoc_pts, sts_assoc_source = _sts_with_watchlisted_vessel(db, vessel)
+        if sts_assoc_pts > 0:
+            _SANCTIONED_SOURCES = {"OFAC_SDN", "EU_COUNCIL"}
+            if sts_assoc_source in _SANCTIONED_SOURCES:
+                breakdown["sts_with_sanctioned_vessel"] = sts_assoc_pts
+            else:
+                breakdown["sts_with_shadow_fleet_vessel"] = sts_assoc_pts
 
     # Phase 6.12: Dark vessel detection signal
     if db is not None and gap.vessel_id is not None:
