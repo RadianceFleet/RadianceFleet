@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, Float, String, DateTime, ForeignKey, Enum as SAEnum, CheckConstraint
+from sqlalchemy import Integer, Float, String, DateTime, ForeignKey, Enum as SAEnum, CheckConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, AISClassEnum
 
@@ -14,6 +14,7 @@ class AISPoint(Base):
     __table_args__ = (
         CheckConstraint("lat >= -90 AND lat <= 90", name="ck_ais_lat_bounds"),
         CheckConstraint("lon >= -180 AND lon <= 180", name="ck_ais_lon_bounds"),
+        Index("ix_ais_vessel_ts", "vessel_id", "timestamp_utc"),
     )
 
     ais_point_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

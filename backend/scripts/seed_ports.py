@@ -43,6 +43,14 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("De-Kastri", "RU", 51.47, 140.78),
     ("Varandey", "RU", 68.82, 58.07),
 
+    # ── India (major refinery destinations) ──────────────────────────────────
+    ("Jamnagar (Reliance)", "IN", 21.85, 69.08),      # World's largest refinery
+    ("Vadinar Terminal", "IN", 21.58, 69.20),
+    ("Sikka (Hindustan Petroleum)", "IN", 21.70, 69.40),
+    ("Paradip (IOCL)", "IN", 20.07, 86.68),
+    ("Visakhapatnam (HPCL)", "IN", 17.67, 83.30),
+    ("Mangalore (MRPL)", "IN", 12.92, 74.86),
+
     # ── Major EU ports ─────────────────────────────────────────────────────────
     ("Rotterdam", "NL", 51.94, 4.14),
     ("Hamburg", "DE", 53.55, 10.00),
@@ -70,10 +78,15 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Canakkale Anchorage", "TR", 40.15, 26.40),
     ("Ambarlı", "TR", 40.97, 28.68),
     ("Aliaga", "TR", 38.80, 26.97),
+    ("Dortyol (BOTAS Ceyhan)", "TR", 36.83, 35.98),
+    ("Iskenderun (Tupras)", "TR", 36.59, 36.18),
     ("Batumi", "GE", 41.64, 41.64),
     ("Poti", "GE", 42.15, 41.68),
     ("Odessa", "UA", 46.49, 30.74),
     ("Constanta", "RO", 44.17, 28.63),
+
+    # ── Egypt ────────────────────────────────────────────────────────────────
+    ("Ain Sukhna (SUMED)", "EG", 29.96, 32.50),
 
     # ── Far East ──────────────────────────────────────────────────────────────
     ("Singapore", "SG", 1.27, 103.83),
@@ -81,6 +94,7 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Busan", "KR", 35.10, 129.04),
     ("Ulsan", "KR", 35.55, 129.42),
     ("Yeosu", "KR", 34.76, 127.75),
+    ("Gwangyang (Petrochem)", "KR", 34.92, 127.28),
     ("Incheon", "KR", 37.46, 126.62),
     ("Ningbo-Zhoushan", "CN", 29.87, 121.55),
     ("Shanghai", "CN", 31.25, 121.71),
@@ -98,6 +112,13 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Ras Tanura", "SA", 26.67, 50.16),
     ("Kuwait City", "KW", 29.37, 48.00),
     ("Basra / Khor Al Zubair", "IQ", 30.53, 47.83),
+
+    # ── West Africa ──────────────────────────────────────────────────────────
+    ("Lomé (Togo)", "TG", 6.10, 1.23),
+    ("Lagos (Nigeria)", "NG", 6.46, 3.39),
+
+    # ── Brazil ───────────────────────────────────────────────────────────────
+    ("São Luís (Maranhão)", "BR", -2.90, -44.30),
 ]
 
 

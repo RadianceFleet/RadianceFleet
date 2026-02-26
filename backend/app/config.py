@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     AISSTREAM_API_KEY: str | None = None
     AISSTREAM_WS_URL: str = "wss://stream.aisstream.io/v0/stream"
     AISSTREAM_BATCH_INTERVAL: int = 30
-    AISSTREAM_DEFAULT_DURATION: int = 300
+    AISSTREAM_DEFAULT_DURATION: int = 3600
     # Global Fishing Watch API
     GFW_API_TOKEN: str | None = None
     GFW_API_BASE_URL: str = "https://gateway.api.globalfishingwatch.org"
