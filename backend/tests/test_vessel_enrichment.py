@@ -28,6 +28,7 @@ def _make_vessel(mmsi, imo=None, deadweight=None, year_built=None, flag=None, fl
     v.flag = flag
     v.flag_risk_category = flag_risk
     v.vessel_type = vessel_type
+    v.vessel_id = hash(mmsi) % 10000  # Stable fake ID for enriched_ids tracking
     return v
 
 

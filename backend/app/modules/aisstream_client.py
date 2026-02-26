@@ -14,9 +14,10 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -74,6 +75,12 @@ def _map_position_report(msg: dict) -> dict | None:
         ts_raw = meta.get("time_utc", "")
         ts = parse_timestamp_flexible(ts_raw)
         if ts is None:
+            return None
+
+        # P1.2: Reject future timestamps (5-min tolerance for clock skew)
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        ts_naive = ts.replace(tzinfo=None) if ts.tzinfo is not None else ts
+        if ts_naive > now_utc + timedelta(minutes=5):
             return None
 
         # 1.1: SOG sentinel 102.3 (raw 1023 = "not available")
@@ -230,8 +237,14 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
                 ais_source="aisstream",
                 mmsi_first_seen_utc=ts,
             )
-            db.add(vessel)
-            db.flush()
+            try:
+                db.add(vessel)
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
+                if not vessel:
+                    continue  # Should not happen, but skip if it does
 
         ts = _parse_timestamp(pt)
         if ts is None:
@@ -316,6 +329,7 @@ async def stream_ais(
         "vessels_seen": set(),
         "vessels_updated": 0,
         "batches": 0,
+        "batch_errors": 0,
         "errors": 0,
         "duration_seconds": duration_seconds,
     }
@@ -325,82 +339,145 @@ async def stream_ais(
     last_batch_time = time.monotonic()
     start_time = time.monotonic()
 
-    try:
-        async with websockets.connect(ws_url) as ws:
-            # Send subscription within 3 seconds of connecting
-            await ws.send(json.dumps(subscription))
-            logger.info(
-                "Connected to aisstream.io — streaming %d bounding boxes for %ss",
-                len(bounding_boxes),
-                duration_seconds or "unlimited",
-            )
+    # P1.1: Retry loop with exponential backoff for WebSocket reconnection
+    retry_delays = [5, 15, 30]  # seconds
+    retry_count = 0
+    connection_broken = False
 
-            async for raw_msg in ws:
-                elapsed = time.monotonic() - start_time
-                if duration_seconds > 0 and elapsed >= duration_seconds:
-                    break
+    while True:
+        try:
+            async with websockets.connect(ws_url) as ws:
+                # Reset retry count on successful connection
+                retry_count = 0
 
-                try:
-                    msg = json.loads(raw_msg)
-                except json.JSONDecodeError:
-                    stats["errors"] += 1
-                    continue
+                # Send subscription within 3 seconds of connecting
+                await ws.send(json.dumps(subscription))
+                logger.info(
+                    "Connected to aisstream.io — streaming %d bounding boxes for %ss",
+                    len(bounding_boxes),
+                    duration_seconds or "unlimited",
+                )
 
-                stats["messages_received"] += 1
-                msg_type = msg.get("MessageType", "")
+                async for raw_msg in ws:
+                    elapsed = time.monotonic() - start_time
+                    if duration_seconds > 0 and elapsed >= duration_seconds:
+                        break
 
-                if msg_type == "PositionReport":
-                    pt = _map_position_report(msg)
-                    if pt:
-                        stats["position_reports"] += 1
-                        stats["vessels_seen"].add(pt["mmsi"])
-                        point_buffer.append(pt)
-                elif msg_type == "ShipStaticData":
-                    sd = _map_static_data(msg)
-                    if sd:
-                        stats["static_data_msgs"] += 1
-                        stats["vessels_seen"].add(sd["mmsi"])
-                        static_buffer[sd["mmsi"]] = sd
+                    try:
+                        msg = json.loads(raw_msg)
+                    except json.JSONDecodeError:
+                        stats["errors"] += 1
+                        continue
 
-                # Batch insert at interval
-                now = time.monotonic()
-                if now - last_batch_time >= batch_interval and point_buffer:
+                    stats["messages_received"] += 1
+                    msg_type = msg.get("MessageType", "")
+
+                    if msg_type == "PositionReport":
+                        pt = _map_position_report(msg)
+                        if pt:
+                            stats["position_reports"] += 1
+                            stats["vessels_seen"].add(pt["mmsi"])
+                            point_buffer.append(pt)
+                    elif msg_type == "ShipStaticData":
+                        sd = _map_static_data(msg)
+                        if sd:
+                            stats["static_data_msgs"] += 1
+                            stats["vessels_seen"].add(sd["mmsi"])
+                            static_buffer[sd["mmsi"]] = sd
+
+                    # Batch insert at interval
+                    now = time.monotonic()
+                    if now - last_batch_time >= batch_interval and point_buffer:
+                        db = db_factory()
+                        try:
+                            result = _ingest_batch(db, point_buffer, static_buffer)
+                            stats["points_stored"] += result["points_stored"]
+                            stats["vessels_updated"] += result["vessels_updated"]
+                            stats["batches"] += 1
+                        except Exception as exc:
+                            logger.error("Batch ingestion error: %s", exc)
+                            db.rollback()
+                            stats["batch_errors"] = stats.get("batch_errors", 0) + 1
+                        finally:
+                            db.close()
+
+                        if progress_callback:
+                            progress_callback({
+                                "elapsed_s": int(elapsed),
+                                "messages": stats["messages_received"],
+                                "points_stored": stats["points_stored"],
+                                "vessels_seen": len(stats["vessels_seen"]),
+                                "msg_per_s": round(stats["messages_received"] / max(elapsed, 1), 1),
+                            })
+
+                        point_buffer.clear()
+                        static_buffer.clear()
+                        last_batch_time = now
+
+                # Normal exit (duration timeout or stream ended) — final batch
+                if point_buffer:
                     db = db_factory()
                     try:
                         result = _ingest_batch(db, point_buffer, static_buffer)
                         stats["points_stored"] += result["points_stored"]
                         stats["vessels_updated"] += result["vessels_updated"]
                         stats["batches"] += 1
+                    except Exception as exc:
+                        logger.error("Final batch ingestion error: %s", exc)
+                        db.rollback()
+                        stats["batch_errors"] = stats.get("batch_errors", 0) + 1
                     finally:
                         db.close()
+                        point_buffer.clear()
+                        static_buffer.clear()
 
-                    if progress_callback:
-                        progress_callback({
-                            "elapsed_s": int(elapsed),
-                            "messages": stats["messages_received"],
-                            "points_stored": stats["points_stored"],
-                            "vessels_seen": len(stats["vessels_seen"]),
-                            "msg_per_s": round(stats["messages_received"] / max(elapsed, 1), 1),
-                        })
+                # Normal completion — exit retry loop
+                break
 
-                    point_buffer.clear()
-                    static_buffer.clear()
-                    last_batch_time = now
+        except (websockets.ConnectionClosed, websockets.WebSocketException, OSError) as exc:
+            # Check if time budget is exhausted
+            elapsed = time.monotonic() - start_time
+            if duration_seconds > 0 and elapsed >= duration_seconds:
+                logger.warning("Connection lost after duration expired: %s", exc)
+                stats["incomplete"] = True
+                break
 
-            # Final batch
-            if point_buffer:
-                db = db_factory()
-                try:
-                    result = _ingest_batch(db, point_buffer, static_buffer)
-                    stats["points_stored"] += result["points_stored"]
-                    stats["vessels_updated"] += result["vessels_updated"]
-                    stats["batches"] += 1
-                finally:
-                    db.close()
+            if retry_count < len(retry_delays):
+                delay = retry_delays[retry_count]
+                retry_count += 1
+                logger.warning(
+                    "aisstream.io connection lost (%s), reconnecting in %ds (attempt %d/%d)",
+                    exc, delay, retry_count, len(retry_delays),
+                )
+                await asyncio.sleep(delay)
+                # Continue to retry — buffers are preserved across reconnections
+            else:
+                logger.error(
+                    "aisstream.io connection lost after %d retries: %s", len(retry_delays), exc
+                )
+                stats["incomplete"] = True
+                stats["error"] = str(exc)
+                # Attempt to flush remaining buffer before giving up
+                if point_buffer:
+                    db = db_factory()
+                    try:
+                        result = _ingest_batch(db, point_buffer, static_buffer)
+                        stats["points_stored"] += result["points_stored"]
+                        stats["vessels_updated"] += result["vessels_updated"]
+                        stats["batches"] += 1
+                    except Exception as flush_exc:
+                        logger.error("Buffer flush after retries exhausted failed: %s", flush_exc)
+                        db.rollback()
+                        stats["batch_errors"] = stats.get("batch_errors", 0) + 1
+                    finally:
+                        db.close()
+                break
 
-    except Exception as exc:
-        logger.error("aisstream.io connection error: %s", exc)
-        stats["error"] = str(exc)
+        except Exception as exc:
+            logger.error("aisstream.io unexpected error: %s", exc)
+            stats["error"] = str(exc)
+            stats["incomplete"] = True
+            break
 
     # Convert set to count for JSON serialization
     stats["vessels_seen"] = len(stats["vessels_seen"])

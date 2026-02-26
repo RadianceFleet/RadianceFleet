@@ -41,7 +41,10 @@ class TestFuzzyMatchVessel:
         vessel = self._make_vessel("TANKER ONE")
         db.query.return_value.filter.return_value.all.return_value = [vessel]
         result = _fuzzy_match_vessel(db, "TANKER ONE")
-        assert result is vessel
+        # Returns (vessel, match_type, confidence) tuple
+        assert result[0] is vessel
+        assert result[1] == "fuzzy_name"
+        assert result[2] == 100
 
     def test_below_threshold_returns_none(self):
         db = MagicMock()
@@ -55,7 +58,9 @@ class TestFuzzyMatchVessel:
         vessel = self._make_vessel("TANKER ONEE")  # minor typo
         db.query.return_value.filter.return_value.all.return_value = [vessel]
         result = _fuzzy_match_vessel(db, "TANKER ONE", threshold=85)
-        assert result is vessel
+        assert result[0] is vessel
+        assert result[1] == "fuzzy_name"
+        assert result[2] >= 85
 
     def test_empty_name_returns_none(self):
         db = MagicMock()
@@ -79,4 +84,4 @@ class TestFuzzyMatchVessel:
         v_real = self._make_vessel("TANKER ONE")
         db.query.return_value.filter.return_value.all.return_value = [v_none, v_real]
         result = _fuzzy_match_vessel(db, "TANKER ONE")
-        assert result is v_real
+        assert result[0] is v_real

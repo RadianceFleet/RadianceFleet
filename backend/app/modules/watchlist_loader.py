@@ -14,8 +14,8 @@ a batch import.
 Matching strategy (in priority order for all loaders):
   1. MMSI exact match (9-digit string)
   2. IMO exact match
-  3. Fuzzy name match via rapidfuzz.fuzz.ratio at ≥ 85 % confidence
-     (with optional flag pre-filter)
+  3. Fuzzy name match via rapidfuzz.fuzz.ratio at ≥ 92 % confidence
+     (name-only) or ≥ 85 % (with flag pre-filter)
 
 Before any insert the loaders check for an existing VesselWatchlist row
 for the same (vessel_id, watchlist_source) and update is_active=True
@@ -60,6 +60,8 @@ def _upsert_watchlist(
     reason: Optional[str] = None,
     date_listed: Optional[date] = None,
     source_url: Optional[str] = None,
+    match_confidence: int = 100,
+    match_type: str = "unknown",
 ) -> None:
     """Insert a VesselWatchlist row or re-activate an existing one."""
     existing = (
@@ -72,6 +74,8 @@ def _upsert_watchlist(
     )
     if existing:
         existing.is_active = True
+        existing.match_confidence = match_confidence
+        existing.match_type = match_type
         logger.debug(
             "Watchlist: re-activated existing entry for vessel_id=%d source=%s",
             vessel.vessel_id,
@@ -85,6 +89,8 @@ def _upsert_watchlist(
             date_listed=date_listed,
             source_url=source_url,
             is_active=True,
+            match_confidence=match_confidence,
+            match_type=match_type,
         )
         db.add(entry)
         logger.debug(
@@ -99,11 +105,15 @@ def _fuzzy_match_vessel(
     name: str,
     flag: Optional[str] = None,
     threshold: int = _FUZZY_THRESHOLD,
-) -> Optional[Vessel]:
-    """Return the best-matching Vessel for *name* above *threshold*, or None.
+) -> Optional[tuple[Vessel, str, int]]:
+    """Return (vessel, match_type, confidence) for best name match above threshold.
 
     If *flag* is supplied, only vessels with an exact (case-insensitive) flag
     match are considered.  Uses rapidfuzz.fuzz.ratio for string similarity.
+
+    When no flag is provided the effective threshold is raised to 92 % to
+    reduce false positives on common vessel names (e.g. "OCEAN STAR" vs
+    "OCEAN STAR II").
 
     Args:
         db: Active SQLAlchemy session.
@@ -112,10 +122,13 @@ def _fuzzy_match_vessel(
         threshold: Minimum similarity score (0-100) to accept a match.
 
     Returns:
-        The best-matching Vessel, or None if no candidate meets the threshold.
+        ``(vessel, "fuzzy_name", score)`` or ``None``.
     """
     if not name:
         return None
+
+    # Raise threshold for name-only matches (no MMSI/IMO backup) to 92%
+    effective_threshold = 92 if not flag else threshold
 
     query = db.query(Vessel).filter(Vessel.name.isnot(None))
     if flag:
@@ -133,14 +146,13 @@ def _fuzzy_match_vessel(
             best_score = score
             best_vessel = vessel
 
-    if best_score >= threshold:
-        logger.debug(
-            "Fuzzy match: '%s' -> '%s' (score=%.1f)",
-            name,
-            best_vessel.name if best_vessel else None,
-            best_score,
-        )
-        return best_vessel
+    if best_score >= effective_threshold:
+        if best_score < 95:
+            logger.warning(
+                "Low-confidence name match: '%s' -> '%s' (score=%.1f)",
+                name, best_vessel.name if best_vessel else None, best_score,
+            )
+        return (best_vessel, "fuzzy_name", int(best_score))
 
     return None
 
@@ -151,20 +163,20 @@ def _resolve_vessel(
     imo: Optional[str],
     name: Optional[str],
     flag: Optional[str] = None,
-) -> Optional[Vessel]:
+) -> Optional[tuple[Vessel, str, int]]:
     """Resolve a vessel using MMSI, IMO, then fuzzy name match.
 
-    Returns the matched Vessel or None.
+    Returns ``(vessel, match_type, confidence)`` or ``None``.
     """
     if mmsi and _is_valid_mmsi(mmsi):
         vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi.strip()).first()
         if vessel:
-            return vessel
+            return (vessel, "exact_mmsi", 100)
 
     if imo:
         vessel = db.query(Vessel).filter(Vessel.imo == imo.strip()).first()
         if vessel:
-            return vessel
+            return (vessel, "exact_imo", 100)
 
     if name:
         return _fuzzy_match_vessel(db, name, flag=flag)
@@ -206,8 +218,8 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
             imo = (row.get("ent_num") or row.get("ALT_NUM") or "").strip() or None
             remarks = (row.get("REMARKS") or row.get("remarks") or "").strip() or None
 
-            vessel = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name)
-            if vessel is None:
+            result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name)
+            if result is None:
                 logger.warning(
                     "OFAC SDN: no vessel match for name=%r mmsi=%r imo=%r",
                     name, mmsi, imo,
@@ -215,6 +227,7 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
                 unmatched += 1
                 continue
 
+            vessel, match_type, confidence = result
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -222,6 +235,8 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
                 reason=remarks,
                 date_listed=None,
                 source_url=None,
+                match_confidence=confidence,
+                match_type=match_type,
             )
             matched += 1
 
@@ -273,8 +288,8 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
             imo = _first(row, _IMO_FIELDS)
             mmsi = _first(row, _MMSI_FIELDS)
 
-            vessel = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
-            if vessel is None:
+            result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
+            if result is None:
                 logger.warning(
                     "KSE: no vessel match for name=%r flag=%r mmsi=%r imo=%r",
                     name, flag, mmsi, imo,
@@ -282,6 +297,7 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
                 unmatched += 1
                 continue
 
+            vessel, match_type, confidence = result
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -289,6 +305,8 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
                 reason="KSE shadow fleet list",
                 date_listed=None,
                 source_url=None,
+                match_confidence=confidence,
+                match_type=match_type,
             )
             matched += 1
 
@@ -375,8 +393,8 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
             source = "OPENSANCTIONS"
 
         # ── Match vessel ──────────────────────────────────────────────────────
-        vessel = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
-        if vessel is None:
+        result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
+        if result is None:
             logger.warning(
                 "OpenSanctions: no vessel match for name=%r mmsi=%r imo=%r dataset=%r",
                 name, mmsi, imo, dataset_id,
@@ -384,6 +402,7 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
             unmatched += 1
             continue
 
+        vessel, match_type, confidence = result
         _upsert_watchlist(
             db,
             vessel=vessel,
@@ -391,6 +410,8 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
             reason=entity.get("reason") or entity.get("notes"),
             date_listed=None,
             source_url=entity.get("source_url"),
+            match_confidence=confidence,
+            match_type=match_type,
         )
         matched += 1
 

@@ -711,8 +711,22 @@ def compute_gap_score(
             StsTransferEvent.end_time_utc <= gap.gap_end_utc + timedelta(days=7),
         ).all()
         if sts_events:
-            best_sts = max(sts_events, key=lambda s: s.risk_score_component)
-            breakdown[f"sts_event_{best_sts.sts_id}"] = best_sts.risk_score_component
+            sts_cfg = config.get("sts", {})
+            best_sts_score = 0
+            best_sts = None
+            for sts in sts_events:
+                base = sts.risk_score_component
+                # Bonus for dark-partner STS (one vessel had no AIS during proximity)
+                det_type = getattr(sts, 'detection_type', None)
+                if det_type is not None:
+                    dt_val = det_type.value if hasattr(det_type, 'value') else str(det_type)
+                    if dt_val in ('visible_dark', 'dark_dark'):
+                        base += sts_cfg.get("one_vessel_dark_during_proximity", 15)
+                if base > best_sts_score:
+                    best_sts_score = base
+                    best_sts = sts
+            if best_sts:
+                breakdown[f"sts_event_{best_sts.sts_id}"] = best_sts_score
 
     # Phase 6.7: Watchlist scoring (all weights from YAML)
     if db is not None and vessel is not None:

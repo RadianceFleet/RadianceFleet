@@ -30,7 +30,7 @@ def enrich_vessels_from_gfw(
     db: Session,
     token: str | None = None,
     limit: int = 50,
-) -> dict[str, int]:
+) -> dict:
     """Batch-enrich vessels missing critical metadata via GFW vessel search.
 
     Queries vessels where deadweight IS NULL and mmsi IS NOT NULL, then looks
@@ -43,7 +43,8 @@ def enrich_vessels_from_gfw(
         limit: Max vessels to enrich per run.
 
     Returns:
-        {"enriched": int, "failed": int, "skipped": int}
+        {"enriched": int, "failed": int, "skipped": int, "no_exact_match": int,
+         "enriched_vessel_ids": list[int]}
     """
     from app.models.vessel import Vessel
     from app.modules.gfw_client import search_vessel
@@ -60,7 +61,8 @@ def enrich_vessels_from_gfw(
         .all()
     )
 
-    stats = {"enriched": 0, "failed": 0, "skipped": 0}
+    stats: dict = {"enriched": 0, "failed": 0, "skipped": 0, "no_exact_match": 0}
+    enriched_ids: set[int] = set()
 
     for vessel in vessels:
         try:
@@ -76,14 +78,17 @@ def enrich_vessels_from_gfw(
             time.sleep(_REQUEST_DELAY_S)
             continue
 
-        # Pick best match: prefer exact MMSI match
+        # Pick best match: require exact MMSI match
         match = None
         for r in results:
             if str(r.get("mmsi")) == vessel.mmsi:
                 match = r
                 break
         if match is None:
-            match = results[0]
+            stats["no_exact_match"] += 1
+            stats["skipped"] += 1
+            time.sleep(_REQUEST_DELAY_S)
+            continue  # Skip — wrong enrichment is worse than none
 
         changed = False
 
@@ -114,12 +119,14 @@ def enrich_vessels_from_gfw(
 
         if changed:
             stats["enriched"] += 1
+            enriched_ids.add(vessel.vessel_id)
         else:
             stats["skipped"] += 1
 
         time.sleep(_REQUEST_DELAY_S)
 
     db.commit()
+    stats["enriched_vessel_ids"] = list(enriched_ids)
     logger.info("GFW vessel enrichment: %s", stats)
     return stats
 

@@ -751,13 +751,16 @@ def setup(
       6. If AISSTREAM_API_KEY set → stream AIS data for --stream-duration
       7. If GFW_API_TOKEN set → fetch SAR detections for corridors (last 30d)
       8. If AISHUB_USERNAME set → fetch latest positions for corridor areas
-      8.5 If GFW_API_TOKEN set → enrich vessels missing DWT/year_built/IMO
-      9. If --with-sample-data AND no AIS data yet → generate/ingest sample data
-      10. Run detection pipeline (gaps → spoofing → loitering → STS → corridors → score)
+      9. If GFW_API_TOKEN set → enrich vessels missing DWT/year_built/IMO
+      10. Infer AIS class from transmission intervals
+      11. Re-match watchlists against vessels created during streaming
+      12. Fetch PSC detention records (FTM + EMSA)
+      13. If --with-sample-data AND no AIS data yet → generate/ingest sample data
+      14. Run detection pipeline (gaps → spoofing → loitering → STS → corridors → score)
     """
     import sys
 
-    total_steps = 12
+    total_steps = 14
     console.print("[bold cyan]RadianceFleet Setup[/bold cyan]\n")
 
     # 1. Check Python version
@@ -978,7 +981,7 @@ def setup(
             console.print("[dim]  AISHUB_USERNAME not set — skipping[/dim]")
             console.print("[dim]  Join at: https://www.aishub.net/[/dim]")
 
-        # 8.5. Enrich vessel metadata via GFW (if token configured)
+        # 8. Enrich vessel metadata via GFW (if token configured)
         console.print(f"\n[cyan]Step 8/{total_steps}: Vessel metadata enrichment...[/cyan]")
         if _settings.GFW_API_TOKEN:
             try:
@@ -988,16 +991,33 @@ def setup(
                     f"[green]✓[/green] Enriched {enrich_result['enriched']} vessels "
                     f"(skipped {enrich_result['skipped']}, failed {enrich_result['failed']})"
                 )
+                # Auto-rescore if enrichment updated vessel metadata
+                if enrich_result.get("enriched", 0) > 0:
+                    from app.modules.risk_scoring import score_all_alerts
+                    rescore = score_all_alerts(db)
+                    console.print(f"  Re-scored {rescore.get('scored', 0)} alerts with enriched data")
             except Exception as e:
                 console.print(f"[yellow]⚠ Vessel enrichment failed: {e}[/yellow]")
         else:
             console.print("[dim]  GFW_API_TOKEN not set — skipping enrichment[/dim]")
 
-        # 8.6. Re-match watchlists against vessels created during AIS streaming
+        # 9. Infer AIS class from transmission intervals
+        console.print(f"\n[cyan]Step 9/{total_steps}: Inferring AIS class from transmission intervals...[/cyan]")
+        try:
+            from app.modules.vessel_enrichment import infer_ais_class_batch
+            ais_class_result = infer_ais_class_batch(db)
+            console.print(
+                f"[green]✓[/green] AIS class: updated {ais_class_result['updated']}, "
+                f"skipped {ais_class_result['skipped']}"
+            )
+        except Exception as e:
+            console.print(f"[yellow]⚠ AIS class inference failed: {e}[/yellow]")
+
+        # 10. Re-match watchlists against vessels created during AIS streaming
         if not skip_fetch:
             from app.models.vessel import Vessel as _VesselCount
             vessel_count = db.query(_VesselCount).count()
-            console.print(f"\n[cyan]Step 9/{total_steps}: Re-matching watchlists ({vessel_count} vessels)...[/cyan]")
+            console.print(f"\n[cyan]Step 10/{total_steps}: Re-matching watchlists ({vessel_count} vessels)...[/cyan]")
             try:
                 from app.modules.data_fetcher import _find_latest
                 from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions
@@ -1019,12 +1039,45 @@ def setup(
             except Exception as e:
                 console.print(f"[yellow]⚠ Watchlist re-match failed: {e}[/yellow]")
         else:
-            console.print(f"\n[dim]Step 9/{total_steps}: Skipping watchlist re-match (--skip-fetch)[/dim]")
+            console.print(f"\n[dim]Step 10/{total_steps}: Skipping watchlist re-match (--skip-fetch)[/dim]")
 
-        # 10. Sample data fallback (if no AIS data yet)
+        # 11. PSC data download and import
+        console.print(f"\n[cyan]Step 11/{total_steps}: PSC data (detention records)...[/cyan]")
+        try:
+            from app.modules.data_fetcher import fetch_psc_ftm, fetch_emsa_bans
+            psc_result = fetch_psc_ftm()
+            if psc_result.get("files"):
+                from app.modules.psc_loader import load_psc_ftm
+                for source_key, psc_path in psc_result["files"].items():
+                    if psc_path:
+                        ftm_result = load_psc_ftm(db, str(psc_path), source=source_key)
+                        console.print(
+                            f"[green]✓[/green] PSC {source_key}: "
+                            f"{ftm_result.get('matched', 0)} matched, "
+                            f"{ftm_result.get('recent', 0)} recent"
+                        )
+            if psc_result.get("errors"):
+                for err in psc_result["errors"]:
+                    console.print(f"[dim]  PSC warning: {err}[/dim]")
+
+            emsa_result = fetch_emsa_bans()
+            if emsa_result.get("path"):
+                from app.modules.psc_loader import load_emsa_bans
+                emsa_load = load_emsa_bans(db, str(emsa_result["path"]))
+                console.print(
+                    f"[green]✓[/green] EMSA bans: "
+                    f"{emsa_load.get('matched', 0)} matched, "
+                    f"{emsa_load.get('flagged', 0)} flagged"
+                )
+            elif emsa_result.get("error"):
+                console.print(f"[dim]  EMSA: {emsa_result['error']}[/dim]")
+        except Exception as exc:
+            console.print(f"[dim]  PSC data skipped: {exc}[/dim]")
+
+        # 12. Sample data fallback (if no AIS data yet)
         from app.models.ais_point import AISPoint
         ais_count = db.query(AISPoint).count()
-        console.print(f"\n[cyan]Step 10/{total_steps}: Sample data...[/cyan]")
+        console.print(f"\n[cyan]Step 12/{total_steps}: Sample data...[/cyan]")
         if with_sample_data and ais_count == 0:
             try:
                 from app.modules.ingest import ingest_ais_csv
@@ -1061,9 +1114,9 @@ def setup(
         else:
             console.print("[dim]  No sample data requested[/dim]")
 
-        # 10. Run detection pipeline (only if we have AIS data)
+        # 13. Run detection pipeline (only if we have AIS data)
         ais_count = db.query(AISPoint).count()  # re-check after possible ingest
-        console.print(f"\n[cyan]Step 11/{total_steps}: Running detection pipeline...[/cyan]")
+        console.print(f"\n[cyan]Step 13/{total_steps}: Running detection pipeline...[/cyan]")
         if ais_count == 0:
             console.print("[dim]  No AIS data loaded — skipping detection pipeline[/dim]")
         else:
@@ -1099,7 +1152,7 @@ def setup(
         db.close()
 
     # Summary
-    console.print(f"\n[cyan]Step 12/{total_steps}: Summary[/cyan]")
+    console.print(f"\n[cyan]Step 14/{total_steps}: Summary[/cyan]")
     console.print("─" * 50)
     console.print("[bold green]Setup complete![/bold green]")
     console.print("\nNext steps:")
@@ -1692,5 +1745,39 @@ def data_enrich_vessels(
             f"[green]Done.[/green] Enriched: {result['enriched']}, "
             f"Failed: {result['failed']}, Skipped: {result['skipped']}"
         )
+    finally:
+        db.close()
+
+
+@data_app.command("psc")
+def data_psc():
+    """Fetch PSC detention records (FTM + EMSA) and import into database."""
+    from app.modules.data_fetcher import fetch_psc_ftm, fetch_emsa_bans
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        psc_result = fetch_psc_ftm()
+        if psc_result.get("files"):
+            from app.modules.psc_loader import load_psc_ftm
+            for source_key, psc_path in psc_result["files"].items():
+                if psc_path:
+                    result = load_psc_ftm(db, str(psc_path), source=source_key)
+                    console.print(f"PSC {source_key}: {result}")
+                else:
+                    console.print(f"[dim]PSC {source_key}: no file available[/dim]")
+        if psc_result.get("errors"):
+            for err in psc_result["errors"]:
+                console.print(f"[yellow]PSC warning: {err}[/yellow]")
+
+        emsa_result = fetch_emsa_bans()
+        if emsa_result.get("path"):
+            from app.modules.psc_loader import load_emsa_bans
+            result = load_emsa_bans(db, str(emsa_result["path"]))
+            console.print(f"EMSA bans: {result}")
+        elif emsa_result.get("error"):
+            console.print(f"[yellow]EMSA: {emsa_result['error']}[/yellow]")
+        else:
+            console.print("[dim]EMSA bans: up to date[/dim]")
     finally:
         db.close()

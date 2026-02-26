@@ -22,5 +22,7 @@ class VesselWatchlist(Base):
     date_listed: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     source_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    match_confidence: Mapped[int] = mapped_column(Integer, default=0)
+    match_type: Mapped[str] = mapped_column(String(50), default="unknown")
 
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="watchlist_entries")

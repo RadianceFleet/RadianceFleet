@@ -132,6 +132,14 @@ def run_gap_detection(
 
     Returns a summary dict with count of gaps detected.
     """
+    from app.models.corridor import Corridor
+    corridor_count = db.query(Corridor).count()
+    if corridor_count == 0:
+        logger.warning(
+            "No corridors loaded! Run 'radiancefleet corridors import'. "
+            "All gaps will miss corridor multipliers."
+        )
+
     vessels = db.query(Vessel).all()
     total_gaps = 0
 

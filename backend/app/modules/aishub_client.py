@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -197,8 +198,15 @@ def ingest_aishub_positions(
                 ais_source="aishub",
                 mmsi_first_seen_utc=ts,
             )
-            db.add(vessel)
-            db.flush()
+            try:
+                db.add(vessel)
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
+                if not vessel:
+                    stats["skipped"] += 1
+                    continue
             stats["vessels_created"] += 1
 
         ts = _parse_timestamp(pos)

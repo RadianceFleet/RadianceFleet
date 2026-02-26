@@ -13,6 +13,7 @@ from io import IOBase
 from typing import Any
 
 import polars as pl
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.vessel import Vessel
@@ -161,7 +162,7 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
 
     Returns None if the timestamp cannot be parsed (row should be skipped).
     """
-    mmsi = str(row["mmsi"])
+    mmsi = str(row["mmsi"]).strip().zfill(9)
     vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
     if not vessel:
         ts = _parse_timestamp(row)
@@ -182,8 +183,14 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
             callsign=row.get("callsign"),
             mmsi_first_seen_utc=ts,
         )
-        db.add(vessel)
-        db.flush()
+        try:
+            db.add(vessel)
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
+            if not vessel:
+                return None
         return vessel
 
     # Existing vessel — track identity changes before overwriting

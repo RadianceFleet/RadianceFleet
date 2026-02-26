@@ -136,11 +136,15 @@ def validate_ais_row(row: dict[str, Any]) -> str | None:
     """
     # --- MMSI validation ---
     mmsi_raw = row.get("mmsi", "")
-    mmsi = str(mmsi_raw)
+    mmsi = str(mmsi_raw).strip()
 
     # 4.5: Detect scientific notation MMSI (e.g., "2.41e+08" from Excel)
     if "e" in mmsi.lower():
         return f"MMSI in scientific notation: {mmsi!r} (export CSV column as text format)"
+
+    # P1.3: Pad to 9 digits — some CSV exporters drop leading zeros
+    mmsi = mmsi.zfill(9)
+    row["mmsi"] = mmsi  # Update row with padded value
 
     if not re.fullmatch(r"\d{9}", mmsi):
         return f"Invalid MMSI: {mmsi!r} (must be 9 digits)"
