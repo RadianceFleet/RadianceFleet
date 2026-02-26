@@ -24,15 +24,27 @@ _CATALOG_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
 _TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 _TIMEOUT = 30.0
 
+# Module-level token cache (sync single-process — fine for CLI/API)
+_token_cache: dict[str, Any] = {}  # {"token": str, "expires_at": float}
+
 
 def _get_access_token(
     client_id: str | None = None,
     client_secret: str | None = None,
+    force_refresh: bool = False,
 ) -> str:
     """Obtain an OAuth2 access token from Copernicus CDSE.
 
-    Uses client_credentials grant type.
+    Uses client_credentials grant type with module-level caching.
+    Token is cached until ``expires_in`` from the response (typically 600s),
+    minus a 30s safety margin.
     """
+    import time as _time
+
+    if not force_refresh and _token_cache.get("token"):
+        if _time.monotonic() < _token_cache.get("expires_at", 0):
+            return _token_cache["token"]
+
     cid = client_id or settings.COPERNICUS_CLIENT_ID
     csecret = client_secret or settings.COPERNICUS_CLIENT_SECRET
     if not cid or not csecret:
@@ -41,8 +53,11 @@ def _get_access_token(
             "Register at https://dataspace.copernicus.eu/"
         )
 
+    from app.utils.http_retry import retry_request
+
     with httpx.Client(timeout=_TIMEOUT) as client:
-        resp = client.post(
+        resp = retry_request(
+            client.post,
             _TOKEN_URL,
             data={
                 "grant_type": "client_credentials",
@@ -51,7 +66,12 @@ def _get_access_token(
             },
         )
         resp.raise_for_status()
-        return resp.json()["access_token"]
+        data = resp.json()
+        token = data["access_token"]
+        expires_in = data.get("expires_in", 600)
+        _token_cache["token"] = token
+        _token_cache["expires_at"] = _time.monotonic() + max(0, expires_in - 30)
+        return token
 
 
 def find_sentinel1_scenes(
@@ -101,13 +121,29 @@ def find_sentinel1_scenes(
 
     scenes = []
     try:
+        from app.utils.http_retry import retry_request
+
         with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-            resp = client.get(
-                _CATALOG_URL,
-                params=params,
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            resp.raise_for_status()
+            try:
+                resp = retry_request(
+                    client.get,
+                    _CATALOG_URL,
+                    params=params,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            except httpx.HTTPStatusError as auth_exc:
+                if auth_exc.response.status_code == 401:
+                    # Token expired — invalidate cache and re-authenticate once
+                    logger.info("Copernicus 401 — refreshing token and retrying")
+                    token = _get_access_token(force_refresh=True)
+                    resp = retry_request(
+                        client.get,
+                        _CATALOG_URL,
+                        params=params,
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                else:
+                    raise
             data = resp.json()
 
             for product in data.get("value", []):

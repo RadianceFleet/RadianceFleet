@@ -21,6 +21,8 @@ gap_duration:
 gap_frequency:
   2_gaps_in_7d: 18
   3_gaps_in_14d: 32
+  3_gaps_in_30d: 25
+  4_gaps_in_30d: 40
   5_gaps_in_30d: 50
 
 # SPEED ANOMALY (class-specific tanker max speeds per IMO class)
@@ -69,6 +71,7 @@ metadata:
   name_change_during_active_voyage: 30
   mmsi_change_mapped_same_position: 45
   callsign_change: 20
+  flag_change_from_high_risk_to_low_risk_12m: 20
 
 # VESSEL CHARACTERISTICS
 vessel_age:
@@ -120,14 +123,20 @@ sts:
 # BEHAVIORAL PATTERNS
 behavioral:
   new_mmsi_first_30d: 15
+  new_mmsi_first_60d: 8
   new_mmsi_plus_russian_origin_zone: 25
   vessel_laid_up_30d_plus: 15
   vessel_laid_up_60d_plus: 25
   vessel_laid_up_in_sts_zone: 30
+  suspicious_mid: 25
+  russian_port_recent: 25
+  russian_port_gap_sts: 40
+  sts_with_sanctioned_vessel: 30
+  sts_with_shadow_fleet_vessel: 20
 
 # NEGATIVE SCORING (legitimacy signals — reduce false positives)
 legitimacy:
-  gap_free_90d_clean: -15
+  gap_free_90d_clean: -10
   white_flag_jurisdiction: -10
   consistent_eu_port_calls: -5    # per documented port call
   speed_variation_matches_weather: -8

@@ -151,7 +151,7 @@ class TestIntegrityErrorHandling:
         db.rollback.assert_called_once()
 
     def test_aishub_integrity_error_recovers(self):
-        """IntegrityError during AISHub vessel creation should recover."""
+        """IntegrityError during AISHub vessel creation should recover via SAVEPOINT."""
         from sqlalchemy.exc import IntegrityError
         from app.modules.aishub_client import ingest_aishub_positions
 
@@ -162,9 +162,14 @@ class TestIntegrityErrorHandling:
 
         db.query.return_value.filter.return_value.first.side_effect = [
             None,  # vessel query returns None
-            existing_vessel,  # re-query after rollback
+            existing_vessel,  # re-query after IntegrityError
             None,  # AISPoint duplicate check
         ]
+        # begin_nested() returns a context manager; flush inside raises IntegrityError
+        nested_cm = MagicMock()
+        nested_cm.__enter__ = MagicMock(return_value=nested_cm)
+        nested_cm.__exit__ = MagicMock(return_value=False)
+        db.begin_nested.return_value = nested_cm
         db.flush.side_effect = [IntegrityError("dup", params=None, orig=Exception()), None]
 
         positions = [{
@@ -181,7 +186,7 @@ class TestIntegrityErrorHandling:
         }]
         result = ingest_aishub_positions(positions, db)
         assert result["stored"] >= 0  # Shouldn't crash
-        db.rollback.assert_called()
+        db.begin_nested.assert_called()  # SAVEPOINT used instead of bare rollback
 
 
 # ── P1.1: Batch error handling stats ──────────────────────────────────────────

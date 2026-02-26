@@ -57,11 +57,15 @@ def fetch_area_positions(
         "lonmax": lon_max,
     }
 
+    from app.utils.http_retry import retry_request
+
     positions = []
     try:
         with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-            resp = client.get(_BASE_URL, params=params)
-            resp.raise_for_status()
+            resp = retry_request(
+                client.get, _BASE_URL, params=params,
+                delays=[60, 120, 180],  # AISHub rate limit: 1 req/min
+            )
             data = resp.json()
 
         # AISHub returns a list with metadata at index 0 and positions at index 1
@@ -199,10 +203,10 @@ def ingest_aishub_positions(
                 mmsi_first_seen_utc=ts,
             )
             try:
-                db.add(vessel)
-                db.flush()
+                with db.begin_nested():
+                    db.add(vessel)
+                    db.flush()
             except IntegrityError:
-                db.rollback()
                 vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
                 if not vessel:
                     stats["skipped"] += 1

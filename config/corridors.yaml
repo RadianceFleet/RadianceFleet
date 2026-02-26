@@ -3,18 +3,18 @@
 # Add/edit polygons via the UI or CLI: radiancefleet corridors import ./config/corridors.yaml
 #
 # corridor_type: export_route | sts_zone | import_route | anchorage_holding | dark_zone
-# risk_weight: multiplier applied to gap scores inside this corridor
+# risk_weight: informational metadata only — actual scoring multipliers come from risk_scoring.yaml
 # is_jamming_zone: true reduces expected gap scores (expected noise from GPS jamming)
 
 corridors:
 
   # --- EXPORT ROUTES ---
   - name: "Baltic Export Gate — Primorsk / Ust-Luga"
-    geometry: "POLYGON((24.5 59.3, 25.5 59.3, 25.5 60.2, 24.5 60.2, 24.5 59.3))"
+    geometry: "POLYGON((27.5 59.5, 29.5 59.5, 29.5 60.8, 27.5 60.8, 27.5 59.5))"
     corridor_type: export_route
     risk_weight: 1.5
     is_jamming_zone: false
-    description: "Approaches to Primorsk and Ust-Luga, Russia's main Baltic crude export terminals"
+    description: "Approaches to Primorsk (28.67°E) and Ust-Luga (28.43°E), Russia's main Baltic crude export terminals"
     tags: [russian_ports, sanctions_sensitive]
 
   - name: "Turkish Straits — Bosphorus / Dardanelles"
@@ -26,11 +26,11 @@ corridors:
     tags: [chokepoint, transit]
 
   - name: "Black Sea — Kavkaz / Novorossiysk Approaches"
-    geometry: "POLYGON((37.0 44.5, 39.0 44.5, 39.0 45.5, 37.0 45.5, 37.0 44.5))"
+    geometry: "POLYGON((36.0 44.0, 39.5 44.0, 39.5 46.0, 36.0 46.0, 36.0 44.0))"
     corridor_type: export_route
     risk_weight: 1.5
     is_jamming_zone: false
-    description: "Russian Black Sea export terminals; heavy AIS falsification documented (SkyTruth, Feb 2025)"
+    description: "Russian Black Sea export terminals (Kavkaz 36.67°E, Tuapse 44.10°N); heavy AIS falsification documented (SkyTruth, Feb 2025)"
     tags: [russian_ports, ais_falsification_known]
 
   - name: "Nakhodka / Kozmino — Russian Far East Export"
@@ -45,9 +45,9 @@ corridors:
   - name: "Mediterranean STS — Western (Spain/Algeria)"
     geometry: "POLYGON((-1.0 37.0, 6.0 37.0, 6.0 40.0, -1.0 40.0, -1.0 37.0))"
     corridor_type: sts_zone
-    risk_weight: 2.0
+    risk_weight: 1.5
     is_jamming_zone: false
-    description: "Active STS transfer area off Spain/Algeria. EU now requires physical inspection during STS operations."
+    description: "Active STS transfer area off Spain/Algeria (770km × 330km — reduced weight to limit false positives). EU now requires physical inspection during STS operations."
     tags: [ship_to_ship, documented]
 
   - name: "Ceuta / Gibraltar STS Anchorage"
@@ -115,11 +115,11 @@ corridors:
     tags: [ship_to_ship, documented]
 
   - name: "Lomé (West Africa) — STS Zone"
-    geometry: "POLYGON((-1.8 5.9, -0.8 5.9, -0.8 6.6, -1.8 6.6, -1.8 5.9))"
+    geometry: "POLYGON((0.5 5.5, 2.0 5.5, 2.0 6.5, 0.5 6.5, 0.5 5.5))"
     corridor_type: sts_zone
     risk_weight: 1.8
     is_jamming_zone: false
-    description: "West African STS zone — growing Russian crude hub (TankerTrackers H2 2024)"
+    description: "West African STS zone centred on Lomé, Togo (1.22°E) — growing Russian crude hub (TankerTrackers H2 2024)"
     tags: [ship_to_ship]
 
   - name: "Murmansk Arctic STS"
@@ -132,27 +132,27 @@ corridors:
 
   # --- TRANSIT CORRIDORS ---
   - name: "Baltic Exit — Oresund / Great Belt"
-    geometry: "POLYGON((12.0 56.0, 16.0 56.0, 16.0 59.0, 12.0 59.0, 12.0 56.0))"
+    geometry: "POLYGON((10.5 56.0, 16.0 56.0, 16.0 59.0, 10.5 59.0, 10.5 56.0))"
     corridor_type: export_route
     risk_weight: 1.5
     is_jamming_zone: false
-    description: "Baltic Sea exit via Danish Straits — Russian crude export route"
+    description: "Baltic Sea exit via Danish Straits incl. Great Belt (~10.8°E) — Russian crude export route"
     tags: [transit, chokepoint]
 
   - name: "Suez Northbound"
-    geometry: "POLYGON((33.5 27.5, 34.2 27.5, 34.2 28.5, 33.5 28.5, 33.5 27.5))"
+    geometry: "POLYGON((32.0 29.8, 32.8 29.8, 32.8 31.5, 32.0 31.5, 32.0 29.8))"
     corridor_type: export_route
     risk_weight: 1.4
     is_jamming_zone: false
-    description: "Suez Canal northbound approach"
+    description: "Suez Canal northbound approach (Port Said at 32.3°E, 31.3°N)"
     tags: [transit, chokepoint]
 
   - name: "Suez Southbound"
-    geometry: "POLYGON((33.3 29.8, 34.1 29.8, 34.1 30.8, 33.3 30.8, 33.3 29.8))"
+    geometry: "POLYGON((32.2 29.5, 32.8 29.5, 32.8 30.2, 32.2 30.2, 32.2 29.5))"
     corridor_type: export_route
     risk_weight: 1.3
     is_jamming_zone: false
-    description: "Suez Canal southbound approach"
+    description: "Suez Canal southbound approach (Suez city at ~32.5°E)"
     tags: [transit]
 
   - name: "Cape of Good Hope"
@@ -181,11 +181,11 @@ corridors:
     tags: [jamming, persian_gulf]
 
   - name: "Black Sea — Crimea / Russian EEZ Jamming"
-    geometry: "POLYGON((33.0 43.5, 37.0 43.5, 37.0 45.5, 33.0 45.5, 33.0 43.5))"
+    geometry: "POLYGON((33.0 43.5, 36.0 43.5, 36.0 45.5, 33.0 45.5, 33.0 43.5))"
     corridor_type: dark_zone
     risk_weight: 1.0
     is_jamming_zone: true
-    description: "Systematic Russian GPS jamming in Black Sea/Crimea region. Score gaps lower here."
+    description: "Systematic Russian GPS jamming in Black Sea/Crimea region. Eastern boundary trimmed to 36°E to avoid overlapping Novorossiysk export corridor."
     tags: [jamming, russian_eez]
 
   - name: "Kaliningrad EEZ — Baltic GPS Jamming"
@@ -204,12 +204,12 @@ corridors:
     description: "Eastern Med GPS disruption from Syria/Lebanon conflict zone (Windward 2023-24)"
     tags: [jamming]
 
-  - name: "Gulf of Guinea"
-    geometry: "POLYGON((-5.0 2.0, 15.0 2.0, 15.0 8.0, -5.0 8.0, -5.0 2.0))"
+  - name: "Gulf of Guinea — Niger Delta Blackout"
+    geometry: "POLYGON((3.0 3.5, 9.0 3.5, 9.0 6.5, 3.0 6.5, 3.0 3.5))"
     corridor_type: dark_zone
     risk_weight: 1.0
     is_jamming_zone: true
-    description: "Gulf of Guinea — systematic AIS blackout region (MarineTraffic 2022-25)"
+    description: "Niger Delta AIS blackout hotspot (shrunk from 2200km to ~660km to avoid masking Togo/Nigeria terminal activity)"
     tags: [ais_blackout]
 
   - name: "Russian Arctic EEZ"
@@ -219,3 +219,111 @@ corridors:
     is_jamming_zone: true
     description: "Russian Arctic EEZ — very limited AIS coverage, GPS interference (Windward 2024)"
     tags: [jamming, russian_eez, limited_coverage]
+
+  - name: "Red Sea Conflict Zone"
+    geometry: "POLYGON((38.0 12.0, 46.0 12.0, 46.0 16.0, 38.0 16.0, 38.0 12.0))"
+    corridor_type: dark_zone
+    risk_weight: 1.0
+    is_jamming_zone: true
+    description: "Red Sea conflict zone incl. Bab al-Mandab — AIS disruption from Houthi activity (2024-25)"
+    tags: [jamming, conflict]
+
+  # --- ADDITIONAL EXPORT ROUTES ---
+  - name: "De-Kastri / Sakhalin"
+    geometry: "POLYGON((140.0 51.0, 141.5 51.0, 141.5 52.0, 140.0 52.0, 140.0 51.0))"
+    corridor_type: export_route
+    risk_weight: 1.4
+    is_jamming_zone: false
+    description: "Sakhalin Island ESPO crude terminal — 900km from nearest corridor"
+    tags: [russian_ports, far_east]
+
+  - name: "Ceyhan / Iskenderun (BTC Pipeline)"
+    geometry: "POLYGON((35.5 36.3, 36.5 36.3, 36.5 37.0, 35.5 37.0, 35.5 36.3))"
+    corridor_type: export_route
+    risk_weight: 1.3
+    is_jamming_zone: false
+    description: "BTC pipeline terminal at Ceyhan — Azerbaijani/Kazakh crude export route"
+    tags: [transit, pipeline]
+
+  - name: "Varandey (Arctic)"
+    geometry: "POLYGON((57.0 68.5, 59.0 68.5, 59.0 69.5, 57.0 69.5, 57.0 68.5))"
+    corridor_type: export_route
+    risk_weight: 1.4
+    is_jamming_zone: false
+    description: "Varandey Arctic crude loading terminal — active Lukoil operations"
+    tags: [russian_ports, arctic]
+
+  # --- ADDITIONAL STS ZONES ---
+  - name: "Fujairah Anchorage (UAE)"
+    geometry: "POLYGON((56.35 25.10, 56.60 25.10, 56.60 25.35, 56.35 25.35, 56.35 25.10))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Fujairah offshore STS anchorage — tightened to actual anchorage area"
+    tags: [ship_to_ship, documented]
+
+  - name: "Nador / Morocco STS"
+    geometry: "POLYGON((-3.5 35.0, -2.5 35.0, -2.5 35.6, -3.5 35.6, -3.5 35.0))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Nador STS hotspot — Bloomberg-documented since June 2024"
+    tags: [ship_to_ship, documented]
+
+  # --- ADDITIONAL IMPORT ROUTES ---
+  - name: "Ras Lanuf / Brega (Libya)"
+    geometry: "POLYGON((18.0 30.0, 20.5 30.0, 20.5 31.0, 18.0 31.0, 18.0 30.0))"
+    corridor_type: import_route
+    risk_weight: 1.2
+    is_jamming_zone: false
+    description: "Libyan oil terminals — crude blending/re-export point"
+    tags: [import, re_export]
+
+  - name: "Bonny / Brass (Nigeria)"
+    geometry: "POLYGON((6.0 4.0, 7.5 4.0, 7.5 4.8, 6.0 4.8, 6.0 4.0))"
+    corridor_type: import_route
+    risk_weight: 1.2
+    is_jamming_zone: false
+    description: "Nigerian crude export terminals — Bonny Island and Brass Terminal"
+    tags: [import, west_africa]
+
+  - name: "Daesan (South Korea)"
+    geometry: "POLYGON((126.0 36.8, 126.6 36.8, 126.6 37.2, 126.0 37.2, 126.0 36.8))"
+    corridor_type: import_route
+    risk_weight: 1.2
+    is_jamming_zone: false
+    description: "Daesan refinery complex — major Korean crude import terminal"
+    tags: [import, far_east]
+
+  - name: "Onsan / Ulsan (South Korea)"
+    geometry: "POLYGON((129.0 35.2, 129.6 35.2, 129.6 35.7, 129.0 35.7, 129.0 35.2))"
+    corridor_type: import_route
+    risk_weight: 1.2
+    is_jamming_zone: false
+    description: "Onsan/Ulsan refinery complex — SK Energy, S-Oil crude imports"
+    tags: [import, far_east]
+
+  - name: "Paradip (India)"
+    geometry: "POLYGON((86.5 19.8, 87.0 19.8, 87.0 20.3, 86.5 20.3, 86.5 19.8))"
+    corridor_type: import_route
+    risk_weight: 1.2
+    is_jamming_zone: false
+    description: "Paradip IOCL refinery — major Indian crude destination"
+    tags: [import, india]
+
+  - name: "Shandong China Imports"
+    geometry: "POLYGON((118.0 35.0, 121.0 35.0, 121.0 38.0, 118.0 38.0, 118.0 35.0))"
+    corridor_type: import_route
+    risk_weight: 1.3
+    is_jamming_zone: false
+    description: "Qingdao, Rizhao, Dongying — primary Russian crude destinations in Shandong"
+    tags: [import, far_east]
+
+  # --- TRANSIT CORRIDOR (Malacca — NOT a dark zone) ---
+  - name: "Malacca Strait Transit"
+    geometry: "POLYGON((99.0 1.0, 104.0 1.0, 104.0 4.0, 99.0 4.0, 99.0 1.0))"
+    corridor_type: export_route
+    risk_weight: 1.2
+    is_jamming_zone: false
+    description: "Malacca Strait transit corridor — excellent AIS coverage, NOT a jamming zone"
+    tags: [transit, chokepoint]

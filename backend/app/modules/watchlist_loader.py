@@ -416,6 +416,22 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
         matched += 1
 
     db.commit()
+
+    # 7e: Schema change detection — if file had many entities but none were "Vessel",
+    # the schema may have changed (e.g. OpenSanctions renamed the type).
+    total_entities = len(entities)
+    vessel_entities = sum(
+        1 for e in entities
+        if isinstance(e, dict) and (e.get("schema") or e.get("type") or "") == "Vessel"
+    )
+    if total_entities > 10 and vessel_entities == 0:
+        logger.warning(
+            "OpenSanctions: file had %d entities but 0 matched as 'Vessel' — "
+            "possible schema format change. Check if the 'schema' field name or "
+            "'Vessel' type has been renamed.",
+            total_entities,
+        )
+
     logger.info(
         "OpenSanctions load complete: matched=%d unmatched=%d", matched, unmatched
     )

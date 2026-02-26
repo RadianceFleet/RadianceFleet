@@ -243,8 +243,8 @@ def test_russian_origin_flags_enumerated():
     scoring_date = datetime(2026, 2, 15)
     first_seen = datetime(2026, 2, 10)  # 5 days old
 
-    # All flags documented in risk_scoring.py Phase 6.10
-    russian_origin_flags = {"PW", "MH", "KM", "SL", "HN", "GA", "CM", "TZ"}
+    # All flags in RUSSIAN_ORIGIN_FLAGS (MH removed — now MEDIUM_RISK; TV/VU added)
+    russian_origin_flags = {"PW", "KM", "SL", "HN", "GA", "CM", "TZ", "TV", "VU"}
 
     for flag in russian_origin_flags:
         gap = _make_gap(
