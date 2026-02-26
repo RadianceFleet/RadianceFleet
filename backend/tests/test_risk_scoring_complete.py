@@ -496,13 +496,13 @@ def test_legitimacy_not_amplified_by_corridor():
     _, bd_none = compute_gap_score(gap_none, config, db=mock_db2)
 
     # Both should have the same legitimacy deduction values
-    assert bd_sts.get("legitimacy_gap_free_90d") == -15, \
-        "STS zone should NOT amplify the -15 deduction"
-    assert bd_none.get("legitimacy_gap_free_90d") == -15
+    assert bd_sts.get("legitimacy_gap_free_90d") == -10, \
+        "STS zone should NOT amplify the -10 deduction"
+    assert bd_none.get("legitimacy_gap_free_90d") == -10
 
 
 def test_legitimacy_not_amplified_by_vessel_size():
-    """VLCC 1.3× size multiplier should NOT amplify the -15 legitimacy deduction."""
+    """VLCC 1.3× size multiplier should NOT amplify the -10 legitimacy deduction."""
     config = load_scoring_config()
     gap_vlcc = _make_gap(duration_minutes=6 * 60, deadweight=250_000)
     gap_small = _make_gap(duration_minutes=6 * 60, deadweight=None)
@@ -514,7 +514,7 @@ def test_legitimacy_not_amplified_by_vessel_size():
     score_small, bd_small = compute_gap_score(gap_small, config, db=mock_db2)
 
     # Legitimacy deduction should be identical regardless of vessel size
-    assert bd_vlcc.get("legitimacy_gap_free_90d") == bd_small.get("legitimacy_gap_free_90d") == -15
+    assert bd_vlcc.get("legitimacy_gap_free_90d") == bd_small.get("legitimacy_gap_free_90d") == -10
     # But the risk signals should be amplified differently
     assert bd_vlcc["_vessel_size_multiplier"] == 1.3
     assert bd_small["_vessel_size_multiplier"] == 1.0

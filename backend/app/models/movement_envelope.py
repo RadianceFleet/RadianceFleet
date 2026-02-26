@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import Integer, Float, String, JSON, ForeignKey, Enum as SAEnum
+from sqlalchemy import Integer, Float, String, Text, JSON, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from geoalchemy2 import Geometry
 from app.models.base import Base, EstimatedMethodEnum
 
 
@@ -21,9 +20,7 @@ class MovementEnvelope(Base):
     envelope_semi_major_nm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     envelope_semi_minor_nm: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     envelope_heading_degrees: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    confidence_ellipse_geometry: Mapped[Optional[object]] = mapped_column(
-        Geometry(geometry_type="POLYGON", srid=4326), nullable=True
-    )
+    confidence_ellipse_geometry: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     interpolated_positions_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     estimated_method: Mapped[Optional[str]] = mapped_column(
         SAEnum(EstimatedMethodEnum), nullable=True, default=EstimatedMethodEnum.LINEAR

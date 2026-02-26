@@ -33,14 +33,17 @@ def get_corridor_bounding_boxes(db: Session) -> list[list[list[float]]]:
     """
     from app.models.corridor import Corridor
 
+    from app.utils.geo import load_geometry
+
     corridors = db.query(Corridor).all()
     boxes = []
     for c in corridors:
         if c.geometry is None:
             continue
         try:
-            from geoalchemy2.shape import to_shape
-            shape = to_shape(c.geometry)
+            shape = load_geometry(c.geometry)
+            if shape is None:
+                continue
             bounds = shape.bounds  # (minx, miny, maxx, maxy) = (lon_min, lat_min, lon_max, lat_max)
             boxes.append([
                 [bounds[1], bounds[0]],  # [lat_min, lon_min]
@@ -327,6 +330,7 @@ async def stream_ais(
         "static_data_msgs": 0,
         "points_stored": 0,
         "vessels_seen": set(),
+        "static_vessels": set(),
         "vessels_updated": 0,
         "batches": 0,
         "batch_errors": 0,
@@ -382,18 +386,20 @@ async def stream_ais(
                         sd = _map_static_data(msg)
                         if sd:
                             stats["static_data_msgs"] += 1
-                            stats["vessels_seen"].add(sd["mmsi"])
+                            stats["static_vessels"].add(sd["mmsi"])
                             static_buffer[sd["mmsi"]] = sd
 
                     # Batch insert at interval
                     now = time.monotonic()
-                    if now - last_batch_time >= batch_interval and point_buffer:
+                    if now - last_batch_time >= batch_interval and (point_buffer or static_buffer):
                         db = db_factory()
                         try:
                             result = _ingest_batch(db, point_buffer, static_buffer)
                             stats["points_stored"] += result["points_stored"]
                             stats["vessels_updated"] += result["vessels_updated"]
                             stats["batches"] += 1
+                            point_buffer.clear()
+                            static_buffer.clear()
                         except Exception as exc:
                             logger.error("Batch ingestion error: %s", exc)
                             db.rollback()
@@ -410,26 +416,24 @@ async def stream_ais(
                                 "msg_per_s": round(stats["messages_received"] / max(elapsed, 1), 1),
                             })
 
-                        point_buffer.clear()
-                        static_buffer.clear()
                         last_batch_time = now
 
                 # Normal exit (duration timeout or stream ended) — final batch
-                if point_buffer:
+                if point_buffer or static_buffer:
                     db = db_factory()
                     try:
                         result = _ingest_batch(db, point_buffer, static_buffer)
                         stats["points_stored"] += result["points_stored"]
                         stats["vessels_updated"] += result["vessels_updated"]
                         stats["batches"] += 1
+                        point_buffer.clear()
+                        static_buffer.clear()
                     except Exception as exc:
                         logger.error("Final batch ingestion error: %s", exc)
                         db.rollback()
                         stats["batch_errors"] = stats.get("batch_errors", 0) + 1
                     finally:
                         db.close()
-                        point_buffer.clear()
-                        static_buffer.clear()
 
                 # Normal completion — exit retry loop
                 break
@@ -458,13 +462,15 @@ async def stream_ais(
                 stats["incomplete"] = True
                 stats["error"] = str(exc)
                 # Attempt to flush remaining buffer before giving up
-                if point_buffer:
+                if point_buffer or static_buffer:
                     db = db_factory()
                     try:
                         result = _ingest_batch(db, point_buffer, static_buffer)
                         stats["points_stored"] += result["points_stored"]
                         stats["vessels_updated"] += result["vessels_updated"]
                         stats["batches"] += 1
+                        point_buffer.clear()
+                        static_buffer.clear()
                     except Exception as flush_exc:
                         logger.error("Buffer flush after retries exhausted failed: %s", flush_exc)
                         db.rollback()
@@ -479,8 +485,9 @@ async def stream_ais(
             stats["incomplete"] = True
             break
 
-    # Convert set to count for JSON serialization
+    # Convert sets to counts for JSON serialization
     stats["vessels_seen"] = len(stats["vessels_seen"])
+    stats["static_vessels"] = len(stats["static_vessels"])
     stats["actual_duration_s"] = round(time.monotonic() - start_time, 1)
 
     logger.info(

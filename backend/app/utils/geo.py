@@ -1,11 +1,16 @@
-"""Shared geodesic distance utilities.
+"""Shared geodesic distance and geometry utilities.
 
 Canonical implementations of haversine distance used across gap_detector,
-sts_detector, and other modules.
+sts_detector, and other modules.  Also provides WKT ↔ Shapely helpers for
+the SQLite-backed geometry columns (plain Text storing WKT).
 """
 from __future__ import annotations
 
 import math
+from typing import Optional
+
+import shapely.wkt
+from shapely.geometry.base import BaseGeometry
 
 _EARTH_RADIUS_NM: float = 3440.065   # Earth mean radius in nautical miles
 _EARTH_RADIUS_M: float = 6_371_000.0  # Earth mean radius in metres
@@ -30,3 +35,17 @@ def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
         + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
     )
     return _EARTH_RADIUS_M * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+# ── WKT ↔ Shapely helpers ────────────────────────────────────────────────────
+
+def load_geometry(wkt_str: Optional[str]) -> Optional[BaseGeometry]:
+    """Load a WKT text string (from DB) into a Shapely geometry object."""
+    if not wkt_str:
+        return None
+    return shapely.wkt.loads(wkt_str)
+
+
+def dump_geometry(shape: BaseGeometry) -> str:
+    """Dump a Shapely geometry to WKT for DB storage."""
+    return shape.wkt

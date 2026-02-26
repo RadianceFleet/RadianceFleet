@@ -286,10 +286,12 @@ def _had_russian_port_call(db: Session, vessel, gap_start: datetime, days_before
 
     for pt in points:
         for terminal in terminals:
-            # Extract lat/lon from port geometry
+            # Extract lat/lon from WKT port geometry
             try:
-                from geoalchemy2.shape import to_shape
-                port_shape = to_shape(terminal.geometry)
+                from app.utils.geo import load_geometry
+                port_shape = load_geometry(terminal.geometry)
+                if port_shape is None:
+                    continue
                 port_lat, port_lon = port_shape.y, port_shape.x
             except Exception:
                 continue

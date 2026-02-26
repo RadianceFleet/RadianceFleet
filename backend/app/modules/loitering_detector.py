@@ -21,7 +21,6 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 import polars as pl
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.models.ais_point import AISPoint
@@ -65,18 +64,18 @@ _LAID_UP_BBOX_DEG: float = _LOITER_CFG.get("laid_up_bbox_deg", 0.033)
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
 def _parse_corridor_bbox(corridor: Corridor) -> Optional[tuple[float, float, float, float]]:
-    """Extract (min_lat, max_lat, min_lon, max_lon) from a corridor's WKB geometry.
+    """Extract (min_lat, max_lat, min_lon, max_lon) from a corridor's WKT geometry.
 
     Returns None if the geometry is unavailable or cannot be parsed.
-    Uses geoalchemy2 / shapely if installed; otherwise returns None so that the
-    caller degrades gracefully to skipping the corridor.
     """
+    from app.utils.geo import load_geometry
     try:
-        from geoalchemy2.shape import to_shape  # type: ignore
-        shape = to_shape(corridor.geometry)
+        shape = load_geometry(corridor.geometry)
+        if shape is None:
+            return None
         min_lon, min_lat, max_lon, max_lat = shape.bounds
         return (min_lat, max_lat, min_lon, max_lon)
-    except (ImportError, ValueError, TypeError, AttributeError):
+    except (ValueError, TypeError, AttributeError):
         return None
 
 
@@ -233,7 +232,7 @@ def detect_loitering_for_vessel(
     # ── 4. Load corridors once for corridor linkage ────────────────────────────
     try:
         corridors: list[Corridor] = db.query(Corridor).all()
-    except OperationalError as exc:
+    except Exception as exc:
         logger.warning("Could not load corridors for loitering correlation: %s", exc)
         corridors = []
 
@@ -411,7 +410,7 @@ def detect_laid_up_vessels(db: Session) -> dict:
         all_corridors: list[Corridor] = db.query(Corridor).all()
         from app.models.base import CorridorTypeEnum
         sts_corridors = [c for c in all_corridors if c.corridor_type == CorridorTypeEnum.STS_ZONE]
-    except (OperationalError, ImportError) as exc:
+    except Exception as exc:
         logger.warning("Could not load corridors for laid-up STS check: %s", exc)
         all_corridors = []
         sts_corridors = []

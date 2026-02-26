@@ -436,17 +436,15 @@ def _phase_a(
 
                     # Port proximity filter: skip if both vessels are within 3nm of a major port
                     from app.models.port import Port
-                    from app.utils.geo import haversine_nm
+                    from app.utils.geo import haversine_nm, load_geometry
                     try:
                         ports = db.query(Port).filter(Port.major_port == True).all()
                         in_port = False
                         for port in ports:
-                            try:
-                                from geoalchemy2.shape import to_shape
-                                port_shape = to_shape(port.geometry)
-                                port_lat, port_lon = port_shape.y, port_shape.x
-                            except Exception:
+                            port_shape = load_geometry(port.geometry)
+                            if port_shape is None:
                                 continue
+                            port_lat, port_lon = port_shape.y, port_shape.x
                             d1 = haversine_nm(mean_lat, mean_lon, port_lat, port_lon)
                             if d1 < 3.0:
                                 in_port = True

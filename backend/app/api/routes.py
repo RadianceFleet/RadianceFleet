@@ -385,9 +385,11 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
         geojson_str = None
         if envelope.confidence_ellipse_geometry is not None:
             try:
-                geojson_str = db.scalar(
-                    func.ST_AsGeoJSON(envelope.confidence_ellipse_geometry)
-                )
+                from app.utils.geo import load_geometry
+                import shapely.geometry
+                shape = load_geometry(envelope.confidence_ellipse_geometry)
+                if shape is not None:
+                    geojson_str = json.dumps(shapely.geometry.mapping(shape))
             except Exception:
                 pass
         envelope_data = MovementEnvelopeRead(
@@ -856,17 +858,17 @@ def corridors_geojson(db: Session = Depends(get_db)):
     """Return all corridors as a GeoJSON FeatureCollection for map overlay."""
     from app.models.corridor import Corridor
 
+    from app.utils.geo import load_geometry
+    import shapely.geometry
+
     corridors = db.query(Corridor).all()
     features = []
     for c in corridors:
         geom_json = None
         try:
-            from sqlalchemy import func as sa_func
-            from geoalchemy2.functions import ST_AsGeoJSON
-            row = db.query(ST_AsGeoJSON(c.geometry)).first()
-            if row and row[0]:
-                import json
-                geom_json = json.loads(row[0])
+            shape = load_geometry(c.geometry)
+            if shape is not None:
+                geom_json = shapely.geometry.mapping(shape)
         except Exception:
             pass  # graceful degradation — geometry unavailable
 
@@ -1083,9 +1085,9 @@ def create_corridor(body: dict, db: Session = Depends(get_db)):
     wkt = body.get("geometry_wkt")
     if wkt:
         try:
-            from geoalchemy2.shape import from_shape
             from shapely import wkt as shapely_wkt
-            geom = from_shape(shapely_wkt.loads(wkt), srid=4326)
+            shape = shapely_wkt.loads(wkt)
+            geom = shape.wkt  # Store as WKT text
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid geometry_wkt: {e}")
 

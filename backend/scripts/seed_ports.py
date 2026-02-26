@@ -165,17 +165,10 @@ def seed_ports(db: Session) -> dict:
     Sets is_russian_oil_terminal=True for major Russian crude export terminals.
     """
     from app.models.port import Port
+    from shapely.geometry import Point
 
-    try:
-        from geoalchemy2.shape import from_shape
-        from shapely.geometry import Point
-
-        def make_point(lat: float, lon: float):
-            return from_shape(Point(lon, lat), srid=4326)
-    except ImportError:
-        # Fallback: WKT string (works with SpatiaLite raw SQL path)
-        def make_point(lat: float, lon: float):
-            return f"SRID=4326;POINT({lon} {lat})"
+    def make_point(lat: float, lon: float) -> str:
+        return Point(lon, lat).wkt
 
     inserted = 0
     skipped = 0

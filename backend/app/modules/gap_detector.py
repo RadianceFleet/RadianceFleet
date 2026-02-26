@@ -10,7 +10,6 @@ import statistics
 from datetime import datetime, date, timedelta
 from typing import Optional
 
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -48,35 +47,21 @@ def compute_max_distance_nm(vessel_dwt: float | None, elapsed_hours: float) -> f
 
 
 def _is_near_port(db: Session, lat: float, lon: float, radius_nm: float = 5.0) -> bool:
-    """Check if a position is within radius_nm of any known major port."""
-    try:
-        from app.models.port import Port
-        from sqlalchemy import func
-        point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
-        radius_m = radius_nm * 1852.0
-        match = db.query(Port).filter(
-            Port.major_port == True,
-            func.ST_DWithin(Port.geometry, point, radius_m),
-        ).first()
-        return match is not None
-    except (ImportError, OperationalError):
-        # Fallback for SQLite/non-spatial DB
-        return _is_near_port_bbox(db, lat, lon, radius_nm)
+    """Check if a position is within radius_nm of any known major port.
 
+    Uses haversine distance against port coordinates parsed from WKT geometry.
+    """
+    from app.models.port import Port
+    from app.utils.geo import haversine_nm, load_geometry
 
-def _is_near_port_bbox(db: Session, lat: float, lon: float, radius_nm: float = 5.0) -> bool:
-    """Bounding-box fallback for non-spatial databases."""
-    try:
-        from app.models.port import Port
-        from sqlalchemy import func
-        radius_deg = radius_nm / 60.0  # 1 degree latitude ≈ 60nm
-        return db.query(Port).filter(
-            Port.major_port == True,
-            func.abs(func.ST_Y(Port.geometry) - lat) < radius_deg,
-            func.abs(func.ST_X(Port.geometry) - lon) < radius_deg,
-        ).first() is not None
-    except (ImportError, OperationalError):
-        return False
+    ports = db.query(Port).filter(Port.major_port == True).all()
+    for port in ports:
+        pt = load_geometry(port.geometry)
+        if pt is None:
+            continue
+        if haversine_nm(lat, lon, pt.y, pt.x) <= radius_nm:
+            return True
+    return False
 
 
 def _is_in_anchorage_corridor(db: Session, lat: float, lon: float, tolerance: float = 0.05) -> bool:
@@ -86,40 +71,21 @@ def _is_in_anchorage_corridor(db: Session, lat: float, lon: float, tolerance: fl
     as CorridorTypeEnum.ANCHORAGE_HOLDING corridors, not as Port records.  A vessel
     with nav_status=1 for 72h in such a corridor should NOT fire ANCHOR_SPOOF.
     """
-    try:
-        from app.models.corridor import Corridor
-        from app.models.base import CorridorTypeEnum
-        from sqlalchemy import func
-        point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
-        match = db.query(Corridor).filter(
-            Corridor.corridor_type == CorridorTypeEnum.ANCHORAGE_HOLDING,
-            Corridor.geometry.isnot(None),
-            func.ST_Contains(Corridor.geometry, point),
-        ).first()
-        return match is not None
-    except (ImportError, OperationalError):
-        # Bbox fallback for non-spatial DB — reuse corridor_correlator's WKT parser
-        return _is_in_anchorage_corridor_bbox(db, lat, lon, tolerance)
+    from app.models.corridor import Corridor
+    from app.models.base import CorridorTypeEnum
+    from app.modules.corridor_correlator import _parse_wkt_bbox, _geometry_wkt
 
-
-def _is_in_anchorage_corridor_bbox(db: Session, lat: float, lon: float, tolerance: float = 0.05) -> bool:
-    """Bounding-box fallback for non-spatial databases."""
-    try:
-        from app.models.corridor import Corridor
-        from app.modules.corridor_correlator import _parse_wkt_bbox, _geometry_wkt
-        corridors = db.query(Corridor).all()
-        for c in corridors:
-            ct = str(c.corridor_type.value if hasattr(c.corridor_type, "value") else c.corridor_type)
-            if ct != "anchorage_holding" or c.geometry is None:
-                continue
-            wkt = _geometry_wkt(c.geometry)
-            bbox = _parse_wkt_bbox(wkt) if wkt else None
-            if bbox and (bbox[0] - tolerance <= lon <= bbox[2] + tolerance
-                         and bbox[1] - tolerance <= lat <= bbox[3] + tolerance):
-                return True
-        return False
-    except (ImportError, OperationalError):
-        return False
+    corridors = db.query(Corridor).filter(
+        Corridor.corridor_type == CorridorTypeEnum.ANCHORAGE_HOLDING,
+        Corridor.geometry.isnot(None),
+    ).all()
+    for c in corridors:
+        wkt = _geometry_wkt(c.geometry)
+        bbox = _parse_wkt_bbox(wkt) if wkt else None
+        if bbox and (bbox[0] - tolerance <= lon <= bbox[2] + tolerance
+                     and bbox[1] - tolerance <= lat <= bbox[3] + tolerance):
+            return True
+    return False
 
 
 def run_gap_detection(
@@ -240,12 +206,6 @@ def detect_gaps_for_vessel(
                 gap.in_dark_zone = True
         except ImportError:
             logger.warning("Corridor correlator module not available — skipping")
-        except OperationalError as e:
-            if "no such function" in str(e).lower() or "ST_" in str(e):
-                logger.warning("Spatial extension unavailable — skipping corridor correlation: %s", e)
-            else:
-                logger.error("DB error during corridor correlation for gap %s: %s", gap.gap_event_id, e, exc_info=True)
-                raise
 
         _create_movement_envelope(db, gap, vessel)
         gap_count += 1

@@ -198,7 +198,6 @@ def corridors_import(
     from app.models.corridor import Corridor
     from app.models.base import CorridorTypeEnum
     import yaml
-    from geoalchemy2.shape import from_shape
     from shapely.geometry import shape
 
     db = SessionLocal()
@@ -219,7 +218,7 @@ def corridors_import(
                     if upper.startswith("POLYGON") or upper.startswith("MULTIPOLYGON"):
                         try:
                             from shapely import wkt as shapely_wkt
-                            geom = from_shape(shapely_wkt.loads(raw_geom), srid=4326)
+                            geom = shapely_wkt.loads(raw_geom).wkt
                         except Exception as exc:
                             logger.warning(
                                 "Corridor '%s': invalid WKT geometry — %s", c_data.get("name"), exc
@@ -230,9 +229,9 @@ def corridors_import(
                             c_data.get("name"), raw_geom,
                         )
                 elif isinstance(raw_geom, dict):
-                    # GeoJSON-like dict
+                    # GeoJSON-like dict → convert to WKT
                     try:
-                        geom = from_shape(shape(raw_geom), srid=4326)
+                        geom = shape(raw_geom).wkt
                     except Exception as exc:
                         logger.warning(
                             "Corridor '%s': invalid GeoJSON geometry — %s", c_data.get("name"), exc
@@ -268,7 +267,7 @@ def corridors_import(
 
 @app.command("correlate-corridors")
 def correlate_corridors():
-    """Re-run ST_Intersects corridor correlation on all uncorrelated gaps."""
+    """Re-run corridor correlation on all uncorrelated gaps."""
     from app.database import SessionLocal
     from app.modules.corridor_correlator import correlate_all_uncorrelated_gaps
 
@@ -738,29 +737,34 @@ def hunt_confirm(
 def setup(
     with_sample_data: bool = typer.Option(False, "--with-sample-data", help="Load 7 synthetic vessels for demo"),
     skip_fetch: bool = typer.Option(False, "--skip-fetch", help="Skip downloading watchlists from the internet"),
-    stream_duration: str = typer.Option("5m", "--stream-duration", help="AIS stream duration (e.g. 30s, 5m). Only used if AISSTREAM_API_KEY is set."),
+    stream_duration: str = typer.Option("15m", "--stream-duration", help="AIS stream duration (e.g. 30s, 5m, 1h)."),
 ):
     """Bootstrap RadianceFleet from scratch: init DB, import corridors, fetch data, run detection.
 
+    Requires free API keys: AISSTREAM_API_KEY, GFW_API_TOKEN, AISHUB_USERNAME,
+    COPERNICUS_CLIENT_ID, COPERNICUS_CLIENT_SECRET. Use --with-sample-data
+    to run in demo mode without API keys.
+
     Non-interactive execution order:
-      1. Check Python >= 3.11
+      1. Check Python >= 3.11 + validate required API keys
       2. Init DB + seed ports
       3. Import corridors from config/corridors.yaml
       4. Fetch watchlists (OFAC + OpenSanctions) — unless --skip-fetch
       5. Import watchlists
-      6. If AISSTREAM_API_KEY set → stream AIS data for --stream-duration
-      7. If GFW_API_TOKEN set → fetch SAR detections for corridors (last 30d)
-      8. If AISHUB_USERNAME set → fetch latest positions for corridor areas
-      9. If GFW_API_TOKEN set → enrich vessels missing DWT/year_built/IMO
+      6. Stream AIS data from aisstream.io for --stream-duration
+      7. Fetch GFW SAR detections for corridors (last 30d)
+      8. Fetch AISHub latest positions for corridor areas
+      9. Enrich vessels missing DWT/year_built/IMO via GFW
       10. Infer AIS class from transmission intervals
       11. Re-match watchlists against vessels created during streaming
       12. Fetch PSC detention records (FTM + EMSA)
       13. If --with-sample-data AND no AIS data yet → generate/ingest sample data
       14. Run detection pipeline (gaps → spoofing → loitering → STS → corridors → score)
+      15. Prepare + enhance satellite checks via Copernicus for high-risk alerts
     """
     import sys
 
-    total_steps = 14
+    total_steps = 15
     console.print("[bold cyan]RadianceFleet Setup[/bold cyan]\n")
 
     # 1. Check Python version
@@ -770,6 +774,27 @@ def setup(
         raise typer.Exit(1)
     console.print(f"[green]✓[/green] Python {v.major}.{v.minor}.{v.micro}")
 
+    # 1b. Validate required API keys (all are free — no excuse to skip them)
+    from app.config import settings as _settings
+    if not with_sample_data:
+        missing_keys: list[str] = []
+        if not _settings.AISSTREAM_API_KEY:
+            missing_keys.append("AISSTREAM_API_KEY       (free: https://aisstream.io/)")
+        if not _settings.GFW_API_TOKEN:
+            missing_keys.append("GFW_API_TOKEN           (free: https://globalfishingwatch.org/our-apis/)")
+        if not _settings.COPERNICUS_CLIENT_ID or not _settings.COPERNICUS_CLIENT_SECRET:
+            missing_keys.append("COPERNICUS_CLIENT_ID/SECRET (free: https://dataspace.copernicus.eu/)")
+        if missing_keys:
+            console.print("[red]Missing required API keys:[/red]")
+            for mk in missing_keys:
+                console.print(f"  [red]✗[/red] {mk}")
+            console.print("\n[dim]All data sources are free. Set them in .env or environment variables.[/dim]")
+            console.print("[dim]For demo mode without API keys: radiancefleet setup --with-sample-data[/dim]")
+            raise typer.Exit(1)
+        console.print("[green]✓[/green] All required API keys present")
+        if not _settings.AISHUB_USERNAME:
+            console.print("[dim]  Optional: AISHUB_USERNAME not set (requires AIS receiver hardware)[/dim]")
+
     # 2. Initialize database
     console.print(f"\n[cyan]Step 1/{total_steps}: Initializing database...[/cyan]")
     try:
@@ -778,7 +803,7 @@ def setup(
         console.print("[green]✓[/green] Database initialized")
     except Exception as e:
         console.print(f"[red]✗ Database init failed: {e}[/red]")
-        console.print("[yellow]Hint: Is Docker running? Try: docker compose up -d[/yellow]")
+        console.print("[yellow]Hint: Check DATABASE_URL in .env (default: sqlite:///radiancefleet.db)[/yellow]")
         raise typer.Exit(1)
 
     db = SessionLocal()
@@ -815,7 +840,6 @@ def setup(
                     console.print(f"[dim]  Corridors already imported ({existing_count})[/dim]")
                 else:
                     # Delegate to the corridors import command logic
-                    from geoalchemy2.shape import from_shape
                     from shapely.geometry import shape as shapely_shape
                     upserted = 0
                     for c_data in corridors_data:
@@ -824,13 +848,13 @@ def setup(
                         raw_geom = c_data.get("geometry")
                         if raw_geom and isinstance(raw_geom, dict):
                             try:
-                                geom = from_shape(shapely_shape(raw_geom), srid=4326)
+                                geom = shapely_shape(raw_geom).wkt
                             except Exception:
                                 pass
                         elif raw_geom and isinstance(raw_geom, str):
                             try:
                                 from shapely import wkt as shapely_wkt
-                                geom = from_shape(shapely_wkt.loads(raw_geom), srid=4326)
+                                geom = shapely_wkt.loads(raw_geom).wkt
                             except Exception:
                                 pass
 
@@ -893,8 +917,7 @@ def setup(
             console.print(f"\n[dim]Step 3/{total_steps}: Skipping data fetch (--skip-fetch)[/dim]")
             console.print(f"[dim]Step 4/{total_steps}: Skipping watchlist import (--skip-fetch)[/dim]")
 
-        # 6. Stream AIS data from aisstream.io (if API key configured)
-        from app.config import settings as _settings
+        # 6. Stream AIS data from aisstream.io
         console.print(f"\n[cyan]Step 5/{total_steps}: AIS data streaming (aisstream.io)...[/cyan]")
         if _settings.AISSTREAM_API_KEY:
             try:
@@ -911,17 +934,28 @@ def setup(
                     duration_seconds=duration_s,
                     batch_interval=_settings.AISSTREAM_BATCH_INTERVAL,
                 ))
+                points_stored = ais_result['points_stored']
+                vessels_seen = ais_result['vessels_seen']
+                static_vessels = ais_result.get('static_vessels', 0)
                 console.print(
-                    f"[green]✓[/green] Streamed {ais_result['points_stored']} AIS points "
-                    f"({ais_result['vessels_seen']} vessels)"
+                    f"[green]✓[/green] Streamed {points_stored} AIS points "
+                    f"from {vessels_seen} vessels"
+                    + (f" ({static_vessels} metadata-only)" if static_vessels else "")
                 )
+                if points_stored == 0 and ais_result.get('messages_received', 0) > 0:
+                    console.print("[yellow]  ⚠ Received messages but stored 0 position reports[/yellow]")
+                    console.print(
+                        f"[dim]    Total messages: {ais_result['messages_received']}, "
+                        f"Position reports: {ais_result.get('position_reports', 0)}, "
+                        f"Static data: {ais_result.get('static_data_msgs', 0)}, "
+                        f"Batch errors: {ais_result.get('batch_errors', 0)}[/dim]"
+                    )
             except Exception as e:
                 console.print(f"[yellow]⚠ AIS streaming failed: {e}[/yellow]")
         else:
-            console.print("[dim]  AISSTREAM_API_KEY not set — skipping[/dim]")
-            console.print("[dim]  Get a free key at: https://aisstream.io/[/dim]")
+            console.print("[dim]  Skipping AIS streaming (demo mode)[/dim]")
 
-        # 7. Fetch GFW SAR detections (if API token configured)
+        # 7. Fetch GFW SAR detections
         console.print(f"\n[cyan]Step 6/{total_steps}: GFW SAR detections...[/cyan]")
         if _settings.GFW_API_TOKEN:
             try:
@@ -948,10 +982,9 @@ def setup(
             except Exception as e:
                 console.print(f"[yellow]⚠ GFW fetch failed: {e}[/yellow]")
         else:
-            console.print("[dim]  GFW_API_TOKEN not set — skipping[/dim]")
-            console.print("[dim]  Get a free token at: https://globalfishingwatch.org/our-apis/[/dim]")
+            console.print("[dim]  Skipping GFW SAR detections (demo mode)[/dim]")
 
-        # 8. Fetch AISHub positions (if username configured)
+        # 8. Fetch AISHub positions
         console.print(f"\n[cyan]Step 7/{total_steps}: AISHub batch positions...[/cyan]")
         if _settings.AISHUB_USERNAME:
             try:
@@ -978,10 +1011,9 @@ def setup(
             except Exception as e:
                 console.print(f"[yellow]⚠ AISHub fetch failed: {e}[/yellow]")
         else:
-            console.print("[dim]  AISHUB_USERNAME not set — skipping[/dim]")
-            console.print("[dim]  Join at: https://www.aishub.net/[/dim]")
+            console.print("[dim]  AISHUB_USERNAME not set — skipping (requires AIS receiver: https://www.aishub.net/)[/dim]")
 
-        # 8. Enrich vessel metadata via GFW (if token configured)
+        # 8. Enrich vessel metadata via GFW
         console.print(f"\n[cyan]Step 8/{total_steps}: Vessel metadata enrichment...[/cyan]")
         if _settings.GFW_API_TOKEN:
             try:
@@ -999,7 +1031,7 @@ def setup(
             except Exception as e:
                 console.print(f"[yellow]⚠ Vessel enrichment failed: {e}[/yellow]")
         else:
-            console.print("[dim]  GFW_API_TOKEN not set — skipping enrichment[/dim]")
+            console.print("[dim]  Skipping vessel enrichment (demo mode)[/dim]")
 
         # 9. Infer AIS class from transmission intervals
         console.print(f"\n[cyan]Step 9/{total_steps}: Inferring AIS class from transmission intervals...[/cyan]")
@@ -1111,15 +1143,8 @@ def setup(
         elif with_sample_data and ais_count > 0:
             console.print(f"[dim]  Skipping sample data — {ais_count} AIS points already in DB[/dim]")
         elif not with_sample_data and ais_count == 0:
-            has_any_api = _settings.AISSTREAM_API_KEY or _settings.GFW_API_TOKEN or _settings.AISHUB_USERNAME
-            if not has_any_api:
-                console.print("[yellow]⚠ No AIS data and no API keys configured[/yellow]")
-                console.print("[dim]  Options:[/dim]")
-                console.print("[dim]    1. Set AISSTREAM_API_KEY in .env (free: https://aisstream.io/)[/dim]")
-                console.print("[dim]    2. Run: radiancefleet setup --with-sample-data[/dim]")
-                console.print("[dim]    3. Import CSV: radiancefleet ingest ais <file>[/dim]")
-            else:
-                console.print("[dim]  No sample data requested[/dim]")
+            console.print("[yellow]⚠ No AIS data after streaming — APIs may have returned no data for configured corridors[/yellow]")
+            console.print("[dim]  Try: radiancefleet setup --stream-duration 30m (longer streaming window)[/dim]")
         else:
             console.print("[dim]  No sample data requested[/dim]")
 
@@ -1129,10 +1154,7 @@ def setup(
         if ais_count == 0:
             console.print("[bold yellow]⚠ WARNING: No AIS data ingested after all steps.[/bold yellow]")
             console.print("[yellow]  The detection pipeline cannot run without AIS data.[/yellow]")
-            console.print("[dim]  Options:[/dim]")
-            console.print("[dim]    - Set AISSTREAM_API_KEY / GFW_API_TOKEN / AISHUB_USERNAME[/dim]")
-            console.print("[dim]    - Run: radiancefleet setup --with-sample-data[/dim]")
-            console.print("[dim]    - Import CSV: radiancefleet ingest ais <file>[/dim]")
+            console.print("[dim]  Try a longer streaming window: radiancefleet setup --stream-duration 30m[/dim]")
         else:
             try:
                 from app.modules.gap_detector import run_gap_detection, run_spoofing_detection
@@ -1187,11 +1209,50 @@ def setup(
                 console.print("[green]✓[/green] Detection pipeline complete")
             except Exception as e:
                 console.print(f"[yellow]⚠ Detection pipeline error: {e}[/yellow]")
+
+        # 15. Copernicus satellite checks for high-risk alerts
+        console.print(f"\n[cyan]Step 14/{total_steps}: Satellite checks (Copernicus Sentinel-1)...[/cyan]")
+        if _settings.COPERNICUS_CLIENT_ID and _settings.COPERNICUS_CLIENT_SECRET:
+            try:
+                from app.models.gap_event import AISGapEvent as _GapSat
+                from app.modules.satellite_query import prepare_satellite_check
+                from app.modules.copernicus_client import enhance_satellite_check
+
+                high_risk = (
+                    db.query(_GapSat)
+                    .filter(_GapSat.risk_score >= 51)
+                    .order_by(_GapSat.risk_score.desc())
+                    .limit(20)
+                    .all()
+                )
+                if high_risk:
+                    prepared = 0
+                    enhanced = 0
+                    for alert in high_risk:
+                        try:
+                            prepare_satellite_check(alert.gap_event_id, db)
+                            prepared += 1
+                            result = enhance_satellite_check(alert.gap_event_id, db)
+                            if result.get("scenes"):
+                                enhanced += 1
+                        except Exception:
+                            continue
+                    db.commit()
+                    console.print(
+                        f"[green]✓[/green] Satellite: {prepared} checks prepared, "
+                        f"{enhanced} with Sentinel-1 scenes found"
+                    )
+                else:
+                    console.print("[dim]  No high-risk alerts (score >= 51) to check[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Satellite check failed: {e}[/yellow]")
+        else:
+            console.print("[dim]  Skipping satellite checks (demo mode)[/dim]")
     finally:
         db.close()
 
     # Summary
-    console.print(f"\n[cyan]Step 14/{total_steps}: Summary[/cyan]")
+    console.print(f"\n[cyan]Step 15/{total_steps}: Summary[/cyan]")
     console.print("─" * 50)
     console.print("[bold green]Setup complete![/bold green]")
     console.print("\nNext steps:")

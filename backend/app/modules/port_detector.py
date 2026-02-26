@@ -73,18 +73,13 @@ def detect_port_calls_for_vessel(
     if not ports:
         return 0
 
-    # Build simple port lookup with lat/lon (fallback for non-spatial DB)
+    # Build simple port lookup with lat/lon from WKT geometry
+    from app.utils.geo import load_geometry
     port_coords = []
     for port in ports:
-        try:
-            from sqlalchemy import func
-            # Try to extract lat/lon from geometry
-            lat_val = db.execute(func.ST_Y(port.geometry)).scalar()
-            lon_val = db.execute(func.ST_X(port.geometry)).scalar()
-            if lat_val is not None and lon_val is not None:
-                port_coords.append((port, float(lat_val), float(lon_val)))
-        except Exception:
-            pass
+        pt = load_geometry(port.geometry)
+        if pt is not None:
+            port_coords.append((port, pt.y, pt.x))
 
     if not port_coords:
         logger.warning("Could not extract port coordinates — skipping port call detection")

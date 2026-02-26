@@ -2,11 +2,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
-
-    DATABASE_URL: str = (
-        "postgresql+psycopg2://radiancefleet:radiancefleet@localhost:5432/radiancefleet"
+    model_config = SettingsConfigDict(
+        env_file=("../.env", ".env"), env_file_encoding="utf-8"
     )
+
+    DATABASE_URL: str = "sqlite:///radiancefleet.db"
     CORRIDORS_CONFIG: str = "config/corridors.yaml"
     RISK_SCORING_CONFIG: str = "config/risk_scoring.yaml"
     LOG_LEVEL: str = "INFO"

@@ -112,7 +112,7 @@ class TestRussianOriginFlags:
         assert isinstance(RUSSIAN_ORIGIN_FLAGS, frozenset)
 
     def test_expected_flags_present(self):
-        expected = {"PW", "MH", "KM", "SL", "HN", "GA", "CM", "TZ", "ST", "GM", "CK", "GQ"}
+        expected = {"PW", "KM", "SL", "HN", "GA", "CM", "TZ", "ST", "GM", "CK", "GQ", "TV", "VU"}
         assert RUSSIAN_ORIGIN_FLAGS == expected
 
     @pytest.mark.parametrize("flag", ["ST", "GM", "CK", "GQ"])

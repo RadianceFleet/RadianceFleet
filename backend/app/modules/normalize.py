@@ -81,6 +81,18 @@ def parse_timestamp_flexible(ts: Any) -> datetime | None:
             except ValueError:
                 continue
 
+        # Go-style: "2024-12-29 18:22:32.318353 +0000 UTC"
+        if ts_str.endswith(" UTC"):
+            cleaned = ts_str[:-4].strip()  # remove trailing " UTC"
+            for go_fmt in (
+                "%Y-%m-%d %H:%M:%S.%f %z",
+                "%Y-%m-%d %H:%M:%S %z",
+            ):
+                try:
+                    return datetime.strptime(cleaned, go_fmt)
+                except ValueError:
+                    continue
+
     return None
 
 

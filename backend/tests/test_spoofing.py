@@ -388,32 +388,31 @@ def test_erratic_nav_status_continuous_episode_one_anomaly():
 
 
 def test_anchor_spoof_suppressed_in_anchorage_holding_corridor():
-    """_is_in_anchorage_corridor_bbox() returns True when position is inside an anchorage_holding corridor bbox.
+    """_is_in_anchorage_corridor() returns True when position is inside an anchorage_holding corridor bbox.
 
-    Tests the bbox fallback path (used for SQLite/non-spatial DB).
-    The spatial ST_Contains path is tested via integration tests with PostGIS.
+    Tests the bbox path used for corridor matching with WKT geometry.
     """
-    from app.modules.gap_detector import _is_in_anchorage_corridor_bbox
+    from app.modules.gap_detector import _is_in_anchorage_corridor
 
     # Create a corridor mock: anchorage_holding type, WKT polygon around (37°N, 22°E)
     # (Laconian Gulf area)
     mock_corridor = MagicMock()
-    mock_corridor.corridor_type = "anchorage_holding"
+    mock_corridor.corridor_type = MagicMock()
+    mock_corridor.corridor_type.value = "anchorage_holding"
     # WKT representation of a simple bounding polygon
     mock_corridor.geometry = "POLYGON((21.5 36.5, 22.5 36.5, 22.5 37.5, 21.5 37.5, 21.5 36.5))"
 
-    def query_side_effect(model):
-        mock_chain = MagicMock()
-        mock_chain.all.return_value = [mock_corridor]
-        return mock_chain
+    mock_query = MagicMock()
+    mock_query.filter.return_value = mock_query
+    mock_query.all.return_value = [mock_corridor]
 
     mock_db = MagicMock()
-    mock_db.query.side_effect = query_side_effect
+    mock_db.query.return_value = mock_query
 
     # Position inside the corridor bbox
-    result_inside = _is_in_anchorage_corridor_bbox(mock_db, lat=37.0, lon=22.0)
+    result_inside = _is_in_anchorage_corridor(mock_db, lat=37.0, lon=22.0)
     assert result_inside, "Position inside anchorage corridor bbox should return True"
 
     # Position outside the corridor bbox
-    result_outside = _is_in_anchorage_corridor_bbox(mock_db, lat=50.0, lon=10.0)
+    result_outside = _is_in_anchorage_corridor(mock_db, lat=50.0, lon=10.0)
     assert not result_outside, "Position outside anchorage corridor bbox should return False"
