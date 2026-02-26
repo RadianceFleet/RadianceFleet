@@ -15,6 +15,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.normalize import is_non_vessel_mmsi, parse_timestamp_flexible
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,8 @@ def _map_aishub_position(pos: dict) -> dict | None:
     """Map an AISHub position record to RadianceFleet AIS point format."""
     try:
         mmsi = str(pos.get("MMSI", ""))
-        if not mmsi or mmsi == "0":
+        # 1.5: Filter non-vessel MMSIs
+        if not mmsi or mmsi == "0" or is_non_vessel_mmsi(mmsi):
             return None
 
         lat = pos.get("LATITUDE")
@@ -115,25 +117,25 @@ def _map_aishub_position(pos: dict) -> dict | None:
         if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
             return None
 
-        # Timestamp: Unix epoch or ISO string
+        # 1.3/1.6: Timestamp — use flexible parser, no fallback to now()
         ts_raw = pos.get("TIME")
-        if isinstance(ts_raw, (int, float)):
-            ts = datetime.fromtimestamp(ts_raw, tz=timezone.utc)
-        elif isinstance(ts_raw, str):
-            try:
-                ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-            except ValueError:
-                ts = datetime.now(timezone.utc)
-        else:
-            ts = datetime.now(timezone.utc)
+        ts = parse_timestamp_flexible(ts_raw)
+        if ts is None:
+            return None
 
+        # 1.1: SOG sentinel — raw 1023 / 10 = 102.3 = "not available"
         sog = pos.get("SOG")
         if sog is not None:
             sog = float(sog) / 10.0  # AISHub SOG is in 1/10 knot
+            if sog >= 102.2:
+                sog = None
 
+        # 1.1: COG sentinel — raw 3600 / 10 = 360.0 = "not available"
         cog = pos.get("COG")
         if cog is not None:
             cog = float(cog) / 10.0  # AISHub COG is in 1/10 degree
+            if cog >= 360.0:
+                cog = None
 
         heading = pos.get("HEADING")
         if heading is not None:
@@ -180,6 +182,9 @@ def ingest_aishub_positions(
         vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
         if not vessel:
             ts = _parse_timestamp(pos)
+            if ts is None:
+                stats["skipped"] += 1
+                continue
             from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
             derived_flag = mmsi_to_flag(mmsi)
             vessel = Vessel(
@@ -197,6 +202,9 @@ def ingest_aishub_positions(
             stats["vessels_created"] += 1
 
         ts = _parse_timestamp(pos)
+        if ts is None:
+            stats["skipped"] += 1
+            continue
 
         # Skip duplicates
         existing = (

@@ -31,25 +31,25 @@ def test_validate_rejects_short_mmsi():
 
 
 def test_validate_rejects_invalid_lat():
-    row = {"mmsi": "123456789", "lat": 91.0, "lon": 25.0, "timestamp_utc": "2025-01-01T00:00:00Z"}
+    row = {"mmsi": "241234567", "lat": 91.0, "lon": 25.0, "timestamp_utc": "2025-01-01T00:00:00Z"}
     assert validate_ais_row(row) is not None
 
 
 def test_validate_rejects_future_timestamp():
     future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
-    row = {"mmsi": "123456789", "lat": 55.0, "lon": 25.0, "timestamp_utc": future}
+    row = {"mmsi": "241234567", "lat": 55.0, "lon": 25.0, "timestamp_utc": future}
     assert validate_ais_row(row) is not None
 
 
 def test_validate_rejects_excessive_sog():
-    row = {"mmsi": "123456789", "lat": 55.0, "lon": 25.0, "sog": 40.0,
+    row = {"mmsi": "241234567", "lat": 55.0, "lon": 25.0, "sog": 40.0,
            "timestamp_utc": "2025-01-01T00:00:00Z"}
     assert validate_ais_row(row) is not None
 
 
 def test_validate_accepts_valid_row():
     row = {
-        "mmsi": "123456789",
+        "mmsi": "241234567",
         "lat": 55.5,
         "lon": 24.7,
         "sog": 12.0,

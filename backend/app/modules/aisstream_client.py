@@ -20,6 +20,7 @@ from typing import Any, Callable
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.normalize import is_non_vessel_mmsi, parse_timestamp_flexible
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +59,8 @@ def _map_position_report(msg: dict) -> dict | None:
             return None
 
         mmsi = str(meta.get("MMSI", ""))
-        if not mmsi or mmsi == "0":
+        # 1.5: Filter non-vessel MMSIs
+        if not mmsi or mmsi == "0" or is_non_vessel_mmsi(mmsi):
             return None
 
         lat = meta.get("latitude") or report.get("Latitude")
@@ -68,11 +70,26 @@ def _map_position_report(msg: dict) -> dict | None:
         if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
             return None
 
+        # 1.3: No fallback to datetime.now() — return None if unparseable
         ts_raw = meta.get("time_utc", "")
-        try:
-            ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            ts = datetime.now(timezone.utc)
+        ts = parse_timestamp_flexible(ts_raw)
+        if ts is None:
+            return None
+
+        # 1.1: SOG sentinel 102.3 (raw 1023 = "not available")
+        sog = report.get("Sog")
+        if sog is not None and sog >= 102.2:
+            sog = None
+
+        # 1.1: COG sentinel 360.0 (raw 3600 = "not available")
+        cog = report.get("Cog")
+        if cog is not None and cog >= 360.0:
+            cog = None
+
+        # Heading 511 already filtered in original code
+        heading = report.get("TrueHeading")
+        if heading is not None and heading == 511:
+            heading = None
 
         return {
             "mmsi": mmsi,
@@ -80,9 +97,9 @@ def _map_position_report(msg: dict) -> dict | None:
             "timestamp": ts.isoformat(),
             "lat": lat,
             "lon": lon,
-            "sog": report.get("Sog"),
-            "cog": report.get("Cog"),
-            "heading": report.get("TrueHeading"),
+            "sog": sog,
+            "cog": cog,
+            "heading": heading,
             "nav_status": report.get("NavigationalStatus"),
             "source": "aisstream",
         }
@@ -100,7 +117,8 @@ def _map_static_data(msg: dict) -> dict | None:
             return None
 
         mmsi = str(meta.get("MMSI", ""))
-        if not mmsi or mmsi == "0":
+        # 1.5: Filter non-vessel MMSIs
+        if not mmsi or mmsi == "0" or is_non_vessel_mmsi(mmsi):
             return None
 
         dim = static.get("Dimension", {})
@@ -199,6 +217,8 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
         vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
         if not vessel:
             ts = _parse_timestamp(pt)
+            if ts is None:
+                continue
             from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
             derived_flag = mmsi_to_flag(mmsi)
             vessel = Vessel(
@@ -214,6 +234,8 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
             db.flush()
 
         ts = _parse_timestamp(pt)
+        if ts is None:
+            continue
 
         # Skip duplicates (same vessel + timestamp)
         existing = (

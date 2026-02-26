@@ -6,6 +6,7 @@ See PRD §7.2 for validation rules.
 """
 from __future__ import annotations
 
+import io
 import logging
 from datetime import datetime, timedelta, timezone
 from io import IOBase
@@ -21,7 +22,7 @@ from app.models.vessel_history import VesselHistory
 logger = logging.getLogger(__name__)
 
 # AIS vessel type codes that classify as tankers (ITU-R M.1371)
-TANKER_TYPE_CODES = set(range(80, 90))  # 80–89 = tanker types
+TANKER_TYPE_CODES = set(range(80, 90))  # 80-89 = tanker types
 
 REQUIRED_COLUMNS = {"mmsi", "timestamp", "lat", "lon"}
 
@@ -80,7 +81,23 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
     """
     from app.modules.normalize import normalize_ais_dataframe, validate_ais_row
 
-    df = pl.read_csv(file, infer_schema_length=1000)
+    # 1.4: Handle UTF-8 BOM — read raw bytes first, strip BOM if present
+    raw: Any
+    if hasattr(file, "read"):
+        raw = file.read()
+    else:
+        raw = file
+
+    if isinstance(raw, bytes) and raw[:3] == b"\xef\xbb\xbf":
+        raw = raw[3:]
+
+    if isinstance(raw, bytes):
+        df = pl.read_csv(io.BytesIO(raw), infer_schema_length=1000)
+    elif isinstance(raw, str):
+        df = pl.read_csv(io.StringIO(raw), infer_schema_length=1000)
+    else:
+        df = pl.read_csv(raw, infer_schema_length=1000)
+
     # Normalize column names to lowercase
     df = df.rename({col: col.lower().strip() for col in df.columns})
 
@@ -105,6 +122,12 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
             continue
 
         vessel = _get_or_create_vessel(db, row)
+        if vessel is None:
+            # Timestamp was unparseable — skip the row
+            logger.warning("Skipped row: unparseable timestamp | row: %s", row)
+            errors.append("Unparseable timestamp — row skipped")
+            rejected += 1
+            continue
         _check_sog_class_limit(vessel, row.get("sog"))
         result = _create_ais_point(db, vessel, row)
         if result is None:
@@ -133,11 +156,17 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
     }
 
 
-def _get_or_create_vessel(db: Session, row: dict) -> Vessel:
+def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
+    """Get or create a vessel record.
+
+    Returns None if the timestamp cannot be parsed (row should be skipped).
+    """
     mmsi = str(row["mmsi"])
     vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
     if not vessel:
         ts = _parse_timestamp(row)
+        if ts is None:
+            return None
         from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
         csv_flag = row.get("flag") or row.get("country")
         flag = csv_flag or mmsi_to_flag(mmsi)
@@ -159,6 +188,8 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel:
 
     # Existing vessel — track identity changes before overwriting
     ts = _parse_timestamp(row)
+    if ts is None:
+        return None
     _track_field_change(db, vessel, "name",
                         vessel.name, row.get("vessel_name") or row.get("shipname"),
                         ts, "ais_csv")
@@ -200,16 +231,19 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel:
     return vessel
 
 
-def _parse_timestamp(row: dict):
+def _parse_timestamp(row: dict) -> datetime | None:
+    """Parse timestamp from row, returning None if unparseable.
+
+    1.3: No longer falls back to datetime.now() — returns None instead.
+    1.6: Supports Unix epoch and common strftime formats via parse_timestamp_flexible.
+    """
+    from app.modules.normalize import parse_timestamp_flexible
+
     ts = row.get("timestamp_utc") or row.get("timestamp")
-    if isinstance(ts, str):
-        try:
-            return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        except ValueError:
-            pass
-    if isinstance(ts, datetime):
-        return ts
-    return datetime.now(timezone.utc)
+    result = parse_timestamp_flexible(ts)
+    if result is None:
+        logger.warning("Unparseable timestamp: %r", ts)
+    return result
 
 
 def _track_field_change(
@@ -280,36 +314,54 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
         None if the duplicate was ignored (existing source was equal or better).
     """
     ts = _parse_timestamp(row)
+    if ts is None:
+        return None
 
-    # Duplicate check: same MMSI + timestamp
-    existing = (
+    # 1.2: SOG/COG default to None (not 0) when missing
+    sog_raw = row.get("sog")
+    cog_raw = row.get("cog")
+    sog_val = float(sog_raw) if sog_raw is not None else None
+    cog_val = float(cog_raw) if cog_raw is not None else None
+
+    # 1.1: Heading sentinel 511 → None
+    heading_raw = row.get("heading")
+    heading_val = None
+    if heading_raw is not None:
+        try:
+            h = float(heading_raw)
+            if h != 511:
+                heading_val = h
+        except (TypeError, ValueError):
+            heading_val = None
+
+    # 4.4: Multi-receiver AIS dedup — skip if a point exists within ±10s
+    near_dup = (
         db.query(AISPoint)
         .filter(
             AISPoint.vessel_id == vessel.vessel_id,
-            AISPoint.timestamp_utc == ts,
+            AISPoint.timestamp_utc >= ts - timedelta(seconds=10),
+            AISPoint.timestamp_utc <= ts + timedelta(seconds=10),
         )
         .first()
     )
-    if existing:
-        # PRD §7.2: keep highest-quality record; prefer satellite AIS over terrestrial
-        new_source = row.get("source", "csv_import")
-        if _is_higher_quality_source(new_source, existing.source):
-            existing.lat = float(row["lat"])
-            existing.lon = float(row["lon"])
-            existing.sog = float(row.get("sog") or 0)
-            existing.cog = float(row.get("cog") or 0)
-            existing.heading = row.get("heading")
-            existing.nav_status = row.get("nav_status")
-            existing.ais_class = row.get("ais_class", existing.ais_class)
-            old_source = existing.source
-            existing.source = new_source
-            logger.debug("Replaced AIS point (vessel=%s, ts=%s): %s > %s",
-                         vessel.mmsi, ts, new_source, old_source)
-            return "replaced"
-        return None
-
-    sog_val = float(row.get("sog") or 0)
-    cog_val = float(row.get("cog") or 0)
+    if near_dup:
+        # Exact timestamp match → check source quality for potential replacement
+        if near_dup.timestamp_utc == ts:
+            new_source = row.get("source", "csv_import")
+            if _is_higher_quality_source(new_source, near_dup.source):
+                near_dup.lat = float(row["lat"])
+                near_dup.lon = float(row["lon"])
+                near_dup.sog = sog_val
+                near_dup.cog = cog_val
+                near_dup.heading = heading_val
+                near_dup.nav_status = row.get("nav_status")
+                near_dup.ais_class = row.get("ais_class", near_dup.ais_class)
+                old_source = near_dup.source
+                near_dup.source = new_source
+                logger.debug("Replaced AIS point (vessel=%s, ts=%s): %s > %s",
+                             vessel.mmsi, ts, new_source, old_source)
+                return "replaced"
+        return None  # multi-receiver dedup
 
     # Compute sog_delta and cog_delta from previous point for this vessel
     prev_point = (
@@ -324,9 +376,10 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
     sog_delta = None
     cog_delta = None
     if prev_point is not None:
-        if prev_point.sog is not None:
+        # 1.2: Handle None in delta computations
+        if prev_point.sog is not None and sog_val is not None:
             sog_delta = round(sog_val - prev_point.sog, 2)
-        if prev_point.cog is not None:
+        if prev_point.cog is not None and cog_val is not None:
             # Normalize COG delta to [-180, 180] range
             raw_cog_delta = cog_val - prev_point.cog
             cog_delta = round(((raw_cog_delta + 180) % 360) - 180, 2)
@@ -338,7 +391,7 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
         lon=float(row["lon"]),
         sog=sog_val,
         cog=cog_val,
-        heading=row.get("heading"),
+        heading=heading_val,
         nav_status=row.get("nav_status"),
         ais_class=row.get("ais_class", "A"),
         source=row.get("source", "csv_import"),
