@@ -103,8 +103,11 @@ def export_evidence_card(alert_id: int, format: str, db: Session) -> dict[str, A
     elif format == "md":
         content = _render_markdown(card_data)
         media_type = "text/markdown"
+    elif format == "csv":
+        content = _render_csv(card_data)
+        media_type = "text/csv"
     else:
-        return {"error": f"Unsupported format: {format}. Use 'json' or 'md'."}
+        return {"error": f"Unsupported format: {format}. Use 'json', 'md', or 'csv'."}
 
     # Persist record with score snapshot (so rescoring won't retroactively alter exports)
     card = EvidenceCard(
@@ -409,3 +412,51 @@ def _build_hunt_context(vessel_id: int, db: Session) -> dict[str, Any] | None:
         "profile_id": profile.profile_id,
         "missions": mission_data,
     }
+
+
+def _render_csv(card: dict[str, Any]) -> str:
+    """Render evidence card as a single-row CSV for spreadsheet tracking."""
+    import csv
+    import io
+
+    v = card.get("vessel", {})
+    g = card.get("gap", {})
+    r = card.get("risk", {})
+    env = card.get("movement_envelope", {})
+    lkp = card.get("last_known_position") or {}
+    fpa = card.get("first_position_after_gap") or {}
+    quality, coverage_desc = card.get("coverage", ("UNKNOWN", ""))
+
+    headers = [
+        "alert_id", "mmsi", "imo", "vessel_name", "flag", "vessel_type",
+        "gap_start_utc", "gap_end_utc", "duration_minutes", "duration_hours",
+        "risk_score", "status",
+        "max_plausible_distance_nm", "actual_gap_distance_nm",
+        "velocity_plausibility_ratio", "impossible_speed_flag",
+        "last_position_lat", "last_position_lon", "last_position_sog",
+        "first_after_lat", "first_after_lon", "first_after_sog",
+        "corridor_name", "corridor_type",
+        "ais_coverage_quality", "satellite_check_status",
+        "analyst_notes", "exported_at",
+    ]
+    duration_min = g.get("duration_minutes", 0)
+    row = [
+        card.get("alert_id"),
+        v.get("mmsi"), v.get("imo"), v.get("name"), v.get("flag"), v.get("vessel_type"),
+        g.get("start_utc"), g.get("end_utc"), duration_min,
+        round(duration_min / 60, 1) if duration_min else 0,
+        r.get("score"), card.get("status"),
+        env.get("max_plausible_distance_nm"), env.get("actual_gap_distance_nm"),
+        env.get("velocity_plausibility_ratio"), env.get("impossible_speed_flag"),
+        lkp.get("lat"), lkp.get("lon"), lkp.get("sog"),
+        fpa.get("lat"), fpa.get("lon"), fpa.get("sog"),
+        card.get("corridor_name"), card.get("corridor_type"),
+        quality, card.get("satellite_check_status"),
+        card.get("analyst_notes"), card.get("exported_at"),
+    ]
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    writer.writerow(row)
+    return buf.getvalue()

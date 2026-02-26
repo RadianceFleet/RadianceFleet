@@ -97,8 +97,19 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
 ]
 
 
+# EU member state ISO-2 codes (for is_eu flag on Port records)
+_EU_COUNTRIES = {
+    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
+    "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
+    "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+}
+
+
 def seed_ports(db: Session) -> dict:
-    """Insert major ports if not already present. Idempotent — skips existing by name."""
+    """Insert major ports if not already present. Idempotent — skips existing by name.
+
+    Sets is_eu=True for ports in EU member states (needed for legitimacy scoring).
+    """
     from app.models.port import Port
 
     try:
@@ -114,9 +125,15 @@ def seed_ports(db: Session) -> dict:
 
     inserted = 0
     skipped = 0
+    updated_eu = 0
     for name, country, lat, lon in MAJOR_PORTS:
+        is_eu = country in _EU_COUNTRIES
         existing = db.query(Port).filter(Port.name == name).first()
         if existing:
+            # Fix existing ports that should have is_eu=True
+            if is_eu and not existing.is_eu:
+                existing.is_eu = True
+                updated_eu += 1
             skipped += 1
             continue
         port = Port(
@@ -124,10 +141,11 @@ def seed_ports(db: Session) -> dict:
             country=country,
             geometry=make_point(lat, lon),
             major_port=True,
+            is_eu=is_eu,
         )
         db.add(port)
         inserted += 1
 
     db.commit()
-    logger.info("seed_ports: inserted=%d skipped=%d", inserted, skipped)
-    return {"inserted": inserted, "skipped": skipped}
+    logger.info("seed_ports: inserted=%d skipped=%d updated_eu=%d", inserted, skipped, updated_eu)
+    return {"inserted": inserted, "skipped": skipped, "updated_eu": updated_eu}

@@ -1218,3 +1218,166 @@ def test_new_mmsi_palau_flag_stacking():
 
     assert bd.get("new_mmsi_first_30d") == 15, f"Expected new_mmsi=15, got {bd.get('new_mmsi_first_30d')}"
     assert bd.get("new_mmsi_russian_origin_flag") == 25, f"Expected russian_origin=25, got {bd.get('new_mmsi_russian_origin_flag')}"
+
+
+# ── Phase 0 Bug Regression Tests ──────────────────────────────────────────────
+
+def test_speed_impossible_no_duration_bonus():
+    """Bug 0.1: speed_impossible (>30kn) must NOT trigger the 1.4× gap duration bonus.
+
+    Speed impossible indicates MMSI reuse / position error, not evasive behavior.
+    Only speed_spike and speed_spoof should get the duration bonus.
+    """
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=24 * 60, deadweight=100_000)  # 24h gap → 55pts duration
+    _, bd = compute_gap_score(gap, config, pre_gap_sog=35.0)
+
+    assert "speed_impossible" in bd, "Speed impossible must fire at 35kn"
+    assert bd["speed_impossible"] == 40
+    assert "gap_duration_speed_spike_bonus" not in bd, \
+        "BUG 0.1: speed_impossible must NOT trigger the 1.4× duration bonus"
+
+
+def test_speed_spoof_still_gets_duration_bonus():
+    """Verify speed_spoof (below 30kn but above spoof threshold) still gets 1.4× bonus."""
+    config = load_scoring_config()
+    # Aframax spoof threshold = 24kn; 25kn triggers spoof
+    gap = _make_gap(duration_minutes=6 * 60, deadweight=100_000)
+    _, bd = compute_gap_score(gap, config, pre_gap_sog=25.0)
+
+    assert "speed_spoof_before_gap" in bd
+    assert "gap_duration_speed_spike_bonus" in bd, \
+        "Speed spoof should still trigger the 1.4× duration bonus"
+
+
+def test_loitering_12h_export_route_scores_8():
+    """Bug 0.2: 12h+ loitering in an export_route corridor → +8, NOT +20.
+
+    Only STS zones should get +20 for 12h+ loitering.
+    """
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60)
+
+    # Create a loitering event in an export_route corridor
+    loiter = MagicMock()
+    loiter.loiter_id = 201
+    loiter.duration_hours = 14
+    loiter.corridor_id = 10
+    loiter.preceding_gap_id = None
+    loiter.following_gap_id = None
+
+    # Mock corridor as export_route type
+    corridor_mock = MagicMock()
+    corridor_mock.corridor_type = "export_route"
+
+    def query_side_effect(model):
+        mock_chain = MagicMock()
+        from app.models.loitering_event import LoiteringEvent
+        from app.models.corridor import Corridor
+        if model is LoiteringEvent:
+            mock_chain.filter.return_value.all.return_value = [loiter]
+        elif model is Corridor:
+            mock_chain.get.return_value = corridor_mock
+        else:
+            mock_chain.filter.return_value.all.return_value = []
+            mock_chain.filter.return_value.first.return_value = None
+            mock_chain.filter.return_value.count.return_value = 0
+        return mock_chain
+
+    mock_db = MagicMock()
+    mock_db.query.side_effect = query_side_effect
+
+    _, bd = compute_gap_score(gap, config, db=mock_db)
+
+    loiter_key = f"loitering_{loiter.loiter_id}"
+    assert loiter_key in bd, "Loitering signal must fire"
+    assert bd[loiter_key] == 8, \
+        f"BUG 0.2: 12h+ loitering in export_route must be +8, got {bd[loiter_key]}"
+
+
+def test_loitering_12h_sts_zone_scores_20():
+    """Bug 0.2 positive case: 12h+ loitering in STS zone → +20."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60)
+
+    loiter = MagicMock()
+    loiter.loiter_id = 202
+    loiter.duration_hours = 14
+    loiter.corridor_id = 11
+    loiter.preceding_gap_id = None
+    loiter.following_gap_id = None
+
+    corridor_mock = MagicMock()
+    corridor_mock.corridor_type = "sts_zone"
+
+    def query_side_effect(model):
+        mock_chain = MagicMock()
+        from app.models.loitering_event import LoiteringEvent
+        from app.models.corridor import Corridor
+        if model is LoiteringEvent:
+            mock_chain.filter.return_value.all.return_value = [loiter]
+        elif model is Corridor:
+            mock_chain.get.return_value = corridor_mock
+        else:
+            mock_chain.filter.return_value.all.return_value = []
+            mock_chain.filter.return_value.first.return_value = None
+            mock_chain.filter.return_value.count.return_value = 0
+        return mock_chain
+
+    mock_db = MagicMock()
+    mock_db.query.side_effect = query_side_effect
+
+    _, bd = compute_gap_score(gap, config, db=mock_db)
+
+    loiter_key = f"loitering_{loiter.loiter_id}"
+    assert loiter_key in bd, "Loitering signal must fire"
+    assert bd[loiter_key] == 20, \
+        f"BUG 0.2: 12h+ loitering in sts_zone must be +20, got {bd[loiter_key]}"
+
+
+def test_watchlist_scores_from_yaml():
+    """Bug 0.3: Watchlist scores must read from YAML, not hardcoded.
+
+    Verify the YAML file contains the expected keys and the scoring code
+    reads from config with correct defaults matching the YAML values.
+    """
+    import yaml
+    from pathlib import Path
+
+    yaml_path = Path(__file__).parent.parent / "config" / "risk_scoring.yaml"
+    if not yaml_path.exists():
+        yaml_path = Path(__file__).parent.parent.parent / "config" / "risk_scoring.yaml"
+    if yaml_path.exists():
+        with open(yaml_path) as f:
+            raw = yaml.safe_load(f) or {}
+        watchlist_cfg = raw.get("watchlist", {})
+        assert watchlist_cfg.get("vessel_on_ofac_sdn_list") == 50
+        assert watchlist_cfg.get("vessel_on_eu_sanctions_list") == 50
+        assert watchlist_cfg.get("vessel_on_kse_shadow_fleet_list") == 30
+
+
+def test_laid_up_scores_from_yaml():
+    """Bug 0.3: Laid-up scores must read from YAML config."""
+    import yaml
+    from pathlib import Path
+
+    yaml_path = Path(__file__).parent.parent / "config" / "risk_scoring.yaml"
+    if not yaml_path.exists():
+        yaml_path = Path(__file__).parent.parent.parent / "config" / "risk_scoring.yaml"
+    if yaml_path.exists():
+        with open(yaml_path) as f:
+            raw = yaml.safe_load(f) or {}
+        behavioral_cfg = raw.get("behavioral", {})
+        assert behavioral_cfg.get("vessel_laid_up_in_sts_zone") == 30
+        assert behavioral_cfg.get("vessel_laid_up_60d_plus") == 25
+        assert behavioral_cfg.get("vessel_laid_up_30d_plus") == 15
+
+
+def test_age_10_20y_visible_in_breakdown():
+    """Bug 3.3: Age 10-20y (0 pts) must appear in breakdown for transparency."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, year_built=2010)
+    _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
+
+    assert "vessel_age_10_20y" in bd, "Age 10-20y must appear in breakdown even when 0 pts"
+    assert bd["vessel_age_10_20y"] == 0

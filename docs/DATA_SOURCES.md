@@ -4,6 +4,33 @@ A practical guide mapping each supported data source to its import steps, format
 
 ---
 
+## Automatic Download
+
+RadianceFleet can automatically download OFAC SDN and OpenSanctions watchlists:
+
+```bash
+# Download all available sources
+radiancefleet data fetch
+
+# Download a specific source
+radiancefleet data fetch --source ofac
+
+# Force re-download (ignores ETag cache)
+radiancefleet data fetch --force
+
+# One-command workflow: fetch → import → detect → score
+radiancefleet data refresh
+
+# Check data freshness
+radiancefleet data status
+```
+
+Downloaded files are saved to the `data/` directory with date-stamped filenames (e.g., `ofac_sdn_2026-02-26.csv`). Repeated fetches use ETag/Last-Modified headers to skip redundant downloads.
+
+KSE Institute does not have a stable direct download URL. Download manually from [kse.ua](https://kse.ua/information-department/shadow-fleet/) and import with `radiancefleet watchlist import --source kse <file>`.
+
+---
+
 ## Quick Reference
 
 | Source | Command | Update Frequency | Format | Notes |
@@ -96,7 +123,8 @@ Unmatched rows emit a warning and are skipped — they do not abort the batch. R
 
 ### OFAC Specially Designated Nationals (SDN)
 
-- **Download**: https://www.treasury.gov/ofac/downloads/sdn.csv
+- **Automatic**: `radiancefleet data fetch --source ofac` (recommended)
+- **Manual download**: https://www.treasury.gov/ofac/downloads/sdn.csv
 - **Publisher**: US Department of the Treasury, Office of Foreign Assets Control
 - **Update frequency**: Weekly, sometimes more often for urgent designations
 - **Format**: CSV
@@ -151,7 +179,8 @@ Unmatched rows emit a warning and are skipped — they do not abort the batch. R
 
 ### OpenSanctions
 
-- **Download**: https://www.opensanctions.org/datasets/vessels/
+- **Automatic**: `radiancefleet data fetch --source opensanctions` (recommended)
+- **Manual download**: https://www.opensanctions.org/datasets/vessels/
 - **Publisher**: OpenSanctions (aggregates OFAC, EU Council, UN, and other lists)
 - **Update frequency**: Daily
 - **Format**: JSON array of entity objects

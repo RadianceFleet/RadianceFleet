@@ -1,0 +1,24 @@
+# Vessel Type Filtering Configuration (FR2)
+# Controls which vessel types are included in detection modules.
+# All string matching is case-insensitive.
+
+# vessel_type strings that classify a vessel as a tanker
+# (substring match against vessel.vessel_type)
+tanker_type_keywords:
+  - "tanker"
+  - "crude"
+  - "oil"
+  - "chemical"
+  - "lpg"
+  - "lng"
+
+# Minimum DWT to classify as tanker-equivalent if vessel_type is missing
+tanker_min_dwt: 20000
+
+# Manual include list — MMSIs always included regardless of vessel_type
+# Useful for known shadow fleet vessels with incorrect type classification
+manual_include_mmsi: []
+
+# Manual exclude list — MMSIs always excluded from detection
+# Useful for known false positives (navy vessels, research ships, etc.)
+manual_exclude_mmsi: []

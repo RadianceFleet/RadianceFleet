@@ -27,6 +27,7 @@ dependencies = [
     "rapidfuzz>=3.0.0",
     "python-multipart>=0.0.20",
     "slowapi>=0.1.9",
+    "websockets>=12.0",
 ]
 
 [project.optional-dependencies]

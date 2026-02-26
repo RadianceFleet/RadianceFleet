@@ -31,8 +31,8 @@ FIELDNAMES = [
     "timestamp", "lat", "lon", "sog", "cog", "heading", "nav_status",
 ]
 
-# Reference date: 2026-01-15
-BASE_DATE = datetime(2026, 1, 15, 0, 0, 0)
+# Dynamic reference date: 2 days ago (ensures sample data is always "recent")
+BASE_DATE = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=2)
 
 
 def ts(dt: datetime) -> str:

@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: '/vessels', label: 'Vessels' },
   { to: '/map', label: 'Map' },
   { to: '/sts-events', label: 'STS Events' },
+  { to: '/dark-vessels', label: 'Dark Vessels' },
   { to: '/corridors', label: 'Corridors' },
   { to: '/watchlist', label: 'Watchlist' },
   { to: '/ingest', label: 'Ingest' },

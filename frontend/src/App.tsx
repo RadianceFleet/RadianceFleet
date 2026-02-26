@@ -13,6 +13,7 @@ import { CorridorDetailPage } from './pages/CorridorDetailPage'
 import { WatchlistPage } from './pages/WatchlistPage'
 import { IngestionPage } from './pages/IngestionPage'
 import { DetectionPanel } from './pages/DetectionPanel'
+import { DarkVesselsPage } from './pages/DarkVesselsPage'
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="corridors/:id" element={<CorridorDetailPage />} />
             <Route path="watchlist" element={<WatchlistPage />} />
             <Route path="ingest" element={<IngestionPage />} />
+            <Route path="dark-vessels" element={<DarkVesselsPage />} />
             <Route path="detect" element={<DetectionPanel />} />
           </Route>
         </Routes>

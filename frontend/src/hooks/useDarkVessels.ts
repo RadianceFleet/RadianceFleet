@@ -1,0 +1,16 @@
+import { useQuery } from '@tanstack/react-query'
+import { apiFetch } from '../lib/api'
+import type { DarkVesselDetection } from '../types/api'
+
+export function useDarkVessels(filters?: {
+  ais_match_result?: string
+  corridor_id?: number
+}) {
+  const params = new URLSearchParams()
+  if (filters?.ais_match_result) params.set('ais_match_result', filters.ais_match_result)
+  if (filters?.corridor_id != null) params.set('corridor_id', String(filters.corridor_id))
+  return useQuery({
+    queryKey: ['dark-vessels', filters],
+    queryFn: () => apiFetch<DarkVesselDetection[]>(`/dark-vessels?${params}`),
+  })
+}

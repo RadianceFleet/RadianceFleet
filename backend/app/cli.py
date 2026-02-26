@@ -58,6 +58,9 @@ app.add_typer(gfw_app, name="gfw")
 hunt_app = typer.Typer(help="Vessel hunt commands (FR9)")
 app.add_typer(hunt_app, name="hunt")
 
+data_app = typer.Typer(help="Data acquisition commands")
+app.add_typer(data_app, name="data")
+
 
 @ingest_app.command("ais")
 def ingest_ais(
@@ -311,6 +314,24 @@ def detect_sts(
     try:
         result = detect_sts_events(db, date_from=_parse_date(date_from), date_to=_parse_date(date_to))
         console.print(f"[green]STS events detected: {result['sts_events_created']}[/green]")
+    finally:
+        db.close()
+
+
+@app.command("detect-port-calls")
+def detect_port_calls(
+    date_from: Optional[str] = typer.Option(None, "--from"),
+    date_to: Optional[str] = typer.Option(None, "--to"),
+):
+    """Detect port calls from AIS data (SOG <1kn within 3nm of port for >2h)."""
+    from app.database import SessionLocal
+    from app.modules.port_detector import run_port_call_detection
+
+    db = SessionLocal()
+    try:
+        result = run_port_call_detection(db, date_from=_parse_date(date_from), date_to=_parse_date(date_to))
+        console.print(f"[green]Port calls detected: {result['port_calls_detected']} "
+                      f"across {result['vessels_processed']} vessels[/green]")
     finally:
         db.close()
 
@@ -705,5 +726,943 @@ def hunt_confirm(
     except ValueError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Setup — one command to working state
+# ---------------------------------------------------------------------------
+
+@app.command("setup")
+def setup(
+    with_sample_data: bool = typer.Option(False, "--with-sample-data", help="Load 7 synthetic vessels for demo"),
+    skip_fetch: bool = typer.Option(False, "--skip-fetch", help="Skip downloading watchlists from the internet"),
+    stream_duration: str = typer.Option("5m", "--stream-duration", help="AIS stream duration (e.g. 30s, 5m). Only used if AISSTREAM_API_KEY is set."),
+):
+    """Bootstrap RadianceFleet from scratch: init DB, import corridors, fetch data, run detection.
+
+    Non-interactive execution order:
+      1. Check Python >= 3.11
+      2. Init DB + seed ports
+      3. Import corridors from config/corridors.yaml
+      4. Fetch watchlists (OFAC + OpenSanctions) — unless --skip-fetch
+      5. Import watchlists
+      6. If AISSTREAM_API_KEY set → stream AIS data for --stream-duration
+      7. If GFW_API_TOKEN set → fetch SAR detections for corridors (last 30d)
+      8. If AISHUB_USERNAME set → fetch latest positions for corridor areas
+      8.5 If GFW_API_TOKEN set → enrich vessels missing DWT/year_built/IMO
+      9. If --with-sample-data AND no AIS data yet → generate/ingest sample data
+      10. Run detection pipeline (gaps → spoofing → loitering → STS → corridors → score)
+    """
+    import sys
+
+    total_steps = 11
+    console.print("[bold cyan]RadianceFleet Setup[/bold cyan]\n")
+
+    # 1. Check Python version
+    v = sys.version_info
+    if v < (3, 11):
+        console.print(f"[red]Python >= 3.11 required (found {v.major}.{v.minor})[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]✓[/green] Python {v.major}.{v.minor}.{v.micro}")
+
+    # 2. Initialize database
+    console.print(f"\n[cyan]Step 1/{total_steps}: Initializing database...[/cyan]")
+    try:
+        from app.database import init_db as _init_db, SessionLocal
+        _init_db()
+        console.print("[green]✓[/green] Database initialized")
+    except Exception as e:
+        console.print(f"[red]✗ Database init failed: {e}[/red]")
+        console.print("[yellow]Hint: Is Docker running? Try: docker compose up -d[/yellow]")
+        raise typer.Exit(1)
+
+    db = SessionLocal()
+    try:
+        # 2b. Seed ports if empty
+        from app.models.port import Port
+        port_count = db.query(Port).count()
+        if port_count == 0:
+            try:
+                from scripts.seed_ports import seed_ports
+                result = seed_ports(db)
+                console.print(f"[green]✓[/green] Seeded {result['inserted']} ports")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Port seeding skipped: {e}[/yellow]")
+        else:
+            console.print(f"[dim]  Ports already seeded ({port_count})[/dim]")
+
+        # 3. Import corridors
+        console.print(f"\n[cyan]Step 2/{total_steps}: Importing corridors...[/cyan]")
+        try:
+            from app.models.corridor import Corridor
+            import yaml
+            config_path = Path("../config/corridors.yaml")
+            if not config_path.exists():
+                config_path = Path("config/corridors.yaml")
+            if not config_path.exists():
+                console.print("[yellow]⚠ corridors.yaml not found, skipping[/yellow]")
+            else:
+                with open(config_path) as f:
+                    data = yaml.safe_load(f)
+                corridors_data = data.get("corridors", [])
+                existing_count = db.query(Corridor).count()
+                if existing_count >= len(corridors_data):
+                    console.print(f"[dim]  Corridors already imported ({existing_count})[/dim]")
+                else:
+                    # Delegate to the corridors import command logic
+                    from geoalchemy2.shape import from_shape
+                    from shapely.geometry import shape as shapely_shape
+                    upserted = 0
+                    for c_data in corridors_data:
+                        existing = db.query(Corridor).filter(Corridor.name == c_data["name"]).first()
+                        geom = None
+                        raw_geom = c_data.get("geometry")
+                        if raw_geom and isinstance(raw_geom, dict):
+                            try:
+                                geom = from_shape(shapely_shape(raw_geom), srid=4326)
+                            except Exception:
+                                pass
+                        elif raw_geom and isinstance(raw_geom, str):
+                            try:
+                                from shapely import wkt as shapely_wkt
+                                geom = from_shape(shapely_wkt.loads(raw_geom), srid=4326)
+                            except Exception:
+                                pass
+
+                        if not existing:
+                            corridor = Corridor(
+                                name=c_data["name"],
+                                corridor_type=c_data.get("corridor_type", "export_route"),
+                                risk_weight=c_data.get("risk_weight", 1.0),
+                                is_jamming_zone=c_data.get("is_jamming_zone", False),
+                                description=c_data.get("description"),
+                                geometry=geom,
+                            )
+                            db.add(corridor)
+                            upserted += 1
+                    db.commit()
+                    console.print(f"[green]✓[/green] Imported {upserted} corridors")
+        except Exception as e:
+            console.print(f"[yellow]⚠ Corridor import failed: {e}[/yellow]")
+
+        # 4. Fetch watchlists
+        if not skip_fetch:
+            console.print(f"\n[cyan]Step 3/{total_steps}: Downloading watchlists...[/cyan]")
+            try:
+                from app.modules.data_fetcher import fetch_all
+                results = fetch_all()
+                for source, res in [("OFAC", results["ofac"]), ("OpenSanctions", results["opensanctions"])]:
+                    if res["status"] == "downloaded":
+                        console.print(f"[green]✓[/green] {source} downloaded to {res['path']}")
+                    elif res["status"] == "up_to_date":
+                        console.print(f"[dim]  {source} already up to date[/dim]")
+                    elif res["status"] == "error":
+                        console.print(f"[yellow]⚠ {source}: {res['error']}[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Data fetch failed: {e}[/yellow]")
+                console.print("[dim]  You can fetch later with: radiancefleet data fetch[/dim]")
+
+            # 5. Import downloaded watchlists
+            console.print(f"\n[cyan]Step 4/{total_steps}: Importing watchlists...[/cyan]")
+            try:
+                from app.modules.data_fetcher import _find_latest
+                from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions
+                from app.config import settings as _settings
+
+                data_dir = Path(_settings.DATA_DIR)
+                ofac_file = _find_latest(data_dir, "ofac_sdn_")
+                if ofac_file:
+                    result = load_ofac_sdn(db, str(ofac_file))
+                    console.print(f"[green]✓[/green] OFAC: {result.get('matched', 0)} matched")
+
+                os_file = _find_latest(data_dir, "opensanctions_vessels_")
+                if os_file:
+                    result = load_opensanctions(db, str(os_file))
+                    console.print(f"[green]✓[/green] OpenSanctions: {result.get('matched', 0)} matched")
+
+                if not ofac_file and not os_file:
+                    console.print("[dim]  No watchlist files found to import[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Watchlist import failed: {e}[/yellow]")
+        else:
+            console.print(f"\n[dim]Step 3/{total_steps}: Skipping data fetch (--skip-fetch)[/dim]")
+            console.print(f"[dim]Step 4/{total_steps}: Skipping watchlist import (--skip-fetch)[/dim]")
+
+        # 6. Stream AIS data from aisstream.io (if API key configured)
+        from app.config import settings as _settings
+        console.print(f"\n[cyan]Step 5/{total_steps}: AIS data streaming (aisstream.io)...[/cyan]")
+        if _settings.AISSTREAM_API_KEY:
+            try:
+                import asyncio
+                from app.modules.aisstream_client import stream_ais, get_corridor_bounding_boxes
+
+                boxes = get_corridor_bounding_boxes(db)
+                duration_s = _parse_duration(stream_duration)
+                console.print(f"  Streaming for {stream_duration} ({duration_s}s) across {len(boxes)} corridor boxes...")
+
+                ais_result = asyncio.run(stream_ais(
+                    api_key=_settings.AISSTREAM_API_KEY,
+                    bounding_boxes=boxes,
+                    duration_seconds=duration_s,
+                    batch_interval=_settings.AISSTREAM_BATCH_INTERVAL,
+                ))
+                console.print(
+                    f"[green]✓[/green] Streamed {ais_result['points_stored']} AIS points "
+                    f"({ais_result['vessels_seen']} vessels)"
+                )
+            except Exception as e:
+                console.print(f"[yellow]⚠ AIS streaming failed: {e}[/yellow]")
+        else:
+            console.print("[dim]  AISSTREAM_API_KEY not set — skipping[/dim]")
+            console.print("[dim]  Get a free key at: https://aisstream.io/[/dim]")
+
+        # 7. Fetch GFW SAR detections (if API token configured)
+        console.print(f"\n[cyan]Step 6/{total_steps}: GFW SAR detections...[/cyan]")
+        if _settings.GFW_API_TOKEN:
+            try:
+                from app.modules.gfw_client import get_sar_detections, import_sar_detections_to_db
+                from app.modules.aisstream_client import get_corridor_bounding_boxes
+
+                boxes = get_corridor_bounding_boxes(db)
+                if boxes:
+                    all_lats = [b[0][0] for b in boxes] + [b[1][0] for b in boxes]
+                    all_lons = [b[0][1] for b in boxes] + [b[1][1] for b in boxes]
+                    merged_bbox = (min(all_lats), min(all_lons), max(all_lats), max(all_lons))
+                else:
+                    merged_bbox = (54.0, 10.0, 66.0, 30.0)
+
+                detections = get_sar_detections(merged_bbox, _settings.GFW_API_TOKEN)
+                if detections:
+                    gfw_result = import_sar_detections_to_db(detections, db)
+                    console.print(
+                        f"[green]✓[/green] GFW: {gfw_result['dark']} dark detections, "
+                        f"{gfw_result['matched']} matched"
+                    )
+                else:
+                    console.print("[dim]  No GFW detections found for corridor areas[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ GFW fetch failed: {e}[/yellow]")
+        else:
+            console.print("[dim]  GFW_API_TOKEN not set — skipping[/dim]")
+            console.print("[dim]  Get a free token at: https://globalfishingwatch.org/our-apis/[/dim]")
+
+        # 8. Fetch AISHub positions (if username configured)
+        console.print(f"\n[cyan]Step 7/{total_steps}: AISHub batch positions...[/cyan]")
+        if _settings.AISHUB_USERNAME:
+            try:
+                from app.modules.aishub_client import fetch_area_positions, ingest_aishub_positions
+                from app.modules.aisstream_client import get_corridor_bounding_boxes
+
+                boxes = get_corridor_bounding_boxes(db)
+                if boxes:
+                    all_lats = [b[0][0] for b in boxes] + [b[1][0] for b in boxes]
+                    all_lons = [b[0][1] for b in boxes] + [b[1][1] for b in boxes]
+                    merged_bbox = (min(all_lats), min(all_lons), max(all_lats), max(all_lons))
+                else:
+                    merged_bbox = (54.0, 10.0, 66.0, 30.0)
+
+                positions = fetch_area_positions(merged_bbox, _settings.AISHUB_USERNAME)
+                if positions:
+                    hub_result = ingest_aishub_positions(positions, db)
+                    console.print(
+                        f"[green]✓[/green] AISHub: {hub_result['stored']} positions stored "
+                        f"({hub_result['vessels_created']} new vessels)"
+                    )
+                else:
+                    console.print("[dim]  No AISHub positions found for corridor areas[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ AISHub fetch failed: {e}[/yellow]")
+        else:
+            console.print("[dim]  AISHUB_USERNAME not set — skipping[/dim]")
+            console.print("[dim]  Join at: https://www.aishub.net/[/dim]")
+
+        # 8.5. Enrich vessel metadata via GFW (if token configured)
+        console.print(f"\n[cyan]Step 8/{total_steps}: Vessel metadata enrichment...[/cyan]")
+        if _settings.GFW_API_TOKEN:
+            try:
+                from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+                enrich_result = enrich_vessels_from_gfw(db, limit=50)
+                console.print(
+                    f"[green]✓[/green] Enriched {enrich_result['enriched']} vessels "
+                    f"(skipped {enrich_result['skipped']}, failed {enrich_result['failed']})"
+                )
+            except Exception as e:
+                console.print(f"[yellow]⚠ Vessel enrichment failed: {e}[/yellow]")
+        else:
+            console.print("[dim]  GFW_API_TOKEN not set — skipping enrichment[/dim]")
+
+        # 9. Sample data fallback (if no AIS data yet)
+        from app.models.ais_point import AISPoint
+        ais_count = db.query(AISPoint).count()
+        console.print(f"\n[cyan]Step 9/{total_steps}: Sample data...[/cyan]")
+        if with_sample_data and ais_count == 0:
+            try:
+                from app.modules.ingest import ingest_ais_csv
+                sample_path = Path("scripts/sample_ais.csv")
+                if not sample_path.exists():
+                    import subprocess
+                    subprocess.run(
+                        [sys.executable, "scripts/generate_sample_data.py"],
+                        check=True, capture_output=True,
+                    )
+                if sample_path.exists():
+                    with open(sample_path, "rb") as f:
+                        result = ingest_ais_csv(f, db)
+                    console.print(
+                        f"[green]✓[/green] Ingested {result['accepted']} sample AIS points "
+                        f"(7 vessels)"
+                    )
+                else:
+                    console.print("[yellow]⚠ Sample data script not found[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Sample data failed: {e}[/yellow]")
+        elif with_sample_data and ais_count > 0:
+            console.print(f"[dim]  Skipping sample data — {ais_count} AIS points already in DB[/dim]")
+        elif not with_sample_data and ais_count == 0:
+            has_any_api = _settings.AISSTREAM_API_KEY or _settings.GFW_API_TOKEN or _settings.AISHUB_USERNAME
+            if not has_any_api:
+                console.print("[yellow]⚠ No AIS data and no API keys configured[/yellow]")
+                console.print("[dim]  Options:[/dim]")
+                console.print("[dim]    1. Set AISSTREAM_API_KEY in .env (free: https://aisstream.io/)[/dim]")
+                console.print("[dim]    2. Run: radiancefleet setup --with-sample-data[/dim]")
+                console.print("[dim]    3. Import CSV: radiancefleet ingest ais <file>[/dim]")
+            else:
+                console.print("[dim]  No sample data requested[/dim]")
+        else:
+            console.print("[dim]  No sample data requested[/dim]")
+
+        # 10. Run detection pipeline (only if we have AIS data)
+        ais_count = db.query(AISPoint).count()  # re-check after possible ingest
+        console.print(f"\n[cyan]Step 10/{total_steps}: Running detection pipeline...[/cyan]")
+        if ais_count == 0:
+            console.print("[dim]  No AIS data loaded — skipping detection pipeline[/dim]")
+        else:
+            try:
+                from app.modules.gap_detector import run_gap_detection, run_spoofing_detection
+                from app.modules.loitering_detector import run_loitering_detection
+                from app.modules.sts_detector import detect_sts_events
+                from app.modules.corridor_correlator import correlate_all_uncorrelated_gaps
+                from app.modules.risk_scoring import score_all_alerts
+
+                gaps = run_gap_detection(db)
+                console.print(f"  Gaps: {gaps['gaps_detected']}")
+
+                spoof = run_spoofing_detection(db)
+                console.print(f"  Spoofing: {spoof}")
+
+                loiter = run_loitering_detection(db)
+                console.print(f"  Loitering: {loiter['loitering_events_created']}")
+
+                sts = detect_sts_events(db)
+                console.print(f"  STS: {sts['sts_events_created']}")
+
+                corr = correlate_all_uncorrelated_gaps(db)
+                console.print(f"  Corridors: {corr['correlated']} correlated")
+
+                scored = score_all_alerts(db)
+                console.print(f"  Scored: {scored['scored']} alerts")
+
+                console.print("[green]✓[/green] Detection pipeline complete")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Detection pipeline error: {e}[/yellow]")
+    finally:
+        db.close()
+
+    # Summary
+    console.print(f"\n[cyan]Step 11/{total_steps}: Summary[/cyan]")
+    console.print("─" * 50)
+    console.print("[bold green]Setup complete![/bold green]")
+    console.print("\nNext steps:")
+    console.print("  1. Start the API server:   [cyan]radiancefleet serve[/cyan]")
+    console.print("  2. Start the frontend:     [cyan]cd frontend && npm install && npm run dev[/cyan]")
+    console.print("  3. Open the web UI:        [cyan]http://localhost:5173[/cyan]")
+
+
+# ---------------------------------------------------------------------------
+# Data acquisition commands
+# ---------------------------------------------------------------------------
+
+@data_app.command("fetch")
+def data_fetch(
+    source: str = typer.Option("all", "--source", help="Source to fetch: ofac, opensanctions, or all"),
+    output_dir: str = typer.Option(None, "--output-dir", help="Download directory (default: DATA_DIR setting)"),
+    force: bool = typer.Option(False, "--force", help="Skip ETag check, re-download even if unchanged"),
+):
+    """Download watchlist data from public URLs.
+
+    Uses conditional GET (ETag/Last-Modified) to skip downloads when the
+    remote file hasn't changed. Pass --force to re-download regardless.
+    """
+    from app.modules.data_fetcher import fetch_ofac_sdn, fetch_opensanctions_vessels, fetch_all
+
+    out = Path(output_dir) if output_dir else None
+
+    if source.lower() == "all":
+        results = fetch_all(out, force=force)
+        for src, res in [("OFAC SDN", results["ofac"]), ("OpenSanctions", results["opensanctions"])]:
+            _print_fetch_result(src, res)
+        if results["errors"]:
+            raise typer.Exit(1)
+    elif source.lower() == "ofac":
+        res = fetch_ofac_sdn(out, force=force)
+        _print_fetch_result("OFAC SDN", res)
+        if res["status"] == "error":
+            raise typer.Exit(1)
+    elif source.lower() == "opensanctions":
+        res = fetch_opensanctions_vessels(out, force=force)
+        _print_fetch_result("OpenSanctions", res)
+        if res["status"] == "error":
+            raise typer.Exit(1)
+    else:
+        console.print(f"[red]Unknown source: {source}. Use: ofac, opensanctions, or all[/red]")
+        raise typer.Exit(1)
+
+
+def _print_fetch_result(label: str, result: dict) -> None:
+    """Print a human-readable download result."""
+    status = result["status"]
+    if status == "downloaded":
+        console.print(f"[green]✓ {label}:[/green] Downloaded to {result['path']}")
+    elif status == "up_to_date":
+        console.print(f"[dim]  {label}: Already up to date (last: {result.get('last_download', '?')})[/dim]")
+    elif status == "error":
+        console.print(f"[red]✗ {label}:[/red] {result['error']}")
+
+
+@data_app.command("refresh")
+def data_refresh(
+    source: str = typer.Option("all", "--source", help="Source to refresh: ofac, opensanctions, or all"),
+    detect: bool = typer.Option(True, "--detect/--no-detect", help="Run detection pipeline after import"),
+):
+    """Fetch latest watchlists, import them, and optionally run detection.
+
+    One-command workflow: download → import → detect → score.
+    """
+    from app.database import SessionLocal
+    from app.modules.data_fetcher import fetch_all, _find_latest
+    from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions
+    from app.config import settings
+
+    # 1. Fetch
+    console.print("[cyan]Fetching latest data...[/cyan]")
+    results = fetch_all()
+    for src, res in [("OFAC", results["ofac"]), ("OpenSanctions", results["opensanctions"])]:
+        _print_fetch_result(src, res)
+
+    # 2. Import
+    console.print("\n[cyan]Importing watchlists...[/cyan]")
+    db = SessionLocal()
+    try:
+        data_dir = Path(settings.DATA_DIR)
+
+        if source.lower() in ("all", "ofac"):
+            ofac_file = _find_latest(data_dir, "ofac_sdn_")
+            if ofac_file:
+                result = load_ofac_sdn(db, str(ofac_file))
+                console.print(f"[green]OFAC:[/green] {result}")
+            else:
+                console.print("[yellow]No OFAC file found to import[/yellow]")
+
+        if source.lower() in ("all", "opensanctions"):
+            os_file = _find_latest(data_dir, "opensanctions_vessels_")
+            if os_file:
+                result = load_opensanctions(db, str(os_file))
+                console.print(f"[green]OpenSanctions:[/green] {result}")
+            else:
+                console.print("[yellow]No OpenSanctions file found to import[/yellow]")
+
+        # 3. Detection pipeline
+        if detect:
+            from app.models.ais_point import AISPoint
+            ais_count = db.query(AISPoint).count()
+            if ais_count == 0:
+                console.print("\n[yellow]No AIS data in database — skipping detection pipeline.[/yellow]")
+                console.print("[dim]Import AIS data first: radiancefleet ingest ais <file>[/dim]")
+            else:
+                console.print("\n[cyan]Running detection pipeline...[/cyan]")
+                # Seed ports if needed
+                from app.models.port import Port
+                if db.query(Port).count() == 0:
+                    try:
+                        from scripts.seed_ports import seed_ports
+                        seed_ports(db)
+                    except Exception:
+                        pass
+
+                from app.modules.gap_detector import run_gap_detection, run_spoofing_detection
+                from app.modules.loitering_detector import run_loitering_detection
+                from app.modules.sts_detector import detect_sts_events
+                from app.modules.corridor_correlator import correlate_all_uncorrelated_gaps
+                from app.modules.risk_scoring import score_all_alerts
+
+                gaps = run_gap_detection(db)
+                console.print(f"  Gaps: {gaps['gaps_detected']}")
+                run_spoofing_detection(db)
+                run_loitering_detection(db)
+                detect_sts_events(db)
+                correlate_all_uncorrelated_gaps(db)
+                scored = score_all_alerts(db)
+                console.print(f"  Scored: {scored['scored']} alerts")
+                console.print("[green]Detection pipeline complete.[/green]")
+    finally:
+        db.close()
+
+
+@data_app.command("status")
+def data_status():
+    """Show data freshness and record counts at a glance."""
+    from app.database import SessionLocal
+    from sqlalchemy import func
+
+    db = SessionLocal()
+    try:
+        table = Table(title="Data Status")
+        table.add_column("Source", style="cyan")
+        table.add_column("Last Import", style="white")
+        table.add_column("Records", style="green", justify="right")
+
+        # AIS Positions
+        from app.models.ais_point import AISPoint
+        ais_count = db.query(AISPoint).count()
+        ais_latest = db.query(func.max(AISPoint.created_at)).scalar()
+        table.add_row(
+            "AIS Positions",
+            str(ais_latest)[:19] if ais_latest else "never",
+            f"{ais_count:,}",
+        )
+
+        # OFAC / OpenSanctions / KSE watchlists
+        from app.models.vessel_watchlist import VesselWatchlist
+        for source_label, source_key in [
+            ("OFAC SDN", "OFAC_SDN"),
+            ("OpenSanctions", "OPENSANCTIONS"),
+            ("KSE Shadow Fleet", "KSE_INSTITUTE"),
+        ]:
+            count = db.query(VesselWatchlist).filter(
+                VesselWatchlist.watchlist_source == source_key,
+                VesselWatchlist.is_active == True,
+            ).count()
+            latest = db.query(func.max(VesselWatchlist.matched_at)).filter(
+                VesselWatchlist.watchlist_source == source_key,
+            ).scalar()
+            table.add_row(
+                source_label,
+                str(latest)[:19] if latest else "never",
+                str(count),
+            )
+
+        # GFW Detections
+        try:
+            from app.models.stubs import DarkVesselDetection
+            gfw_count = db.query(DarkVesselDetection).count()
+            gfw_latest = db.query(func.max(DarkVesselDetection.detection_time_utc)).scalar()
+            table.add_row(
+                "GFW Detections",
+                str(gfw_latest)[:19] if gfw_latest else "never",
+                str(gfw_count),
+            )
+        except Exception:
+            table.add_row("GFW Detections", "never", "0")
+
+        # Corridors
+        from app.models.corridor import Corridor
+        corr_count = db.query(Corridor).count()
+        table.add_row(
+            "Corridors",
+            "config" if corr_count > 0 else "never",
+            str(corr_count),
+        )
+
+        # Ports
+        from app.models.port import Port
+        port_count = db.query(Port).count()
+        table.add_row(
+            "Ports",
+            "seeded" if port_count > 0 else "never",
+            str(port_count),
+        )
+
+        # Alerts (scored gaps)
+        from app.models.gap_event import AISGapEvent
+        alert_count = db.query(AISGapEvent).count()
+        scored_count = db.query(AISGapEvent).filter(AISGapEvent.risk_score.isnot(None)).count()
+        table.add_row(
+            "Alerts (gaps)",
+            f"{scored_count} scored" if alert_count > 0 else "never",
+            str(alert_count),
+        )
+
+        console.print(table)
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# Live data streaming and API commands
+# ---------------------------------------------------------------------------
+
+
+@data_app.command("stream")
+def data_stream(
+    duration: str = typer.Option("5m", "--duration", help="Stream duration (e.g. 30s, 5m, 1h). 0 = unlimited."),
+    bbox: str = typer.Option(None, "--bbox", help="Bounding box: 'lat_min,lon_min,lat_max,lon_max'. Default: corridor bboxes."),
+    api_key: str = typer.Option(None, "--api-key", help="aisstream.io API key (default: AISSTREAM_API_KEY env)"),
+):
+    """Stream real-time AIS data from aisstream.io.
+
+    Connects to the aisstream.io WebSocket, filters by corridor bounding boxes,
+    and ingests PositionReport + ShipStaticData into the database.
+    """
+    import asyncio
+    from app.config import settings as _settings
+    from app.database import SessionLocal
+
+    key = api_key or _settings.AISSTREAM_API_KEY
+    if not key:
+        console.print(
+            "[red]AISSTREAM_API_KEY not set.[/red]\n"
+            "Get a free API key at: https://aisstream.io/\n"
+            "Then set AISSTREAM_API_KEY in your .env file."
+        )
+        raise typer.Exit(1)
+
+    # Parse duration
+    duration_s = _parse_duration(duration)
+
+    # Parse bounding boxes
+    if bbox:
+        parts = [float(x.strip()) for x in bbox.split(",")]
+        if len(parts) != 4:
+            console.print("[red]bbox must be 4 values: lat_min,lon_min,lat_max,lon_max[/red]")
+            raise typer.Exit(1)
+        boxes = [[[parts[0], parts[1]], [parts[2], parts[3]]]]
+    else:
+        db = SessionLocal()
+        try:
+            from app.modules.aisstream_client import get_corridor_bounding_boxes
+            boxes = get_corridor_bounding_boxes(db)
+        finally:
+            db.close()
+
+    console.print(f"[cyan]Streaming AIS data from aisstream.io[/cyan]")
+    console.print(f"  Duration: {duration} ({duration_s}s)")
+    console.print(f"  Bounding boxes: {len(boxes)}")
+
+    from rich.live import Live
+    from rich.text import Text
+
+    status_text = Text("Connecting...")
+    live = Live(status_text, console=console, refresh_per_second=2)
+
+    def _progress(stats: dict):
+        status_text.plain = (
+            f"  {stats['elapsed_s']}s elapsed | "
+            f"{stats['messages']} msgs ({stats['msg_per_s']}/s) | "
+            f"{stats['points_stored']} points stored | "
+            f"{stats['vessels_seen']} vessels"
+        )
+
+    from app.modules.aisstream_client import stream_ais
+    with live:
+        result = asyncio.run(stream_ais(
+            api_key=key,
+            bounding_boxes=boxes,
+            duration_seconds=duration_s,
+            batch_interval=_settings.AISSTREAM_BATCH_INTERVAL,
+            progress_callback=_progress,
+        ))
+
+    console.print(f"\n[green]Stream complete:[/green]")
+    console.print(f"  Messages: {result['messages_received']}")
+    console.print(f"  Points stored: {result['points_stored']}")
+    console.print(f"  Vessels seen: {result['vessels_seen']}")
+    console.print(f"  Duration: {result.get('actual_duration_s', '?')}s")
+    if result.get("error"):
+        console.print(f"  [yellow]Error: {result['error']}[/yellow]")
+
+
+def _parse_duration(s: str) -> int:
+    """Parse duration string (30s, 5m, 1h) to seconds."""
+    s = s.strip().lower()
+    if s == "0":
+        return 0
+    if s.endswith("s"):
+        return int(s[:-1])
+    if s.endswith("m"):
+        return int(s[:-1]) * 60
+    if s.endswith("h"):
+        return int(s[:-1]) * 3600
+    try:
+        return int(s)
+    except ValueError:
+        return 300  # default 5 min
+
+
+@data_app.command("gfw-events")
+def data_gfw_events(
+    vessel: str = typer.Option(..., "--vessel", help="Vessel MMSI or name to search GFW"),
+    from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
+    to_date: str = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
+):
+    """Fetch vessel events from Global Fishing Watch API.
+
+    Searches GFW for the vessel, then retrieves encounters, loitering, and port visits.
+    """
+    from app.config import settings as _settings
+
+    token = _settings.GFW_API_TOKEN
+    if not token:
+        console.print(
+            "[red]GFW_API_TOKEN not set.[/red]\n"
+            "Get a free token at: https://globalfishingwatch.org/our-apis/\n"
+            "Then set GFW_API_TOKEN in your .env file."
+        )
+        raise typer.Exit(1)
+
+    from app.modules.gfw_client import search_vessel, get_vessel_events
+
+    # Search for vessel
+    console.print(f"[cyan]Searching GFW for '{vessel}'...[/cyan]")
+    results = search_vessel(vessel, token)
+    if not results:
+        console.print(f"[yellow]No vessel found for '{vessel}'[/yellow]")
+        raise typer.Exit(1)
+
+    # Use first match
+    v = results[0]
+    console.print(f"[green]Found:[/green] {v['name']} (MMSI: {v['mmsi']}, IMO: {v['imo']}, Flag: {v['flag']})")
+
+    if not v.get("gfw_id"):
+        console.print("[yellow]No GFW vessel ID available[/yellow]")
+        raise typer.Exit(1)
+
+    # Fetch events
+    console.print(f"[cyan]Fetching events...[/cyan]")
+    events = get_vessel_events(v["gfw_id"], token, start_date=from_date, end_date=to_date)
+
+    if not events:
+        console.print("[dim]No events found[/dim]")
+        return
+
+    table = Table(title=f"Events for {v['name']}")
+    table.add_column("Type", style="cyan")
+    table.add_column("Start", style="white")
+    table.add_column("End", style="white")
+    table.add_column("Lat", style="green", justify="right")
+    table.add_column("Lon", style="green", justify="right")
+
+    for ev in events[:50]:
+        table.add_row(
+            ev["type"],
+            str(ev.get("start", ""))[:19],
+            str(ev.get("end", ""))[:19],
+            f"{ev.get('lat', 0):.4f}" if ev.get("lat") else "",
+            f"{ev.get('lon', 0):.4f}" if ev.get("lon") else "",
+        )
+
+    console.print(table)
+    console.print(f"\n[dim]Total events: {len(events)}[/dim]")
+
+
+@data_app.command("gfw-detections")
+def data_gfw_detections(
+    bbox: str = typer.Option(None, "--bbox", help="Bounding box: 'lat_min,lon_min,lat_max,lon_max'"),
+    from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
+    to_date: str = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
+    import_db: bool = typer.Option(True, "--import/--no-import", help="Import detections into DB"),
+):
+    """Fetch SAR vessel detections from Global Fishing Watch.
+
+    Queries GFW for dark vessel candidates in the specified area and time range.
+    """
+    from app.config import settings as _settings
+
+    token = _settings.GFW_API_TOKEN
+    if not token:
+        console.print(
+            "[red]GFW_API_TOKEN not set.[/red]\n"
+            "Get a free token at: https://globalfishingwatch.org/our-apis/\n"
+            "Then set GFW_API_TOKEN in your .env file."
+        )
+        raise typer.Exit(1)
+
+    from app.modules.gfw_client import get_sar_detections, import_sar_detections_to_db
+
+    if bbox:
+        parts = [float(x.strip()) for x in bbox.split(",")]
+        if len(parts) != 4:
+            console.print("[red]bbox must be 4 values: lat_min,lon_min,lat_max,lon_max[/red]")
+            raise typer.Exit(1)
+        bbox_tuple = tuple(parts)
+    else:
+        # Default: use corridor bounding boxes
+        from app.database import SessionLocal
+        from app.modules.aisstream_client import get_corridor_bounding_boxes
+
+        db = SessionLocal()
+        try:
+            boxes = get_corridor_bounding_boxes(db)
+        finally:
+            db.close()
+        if boxes:
+            # Merge all corridor boxes into one encompassing box
+            all_lats = [b[0][0] for b in boxes] + [b[1][0] for b in boxes]
+            all_lons = [b[0][1] for b in boxes] + [b[1][1] for b in boxes]
+            bbox_tuple = (min(all_lats), min(all_lons), max(all_lats), max(all_lons))
+        else:
+            bbox_tuple = (54.0, 10.0, 66.0, 30.0)  # Baltic default
+
+    console.print(f"[cyan]Fetching GFW SAR detections...[/cyan]")
+    console.print(f"  Bbox: {bbox_tuple}")
+
+    detections = get_sar_detections(bbox_tuple, token, start_date=from_date, end_date=to_date)
+    console.print(f"[green]Found {len(detections)} detections[/green]")
+
+    if import_db and detections:
+        from app.database import SessionLocal
+        db = SessionLocal()
+        try:
+            result = import_sar_detections_to_db(detections, db)
+            console.print(
+                f"  Imported: {result['matched']} matched, {result['dark']} dark, "
+                f"{result['rejected']} rejected"
+            )
+        finally:
+            db.close()
+
+
+@data_app.command("copernicus-check")
+def data_copernicus_check(
+    alert_id: int = typer.Option(..., "--alert", help="Alert (gap event) ID to check"),
+):
+    """Check Sentinel-1 scene availability for an alert via Copernicus CDSE.
+
+    Queries the Copernicus catalog for SAR scenes covering the gap event's
+    bounding box and time window.
+    """
+    from app.config import settings as _settings
+
+    if not _settings.COPERNICUS_CLIENT_ID or not _settings.COPERNICUS_CLIENT_SECRET:
+        console.print(
+            "[red]COPERNICUS_CLIENT_ID and COPERNICUS_CLIENT_SECRET not set.[/red]\n"
+            "Register at: https://dataspace.copernicus.eu/\n"
+            "Then set both values in your .env file."
+        )
+        raise typer.Exit(1)
+
+    from app.database import SessionLocal
+    from app.modules.copernicus_client import enhance_satellite_check
+
+    db = SessionLocal()
+    try:
+        result = enhance_satellite_check(alert_id, db)
+    finally:
+        db.close()
+
+    if result.get("error"):
+        console.print(f"[red]{result['error']}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Sentinel-1 scenes found: {result['scenes_found']}[/green]")
+    for scene in result.get("scenes", [])[:10]:
+        console.print(f"  {scene['name']}")
+        console.print(f"    Acquired: {scene['acquisition_time']}")
+        console.print(f"    Size: {scene.get('size_mb', '?')} MB")
+
+
+@data_app.command("aishub-fetch")
+def data_aishub_fetch(
+    bbox: str = typer.Option(None, "--bbox", help="Bounding box: 'lat_min,lon_min,lat_max,lon_max'"),
+    import_db: bool = typer.Option(True, "--import/--no-import", help="Import positions into DB"),
+):
+    """Fetch latest AIS positions from AISHub.
+
+    Retrieves current vessel positions for the specified area.
+    Rate limit: 1 request per minute.
+    """
+    from app.config import settings as _settings
+
+    if not _settings.AISHUB_USERNAME:
+        console.print(
+            "[red]AISHUB_USERNAME not set.[/red]\n"
+            "Join at: https://www.aishub.net/\n"
+            "Then set AISHUB_USERNAME in your .env file."
+        )
+        raise typer.Exit(1)
+
+    from app.modules.aishub_client import fetch_area_positions, ingest_aishub_positions
+
+    if bbox:
+        parts = [float(x.strip()) for x in bbox.split(",")]
+        if len(parts) != 4:
+            console.print("[red]bbox must be 4 values: lat_min,lon_min,lat_max,lon_max[/red]")
+            raise typer.Exit(1)
+        bbox_tuple = tuple(parts)
+    else:
+        # Default: use corridor bounding boxes
+        from app.database import SessionLocal
+        from app.modules.aisstream_client import get_corridor_bounding_boxes
+
+        db = SessionLocal()
+        try:
+            boxes = get_corridor_bounding_boxes(db)
+        finally:
+            db.close()
+        if boxes:
+            all_lats = [b[0][0] for b in boxes] + [b[1][0] for b in boxes]
+            all_lons = [b[0][1] for b in boxes] + [b[1][1] for b in boxes]
+            bbox_tuple = (min(all_lats), min(all_lons), max(all_lats), max(all_lons))
+        else:
+            bbox_tuple = (54.0, 10.0, 66.0, 30.0)  # Baltic default
+
+    console.print(f"[cyan]Fetching AISHub positions...[/cyan]")
+    positions = fetch_area_positions(bbox_tuple)
+    console.print(f"[green]Fetched {len(positions)} positions[/green]")
+
+    if import_db and positions:
+        from app.database import SessionLocal
+        db = SessionLocal()
+        try:
+            result = ingest_aishub_positions(positions, db)
+            console.print(
+                f"  Stored: {result['stored']}, Skipped: {result['skipped']}, "
+                f"New vessels: {result['vessels_created']}"
+            )
+        finally:
+            db.close()
+
+
+@data_app.command("enrich-vessels")
+def data_enrich_vessels(
+    limit: int = typer.Option(50, "--limit", help="Max vessels to enrich"),
+):
+    """Enrich vessel metadata (DWT, year_built, IMO) via GFW vessel search.
+
+    Queries GFW for vessels that are missing critical scoring fields.
+    Requires GFW_API_TOKEN.
+    """
+    from app.config import settings as _settings
+
+    if not _settings.GFW_API_TOKEN:
+        console.print(
+            "[red]GFW_API_TOKEN not set.[/red]\n"
+            "Get a free token at: https://globalfishingwatch.org/our-apis/\n"
+            "Then set GFW_API_TOKEN in your .env file."
+        )
+        raise typer.Exit(1)
+
+    from app.database import SessionLocal
+    from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
+    db = SessionLocal()
+    try:
+        console.print(f"[cyan]Enriching up to {limit} vessels via GFW...[/cyan]")
+        result = enrich_vessels_from_gfw(db, limit=limit)
+        console.print(
+            f"[green]Done.[/green] Enriched: {result['enriched']}, "
+            f"Failed: {result['failed']}, Skipped: {result['skipped']}"
+        )
     finally:
         db.close()

@@ -239,16 +239,18 @@ export interface ExportResponse {
 
 export interface DarkVesselDetection {
   detection_id: number
-  scene_id: string
-  detection_lat: number
-  detection_lon: number
-  detection_time_utc: string
+  scene_id: string | null
+  detection_lat: number | null
+  detection_lon: number | null
+  detection_time_utc: string | null
   length_estimate_m: number | null
-  model_confidence: number
+  model_confidence: number | null
   vessel_type_inferred: string | null
+  ais_match_attempted: boolean
+  ais_match_result: string | null
   matched_vessel_id: number | null
   corridor_id: number | null
-  is_dark: boolean
+  created_gap_event_id: number | null
 }
 
 export interface HuntCandidate {

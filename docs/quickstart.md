@@ -1,5 +1,9 @@
 # Quick Start
 
+> **New to command-line tools?** Start with [GETTING_STARTED.md](GETTING_STARTED.md) instead — it explains every step in plain language.
+
+> **Fastest path:** `docker compose up -d` then `radiancefleet setup --with-sample-data` then `radiancefleet serve`. See step 5 below.
+
 ## Prerequisites
 
 - Docker + Docker Compose (for PostgreSQL/PostGIS)
@@ -51,7 +55,19 @@ uv run python scripts/generate_sample_data.py
 | F | Clean — no anomalies |
 | G | Impossible reappearance after gap |
 
-## 5. Run the full detection pipeline
+## 5. Quick setup (recommended)
+
+If you want to skip steps 2–4 and do everything at once:
+
+```bash
+cd backend
+source .venv/bin/activate
+radiancefleet setup --with-sample-data
+```
+
+This initializes the database, seeds ports, imports corridors, generates sample data, and runs the full detection pipeline in one command.
+
+## 6. Run the full detection pipeline (manual)
 
 ```bash
 make detect

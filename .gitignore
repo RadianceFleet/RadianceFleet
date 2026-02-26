@@ -35,6 +35,7 @@ frontend/.env.local
 
 # Data files (never commit AIS data)
 data/
+!data/README.md
 *.csv
 *.json.gz
 

@@ -20,6 +20,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _audit_log(db: Session, action: str, entity_type: str, entity_id: int = None,
+               details: dict = None, request: Request = None) -> None:
+    """Record an analyst action for audit trail (PRD NFR5)."""
+    from app.models.audit_log import AuditLog
+    log = AuditLog(
+        action=action,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        details=details,
+        user_agent=request.headers.get("user-agent") if request else None,
+        ip_address=request.client.host if request and request.client else None,
+    )
+    db.add(log)
+
+
 def _validate_date_range(date_from: Optional[date], date_to: Optional[date]) -> None:
     """Reject if date_from is after date_to."""
     if date_from and date_to and date_from > date_to:
@@ -428,6 +443,7 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
 def update_alert_status(
     alert_id: int,
     body: dict,
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """Explicitly set alert status. Body: {status: '...', reason: '...'}"""
@@ -444,12 +460,15 @@ def update_alert_status(
     if body.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
 
+    old_status = alert.status
     alert.status = body.status
     if body.reason:
         existing_notes = alert.analyst_notes or ""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         alert.analyst_notes = f"{existing_notes}\n[{timestamp}] Status → {body.status}: {body.reason}".strip()
 
+    _audit_log(db, "status_change", "alert", alert_id,
+               {"old_status": old_status, "new_status": body.status, "reason": body.reason}, request)
     db.commit()
     return {"status": "ok", "new_status": body.status}
 
@@ -497,11 +516,13 @@ def prepare_satellite_check(alert_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/alerts/{alert_id}/export", tags=["alerts"])
-def export_evidence(alert_id: int, format: str = "json", db: Session = Depends(get_db)):
+def export_evidence(alert_id: int, format: str = "json", request: Request = None, db: Session = Depends(get_db)):
     from app.modules.evidence_export import export_evidence_card
     result = export_evidence_card(alert_id, format, db)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
+    _audit_log(db, "evidence_export", "alert", alert_id, {"format": format}, request)
+    db.commit()
     return result
 
 
@@ -1354,4 +1375,41 @@ def health_check(db: Session = Depends(get_db)):
         "status": "ok",
         "version": getattr(settings, "VERSION", "1.0.0"),
         "database": {"status": db_status, "latency_ms": latency_ms},
+    }
+
+
+# ---------------------------------------------------------------------------
+# Audit Log
+# ---------------------------------------------------------------------------
+
+@router.get("/audit-log", tags=["admin"])
+def list_audit_logs(
+    action: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """List audit log entries (PRD NFR5)."""
+    from app.models.audit_log import AuditLog
+    q = db.query(AuditLog).order_by(AuditLog.created_at.desc())
+    if action:
+        q = q.filter(AuditLog.action == action)
+    if entity_type:
+        q = q.filter(AuditLog.entity_type == entity_type)
+    total = q.count()
+    logs = q.offset(skip).limit(limit).all()
+    return {
+        "total": total,
+        "logs": [
+            {
+                "audit_id": l.audit_id,
+                "action": l.action,
+                "entity_type": l.entity_type,
+                "entity_id": l.entity_id,
+                "details": l.details,
+                "created_at": l.created_at.isoformat() if l.created_at else None,
+            }
+            for l in logs
+        ],
     }

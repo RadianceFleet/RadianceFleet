@@ -305,7 +305,14 @@ def compute_gap_score(
     # isinstance guard: MagicMock in tests returns another MagicMock from attribute access
     pre_sog = _raw_sog if isinstance(_raw_sog, (int, float)) else None
 
-    if pre_sog is not None and vessel_for_speed is not None:
+    # speed_impossible check first — supersedes both spike and spoof (different signal class)
+    # Impossible speed (>30kn) indicates MMSI reuse or position error, not evasive behavior.
+    # Does NOT trigger 1.4× duration bonus.
+    _speed_is_impossible = pre_sog is not None and pre_sog > 30
+
+    if _speed_is_impossible:
+        breakdown["speed_impossible"] = speed_cfg.get("speed_impossible", 40)
+    elif pre_sog is not None and vessel_for_speed is not None:
         dwt = vessel_for_speed.deadweight if isinstance(vessel_for_speed.deadweight, (int, float)) else None
         if dwt is None:
             dwt = 0
@@ -334,11 +341,6 @@ def compute_gap_score(
             _speed_spike_triggered = True
     elif speed_spike_precedes:
         # Legacy bool path (pre_gap_sog unavailable)
-        _speed_spike_triggered = True
-
-    # speed_impossible: any SOG > 30kn (universal, class-independent)
-    if pre_sog is not None and pre_sog > 30:
-        breakdown["speed_impossible"] = speed_cfg.get("speed_impossible", 40)
         _speed_spike_triggered = True
 
     # Speed spike bonus: gap_duration sub-score ×1.4 if preceded by speed spike/spoof
@@ -382,7 +384,7 @@ def compute_gap_score(
                 spike_thresh = speed_cfg.get("panamax_60_80k_dwt", {}).get("spike_threshold_kn", 20)
             else:
                 spike_thresh = 20
-            if _pre_sog_dz > spike_thresh and (gap.duration_minutes or 0) < 120:
+            if _pre_sog_dz > spike_thresh and (gap.duration_minutes or 0) < 360:
                 breakdown["dark_zone_entry"] = dz_cfg.get("gap_immediately_before_dark_zone_entry", 20)
             else:
                 # Normal-speed gap in dark zone: expected noise from jamming (-10),
@@ -440,9 +442,8 @@ def compute_gap_score(
                 if pts != 0:
                     breakdown["vessel_age_0_10y"] = pts
             elif age <= 20:
-                pts = vessel_age_cfg.get("age_10_to_20y", 0)
-                if pts != 0:
-                    breakdown["vessel_age_10_20y"] = pts
+                # Always include in breakdown for explainability (NFR4), even when 0
+                breakdown["vessel_age_10_20y"] = vessel_age_cfg.get("age_10_to_20y", 0)
             elif age <= 25:
                 breakdown["vessel_age_20_25y"] = vessel_age_cfg.get("age_20_to_25y", 10)
             else:
@@ -563,19 +564,30 @@ def compute_gap_score(
     # Phase 6.5: Loitering signal integration
     if db is not None:
         from app.models.loitering_event import LoiteringEvent
+        from app.models.corridor import Corridor
         loitering = db.query(LoiteringEvent).filter(
             LoiteringEvent.vessel_id == gap.vessel_id,
             LoiteringEvent.start_time_utc >= gap.gap_start_utc - timedelta(hours=48),
             LoiteringEvent.end_time_utc <= gap.gap_end_utc + timedelta(hours=48),
         ).all()
+        sts_cfg = config.get("sts", {})
         for le in loitering:
             loiter_key = f"loitering_{le.loiter_id}"
             if le.duration_hours >= 12 and le.corridor_id:
-                breakdown[loiter_key] = 20
+                # Check corridor type: +20 only in STS zones, +8 in other corridors
+                loiter_corridor = db.query(Corridor).get(le.corridor_id)
+                _lc_type = str(
+                    loiter_corridor.corridor_type.value
+                    if loiter_corridor and hasattr(loiter_corridor.corridor_type, "value")
+                    else (loiter_corridor.corridor_type if loiter_corridor else "")
+                )
+                if _lc_type == "sts_zone":
+                    breakdown[loiter_key] = sts_cfg.get("loitering_12h_plus_in_sts_corridor", 20)
+                else:
+                    breakdown[loiter_key] = sts_cfg.get("loitering_4h_plus_in_corridor", 8)
             elif le.duration_hours >= 4 and le.corridor_id:
-                breakdown[loiter_key] = 8
+                breakdown[loiter_key] = sts_cfg.get("loitering_4h_plus_in_corridor", 8)
             # Loiter-gap-loiter pattern: full cycle (both gaps) scores higher than one-sided
-            sts_cfg = config.get("sts", {})
             if le.preceding_gap_id and le.following_gap_id:
                 breakdown[f"loiter_gap_loiter_full_{le.loiter_id}"] = sts_cfg.get(
                     "loiter_gap_loiter_full_cycle", 25
@@ -586,13 +598,14 @@ def compute_gap_score(
                 )
 
         # Laid-up vessel scoring
+        behavioral_cfg = config.get("behavioral", {})
         if vessel is not None:
             if getattr(vessel, 'vessel_laid_up_in_sts_zone', False):
-                breakdown["vessel_laid_up_in_sts_zone"] = 30
+                breakdown["vessel_laid_up_in_sts_zone"] = behavioral_cfg.get("vessel_laid_up_in_sts_zone", 30)
             elif getattr(vessel, 'vessel_laid_up_60d', False):
-                breakdown["vessel_laid_up_60d"] = 25
+                breakdown["vessel_laid_up_60d"] = behavioral_cfg.get("vessel_laid_up_60d_plus", 25)
             elif getattr(vessel, 'vessel_laid_up_30d', False):
-                breakdown["vessel_laid_up_30d"] = 15
+                breakdown["vessel_laid_up_30d"] = behavioral_cfg.get("vessel_laid_up_30d_plus", 15)
 
     # Phase 6.6: STS transfer signal integration
     # Dedup: in a 3+ vessel cluster, pairwise events create redundant records per vessel.
@@ -612,18 +625,28 @@ def compute_gap_score(
             best_sts = max(sts_events, key=lambda s: s.risk_score_component)
             breakdown[f"sts_event_{best_sts.sts_id}"] = best_sts.risk_score_component
 
-    # Phase 6.7: Watchlist scoring
+    # Phase 6.7: Watchlist scoring (all weights from YAML)
     if db is not None and vessel is not None:
         from app.models.vessel_watchlist import VesselWatchlist
-        WATCHLIST_SCORES = {
-            "OFAC_SDN": 50, "EU_COUNCIL": 50, "KSE_SHADOW": 30, "LOCAL_INVESTIGATION": 20
+        watchlist_cfg = config.get("watchlist", {})
+        _WATCHLIST_KEY_MAP = {
+            "OFAC_SDN": "vessel_on_ofac_sdn_list",
+            "EU_COUNCIL": "vessel_on_eu_sanctions_list",
+            "KSE_SHADOW": "vessel_on_kse_shadow_fleet_list",
+        }
+        _WATCHLIST_DEFAULTS = {
+            "OFAC_SDN": 50, "EU_COUNCIL": 50, "KSE_SHADOW": 30,
         }
         watchlist = db.query(VesselWatchlist).filter(
             VesselWatchlist.vessel_id == vessel.vessel_id,
             VesselWatchlist.is_active == True,
         ).all()
         for w in watchlist:
-            score_val = WATCHLIST_SCORES.get(w.watchlist_source, 20)
+            yaml_key = _WATCHLIST_KEY_MAP.get(w.watchlist_source)
+            if yaml_key:
+                score_val = watchlist_cfg.get(yaml_key, _WATCHLIST_DEFAULTS.get(w.watchlist_source, 20))
+            else:
+                score_val = 20  # fallback for unknown sources
             breakdown[f"watchlist_{w.watchlist_source}"] = score_val
 
     # Phase 6.8: Vessel identity changes scoring
@@ -658,19 +681,70 @@ def compute_gap_score(
         if len(flag_changes) >= 3:
             breakdown["flag_changes_3plus_90d"] = meta_cfg.get("3_plus_flag_changes_in_90d", 40)
 
-        # name_change_during_active_voyage: only fires if change was within 7d of gap start
-        # (prevents dry-dock/sale renaming false positives)
+        # name_change_during_active_voyage: check if change occurred during active voyage
+        # Use port departure as voyage start if available; else fall back to 30d window
+        # (wider than original 7d to capture longer voyages; dry-dock renames are still
+        # filtered because vessels in dry-dock won't have AIS gaps triggering scoring)
+        _voyage_window_days = 30
+        if db is not None:
+            try:
+                from app.models.port_call import PortCall as _PC_name
+                last_departure = db.query(_PC_name).filter(
+                    _PC_name.vessel_id == vessel.vessel_id,
+                    _PC_name.departure_utc is not None,
+                    _PC_name.departure_utc <= gap.gap_start_utc,
+                ).order_by(_PC_name.departure_utc.desc()).first()
+                if (last_departure
+                        and isinstance(getattr(last_departure, 'departure_utc', None), datetime)):
+                    _voyage_window_days = max(1, (gap.gap_start_utc - last_departure.departure_utc).days)
+            except Exception:
+                pass  # PortCall table unavailable — use default 30d window
         recent_name_changes = [
             h for h in name_changes
-            if (gap.gap_start_utc - h.observed_at).days <= 7
+            if (gap.gap_start_utc - h.observed_at).days <= _voyage_window_days
         ]
         if recent_name_changes and "flag_and_name_change_48h" not in breakdown:
             breakdown["name_change_during_voyage"] = meta_cfg.get("name_change_during_active_voyage", 30)
 
-        # mmsi_change_mapped_same_position: +45
+        # mmsi_change_mapped_same_position: +45 (same position) or +20 (different position)
+        # PRD: +45 is specifically for MMSI changes where vessel position didn't move,
+        # indicating same physical ship changed identity. Position shift → lower score.
         mmsi_changes = [h for h in identity_changes if h.field_changed == "mmsi"]
         if mmsi_changes:
-            breakdown["mmsi_change"] = meta_cfg.get("mmsi_change_mapped_same_position", 45)
+            _mmsi_same_position = False
+            try:
+                from app.models.ais_point import AISPoint as _AP_mmsi
+                from app.utils.geo import haversine_nm as _hav_mmsi
+                for mc in mmsi_changes:
+                    # Query AIS points within ±6h of the change to check position stability
+                    before_pt = db.query(_AP_mmsi).filter(
+                        _AP_mmsi.vessel_id == vessel.vessel_id,
+                        _AP_mmsi.timestamp_utc <= mc.observed_at,
+                        _AP_mmsi.timestamp_utc >= mc.observed_at - timedelta(hours=6),
+                    ).order_by(_AP_mmsi.timestamp_utc.desc()).first()
+                    after_pt = db.query(_AP_mmsi).filter(
+                        _AP_mmsi.vessel_id == vessel.vessel_id,
+                        _AP_mmsi.timestamp_utc >= mc.observed_at,
+                        _AP_mmsi.timestamp_utc <= mc.observed_at + timedelta(hours=6),
+                    ).order_by(_AP_mmsi.timestamp_utc.asc()).first()
+                    if (before_pt and after_pt
+                            and isinstance(getattr(before_pt, 'lat', None), (int, float))
+                            and isinstance(getattr(after_pt, 'lat', None), (int, float))):
+                        dist_nm = _hav_mmsi(before_pt.lat, before_pt.lon, after_pt.lat, after_pt.lon)
+                        if dist_nm <= 5.0:
+                            _mmsi_same_position = True
+                            break
+                    else:
+                        # Can't verify position — assume same position (conservative)
+                        _mmsi_same_position = True
+                        break
+            except Exception:
+                # Position check unavailable — conservative: assume same position
+                _mmsi_same_position = True
+            if _mmsi_same_position:
+                breakdown["mmsi_change"] = meta_cfg.get("mmsi_change_mapped_same_position", 45)
+            else:
+                breakdown["mmsi_change_different_position"] = 20
 
     # Phase 6.9: Legitimacy signals
     if db is not None and vessel is not None:
@@ -759,7 +833,7 @@ def compute_gap_score(
             if mmsi_age_days < 30:
                 behavioral_cfg = config.get("behavioral", {})
                 breakdown["new_mmsi_first_30d"] = behavioral_cfg.get("new_mmsi_first_30d", 15)
-                RUSSIAN_ORIGIN_FLAGS = {"PW", "MH", "KM", "SL", "HN", "GA", "CM", "TZ"}
+                from app.utils.vessel_identity import RUSSIAN_ORIGIN_FLAGS
                 if vessel.flag and vessel.flag.upper() in RUSSIAN_ORIGIN_FLAGS:
                     breakdown["new_mmsi_russian_origin_flag"] = behavioral_cfg.get("new_mmsi_plus_russian_origin_zone", 25)
 

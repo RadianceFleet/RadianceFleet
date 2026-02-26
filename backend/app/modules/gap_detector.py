@@ -247,10 +247,15 @@ def detect_gaps_for_vessel(
 
 
 def _create_movement_envelope(db: Session, gap: AISGapEvent, vessel: Vessel) -> None:
-    """Create rotated ellipse envelope centered at gap_start point."""
-    import math
+    """Create movement envelope with real interpolation methods (PRD §7.4).
+
+    <2h:  Linear interpolation (2-point track)
+    2-6h: Cubic Hermite spline using start/end COG+SOG
+    >6h:  Multi-scenario envelopes (min/max speed bounds)
+    """
     from app.models.movement_envelope import MovementEnvelope
     from app.models.base import EstimatedMethodEnum
+    from app.utils.interpolation import interpolate_linear, interpolate_hermite, interpolate_scenarios
 
     duration_h = gap.duration_minutes / 60
     max_dist_nm = compute_max_distance_nm(vessel.deadweight if vessel else None, duration_h)
@@ -258,20 +263,39 @@ def _create_movement_envelope(db: Session, gap: AISGapEvent, vessel: Vessel) -> 
     semi_major = 0.7 * max_dist_nm
     semi_minor = 0.3 * max_dist_nm
 
-    # Determine heading from start point
-    heading = None
-    if gap.start_point_id:
-        start_pt = db.get(AISPoint, gap.start_point_id)
-        if start_pt:
-            heading = start_pt.cog or start_pt.heading
+    # Fetch start and end points for interpolation
+    start_pt = db.get(AISPoint, gap.start_point_id) if gap.start_point_id else None
+    end_pt = db.get(AISPoint, gap.end_point_id) if gap.end_point_id else None
+    heading = (start_pt.cog or start_pt.heading) if start_pt else None
 
-    # Estimate method based on duration
-    if duration_h <= 2:
-        method = EstimatedMethodEnum.LINEAR
-    elif duration_h <= 6:
-        method = EstimatedMethodEnum.SPLINE
+    # Interpolation based on duration
+    positions_json = None
+    ellipse_wkt = None
+
+    if start_pt and end_pt:
+        if duration_h <= 2:
+            method = EstimatedMethodEnum.LINEAR
+            positions_json, ellipse_wkt = interpolate_linear(
+                start_pt.lat, start_pt.lon, end_pt.lat, end_pt.lon, duration_h
+            )
+        elif duration_h <= 6:
+            method = EstimatedMethodEnum.SPLINE
+            positions_json, ellipse_wkt = interpolate_hermite(
+                start_pt.lat, start_pt.lon, end_pt.lat, end_pt.lon,
+                start_sog=start_pt.sog or 0, start_cog=start_pt.cog or 0,
+                end_sog=end_pt.sog or 0, end_cog=end_pt.cog or 0,
+                duration_h=duration_h,
+            )
+        else:
+            method = EstimatedMethodEnum.KALMAN
+            max_speed_kn = _class_speed(vessel.deadweight if vessel else None)[0]
+            positions_json, ellipse_wkt = interpolate_scenarios(
+                start_pt.lat, start_pt.lon, end_pt.lat, end_pt.lon,
+                start_sog=start_pt.sog or 0, start_cog=start_pt.cog or 0,
+                max_speed_kn=max_speed_kn, duration_h=duration_h,
+            )
     else:
-        method = EstimatedMethodEnum.KALMAN
+        method = EstimatedMethodEnum.LINEAR
 
     envelope = MovementEnvelope(
         gap_event_id=gap.gap_event_id,
@@ -282,6 +306,8 @@ def _create_movement_envelope(db: Session, gap: AISGapEvent, vessel: Vessel) -> 
         envelope_semi_minor_nm=semi_minor,
         envelope_heading_degrees=heading,
         estimated_method=method,
+        interpolated_positions_json=positions_json,
+        confidence_ellipse_geometry=ellipse_wkt,
     )
     db.add(envelope)
 
@@ -553,9 +579,8 @@ def run_spoofing_detection(
             i += 1
 
         # 6b + 6c: tanker-specific sub-types
-        is_tanker_erratic = (
-            vessel.vessel_type and "tanker" in vessel.vessel_type.lower()
-        ) or (isinstance(vessel.deadweight, (int, float)) and vessel.deadweight >= 20_000)
+        from app.utils.vessel_filter import is_tanker_type
+        is_tanker_erratic = is_tanker_type(vessel)
 
         if is_tanker_erratic:
             # 6b: extended restricted maneuverability (nav_status=3 > 6h)
@@ -609,9 +634,7 @@ def run_spoofing_detection(
                         anomalies_created += 1
 
         # --- Type 3: Slow Roll ---
-        is_tanker = (
-            vessel.vessel_type and "tanker" in vessel.vessel_type.lower()
-        ) or (vessel.deadweight and vessel.deadweight >= 20_000)
+        is_tanker = is_tanker_type(vessel)
         if is_tanker:
             slow_run = []
             for p in points:
@@ -640,5 +663,28 @@ def run_spoofing_detection(
                     slow_run = []
 
     db.commit()
+
+    # Post-processing: link unlinked SpoofingAnomaly records to their closest overlapping gap
+    unlinked = db.query(SpoofingAnomaly).filter(
+        SpoofingAnomaly.gap_event_id == None,
+    ).all()
+    linked_count = 0
+    for anomaly in unlinked:
+        # Find gap events for this vessel that overlap temporally with the anomaly
+        matching_gap = db.query(AISGapEvent).filter(
+            AISGapEvent.vessel_id == anomaly.vessel_id,
+            AISGapEvent.gap_start_utc <= anomaly.end_time_utc + timedelta(hours=2),
+            AISGapEvent.gap_end_utc >= anomaly.start_time_utc - timedelta(hours=2),
+        ).order_by(
+            # Prefer the gap whose start is closest to the anomaly start
+            AISGapEvent.gap_start_utc
+        ).first()
+        if matching_gap:
+            anomaly.gap_event_id = matching_gap.gap_event_id
+            linked_count += 1
+    if linked_count:
+        db.commit()
+        logger.info("Linked %d spoofing anomalies to gap events", linked_count)
+
     logger.info("Spoofing detection complete: %d anomalies detected", anomalies_created)
     return {"anomalies_detected": anomalies_created}

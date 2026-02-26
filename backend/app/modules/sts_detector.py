@@ -136,15 +136,10 @@ def _heading_diff(h1: float, h2: float) -> float:
 # ── Data loading helpers ──────────────────────────────────────────────────────
 
 def _tanker_vessel_ids(db: Session) -> list[int]:
-    """Return vessel_ids for tankers (by vessel_type or DWT threshold)."""
+    """Return vessel_ids for tankers (configurable via vessel_filter.yaml)."""
+    from app.utils.vessel_filter import is_tanker_type
     vessels = db.query(Vessel).all()
-    ids: list[int] = []
-    for v in vessels:
-        is_tanker_type = v.vessel_type and "tanker" in v.vessel_type.lower()
-        is_large_enough = v.deadweight is not None and v.deadweight >= _TANKER_MIN_DWT
-        if is_tanker_type or is_large_enough:
-            ids.append(v.vessel_id)
-    return ids
+    return [v.vessel_id for v in vessels if is_tanker_type(v)]
 
 
 def _load_ais_points(

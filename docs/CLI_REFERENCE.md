@@ -9,6 +9,110 @@ radiancefleet --help
 
 ---
 
+## Quick Setup
+
+### `setup`
+
+Bootstrap RadianceFleet from scratch with a single command. Initializes the database, seeds ports, imports corridors, optionally loads sample data, fetches watchlists, and runs the full detection pipeline.
+
+```
+radiancefleet setup [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--with-sample-data` | flag | off | Load 7 synthetic vessels for demo |
+| `--skip-fetch` | flag | off | Skip downloading watchlists from the internet |
+
+- Checks Python version (>= 3.11), verifies database connectivity.
+- Runs `init-db`, imports corridors, optionally generates sample data.
+- Downloads OFAC + OpenSanctions watchlists (unless `--skip-fetch`).
+- Runs the full detection pipeline (gaps → spoofing → loitering → STS → corridors → score).
+- Prints a summary with next-step instructions.
+
+**Examples**:
+
+```bash
+# Full setup with sample data (recommended for first run)
+radiancefleet setup --with-sample-data
+
+# Setup without internet access
+radiancefleet setup --with-sample-data --skip-fetch
+
+# Setup for production (no sample data, fetch real watchlists)
+radiancefleet setup
+```
+
+---
+
+## Data Acquisition
+
+### `data fetch`
+
+Download watchlist data from public URLs. Uses conditional GET (ETag/Last-Modified) to avoid redundant downloads.
+
+```
+radiancefleet data fetch [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--source` | str | `all` | Source to fetch: `ofac`, `opensanctions`, or `all` |
+| `--output-dir` | str | DATA_DIR setting | Download directory |
+| `--force` | flag | off | Skip ETag check, always re-download |
+
+**Examples**:
+
+```bash
+radiancefleet data fetch
+radiancefleet data fetch --source ofac --force
+```
+
+---
+
+### `data refresh`
+
+One-command workflow: fetch latest watchlists → import → run detection pipeline.
+
+```
+radiancefleet data refresh [OPTIONS]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--source` | str | `all` | Source to refresh: `ofac`, `opensanctions`, or `all` |
+| `--detect/--no-detect` | flag | `--detect` | Run detection pipeline after import |
+
+**Examples**:
+
+```bash
+# Full refresh (fetch + import + detect)
+radiancefleet data refresh
+
+# Just update watchlists without re-running detection
+radiancefleet data refresh --no-detect
+```
+
+---
+
+### `data status`
+
+Show data freshness and record counts at a glance.
+
+```
+radiancefleet data status
+```
+
+Displays a table with source name, last import timestamp, and record count for: AIS positions, OFAC SDN, OpenSanctions, KSE shadow fleet, GFW detections, corridors, ports, and scored alerts.
+
+**Example**:
+
+```bash
+radiancefleet data status
+```
+
+---
+
 ## Phase 1 — Setup
 
 ### `init-db`

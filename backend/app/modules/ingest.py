@@ -138,11 +138,15 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel:
     vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
     if not vessel:
         ts = _parse_timestamp(row)
+        from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+        csv_flag = row.get("flag") or row.get("country")
+        flag = csv_flag or mmsi_to_flag(mmsi)
         vessel = Vessel(
             mmsi=mmsi,
             imo=row.get("imo"),
             name=row.get("vessel_name") or row.get("shipname"),
-            flag=row.get("flag") or row.get("country"),
+            flag=flag,
+            flag_risk_category=flag_to_risk_category(flag),
             vessel_type=row.get("vessel_type") or row.get("ship_type"),
             deadweight=row.get("deadweight"),
             ais_class=row.get("ais_class", "unknown"),
@@ -181,6 +185,17 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel:
         vessel.ais_class = new_ais_class
     if new_callsign:
         vessel.callsign = new_callsign
+
+    # Backfill flag from MMSI if still missing
+    if not vessel.flag:
+        from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+        derived = mmsi_to_flag(vessel.mmsi)
+        if derived:
+            vessel.flag = derived
+            vessel.flag_risk_category = flag_to_risk_category(derived)
+    elif vessel.flag_risk_category is None or str(vessel.flag_risk_category) == "unknown":
+        from app.utils.vessel_identity import flag_to_risk_category
+        vessel.flag_risk_category = flag_to_risk_category(vessel.flag)
 
     return vessel
 
@@ -293,17 +308,42 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
             return "replaced"
         return None
 
+    sog_val = float(row.get("sog") or 0)
+    cog_val = float(row.get("cog") or 0)
+
+    # Compute sog_delta and cog_delta from previous point for this vessel
+    prev_point = (
+        db.query(AISPoint)
+        .filter(
+            AISPoint.vessel_id == vessel.vessel_id,
+            AISPoint.timestamp_utc < ts,
+        )
+        .order_by(AISPoint.timestamp_utc.desc())
+        .first()
+    )
+    sog_delta = None
+    cog_delta = None
+    if prev_point is not None:
+        if prev_point.sog is not None:
+            sog_delta = round(sog_val - prev_point.sog, 2)
+        if prev_point.cog is not None:
+            # Normalize COG delta to [-180, 180] range
+            raw_cog_delta = cog_val - prev_point.cog
+            cog_delta = round(((raw_cog_delta + 180) % 360) - 180, 2)
+
     point = AISPoint(
         vessel_id=vessel.vessel_id,
         timestamp_utc=ts,
         lat=float(row["lat"]),
         lon=float(row["lon"]),
-        sog=float(row.get("sog") or 0),
-        cog=float(row.get("cog") or 0),
+        sog=sog_val,
+        cog=cog_val,
         heading=row.get("heading"),
         nav_status=row.get("nav_status"),
         ais_class=row.get("ais_class", "A"),
         source=row.get("source", "csv_import"),
+        sog_delta=sog_delta,
+        cog_delta=cog_delta,
     )
     db.add(point)
     return point
