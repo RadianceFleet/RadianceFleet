@@ -13,7 +13,6 @@ from app.models.base import FlagRiskEnum
 # (source: KSE Institute, CREA, s&p Global shadow fleet tracker).
 RUSSIAN_ORIGIN_FLAGS: frozenset[str] = frozenset({
     "PW",  # Palau
-    "MH",  # Marshall Islands
     "KM",  # Comoros
     "SL",  # Sierra Leone
     "HN",  # Honduras
@@ -24,6 +23,10 @@ RUSSIAN_ORIGIN_FLAGS: frozenset[str] = frozenset({
     "GM",  # Gambia — cited in KSE shadow fleet reports
     "CK",  # Cook Islands — expelled from RISC 2025
     "GQ",  # Equatorial Guinea — cited in CSIS shadow fleet reports
+    "TV",  # Tuvalu — documented shadow fleet re-flagging destination
+    "VU",  # Vanuatu — documented shadow fleet re-flagging destination
+    # NOTE: Marshall Islands (MH) intentionally excluded — 2nd largest open registry
+    # (~4,000 vessels). MH is MEDIUM_RISK to avoid mass false positives.
 })
 
 # Western / major registries with strong oversight
@@ -40,6 +43,7 @@ MID_TO_FLAG: dict[str, str] = {
     "511": "PW", "538": "MH", "620": "KM", "667": "SL",
     "334": "HN", "626": "GA", "613": "CM", "674": "TZ",
     "668": "ST", "629": "GM", "518": "CK", "631": "GQ",
+    "553": "TV", "550": "VU",
     # Major open registries
     "351": "PA", "352": "PA", "353": "PA", "354": "PA", "355": "PA", "356": "PA", "357": "PA",
     "636": "LR", "637": "LR",

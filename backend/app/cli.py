@@ -1036,6 +1036,15 @@ def setup(
 
                 if not ofac_file and not os_file:
                     console.print("[dim]  No watchlist files to re-match[/dim]")
+
+                # 7b: Re-score after watchlist re-match (watchlist matches don't update scores otherwise)
+                try:
+                    from app.modules.risk_scoring import score_all_alerts as _score_wl
+                    wl_rescore = _score_wl(db)
+                    if wl_rescore.get("scored", 0) > 0:
+                        console.print(f"  Re-scored {wl_rescore['scored']} alerts after watchlist re-match")
+                except Exception:
+                    pass  # Non-fatal
             except Exception as e:
                 console.print(f"[yellow]⚠ Watchlist re-match failed: {e}[/yellow]")
         else:
@@ -1118,7 +1127,12 @@ def setup(
         ais_count = db.query(AISPoint).count()  # re-check after possible ingest
         console.print(f"\n[cyan]Step 13/{total_steps}: Running detection pipeline...[/cyan]")
         if ais_count == 0:
-            console.print("[dim]  No AIS data loaded — skipping detection pipeline[/dim]")
+            console.print("[bold yellow]⚠ WARNING: No AIS data ingested after all steps.[/bold yellow]")
+            console.print("[yellow]  The detection pipeline cannot run without AIS data.[/yellow]")
+            console.print("[dim]  Options:[/dim]")
+            console.print("[dim]    - Set AISSTREAM_API_KEY / GFW_API_TOKEN / AISHUB_USERNAME[/dim]")
+            console.print("[dim]    - Run: radiancefleet setup --with-sample-data[/dim]")
+            console.print("[dim]    - Import CSV: radiancefleet ingest ais <file>[/dim]")
         else:
             try:
                 from app.modules.gap_detector import run_gap_detection, run_spoofing_detection
@@ -1126,6 +1140,21 @@ def setup(
                 from app.modules.sts_detector import detect_sts_events
                 from app.modules.corridor_correlator import correlate_all_uncorrelated_gaps
                 from app.modules.risk_scoring import score_all_alerts
+
+                # 7d: Watchlist staleness check before scoring
+                try:
+                    from app.modules.data_fetcher import _load_metadata
+                    _wl_meta = _load_metadata(Path(_settings.DATA_DIR))
+                    from datetime import datetime as _dt_check, timedelta as _td_check
+                    for _src_key in ("ofac", "opensanctions"):
+                        _dl_at = _wl_meta.get(_src_key, {}).get("downloaded_at")
+                        if _dl_at:
+                            _dl_date = _dt_check.fromisoformat(_dl_at)
+                            _age_days = (_dt_check.now() - _dl_date).days
+                            if _age_days > 7:
+                                console.print(f"[yellow]⚠ {_src_key} watchlist is {_age_days} days old — consider: radiancefleet data fetch[/yellow]")
+                except Exception:
+                    pass  # Non-fatal
 
                 gaps = run_gap_detection(db)
                 console.print(f"  Gaps: {gaps['gaps_detected']}")
@@ -1144,6 +1173,16 @@ def setup(
 
                 scored = score_all_alerts(db)
                 console.print(f"  Scored: {scored['scored']} alerts")
+
+                # 7a: Alert summary
+                from app.models.gap_event import AISGapEvent as _GapSummary
+                all_alerts = db.query(_GapSummary).filter(_GapSummary.risk_score > 0).all()
+                publishable = sum(1 for a in all_alerts if 51 <= a.risk_score <= 75)
+                critical = sum(1 for a in all_alerts if a.risk_score >= 76)
+                if publishable or critical:
+                    console.print(f"\n  [bold]Alert summary:[/bold] {critical} critical (76+), {publishable} publishable (51-75)")
+                if ais_count > 100 and gaps.get("gaps_detected", 0) == 0:
+                    console.print("[yellow]⚠ {0} AIS points but 0 gaps detected — check gap detector thresholds[/yellow]".format(ais_count))
 
                 console.print("[green]✓[/green] Detection pipeline complete")
             except Exception as e:

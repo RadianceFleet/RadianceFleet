@@ -119,6 +119,17 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
 
     # ── Brazil ───────────────────────────────────────────────────────────────
     ("São Luís (Maranhão)", "BR", -2.90, -44.30),
+
+    # ── Additional ports (stress-test gap closure) ──────────────────────────
+    ("Taman", "RU", 45.06, 36.72),                 # Black Sea crude terminal
+    ("Daesan", "KR", 36.98, 126.35),               # Korean refinery complex
+    ("Rizhao", "CN", 35.38, 119.53),               # Shandong crude import
+    ("Dongying", "CN", 37.43, 118.67),              # Shandong independent refineries
+    ("Ras Lanuf", "LY", 30.50, 18.57),             # Libyan oil terminal
+    ("Brega", "LY", 30.41, 19.58),                 # Libyan oil terminal
+    ("Bonny Island", "NG", 4.43, 7.15),            # Nigerian crude terminal
+    ("Nador", "MA", 35.17, -2.93),                 # Morocco STS anchorage
+    ("Tangier Med", "MA", 35.89, -5.50),            # Morocco container + crude
 ]
 
 
@@ -135,11 +146,15 @@ _RUSSIAN_OIL_TERMINALS: set[str] = {
     "Primorsk",       # Baltic, crude
     "Ust-Luga",       # Baltic, crude + products
     "Novorossiysk",   # Black Sea, crude
+    "Kavkaz",         # Black Sea, crude (Kerch Strait terminal)
+    "Vysotsk",        # Baltic, products
+    "St Petersburg",  # Baltic, products
     "Tuapse",         # Black Sea, products
     "Nakhodka/Kozmino",  # Pacific, crude (ESPO)
     "Murmansk",       # Arctic, crude
     "De-Kastri",      # Sakhalin, crude
     "Varandey",       # Arctic, crude
+    "Taman",          # Black Sea, crude
 }
 
 

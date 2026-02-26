@@ -160,6 +160,10 @@ def rescore_all_alerts(db: Session, clear_detections: bool = False) -> dict:
 def _corridor_multiplier(corridor: Any, config: dict) -> tuple[float, str]:
     """Return (multiplier, corridor_type_label) from config.
 
+    NOTE: The corridor model's ``risk_weight`` field is informational metadata
+    only. Actual scoring multipliers come from ``risk_scoring.yaml`` [corridor]
+    section. This is intentional — analysts tune scoring in one YAML file.
+
     Corridor type → config key mapping:
       sts_zone          → known_sts_zone        (1.5x default)
       export_route      → high_risk_export_corridor (1.5x default)
@@ -489,11 +493,16 @@ def compute_gap_score(
             breakdown["gap_in_sts_tagged_corridor"] = sts_cfg.get("gap_in_sts_tagged_corridor", 30)
 
     # Phase 6.2: Gap frequency with subsumption hierarchy
+    # Tighter time windows supersede wider ones at the same gap count.
     freq_cfg = config.get("gap_frequency", {})
     if gaps_in_30d >= 5:
         breakdown["gap_frequency_5_in_30d"] = freq_cfg.get("5_gaps_in_30d", 50)
     elif gaps_in_14d >= 3:
         breakdown["gap_frequency_3_in_14d"] = freq_cfg.get("3_gaps_in_14d", 32)
+    elif gaps_in_30d >= 4:
+        breakdown["gap_frequency_4_in_30d"] = freq_cfg.get("4_gaps_in_30d", 40)
+    elif gaps_in_30d >= 3:
+        breakdown["gap_frequency_3_in_30d"] = freq_cfg.get("3_gaps_in_30d", 25)
     elif gaps_in_7d >= 2:
         breakdown["gap_frequency_2_in_7d"] = freq_cfg.get("2_gaps_in_7d", 18)
 
@@ -784,6 +793,18 @@ def compute_gap_score(
         if len(flag_changes) >= 3:
             breakdown["flag_changes_3plus_90d"] = meta_cfg.get("3_plus_flag_changes_in_90d", 40)
 
+        # Re-flagging countermeasure: flag changed from HIGH_RISK to LOW/MEDIUM in last 12m
+        from app.utils.vessel_identity import RUSSIAN_ORIGIN_FLAGS as _ROF, LOW_RISK_FLAGS as _LRF
+        recent_12m_flag = [h for h in flag_changes if (gap.gap_start_utc - h.observed_at).days <= 365]
+        for fc in recent_12m_flag:
+            old_flag = (fc.old_value or "").strip().upper()
+            new_flag = (fc.new_value or "").strip().upper()
+            if old_flag in _ROF and new_flag not in _ROF:
+                breakdown["flag_change_high_to_low_12m"] = meta_cfg.get(
+                    "flag_change_from_high_risk_to_low_risk_12m", 20
+                )
+                break
+
         # name_change_during_active_voyage: check if change occurred during active voyage
         # Use port departure as voyage start if available; else fall back to 30d window
         # (wider than original 7d to capture longer voyages; dry-dock renames are still
@@ -852,15 +873,21 @@ def compute_gap_score(
     # Phase 6.9: Legitimacy signals
     if db is not None and vessel is not None:
         # gap_free_90d_clean: no gaps in last 90 days
+        # Skip for HIGH_RISK flag vessels — a single 4h gap + 90d clean shouldn't wash away flag risk
         from app.models.gap_event import AISGapEvent as _AISGapEvent
         recent_gaps = db.query(_AISGapEvent).filter(
             _AISGapEvent.vessel_id == vessel.vessel_id,
             _AISGapEvent.gap_start_utc >= gap.gap_start_utc - timedelta(days=90),
             _AISGapEvent.gap_event_id != gap.gap_event_id,
         ).count()
-        if recent_gaps == 0:
+        _vessel_flag_risk = str(
+            vessel.flag_risk_category.value
+            if hasattr(vessel.flag_risk_category, "value")
+            else vessel.flag_risk_category
+        ) if vessel.flag_risk_category else ""
+        if recent_gaps == 0 and _vessel_flag_risk != "high_risk":
             legitimacy_cfg = config.get("legitimacy", {})
-            breakdown["legitimacy_gap_free_90d"] = legitimacy_cfg.get("gap_free_90d_clean", -15)
+            breakdown["legitimacy_gap_free_90d"] = legitimacy_cfg.get("gap_free_90d_clean", -10)
 
         # ais_class_a_consistent: all points are Class A
         from app.models.ais_point import AISPoint
@@ -933,12 +960,14 @@ def compute_gap_score(
                 mmsi_age_days = (scoring_date - fs).days
             except Exception:
                 mmsi_age_days = 9999
+            behavioral_cfg = config.get("behavioral", {})
             if mmsi_age_days < 30:
-                behavioral_cfg = config.get("behavioral", {})
                 breakdown["new_mmsi_first_30d"] = behavioral_cfg.get("new_mmsi_first_30d", 15)
                 from app.utils.vessel_identity import RUSSIAN_ORIGIN_FLAGS
                 if vessel.flag and vessel.flag.upper() in RUSSIAN_ORIGIN_FLAGS:
                     breakdown["new_mmsi_russian_origin_flag"] = behavioral_cfg.get("new_mmsi_plus_russian_origin_zone", 25)
+            elif mmsi_age_days < 60:
+                breakdown["new_mmsi_first_60d"] = behavioral_cfg.get("new_mmsi_first_60d", 8)
 
     # Suspicious MID: unallocated or known-stateless MMSI
     if vessel is not None and vessel.mmsi:

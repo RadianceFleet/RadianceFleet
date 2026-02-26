@@ -238,10 +238,10 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
                 mmsi_first_seen_utc=ts,
             )
             try:
-                db.add(vessel)
-                db.flush()
+                with db.begin_nested():
+                    db.add(vessel)
+                    db.flush()
             except IntegrityError:
-                db.rollback()
                 vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
                 if not vessel:
                     continue  # Should not happen, but skip if it does

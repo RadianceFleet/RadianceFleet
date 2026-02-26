@@ -53,15 +53,20 @@ class TestFlagToRiskCategory:
         ("RU", FlagRiskEnum.HIGH_RISK),
         ("CM", FlagRiskEnum.HIGH_RISK),
         ("PW", FlagRiskEnum.HIGH_RISK),
-        ("MH", FlagRiskEnum.HIGH_RISK),
         ("KM", FlagRiskEnum.HIGH_RISK),
         ("SL", FlagRiskEnum.HIGH_RISK),
         ("HN", FlagRiskEnum.HIGH_RISK),
         ("GA", FlagRiskEnum.HIGH_RISK),
         ("TZ", FlagRiskEnum.HIGH_RISK),
+        ("TV", FlagRiskEnum.HIGH_RISK),
+        ("VU", FlagRiskEnum.HIGH_RISK),
     ])
     def test_high_risk_flags(self, flag: str, expected: FlagRiskEnum):
         assert flag_to_risk_category(flag) == expected
+
+    def test_marshall_islands_is_medium_risk(self):
+        """MH is MEDIUM_RISK (2nd largest open registry — mass false positives if HIGH)."""
+        assert flag_to_risk_category("MH") == FlagRiskEnum.MEDIUM_RISK
 
     @pytest.mark.parametrize("flag,expected", [
         ("US", FlagRiskEnum.LOW_RISK),

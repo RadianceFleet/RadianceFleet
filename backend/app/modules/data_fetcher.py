@@ -120,48 +120,78 @@ def _download_file(
 
     tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
 
-    try:
-        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            with client.stream("GET", url, headers=headers) as response:
-                if response.status_code == 304:
-                    logger.info(
-                        "%s: not modified (304), skipping download", source_key
-                    )
-                    return None, None  # Not an error — already up to date
+    # Retry transient failures (503, 429, etc.) up to 3 times
+    import time as _time
+    _RETRYABLE = {429, 500, 502, 503, 504}
+    _RETRY_DELAYS = [5, 15, 30]
 
-                response.raise_for_status()
+    last_error: str | None = None
+    for attempt in range(1 + len(_RETRY_DELAYS)):
+        try:
+            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+                with client.stream("GET", url, headers=headers) as response:
+                    if response.status_code == 304:
+                        logger.info(
+                            "%s: not modified (304), skipping download", source_key
+                        )
+                        return None, None  # Not an error — already up to date
 
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(tmp_path, "wb") as f:
-                    for chunk in response.iter_bytes(chunk_size=65536):
-                        f.write(chunk)
+                    if response.status_code in _RETRYABLE and attempt < len(_RETRY_DELAYS):
+                        delay = _RETRY_DELAYS[attempt]
+                        if response.status_code == 429:
+                            retry_after = response.headers.get("Retry-After")
+                            if retry_after:
+                                try:
+                                    delay = max(delay, float(retry_after))
+                                except (ValueError, TypeError):
+                                    pass
+                        logger.warning(
+                            "%s: HTTP %d — retrying in %.0fs",
+                            source_key, response.status_code, delay,
+                        )
+                        _time.sleep(delay)
+                        continue
 
-                # Store conditional GET headers for next time
-                metadata[source_key] = {
-                    "etag": response.headers.get("etag"),
-                    "last_modified": response.headers.get("last-modified"),
-                    "downloaded_at": date.today().isoformat(),
-                    "url": url,
-                }
+                    response.raise_for_status()
 
-    except httpx.ConnectError:
-        _cleanup_tmp(tmp_path)
-        return None, (
-            f"Could not reach {_host(url)} (ConnectionError)\n"
-            f"Tip: Download manually and run the appropriate import command."
-        )
-    except httpx.TimeoutException:
-        _cleanup_tmp(tmp_path)
-        return None, (
-            f"Timed out connecting to {_host(url)} after {timeout}s\n"
-            f"Tip: Retry with --force or increase DATA_FETCH_TIMEOUT."
-        )
-    except httpx.HTTPStatusError as exc:
-        _cleanup_tmp(tmp_path)
-        return None, f"HTTP {exc.response.status_code} from {url}"
-    except OSError as exc:
-        _cleanup_tmp(tmp_path)
-        return None, f"File write error: {exc}"
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(tmp_path, "wb") as f:
+                        for chunk in response.iter_bytes(chunk_size=65536):
+                            f.write(chunk)
+
+                    # Store conditional GET headers for next time
+                    metadata[source_key] = {
+                        "etag": response.headers.get("etag"),
+                        "last_modified": response.headers.get("last-modified"),
+                        "downloaded_at": date.today().isoformat(),
+                        "url": url,
+                    }
+            break  # Success — exit retry loop
+
+        except httpx.ConnectError:
+            if attempt < len(_RETRY_DELAYS):
+                _time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            _cleanup_tmp(tmp_path)
+            return None, (
+                f"Could not reach {_host(url)} (ConnectionError)\n"
+                f"Tip: Download manually and run the appropriate import command."
+            )
+        except httpx.TimeoutException:
+            if attempt < len(_RETRY_DELAYS):
+                _time.sleep(_RETRY_DELAYS[attempt])
+                continue
+            _cleanup_tmp(tmp_path)
+            return None, (
+                f"Timed out connecting to {_host(url)} after {timeout}s\n"
+                f"Tip: Retry with --force or increase DATA_FETCH_TIMEOUT."
+            )
+        except httpx.HTTPStatusError as exc:
+            _cleanup_tmp(tmp_path)
+            return None, f"HTTP {exc.response.status_code} from {url}"
+        except OSError as exc:
+            _cleanup_tmp(tmp_path)
+            return None, f"File write error: {exc}"
 
     # Atomic rename from .tmp to final path
     try:

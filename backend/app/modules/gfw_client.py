@@ -56,9 +56,10 @@ def search_vessel(
         "limit": 20,
     }
 
+    from app.utils.http_retry import retry_request
+
     with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-        resp = client.get(url, params=params, headers=_headers(token))
-        resp.raise_for_status()
+        resp = retry_request(client.get, url, params=params, headers=_headers(token))
 
     data = resp.json()
     entries = data.get("entries", [])
@@ -135,11 +136,12 @@ def get_vessel_events(
     if end_date:
         params["end-date"] = end_date
 
+    from app.utils.http_retry import retry_request
+
     all_events = []
     with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
         while True:
-            resp = client.get(url, params=params, headers=_headers(token))
-            resp.raise_for_status()
+            resp = retry_request(client.get, url, params=params, headers=_headers(token))
             data = resp.json()
             entries = data.get("entries", [])
             for ev in entries:
@@ -219,16 +221,18 @@ def get_sar_detections(
         }
     }
 
+    from app.utils.http_retry import retry_request
+
     detections: list[dict] = []
     try:
         with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-            resp = client.post(
+            resp = retry_request(
+                client.post,
                 url,
                 headers=_headers(token),
                 json=geometry,
                 params=params,
             )
-            resp.raise_for_status()
             data = resp.json()
 
         # 4Wings response: list of temporal groups, each containing grid cells.
