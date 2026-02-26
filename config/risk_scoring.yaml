@@ -90,8 +90,8 @@ flag_state:
 vessel_size_multiplier:
   panamax_60_80k_dwt: 0.8
   aframax_80_120k_dwt: 1.0
-  suezmax_120_200k_dwt: 1.3    # most common shadow fleet class
-  vlcc_200k_plus_dwt: 1.5
+  suezmax_120_200k_dwt: 1.2    # most common shadow fleet class
+  vlcc_200k_plus_dwt: 1.3
 
 # WATCHLIST / SANCTIONS
 watchlist:
@@ -135,7 +135,7 @@ legitimacy:
 
 # CORRIDOR RISK MULTIPLIER
 corridor:
-  known_sts_zone: 2.0
+  known_sts_zone: 1.5
   high_risk_export_corridor: 1.5
   standard_corridor: 1.0
   legitimate_trade_route: 0.7
@@ -161,7 +161,7 @@ score_bands:
 
 # AIS CLASS MISMATCH
 ais_class:
-  large_tanker_using_class_b: 50     # mandatory Class A for >300GT; Class B = red flag
+  large_tanker_using_class_b: 25     # mandatory Class A for >300GT; Class B = red flag
   class_switching_a_to_b: 25
   transmission_frequency_mismatch: 8
 

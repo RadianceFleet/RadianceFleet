@@ -503,7 +503,10 @@ def run_spoofing_detection(
                 import math
                 mean_lat = statistics.mean(lats)
                 std_lon_corrected = std_lon * math.cos(math.radians(mean_lat))
-                if std_lat < 0.02 and std_lon_corrected < 0.02:
+                # Scale threshold by latitude to prevent false positives at high latitudes
+                lat_scale = max(math.cos(math.radians(mean_lat)), 0.3)
+                threshold = 0.02 / lat_scale  # Caps at ~0.067° at very high latitudes
+                if std_lat < threshold and std_lon_corrected < threshold:
                     if not _is_near_port(db, mean_lat, statistics.mean(lons)):
                         existing = db.query(SpoofingAnomaly).filter(
                             SpoofingAnomaly.vessel_id == vessel.vessel_id,

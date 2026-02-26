@@ -123,9 +123,9 @@ def _make_mock_gap(
 
 
 def test_compute_gap_score_critical_sts_vlcc():
-    """24h+ gap in STS zone with VLCC → score > 76 (critical band).
+    """24h+ gap in STS zone with VLCC → high/critical score.
 
-    Hand calculation: 55 × 2.0 × 1.5 = 165
+    Hand calculation: 55 × 1.5 × 1.3 = 107.25
     """
     config = load_scoring_config()
     gap = _make_mock_gap(
@@ -137,8 +137,8 @@ def test_compute_gap_score_critical_sts_vlcc():
 
     assert score > 76, f"Expected critical score, got {score}"
     assert _score_band(score) == "critical"
-    assert breakdown["_corridor_multiplier"] == 2.0
-    assert breakdown["_vessel_size_multiplier"] == 1.5
+    assert breakdown["_corridor_multiplier"] == 1.5
+    assert breakdown["_vessel_size_multiplier"] == 1.3
     assert "gap_duration_24h_plus" in breakdown
 
 

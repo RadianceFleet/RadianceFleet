@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 _REQUEST_DELAY_S = 1.0
 
 
+def _is_likely_tanker(vessel) -> bool:
+    """Check if vessel is likely a tanker based on vessel_type."""
+    vtype = (getattr(vessel, "vessel_type", None) or "").lower()
+    return "tanker" in vtype or "oil" in vtype or "chemical" in vtype or "lng" in vtype or "lpg" in vtype
+
+
 def enrich_vessels_from_gfw(
     db: Session,
     token: str | None = None,
@@ -85,12 +91,14 @@ def enrich_vessels_from_gfw(
             vessel.imo = str(match["imo"])
             changed = True
 
-        # GFW returns tonnage_gt (Gross Tonnage), not DWT. For triage purposes
-        # GT correlates well enough with DWT — tanker DWT ≈ 1.5-1.8× GT.
-        # The scoring engine's DWT thresholds (>1000, ≥60K) still work because
-        # GT > 1000 implies DWT > 1000, and large tanker GT maps to even larger DWT.
+        # GFW returns tonnage_gt (Gross Tonnage), not DWT.
+        # DWT ≈ 1.5× GT for tankers. For non-tankers, GT is a reasonable proxy.
         if match.get("tonnage_gt") and vessel.deadweight is None:
-            vessel.deadweight = float(match["tonnage_gt"])
+            gt = float(match["tonnage_gt"])
+            if _is_likely_tanker(vessel):
+                vessel.deadweight = gt * 1.5
+            else:
+                vessel.deadweight = gt
             changed = True
 
         if match.get("flag") and not vessel.flag:
@@ -181,39 +189,15 @@ def infer_ais_class_batch(db: Session) -> dict[str, int]:
 
 
 def infer_pi_coverage(db: Session) -> dict[str, int]:
-    """Infer P&I coverage status for all vessels based on sanctions watchlist.
+    """P&I coverage inference disabled — circular double-counting with sanctions.
 
-    IG P&I clubs include sanctions exclusion clauses — sanctioned vessel = IG P&I void.
-    Non-sanctioned vessels with no other data stay UNKNOWN.
+    The previous implementation inferred P&I lapsed from sanctions hits, but this
+    created circular double-counting: sanctions hit -> infer P&I lapsed -> +20 pts,
+    PLUS the vessel also fires watchlist_ofac -> +50 pts = +70 for a single OFAC listing.
+
+    Until an external P&I API is available, this produces no-op results.
+    Vessels keep their current pi_coverage_status (defaults to UNKNOWN).
 
     Returns {"lapsed": int, "unchanged": int}.
     """
-    from app.models.vessel import Vessel
-    from app.models.vessel_watchlist import VesselWatchlist
-    from app.models.base import PIStatusEnum
-
-    stats = {"lapsed": 0, "unchanged": 0}
-
-    # Only check vessels that don't already have explicit P&I status
-    vessels = (
-        db.query(Vessel)
-        .filter(Vessel.pi_coverage_status.in_([PIStatusEnum.UNKNOWN, None]))
-        .all()
-    )
-
-    for vessel in vessels:
-        has_sanctions_hit = db.query(VesselWatchlist).filter(
-            VesselWatchlist.vessel_id == vessel.vessel_id,
-            VesselWatchlist.is_active == True,
-            VesselWatchlist.watchlist_source.in_(["OFAC_SDN", "EU_COUNCIL"]),
-        ).first()
-
-        if has_sanctions_hit:
-            vessel.pi_coverage_status = PIStatusEnum.LAPSED
-            stats["lapsed"] += 1
-        else:
-            stats["unchanged"] += 1
-
-    db.commit()
-    logger.info("P&I coverage inference: %s", stats)
-    return stats
+    return {"lapsed": 0, "unchanged": 0}

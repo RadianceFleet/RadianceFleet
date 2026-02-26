@@ -161,7 +161,7 @@ def _corridor_multiplier(corridor: Any, config: dict) -> tuple[float, str]:
     """Return (multiplier, corridor_type_label) from config.
 
     Corridor type → config key mapping:
-      sts_zone          → known_sts_zone        (2.0x default)
+      sts_zone          → known_sts_zone        (1.5x default)
       export_route      → high_risk_export_corridor (1.5x default)
       everything else   → standard_corridor     (1.0x default)
     """
@@ -173,7 +173,7 @@ def _corridor_multiplier(corridor: Any, config: dict) -> tuple[float, str]:
     ct = str(corridor.corridor_type.value if hasattr(corridor.corridor_type, "value") else corridor.corridor_type)
 
     if ct == "sts_zone":
-        return float(corridor_cfg.get("known_sts_zone", 2.0)), ct
+        return float(corridor_cfg.get("known_sts_zone", 1.5)), ct
     elif ct == "export_route":
         return float(corridor_cfg.get("high_risk_export_corridor", 1.5)), ct
     elif ct == "legitimate_trade_route":
@@ -189,8 +189,8 @@ def _vessel_size_multiplier(vessel: Any, config: dict) -> tuple[float, str]:
     """Return (multiplier, size_class_label) from config based on deadweight (DWT).
 
     DWT ranges:
-      ≥ 200 000 → VLCC        (1.5x default)
-      ≥ 120 000 → Suezmax     (1.3x default)
+      ≥ 200 000 → VLCC        (1.3x default)
+      ≥ 120 000 → Suezmax     (1.2x default)
       ≥  80 000 → Aframax     (1.0x default)
       ≥  60 000 → Panamax     (0.8x default)
       unknown / smaller       (1.0x default — aframax baseline)
@@ -202,9 +202,9 @@ def _vessel_size_multiplier(vessel: Any, config: dict) -> tuple[float, str]:
     vm_cfg = config.get("vessel_size_multiplier", {})
 
     if dw >= 200_000:
-        return float(vm_cfg.get("vlcc_200k_plus_dwt", 1.5)), "vlcc"
+        return float(vm_cfg.get("vlcc_200k_plus_dwt", 1.3)), "vlcc"
     elif dw >= 120_000:
-        return float(vm_cfg.get("suezmax_120_200k_dwt", 1.3)), "suezmax"
+        return float(vm_cfg.get("suezmax_120_200k_dwt", 1.2)), "suezmax"
     elif dw >= 80_000:
         return float(vm_cfg.get("aframax_80_120k_dwt", 1.0)), "aframax"
     elif dw >= 60_000:
@@ -536,14 +536,14 @@ def compute_gap_score(
                 else:
                     breakdown["vessel_age_25plus"] = vessel_age_cfg.get("age_25_plus_y", 20)
 
-        # Phase 6.11: AIS class mismatch: large tanker (DWT > 1 000t) using Class B
-        # SOLAS requires Class A transponders for vessels > 300 GT
+        # Phase 6.11: AIS class mismatch: large tanker (DWT > 3 000t) using Class B
+        # SOLAS requires Class A transponders for vessels > 300 GT (~500 GT ≈ 3 000 DWT for tankers)
         ais_cls = str(
             vessel.ais_class.value if hasattr(vessel.ais_class, "value") else vessel.ais_class
         )
-        if ais_cls == "B" and vessel.deadweight is not None and vessel.deadweight > 1_000:
+        if ais_cls == "B" and vessel.deadweight is not None and vessel.deadweight > 3_000:
             ais_cfg = config.get("ais_class", {})
-            breakdown["ais_class_mismatch"] = ais_cfg.get("large_tanker_using_class_b", 50)
+            breakdown["ais_class_mismatch"] = ais_cfg.get("large_tanker_using_class_b", 25)
 
         # P&I insurance coverage scoring (PRD: 82% shadow fleet lacks reputable P&I)
         pi_status = str(
@@ -655,29 +655,36 @@ def compute_gap_score(
         sts_cfg = config.get("sts", {})
         for le in loitering:
             loiter_key = f"loitering_{le.loiter_id}"
-            if le.duration_hours >= 12 and le.corridor_id:
-                # Check corridor type: +20 only in STS zones, +8 in other corridors
-                loiter_corridor = db.query(Corridor).get(le.corridor_id)
-                _lc_type = str(
-                    loiter_corridor.corridor_type.value
-                    if loiter_corridor and hasattr(loiter_corridor.corridor_type, "value")
-                    else (loiter_corridor.corridor_type if loiter_corridor else "")
-                )
-                if _lc_type == "sts_zone":
-                    breakdown[loiter_key] = sts_cfg.get("loitering_12h_plus_in_sts_corridor", 20)
-                else:
-                    breakdown[loiter_key] = sts_cfg.get("loitering_4h_plus_in_corridor", 8)
-            elif le.duration_hours >= 4 and le.corridor_id:
-                breakdown[loiter_key] = sts_cfg.get("loitering_4h_plus_in_corridor", 8)
-            # Loiter-gap-loiter pattern: full cycle (both gaps) scores higher than one-sided
+
+            # Check loiter-gap-loiter patterns first (subsumes duration signals)
+            has_lgp = False
             if le.preceding_gap_id and le.following_gap_id:
                 breakdown[f"loiter_gap_loiter_full_{le.loiter_id}"] = sts_cfg.get(
                     "loiter_gap_loiter_full_cycle", 25
                 )
+                has_lgp = True
             elif le.preceding_gap_id or le.following_gap_id:
                 breakdown[f"loiter_gap_pattern_{le.loiter_id}"] = sts_cfg.get(
                     "loiter_gap_loiter_pattern_48h_window", 15
                 )
+                has_lgp = True
+
+            # Duration-based signal only if no loiter-gap-loiter pattern fired
+            if not has_lgp:
+                if le.duration_hours >= 12 and le.corridor_id:
+                    # Check corridor type: +20 only in STS zones, +8 in other corridors
+                    loiter_corridor = db.query(Corridor).get(le.corridor_id)
+                    _lc_type = str(
+                        loiter_corridor.corridor_type.value
+                        if loiter_corridor and hasattr(loiter_corridor.corridor_type, "value")
+                        else (loiter_corridor.corridor_type if loiter_corridor else "")
+                    )
+                    if _lc_type == "sts_zone":
+                        breakdown[loiter_key] = sts_cfg.get("loitering_12h_plus_in_sts_corridor", 20)
+                    else:
+                        breakdown[loiter_key] = sts_cfg.get("loitering_4h_plus_in_corridor", 8)
+                elif le.duration_hours >= 4 and le.corridor_id:
+                    breakdown[loiter_key] = sts_cfg.get("loitering_4h_plus_in_corridor", 8)
 
         # Laid-up vessel scoring
         behavioral_cfg = config.get("behavioral", {})
