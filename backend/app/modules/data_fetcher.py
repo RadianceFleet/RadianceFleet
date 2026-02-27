@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 OFAC_SDN_URL = "https://www.treasury.gov/ofac/downloads/sdn.csv"
 OPENSANCTIONS_URL = (
-    "https://data.opensanctions.org/datasets/latest/vessels/entities.json"
+    "https://data.opensanctions.org/datasets/latest/sanctions/entities.ftm.json"
 )
 
 # PSC detention data sources (FTM JSON format from OpenSanctions)
@@ -68,26 +68,50 @@ def _save_metadata(output_dir: Path, meta: dict) -> None:
 
 
 def _validate_ofac_csv(path: Path) -> bool:
-    """Check that the file looks like an OFAC SDN CSV (has expected header columns)."""
+    """Check that the file looks like an OFAC SDN CSV.
+
+    Handles both the headerless format (official sdn.csv) where the first field
+    is a numeric ``ent_num``, and the advanced format that includes column headers.
+    """
     try:
         with open(path, encoding="utf-8-sig") as f:
-            header = f.readline()
-        # OFAC SDN CSV should contain SDN_TYPE and SDN_NAME columns
-        return "SDN_TYPE" in header or "ent_num" in header
+            first_line = f.readline()
+        # Format with headers (sdn_advanced.csv)
+        if "SDN_TYPE" in first_line or "ent_num" in first_line:
+            return True
+        # Headerless format: first field is a numeric ent_num
+        first_field = first_line.split(",", 1)[0].strip().strip('"')
+        if first_field.isdigit():
+            return True
+        return False
     except Exception:
         return False
 
 
 def _validate_opensanctions_json(path: Path) -> bool:
-    """Check that the file is valid JSON containing vessel entities."""
+    """Check that the file is valid OpenSanctions data (JSON array or NDJSON)."""
     try:
         with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, list):
+            first_line = f.readline().strip()
+        if not first_line:
             return False
-        # Check that at least one entity has a 'schema' field
-        return any(isinstance(e, dict) and "schema" in e for e in data[:100])
-    except (json.JSONDecodeError, OSError):
+        # NDJSON format (one JSON object per line — current OpenSanctions format)
+        try:
+            obj = json.loads(first_line)
+            if isinstance(obj, dict) and "schema" in obj:
+                return True
+        except json.JSONDecodeError:
+            pass
+        # JSON array format (legacy)
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                return any(isinstance(e, dict) and "schema" in e for e in data[:100])
+        except json.JSONDecodeError:
+            pass
+        return False
+    except OSError:
         return False
 
 

@@ -16,6 +16,8 @@ from app.models.loitering_event import LoiteringEvent
 from app.models.port import Port
 from app.models.port_call import PortCall
 from app.models.vessel_owner import VesselOwner
+from app.models.merge_candidate import MergeCandidate
+from app.models.merge_operation import MergeOperation
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -36,6 +38,8 @@ __all__ = [
     "Port",
     "PortCall",
     "VesselOwner",
+    "MergeCandidate",
+    "MergeOperation",
     "VesselTargetProfile",
     "SearchMission",
     "HuntCandidate",

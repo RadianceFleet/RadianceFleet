@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
-import type { VesselSummary, VesselDetail, VesselHistoryEntry } from '../types/api'
+import type { VesselSummary, VesselDetail, VesselHistoryEntry, VesselAlias, TimelineEvent, MergeCandidateSummary } from '../types/api'
 
 export interface VesselSearchFilters {
   search?: string
@@ -43,5 +43,30 @@ export function useVesselHistory(id: string | undefined) {
     queryKey: ['vessel-history', id],
     queryFn: () => apiFetch<VesselHistoryEntry[]>(`/vessels/${id}/history`),
     enabled: !!id,
+  })
+}
+
+export function useVesselAliases(id: string | undefined) {
+  return useQuery({
+    queryKey: ['vessel-aliases', id],
+    queryFn: () => apiFetch<{ vessel_id: number; aliases: VesselAlias[] }>(`/vessels/${id}/aliases`),
+    enabled: !!id,
+  })
+}
+
+export function useVesselTimeline(id: string | undefined) {
+  return useQuery({
+    queryKey: ['vessel-timeline', id],
+    queryFn: () => apiFetch<{ vessel_id: number; events: TimelineEvent[]; count: number }>(`/vessels/${id}/timeline`),
+    enabled: !!id,
+  })
+}
+
+export function useMergeCandidates(status?: string) {
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  return useQuery({
+    queryKey: ['merge-candidates', status],
+    queryFn: () => apiFetch<{ items: MergeCandidateSummary[]; total: number }>(`/merge-candidates?${params}`),
   })
 }

@@ -289,6 +289,80 @@ def _parse_4wings_group(group: dict, detections: list[dict]) -> None:
                     _parse_4wings_group(item, detections)
 
 
+def query_sar_detections(
+    lat: float, lon: float, radius_nm: float,
+    date_from: str, date_to: str,
+    token: str | None = None,
+) -> list[dict]:
+    """Query GFW 4Wings API for SAR vessel detections near a point.
+
+    Convenience wrapper around get_sar_detections() that builds a bbox from
+    lat/lon and radius. Returns detections with lat, lon, timestamp,
+    estimated_length_m.
+
+    Used for merge candidate satellite corroboration — confirms whether a
+    dark vessel was present at a location during a gap.
+    """
+    # Convert radius_nm to approximate degrees
+    deg = radius_nm / 60.0
+    bbox = (lat - deg, lon - deg, lat + deg, lon + deg)
+    return get_sar_detections(bbox, token=token, start_date=date_from, end_date=date_to)
+
+
+def corroborate_merge_candidate(
+    candidate: "MergeCandidate",
+    token: str | None = None,
+) -> dict:
+    """Check GFW SAR for dark vessel presence near both ends of a merge gap.
+
+    Returns corroboration result dict suitable for MergeCandidate.satellite_corroboration_json.
+    """
+    from app.models.merge_candidate import MergeCandidate  # noqa: F811
+
+    result: dict[str, Any] = {"vessel_a_location": {}, "vessel_b_location": {}, "corroboration_score": 0}
+    score = 0
+
+    for label, lat, lon, ts in [
+        ("vessel_a_location", candidate.vessel_a_last_lat, candidate.vessel_a_last_lon, candidate.vessel_a_last_time),
+        ("vessel_b_location", candidate.vessel_b_first_lat, candidate.vessel_b_first_lon, candidate.vessel_b_first_time),
+    ]:
+        if lat is None or lon is None or ts is None:
+            result[label] = {"sar_detections": 0, "dark_detections": 0, "length_match": False}
+            continue
+
+        date_from = (ts - timedelta(hours=24)).strftime("%Y-%m-%d")
+        date_to = (ts + timedelta(hours=24)).strftime("%Y-%m-%d")
+
+        try:
+            detections = query_sar_detections(lat, lon, 10.0, date_from, date_to, token=token)
+        except Exception as exc:
+            logger.warning("SAR query failed for %s: %s", label, exc)
+            result[label] = {"sar_detections": 0, "dark_detections": 0, "error": str(exc)}
+            continue
+
+        # Filter unmatched (dark) detections near the position
+        dark_count = 0
+        total_count = len(detections)
+        for det in detections:
+            d_lat = det.get("detection_lat")
+            d_lon = det.get("detection_lon")
+            if d_lat is not None and d_lon is not None:
+                dist = haversine_nm(lat, lon, d_lat, d_lon)
+                if dist <= 10.0:
+                    dark_count += 1
+
+        result[label] = {
+            "sar_detections": total_count,
+            "dark_detections": dark_count,
+            "length_match": dark_count > 0,
+        }
+        if dark_count > 0:
+            score += 8  # each location contributes up to 8 points
+
+    result["corroboration_score"] = min(15, score)
+    return result
+
+
 def import_sar_detections_to_db(
     detections: list[dict],
     db: Session,

@@ -84,3 +84,10 @@ class DarkZoneTypeEnum(str, enum.Enum):
     ACTIVE_JAMMING = "active_jamming"
     HISTORICAL_GAP_CLUSTER = "historical_gap_cluster"
     STS_HOTSPOT = "sts_hotspot"
+
+
+class MergeCandidateStatusEnum(str, enum.Enum):
+    PENDING = "pending"
+    AUTO_MERGED = "auto_merged"
+    ANALYST_MERGED = "analyst_merged"
+    REJECTED = "rejected"

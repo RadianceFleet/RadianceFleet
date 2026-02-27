@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     COPERNICUS_CLIENT_SECRET: str | None = None
     # AISHub — batch AIS positions
     AISHUB_USERNAME: str | None = None
+    # Vessel identity merging
+    MERGE_MAX_SPEED_KN: float = 16.0
+    MERGE_MAX_GAP_DAYS: int = 30
+    MERGE_AUTO_CONFIDENCE_THRESHOLD: int = 85
+    MERGE_CANDIDATE_MIN_CONFIDENCE: int = 50
 
 
 settings = Settings()

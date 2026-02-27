@@ -1206,6 +1206,27 @@ def setup(
                 if ais_count > 100 and gaps.get("gaps_detected", 0) == 0:
                     console.print("[yellow]⚠ {0} AIS points but 0 gaps detected — check gap detector thresholds[/yellow]".format(ais_count))
 
+                # Identity merge detection + MMSI cloning (after scoring, before satellite)
+                try:
+                    from app.modules.identity_resolver import detect_merge_candidates as _detect_merges
+                    merge_result = _detect_merges(db)
+                    console.print(
+                        f"  Merge candidates: {merge_result.get('candidates_created', 0)} created, "
+                        f"{merge_result.get('auto_merged', 0)} auto-merged"
+                    )
+                except Exception as e:
+                    console.print(f"[dim]  Merge detection skipped: {e}[/dim]")
+
+                try:
+                    from app.modules.mmsi_cloning_detector import detect_mmsi_cloning as _detect_cloning
+                    clone_result = _detect_cloning(db)
+                    if clone_result:
+                        console.print(f"  MMSI cloning: {len(clone_result)} anomalies detected")
+                    else:
+                        console.print("[dim]  No MMSI cloning detected[/dim]")
+                except Exception as e:
+                    console.print(f"[dim]  Cloning detection skipped: {e}[/dim]")
+
                 console.print("[green]✓[/green] Detection pipeline complete")
             except Exception as e:
                 console.print(f"[yellow]⚠ Detection pipeline error: {e}[/yellow]")
@@ -1879,5 +1900,140 @@ def data_psc():
             console.print(f"[yellow]EMSA: {emsa_result['error']}[/yellow]")
         else:
             console.print("[dim]EMSA bans: up to date[/dim]")
+    finally:
+        db.close()
+
+
+# ── Vessel Identity Merge Commands ──────────────────────────────────────────
+
+@app.command("detect-merges")
+def detect_merges(
+    max_gap_days: int = typer.Option(30, help="Max gap days between disappearance and reappearance"),
+):
+    """Detect potential same-vessel pairs across MMSI changes using speed-feasibility matching."""
+    from app.database import SessionLocal
+    from app.modules.identity_resolver import detect_merge_candidates
+
+    db = SessionLocal()
+    try:
+        result = detect_merge_candidates(db, max_gap_days=max_gap_days)
+        console.print(f"[green]Merge detection complete.[/green]")
+        console.print(f"  Candidates created: {result['candidates_created']}")
+        console.print(f"  Auto-merged:        {result['auto_merged']}")
+        console.print(f"  Below threshold:    {result['skipped']}")
+    finally:
+        db.close()
+
+
+@app.command("detect-cloning")
+def detect_cloning():
+    """Detect MMSI cloning — same MMSI at impossible distances within 1 hour."""
+    from app.database import SessionLocal
+    from app.modules.mmsi_cloning_detector import detect_mmsi_cloning
+
+    db = SessionLocal()
+    try:
+        results = detect_mmsi_cloning(db)
+        console.print(f"[green]MMSI cloning detection complete.[/green] Found {len(results)} cloning events.")
+        if results:
+            table = Table(title="MMSI Cloning Events")
+            table.add_column("MMSI")
+            table.add_column("Vessel ID")
+            table.add_column("Distance (nm)")
+            table.add_column("Implied Speed (kn)")
+            for r in results[:20]:
+                table.add_row(
+                    r["mmsi"], str(r["vessel_id"]),
+                    str(r["distance_nm"]), str(r["implied_speed_kn"]),
+                )
+            console.print(table)
+    finally:
+        db.close()
+
+
+@app.command("merge-vessels")
+def merge_vessels(
+    vessel_a_id: int = typer.Argument(..., help="First vessel ID"),
+    vessel_b_id: int = typer.Argument(..., help="Second vessel ID"),
+    reason: str = typer.Option("", help="Reason for merge"),
+):
+    """Manually merge two vessels into one canonical identity."""
+    from app.database import SessionLocal
+    from app.modules.identity_resolver import execute_merge
+
+    db = SessionLocal()
+    try:
+        result = execute_merge(db, vessel_a_id, vessel_b_id, reason=reason, merged_by="analyst_cli")
+        if result.get("success"):
+            console.print(f"[green]Merged vessel {vessel_b_id} into {vessel_a_id}.[/green]")
+            console.print(f"  Merge operation ID: {result['merge_op_id']}")
+        else:
+            console.print(f"[red]Merge failed: {result.get('error')}[/red]")
+    finally:
+        db.close()
+
+
+@app.command("reverse-merge")
+def reverse_merge_cmd(
+    merge_op_id: int = typer.Argument(..., help="Merge operation ID to reverse"),
+):
+    """Undo a vessel merge operation."""
+    from app.database import SessionLocal
+    from app.modules.identity_resolver import reverse_merge
+
+    db = SessionLocal()
+    try:
+        result = reverse_merge(db, merge_op_id)
+        if result.get("success"):
+            console.print(f"[green]Merge operation {merge_op_id} reversed.[/green]")
+        else:
+            console.print(f"[red]Reversal failed: {result.get('error')}[/red]")
+    finally:
+        db.close()
+
+
+@app.command("list-merge-candidates")
+def list_merge_candidates_cmd(
+    status: str = typer.Option("pending", help="Filter by status: pending, auto_merged, analyst_merged, rejected"),
+    limit: int = typer.Option(20, help="Max candidates to show"),
+):
+    """List merge candidates, optionally filtered by status."""
+    from app.database import SessionLocal
+    from app.models.merge_candidate import MergeCandidate
+    from app.models.vessel import Vessel
+
+    db = SessionLocal()
+    try:
+        q = db.query(MergeCandidate).order_by(MergeCandidate.confidence_score.desc())
+        if status:
+            q = q.filter(MergeCandidate.status == status)
+        candidates = q.limit(limit).all()
+
+        if not candidates:
+            console.print(f"[dim]No merge candidates with status '{status}'.[/dim]")
+            return
+
+        table = Table(title=f"Merge Candidates ({status})")
+        table.add_column("ID", style="cyan")
+        table.add_column("Vessel A")
+        table.add_column("Vessel B")
+        table.add_column("Distance (nm)")
+        table.add_column("Gap (h)")
+        table.add_column("Confidence")
+        table.add_column("Status")
+
+        for c in candidates:
+            va = db.query(Vessel).get(c.vessel_a_id)
+            vb = db.query(Vessel).get(c.vessel_b_id)
+            table.add_row(
+                str(c.candidate_id),
+                f"{va.mmsi if va else '?'} ({va.name or '?' if va else '?'})",
+                f"{vb.mmsi if vb else '?'} ({vb.name or '?' if vb else '?'})",
+                f"{c.distance_nm:.1f}" if c.distance_nm else "?",
+                f"{c.time_delta_hours:.1f}" if c.time_delta_hours else "?",
+                str(c.confidence_score),
+                c.status,
+            )
+        console.print(table)
     finally:
         db.close()

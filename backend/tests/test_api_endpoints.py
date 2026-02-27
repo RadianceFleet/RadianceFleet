@@ -449,6 +449,7 @@ class TestVesselDetail:
         vessel.vessel_laid_up_30d = False
         vessel.vessel_laid_up_60d = False
         vessel.vessel_laid_up_in_sts_zone = False
+        vessel.merged_into_vessel_id = None
         mock_db.query.return_value.filter.return_value.first.return_value = vessel
         mock_db.query.return_value.filter.return_value.filter.return_value.count.return_value = 0
         mock_db.query.return_value.filter.return_value.all.return_value = []

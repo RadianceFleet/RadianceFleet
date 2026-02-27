@@ -81,9 +81,19 @@ def parse_timestamp_flexible(ts: Any) -> datetime | None:
             except ValueError:
                 continue
 
-        # Go-style: "2024-12-29 18:22:32.318353 +0000 UTC"
+        # Go-style: "2024-12-29 18:22:32.318353147 +0000 UTC"
+        # Go outputs nanoseconds (9 digits) but Python %f only handles
+        # microseconds (1-6 digits).  Truncate to 6 fractional digits.
         if ts_str.endswith(" UTC"):
             cleaned = ts_str[:-4].strip()  # remove trailing " UTC"
+            # Truncate nanoseconds → microseconds: .123456789 → .123456
+            dot_idx = cleaned.find(".")
+            if dot_idx > 0:
+                space_after_frac = cleaned.find(" ", dot_idx)
+                if space_after_frac > 0:
+                    frac = cleaned[dot_idx + 1:space_after_frac]
+                    if len(frac) > 6:
+                        cleaned = cleaned[:dot_idx + 1] + frac[:6] + cleaned[space_after_frac:]
             for go_fmt in (
                 "%Y-%m-%d %H:%M:%S.%f %z",
                 "%Y-%m-%d %H:%M:%S %z",

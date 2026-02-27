@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
-import { useVesselDetail, useVesselHistory } from '../hooks/useVessels'
+import { useVesselDetail, useVesselHistory, useVesselAliases } from '../hooks/useVessels'
 import { useAlerts } from '../hooks/useAlerts'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
@@ -71,6 +71,7 @@ export function VesselDetailPage() {
 
   const { data: vessel, isLoading, error } = useVesselDetail(id)
   const { data: history, isLoading: historyLoading } = useVesselHistory(id)
+  const { data: aliasesData } = useVesselAliases(id)
   const { data: alertsData, isLoading: alertsLoading } = useAlerts({
     vessel_id: id,
     limit: 10,
@@ -97,6 +98,8 @@ export function VesselDetailPage() {
 
   const alerts = alertsData?.items ?? []
   const historyEntries = history ?? []
+  const aliases = aliasesData?.aliases ?? []
+  const absorbedCount = aliases.filter(a => a.status === 'absorbed').length
 
   return (
     <div style={{ maxWidth: 960 }}>
@@ -123,6 +126,21 @@ export function VesselDetailPage() {
             {flagRisk} risk flag
           </span>
         )}
+        {absorbedCount > 0 && (
+          <span style={{
+            display: 'inline-block',
+            padding: '2px 8px',
+            borderRadius: 'var(--radius)',
+            fontSize: 11,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            background: 'var(--warning)',
+            color: 'white',
+          }}>
+            MERGED ({absorbedCount} identit{absorbedCount === 1 ? 'y' : 'ies'})
+          </span>
+        )}
       </div>
       <p style={{ color: 'var(--text-dim)', margin: '0 0 20px', fontSize: 13 }}>
         MMSI {vessel.mmsi ?? '?'} &middot; IMO {vessel.imo ?? '?'} &middot; {vessel.flag ?? '??'}
@@ -147,6 +165,39 @@ export function VesselDetailPage() {
           </div>
         </div>
       </Card>
+
+      {/* ---- Known Aliases card ---- */}
+      {aliases.length > 1 && (
+        <Card style={{ marginBottom: 16 }}>
+          <h3 style={sectionHead}>Known Aliases (MMSI History)</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-base)' }}>
+                <th style={thStyle}>MMSI</th>
+                <th style={thStyle}>Name</th>
+                <th style={thStyle}>Flag</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Absorbed At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aliases.map((a, i) => (
+                <tr key={a.mmsi ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{a.mmsi}</td>
+                  <td style={tdStyle}>{a.name ?? '--'}</td>
+                  <td style={tdStyle}>{a.flag ?? '--'}</td>
+                  <td style={tdStyle}>
+                    {a.status === 'current'
+                      ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Current</span>
+                      : <span style={{ color: 'var(--warning)' }}>Absorbed</span>}
+                  </td>
+                  <td style={tdStyle}>{a.absorbed_at ? formatTimestamp(a.absorbed_at) : '--'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       {/* ---- Profile card ---- */}
       <Card style={{ marginBottom: 16 }}>

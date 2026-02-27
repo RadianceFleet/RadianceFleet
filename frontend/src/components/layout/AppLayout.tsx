@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/dark-vessels', label: 'Dark Vessels' },
   { to: '/corridors', label: 'Corridors' },
   { to: '/watchlist', label: 'Watchlist' },
+  { to: '/merge-candidates', label: 'Merges' },
   { to: '/ingest', label: 'Ingest' },
   { to: '/detect', label: 'Detect' },
 ]

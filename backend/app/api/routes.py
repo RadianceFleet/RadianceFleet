@@ -551,15 +551,43 @@ def search_vessels(
     from app.models.vessel_watchlist import VesselWatchlist
 
     limit = min(limit, settings.MAX_QUERY_LIMIT)
-    q = db.query(Vessel)
+    q = db.query(Vessel).filter(Vessel.merged_into_vessel_id == None)  # noqa: E711 — exclude absorbed
+    matched_via_alias = {}  # vessel_id → absorbed MMSI that matched
     if search:
-        q = q.filter(
+        # First try direct match on canonical vessels
+        direct = q.filter(
             or_(
                 Vessel.mmsi == search,
                 Vessel.imo == search,
                 Vessel.name.ilike(f"%{search}%"),
             )
         )
+        if direct.count() == 0:
+            # Search absorbed vessels and redirect to canonical
+            absorbed = (
+                db.query(Vessel)
+                .filter(
+                    Vessel.merged_into_vessel_id != None,  # noqa: E711
+                    or_(
+                        Vessel.mmsi == search,
+                        Vessel.imo == search,
+                        Vessel.name.ilike(f"%{search}%"),
+                    ),
+                )
+                .all()
+            )
+            if absorbed:
+                from app.modules.identity_resolver import resolve_canonical
+                canonical_ids = set()
+                for a in absorbed:
+                    cid = resolve_canonical(a.vessel_id, db)
+                    canonical_ids.add(cid)
+                    matched_via_alias[cid] = a.mmsi
+                q = db.query(Vessel).filter(Vessel.vessel_id.in_(canonical_ids))
+            else:
+                q = direct
+        else:
+            q = direct
     if flag:
         q = q.filter(Vessel.flag == flag.upper())
     if vessel_type:
@@ -592,7 +620,7 @@ def search_vessels(
             .filter(VesselWatchlist.vessel_id == v.vessel_id, VesselWatchlist.is_active == True)
             .first()
         ) is not None
-        results.append({
+        entry = {
             "vessel_id": v.vessel_id,
             "mmsi": v.mmsi,
             "imo": v.imo,
@@ -602,7 +630,10 @@ def search_vessels(
             "deadweight": v.deadweight,
             "last_risk_score": last_gap.risk_score if last_gap else None,
             "watchlist_status": on_watchlist,
-        })
+        }
+        if v.vessel_id in matched_via_alias:
+            entry["matched_via_absorbed_mmsi"] = matched_via_alias[v.vessel_id]
+        results.append(entry)
     return {"items": results, "total": total}
 
 
@@ -619,6 +650,18 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
     if not vessel:
         raise HTTPException(status_code=404, detail="Vessel not found")
+
+    # Absorbed vessel: return redirect info instead of 404
+    _merged_into = vessel.merged_into_vessel_id
+    if _merged_into is not None:
+        from app.modules.identity_resolver import resolve_canonical
+        canonical_id = resolve_canonical(vessel_id, db)
+        return {
+            "merged": True,
+            "canonical_vessel_id": canonical_id,
+            "redirect_url": f"/vessels/{canonical_id}",
+            "absorbed_mmsi": vessel.mmsi,
+        }
 
     now = datetime.now(timezone.utc)
 
@@ -1415,3 +1458,225 @@ def list_audit_logs(
             for l in logs
         ],
     }
+
+
+# ── Merge Candidate & Identity Merge Endpoints ──────────────────────────────
+
+@router.get("/merge-candidates", tags=["merge"])
+def list_merge_candidates(
+    status: Optional[str] = Query(None, description="Filter by status: pending, auto_merged, analyst_merged, rejected"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """List merge candidates, optionally filtered by status."""
+    from app.models.merge_candidate import MergeCandidate
+    from app.models.vessel import Vessel
+
+    q = db.query(MergeCandidate).order_by(MergeCandidate.confidence_score.desc())
+    if status:
+        q = q.filter(MergeCandidate.status == status)
+
+    total = q.count()
+    candidates = q.offset(skip).limit(limit).all()
+
+    results = []
+    for c in candidates:
+        va = db.query(Vessel).get(c.vessel_a_id)
+        vb = db.query(Vessel).get(c.vessel_b_id)
+        results.append({
+            "candidate_id": c.candidate_id,
+            "vessel_a": {"vessel_id": c.vessel_a_id, "mmsi": va.mmsi if va else None, "name": va.name if va else None},
+            "vessel_b": {"vessel_id": c.vessel_b_id, "mmsi": vb.mmsi if vb else None, "name": vb.name if vb else None},
+            "distance_nm": c.distance_nm,
+            "time_delta_hours": c.time_delta_hours,
+            "confidence_score": c.confidence_score,
+            "match_reasons": c.match_reasons_json,
+            "satellite_corroboration": c.satellite_corroboration_json,
+            "status": c.status,
+            "created_at": c.created_at.isoformat() if c.created_at else None,
+            "resolved_at": c.resolved_at.isoformat() if c.resolved_at else None,
+            "resolved_by": c.resolved_by,
+        })
+    return {"items": results, "total": total}
+
+
+@router.get("/merge-candidates/{candidate_id}", tags=["merge"])
+def get_merge_candidate(candidate_id: int, db: Session = Depends(get_db)):
+    """Get merge candidate detail with satellite corroboration."""
+    from app.models.merge_candidate import MergeCandidate
+    from app.models.vessel import Vessel
+
+    c = db.query(MergeCandidate).get(candidate_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Merge candidate not found")
+
+    va = db.query(Vessel).get(c.vessel_a_id)
+    vb = db.query(Vessel).get(c.vessel_b_id)
+
+    def _vessel_summary(v):
+        if not v:
+            return None
+        return {
+            "vessel_id": v.vessel_id, "mmsi": v.mmsi, "name": v.name,
+            "flag": v.flag, "vessel_type": v.vessel_type,
+            "deadweight": v.deadweight, "year_built": v.year_built,
+        }
+
+    return {
+        "candidate_id": c.candidate_id,
+        "vessel_a": _vessel_summary(va),
+        "vessel_b": _vessel_summary(vb),
+        "vessel_a_last_position": {"lat": c.vessel_a_last_lat, "lon": c.vessel_a_last_lon, "time": c.vessel_a_last_time.isoformat() if c.vessel_a_last_time else None},
+        "vessel_b_first_position": {"lat": c.vessel_b_first_lat, "lon": c.vessel_b_first_lon, "time": c.vessel_b_first_time.isoformat() if c.vessel_b_first_time else None},
+        "distance_nm": c.distance_nm,
+        "time_delta_hours": c.time_delta_hours,
+        "confidence_score": c.confidence_score,
+        "match_reasons": c.match_reasons_json,
+        "satellite_corroboration": c.satellite_corroboration_json,
+        "status": c.status,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "resolved_at": c.resolved_at.isoformat() if c.resolved_at else None,
+        "resolved_by": c.resolved_by,
+    }
+
+
+@router.post("/merge-candidates/{candidate_id}/confirm", tags=["merge"])
+def confirm_merge_candidate(
+    candidate_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Analyst confirms a merge candidate — executes the merge."""
+    from app.models.merge_candidate import MergeCandidate
+    from app.models.base import MergeCandidateStatusEnum
+    from app.modules.identity_resolver import execute_merge
+
+    c = db.query(MergeCandidate).get(candidate_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Merge candidate not found")
+    if c.status != MergeCandidateStatusEnum.PENDING:
+        raise HTTPException(status_code=400, detail=f"Candidate is {c.status}, not pending")
+
+    canonical_id = min(c.vessel_a_id, c.vessel_b_id)
+    absorbed_id = max(c.vessel_a_id, c.vessel_b_id)
+
+    result = execute_merge(
+        db, canonical_id, absorbed_id,
+        reason=f"Analyst confirmed candidate {candidate_id}",
+        merged_by="analyst",
+        candidate_id=candidate_id,
+        commit=False,
+    )
+
+    if result.get("success"):
+        c.status = MergeCandidateStatusEnum.ANALYST_MERGED
+        c.resolved_at = datetime.utcnow()
+        c.resolved_by = "analyst"
+        _audit_log(db, "merge_candidate_confirmed", "merge_candidate", candidate_id, request=request)
+        db.commit()  # Single atomic commit: merge + status + audit
+    else:
+        raise HTTPException(status_code=400, detail=result.get("error", "Merge failed"))
+
+    return result
+
+
+@router.post("/merge-candidates/{candidate_id}/reject", tags=["merge"])
+def reject_merge_candidate(
+    candidate_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Analyst rejects a merge candidate."""
+    from app.models.merge_candidate import MergeCandidate
+    from app.models.base import MergeCandidateStatusEnum
+
+    c = db.query(MergeCandidate).get(candidate_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Merge candidate not found")
+    if c.status != MergeCandidateStatusEnum.PENDING:
+        raise HTTPException(status_code=400, detail=f"Candidate is {c.status}, not pending")
+
+    c.status = MergeCandidateStatusEnum.REJECTED
+    c.resolved_at = datetime.utcnow()
+    c.resolved_by = "analyst"
+    _audit_log(db, "merge_candidate_rejected", "merge_candidate", candidate_id, request=request)
+    db.commit()
+
+    return {"status": "rejected", "candidate_id": candidate_id}
+
+
+@router.post("/vessels/merge", tags=["merge"])
+def manual_merge_vessels(
+    request: Request,
+    vessel_a_id: int = Query(..., description="First vessel ID"),
+    vessel_b_id: int = Query(..., description="Second vessel ID"),
+    reason: str = Query("", description="Reason for merge"),
+    db: Session = Depends(get_db),
+):
+    """Manually merge two vessels (analyst-driven linking)."""
+    from app.modules.identity_resolver import execute_merge
+
+    result = execute_merge(
+        db, vessel_a_id, vessel_b_id,
+        reason=reason,
+        merged_by="analyst",
+        commit=False,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Merge failed"))
+
+    _audit_log(db, "manual_vessel_merge", "vessel", result.get("merge_op_id"), request=request)
+    db.commit()  # Single atomic commit: merge + audit
+    return result
+
+
+@router.post("/merge-operations/{merge_op_id}/reverse", tags=["merge"])
+def reverse_merge_operation(
+    merge_op_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Undo a merge operation."""
+    from app.modules.identity_resolver import reverse_merge
+
+    result = reverse_merge(db, merge_op_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error", "Reversal failed"))
+
+    _audit_log(db, "merge_reversed", "merge_operation", merge_op_id, request=request)
+    db.commit()
+    return result
+
+
+@router.get("/vessels/{vessel_id}/timeline", tags=["vessels"])
+def get_vessel_timeline_endpoint(
+    vessel_id: int,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Unified chronological event timeline for a vessel."""
+    from app.models.vessel import Vessel
+    from app.modules.identity_resolver import get_vessel_timeline
+
+    vessel = db.query(Vessel).get(vessel_id)
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    events = get_vessel_timeline(db, vessel_id, limit=limit, offset=offset)
+    return {"vessel_id": vessel_id, "events": events, "count": len(events)}
+
+
+@router.get("/vessels/{vessel_id}/aliases", tags=["vessels"])
+def get_vessel_aliases_endpoint(vessel_id: int, db: Session = Depends(get_db)):
+    """All MMSIs this vessel has used (current + absorbed identities)."""
+    from app.models.vessel import Vessel
+    from app.modules.identity_resolver import get_vessel_aliases
+
+    vessel = db.query(Vessel).get(vessel_id)
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    aliases = get_vessel_aliases(db, vessel_id)
+    return {"vessel_id": vessel_id, "aliases": aliases}

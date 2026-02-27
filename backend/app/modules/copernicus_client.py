@@ -180,6 +180,119 @@ def find_sentinel1_scenes(
     return scenes
 
 
+def find_sentinel2_scenes(
+    bbox: tuple[float, float, float, float],
+    date_from: str,
+    date_to: str,
+    token: str | None = None,
+    max_results: int = 20,
+    max_cloud_cover: float = 30.0,
+) -> list[dict]:
+    """Query Copernicus catalog for Sentinel-2 optical scenes in a bounding box.
+
+    Args:
+        bbox: (lat_min, lon_min, lat_max, lon_max).
+        date_from: Start date (YYYY-MM-DD).
+        date_to: End date (YYYY-MM-DD).
+        token: OAuth2 access token. If None, will obtain one automatically.
+        max_results: Maximum number of scenes to return.
+        max_cloud_cover: Maximum cloud cover percentage (default 30%).
+
+    Returns list of scene dicts with id, name, acquisition_time, cloud_cover, preview_url.
+    """
+    if token is None:
+        token = _get_access_token()
+
+    lat_min, lon_min, lat_max, lon_max = bbox
+
+    wkt_polygon = (
+        f"POLYGON(({lon_min} {lat_min},{lon_max} {lat_min},"
+        f"{lon_max} {lat_max},{lon_min} {lat_max},{lon_min} {lat_min}))"
+    )
+
+    odata_filter = (
+        f"Collection/Name eq 'SENTINEL-2' "
+        f"and ContentDate/Start ge {date_from}T00:00:00.000Z "
+        f"and ContentDate/Start le {date_to}T23:59:59.999Z "
+        f"and Attributes/OData.CSC.DoubleAttribute/any(att:att/Name eq 'cloudCover' "
+        f"and att/OData.CSC.DoubleAttribute/Value le {max_cloud_cover}) "
+        f"and OData.CSC.Intersects(area=geography'SRID=4326;{wkt_polygon}')"
+    )
+
+    params: dict[str, Any] = {
+        "$filter": odata_filter,
+        "$top": max_results,
+        "$orderby": "ContentDate/Start desc",
+        "$expand": "Attributes",
+    }
+
+    scenes = []
+    try:
+        from app.utils.http_retry import retry_request
+
+        with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
+            try:
+                resp = retry_request(
+                    client.get,
+                    _CATALOG_URL,
+                    params=params,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            except httpx.HTTPStatusError as auth_exc:
+                if auth_exc.response.status_code == 401:
+                    logger.info("Copernicus 401 — refreshing token for Sentinel-2 query")
+                    token = _get_access_token(force_refresh=True)
+                    resp = retry_request(
+                        client.get,
+                        _CATALOG_URL,
+                        params=params,
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                else:
+                    raise
+            data = resp.json()
+
+            for product in data.get("value", []):
+                scene_id = product.get("Id", "")
+                name = product.get("Name", "")
+                content_date = product.get("ContentDate", {})
+                start_time = content_date.get("Start", "")
+
+                # Extract cloud cover from attributes
+                cloud_cover = None
+                for attr in product.get("Attributes", []):
+                    if attr.get("Name") == "cloudCover":
+                        cloud_cover = attr.get("Value")
+                        break
+
+                preview_url = (
+                    f"https://catalogue.dataspace.copernicus.eu"
+                    f"/odata/v1/Products({scene_id})/Nodes({name})/Nodes(preview)"
+                    f"/Nodes(quick-look.png)/$value"
+                )
+
+                scenes.append({
+                    "scene_id": scene_id,
+                    "name": name,
+                    "acquisition_time": start_time,
+                    "cloud_cover_pct": cloud_cover,
+                    "footprint": product.get("GeoFootprint", {}).get("coordinates"),
+                    "preview_url": preview_url,
+                    "download_url": f"https://zipper.dataspace.copernicus.eu/odata/v1/Products({scene_id})/$value",
+                    "size_mb": round(product.get("ContentLength", 0) / 1_048_576, 1),
+                })
+
+    except httpx.HTTPStatusError as exc:
+        logger.error("Copernicus Sentinel-2 query failed: HTTP %d", exc.response.status_code)
+        raise
+    except Exception as exc:
+        logger.error("Copernicus Sentinel-2 error: %s", exc)
+        raise
+
+    logger.info("Copernicus: found %d Sentinel-2 scenes for bbox %s", len(scenes), bbox)
+    return scenes
+
+
 def enhance_satellite_check(
     alert_id: int,
     db: Session,

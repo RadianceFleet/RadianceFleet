@@ -184,6 +184,26 @@ def _resolve_vessel(
     return None
 
 
+# Official OFAC SDN CSV column order (headerless format from sdn.csv).
+_OFAC_SDN_FIELDNAMES = [
+    "ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
+    "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
+    "Vess_owner", "REMARKS",
+]
+
+
+def _ofac_csv_reader(fh) -> csv.DictReader:
+    """Return a DictReader for OFAC SDN CSV, auto-detecting header presence."""
+    pos = fh.tell()
+    first_line = fh.readline()
+    fh.seek(pos)
+    # If the first line contains known header names, let DictReader infer them
+    if "SDN_TYPE" in first_line or "ent_num" in first_line:
+        return csv.DictReader(fh)
+    # Headerless official format — supply explicit fieldnames
+    return csv.DictReader(fh, fieldnames=_OFAC_SDN_FIELDNAMES)
+
+
 # ── OFAC SDN loader ───────────────────────────────────────────────────────────
 
 def load_ofac_sdn(db: Session, csv_path: str) -> dict:
@@ -193,6 +213,9 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
     the ``VESSEL_ID`` column (validated as 9-digit); IMO is read from
     ``ent_num`` or alternative identification fields.  Unresolved vessels are
     fuzzy-matched by name.
+
+    Handles both the headerless ``sdn.csv`` (official OFAC format) and the
+    advanced format that includes column headers.
 
     Args:
         db: Active SQLAlchemy session.
@@ -206,9 +229,9 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
     skipped = 0
 
     with open(csv_path, newline="", encoding="utf-8-sig") as fh:
-        reader = csv.DictReader(fh)
+        reader = _ofac_csv_reader(fh)
         for row in reader:
-            sdn_type = row.get("SDN_TYPE", "").strip()
+            sdn_type = (row.get("SDN_TYPE") or "").strip()
             if sdn_type != "Vessel":
                 skipped += 1
                 continue
@@ -319,12 +342,63 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
 
 # ── OpenSanctions loader ──────────────────────────────────────────────────────
 
+
+def _load_opensanctions_entities(json_path: str) -> list[dict] | None:
+    """Load entities from OpenSanctions file (JSON array or NDJSON).
+
+    Only returns entities with ``schema == "Vessel"`` to avoid loading the
+    entire sanctions database into memory.
+    """
+    vessels: list[dict] = []
+    try:
+        with open(json_path, encoding="utf-8") as fh:
+            first_line = fh.readline().strip()
+            if not first_line:
+                return []
+            # Detect NDJSON vs JSON array
+            try:
+                obj = json.loads(first_line)
+                if isinstance(obj, dict):
+                    # NDJSON: process line by line, filter for Vessel only
+                    if (obj.get("schema") or obj.get("type") or "") == "Vessel":
+                        vessels.append(obj)
+                    skipped_lines = 0
+                    for line in fh:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entity = json.loads(line)
+                            if isinstance(entity, dict) and (entity.get("schema") or entity.get("type") or "") == "Vessel":
+                                vessels.append(entity)
+                        except json.JSONDecodeError as e:
+                            skipped_lines += 1
+                            logger.warning("Skipped malformed NDJSON line in %s: %s", json_path, e)
+                            continue
+                    if skipped_lines:
+                        logger.warning("Total skipped malformed NDJSON lines in %s: %d", json_path, skipped_lines)
+                    return vessels
+            except json.JSONDecodeError:
+                pass
+            # JSON array format (legacy)
+            fh.seek(0)
+            data = json.load(fh)
+            if isinstance(data, list):
+                return data
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.error("Failed to parse OpenSanctions file %s: %s", json_path, exc)
+        return None
+    return None
+
+
 def load_opensanctions(db: Session, json_path: str) -> dict:
     """Load OpenSanctions JSON vessel entities into the watchlist.
 
-    Expected format: a JSON array of entity objects.  Only objects where
-    ``schema == "Vessel"`` are processed.  The ``dataset_id`` (or ``datasets``
-    list) is used to pick the watchlist_source label:
+    Expected format: either a JSON array of entity objects or NDJSON
+    (one JSON object per line, the current OpenSanctions FTM format).
+    Only objects where ``schema == "Vessel"`` are processed.  The
+    ``dataset_id`` (or ``datasets`` list) is used to pick the
+    watchlist_source label:
       - contains "ofac"  → "OFAC_SDN"
       - contains "eu_"   → "EU_COUNCIL"
       - otherwise        → "OPENSANCTIONS"
@@ -341,11 +415,9 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
     matched = 0
     unmatched = 0
 
-    with open(json_path, encoding="utf-8") as fh:
-        entities = json.load(fh)
-
-    if not isinstance(entities, list):
-        logger.error("OpenSanctions JSON must be a top-level array — aborting.")
+    entities = _load_opensanctions_entities(json_path)
+    if entities is None:
+        logger.error("Could not parse OpenSanctions file — aborting.")
         return {"matched": 0, "unmatched": 0}
 
     for entity in entities:

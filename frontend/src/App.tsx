@@ -14,6 +14,7 @@ import { WatchlistPage } from './pages/WatchlistPage'
 import { IngestionPage } from './pages/IngestionPage'
 import { DetectionPanel } from './pages/DetectionPanel'
 import { DarkVesselsPage } from './pages/DarkVesselsPage'
+import { MergeCandidatesPage } from './pages/MergeCandidatesPage'
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="watchlist" element={<WatchlistPage />} />
             <Route path="ingest" element={<IngestionPage />} />
             <Route path="dark-vessels" element={<DarkVesselsPage />} />
+            <Route path="merge-candidates" element={<MergeCandidatesPage />} />
             <Route path="detect" element={<DetectionPanel />} />
           </Route>
         </Routes>

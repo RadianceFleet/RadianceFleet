@@ -221,6 +221,22 @@ export function VesselSearchPage() {
                       ) : (
                         <span style={{ color: 'var(--text-dim)' }}>-</span>
                       )}
+                      {v.matched_via_absorbed_mmsi && (
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '0.125rem 0.375rem',
+                          background: 'var(--warning)',
+                          color: 'white',
+                          borderRadius: 'var(--radius)',
+                          fontSize: '0.625rem',
+                          fontWeight: 600,
+                          marginLeft: 4,
+                        }}
+                          title={`Matched via absorbed MMSI ${v.matched_via_absorbed_mmsi}`}
+                        >
+                          ALIAS
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

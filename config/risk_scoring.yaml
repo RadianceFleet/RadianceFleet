@@ -189,6 +189,13 @@ dark_vessel:
   unmatched_detection_in_corridor: 35  # satellite detection with no AIS match in known corridor
   unmatched_detection_outside_corridor: 20  # satellite detection with no AIS match
 
+# IDENTITY MERGE SIGNALS
+identity_merge:
+  identity_merge_detected: 30       # vessel absorbed another MMSI (confirmed identity switch)
+  imo_scrapped_vessel: 35           # transmitted IMO matches a known-scrapped vessel
+  imo_fabricated: 40                # IMO fails checksum validation
+  gap_reactivation_in_jamming_zone: 15  # re-enables AIS in jamming zone + other risk signals
+
 # DETECTION THRESHOLDS — loitering detector constants
 # These are loaded at module init; code falls back to hardcoded defaults if missing.
 detection_thresholds:

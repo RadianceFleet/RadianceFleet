@@ -4,13 +4,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, Enum as SAEnum, func
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Enum as SAEnum, CheckConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, AISClassEnum, FlagRiskEnum, PIStatusEnum
 
 
 class Vessel(Base):
     __tablename__ = "vessels"
+    __table_args__ = (
+        CheckConstraint("vessel_id != merged_into_vessel_id", name="ck_no_self_merge"),
+    )
 
     vessel_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     mmsi: Mapped[str] = mapped_column(String(9), unique=True, nullable=False, index=True)
@@ -40,6 +43,10 @@ class Vessel(Base):
     vessel_laid_up_30d: Mapped[bool] = mapped_column(Boolean, default=False)
     vessel_laid_up_60d: Mapped[bool] = mapped_column(Boolean, default=False)
     vessel_laid_up_in_sts_zone: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Identity merge: points to canonical vessel when this identity was absorbed
+    merged_into_vessel_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("vessels.vessel_id"), nullable=True, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
     )

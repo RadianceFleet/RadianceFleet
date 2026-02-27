@@ -24,5 +24,8 @@ class EvidenceCard(Base):
     # Snapshot fields: capture score at export time so rescoring doesn't retroactively alter cards
     score_snapshot: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     breakdown_snapshot: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Merge provenance: preserves original vessel context when gap events are reassigned
+    original_vessel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    original_mmsi: Mapped[Optional[str]] = mapped_column(String(9), nullable=True)
 
     gap_event: Mapped["AISGapEvent"] = relationship("AISGapEvent", back_populates="evidence_cards")

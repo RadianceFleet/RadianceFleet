@@ -26,17 +26,21 @@ from app.modules.normalize import is_non_vessel_mmsi, parse_timestamp_flexible
 logger = logging.getLogger(__name__)
 
 
-def get_corridor_bounding_boxes(db: Session) -> list[list[list[float]]]:
+def get_corridor_bounding_boxes(db: Session, max_boxes: int = 10) -> list[list[list[float]]]:
     """Extract bounding boxes from corridor geometries for aisstream subscription.
 
-    Returns list of [[lon_min, lat_min], [lon_max, lat_max]] pairs.
+    Returns list of [[lat_min, lon_min], [lat_max, lon_max]] pairs, merged
+    into at most *max_boxes* regional super-boxes to avoid API throttling.
+    The aisstream.io free tier silently throttles PositionReport delivery
+    when too many bounding boxes are subscribed (observed: 39 boxes → ~0.02
+    positions/s vs 3 boxes → ~26 positions/s).
     """
     from app.models.corridor import Corridor
 
     from app.utils.geo import load_geometry
 
     corridors = db.query(Corridor).all()
-    boxes = []
+    raw_boxes: list[list[list[float]]] = []
     for c in corridors:
         if c.geometry is None:
             continue
@@ -45,20 +49,105 @@ def get_corridor_bounding_boxes(db: Session) -> list[list[list[float]]]:
             if shape is None:
                 continue
             bounds = shape.bounds  # (minx, miny, maxx, maxy) = (lon_min, lat_min, lon_max, lat_max)
-            boxes.append([
+            raw_boxes.append([
                 [bounds[1], bounds[0]],  # [lat_min, lon_min]
                 [bounds[3], bounds[2]],  # [lat_max, lon_max]
             ])
         except Exception as exc:
             logger.warning("Could not extract bbox from corridor %s: %s", c.name, exc)
-    return boxes
+
+    if len(raw_boxes) <= max_boxes:
+        return raw_boxes
+
+    return _merge_bounding_boxes(raw_boxes, max_boxes)
 
 
-def _map_position_report(msg: dict) -> dict | None:
-    """Map an aisstream PositionReport message to an AIS point dict."""
+def _box_area(box: list[list[float]]) -> float:
+    """Return the approximate area of a bounding box in square degrees."""
+    return abs(box[1][0] - box[0][0]) * abs(box[1][1] - box[0][1])
+
+
+def _merge_bounding_boxes(
+    boxes: list[list[list[float]]],
+    max_boxes: int = 10,
+    max_box_area: float = 400.0,
+) -> list[list[list[float]]]:
+    """Merge bounding boxes into at most *max_boxes* by iteratively combining
+    the closest pair, with an area cap to prevent API throttling.
+
+    The aisstream.io API silently throttles PositionReport delivery when
+    bounding boxes are too large or too numerous.  Boxes exceeding
+    *max_box_area* square degrees are never merged further.
+    """
+    if len(boxes) <= max_boxes:
+        return boxes
+
+    # Work with mutable copies: each box is [[lat_min, lon_min], [lat_max, lon_max]]
+    merged = [list(b) for b in boxes]
+
+    while len(merged) > max_boxes:
+        # Find the closest pair by center distance, skipping merges that would
+        # exceed the area cap.
+        best_dist = float("inf")
+        best_i, best_j = -1, -1
+        for i in range(len(merged)):
+            ci_lat = (merged[i][0][0] + merged[i][1][0]) / 2
+            ci_lon = (merged[i][0][1] + merged[i][1][1]) / 2
+            for j in range(i + 1, len(merged)):
+                # Preview the merged box area
+                candidate = [
+                    [min(merged[i][0][0], merged[j][0][0]), min(merged[i][0][1], merged[j][0][1])],
+                    [max(merged[i][1][0], merged[j][1][0]), max(merged[i][1][1], merged[j][1][1])],
+                ]
+                if _box_area(candidate) > max_box_area:
+                    continue  # Would be too large — skip
+
+                cj_lat = (merged[j][0][0] + merged[j][1][0]) / 2
+                cj_lon = (merged[j][0][1] + merged[j][1][1]) / 2
+                d = (ci_lat - cj_lat) ** 2 + (ci_lon - cj_lon) ** 2
+                if d < best_dist:
+                    best_dist = d
+                    best_i, best_j = i, j
+
+        if best_i < 0:
+            # No mergeable pair found (all remaining merges exceed area cap).
+            # Drop the largest-area box that has the least corridor coverage
+            # to stay within max_boxes.
+            if len(merged) > max_boxes:
+                areas = [(i, _box_area(b)) for i, b in enumerate(merged)]
+                areas.sort(key=lambda x: -x[1])  # Largest first
+                logger.warning(
+                    "Bounding box merge: dropping largest box (%.1f sq deg) to stay within %d-box limit. "
+                    "Some corridor coverage may be lost.",
+                    areas[0][1], max_boxes,
+                )
+                merged.pop(areas[0][0])
+            break
+
+        # Merge best_j into best_i (union of bounding boxes)
+        bi, bj = merged[best_i], merged[best_j]
+        merged[best_i] = [
+            [min(bi[0][0], bj[0][0]), min(bi[0][1], bj[0][1])],
+            [max(bi[1][0], bj[1][0]), max(bi[1][1], bj[1][1])],
+        ]
+        merged.pop(best_j)
+
+    logger.info(
+        "Merged %d corridor boxes into %d regional boxes for AIS streaming",
+        len(boxes), len(merged),
+    )
+    return merged
+
+
+def _map_position_report(msg: dict, msg_type: str = "PositionReport") -> dict | None:
+    """Map an aisstream position report message to an AIS point dict.
+
+    Handles both Class A (PositionReport) and Class B
+    (StandardClassBPositionReport) message types.
+    """
     try:
         meta = msg.get("MetaData", {})
-        report = msg.get("Message", {}).get("PositionReport", {})
+        report = msg.get("Message", {}).get(msg_type, {})
         if not report:
             return None
 
@@ -112,6 +201,7 @@ def _map_position_report(msg: dict) -> dict | None:
             "heading": heading,
             "nav_status": report.get("NavigationalStatus"),
             "source": "aisstream",
+            "ais_class": "B" if msg_type == "StandardClassBPositionReport" else "A",
         }
     except Exception as exc:
         logger.debug("Failed to map position report: %s", exc)
@@ -188,6 +278,33 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
     # Apply static data updates (vessel metadata from ShipStaticData messages)
     for mmsi, sdata in static_updates.items():
         vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
+        if not vessel:
+            # Create vessel from static data even without a position report —
+            # enables watchlist matching for vessels seen in the streaming window.
+            from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+            derived_flag = mmsi_to_flag(mmsi)
+            vessel = Vessel(
+                mmsi=mmsi,
+                name=sdata.get("vessel_name"),
+                imo=sdata.get("imo"),
+                vessel_type=sdata.get("vessel_type"),
+                callsign=sdata.get("callsign"),
+                flag=derived_flag,
+                flag_risk_category=flag_to_risk_category(derived_flag),
+                ais_class="A",
+                ais_source="aisstream",
+                mmsi_first_seen_utc=datetime.now(timezone.utc).replace(tzinfo=None),
+            )
+            try:
+                with db.begin_nested():
+                    db.add(vessel)
+                    db.flush()
+            except IntegrityError:
+                vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
+                if not vessel:
+                    continue
+            vessels_updated += 1
+            continue
         if vessel:
             changed = False
             ts = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -271,7 +388,7 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
             cog=float(pt["cog"]) if pt.get("cog") is not None else None,
             heading=float(pt["heading"]) if pt.get("heading") is not None and pt["heading"] != 511 else None,
             nav_status=pt.get("nav_status"),
-            ais_class="A",
+            ais_class=pt.get("ais_class", "A"),
             source="aisstream",
         )
         db.add(point)
@@ -321,7 +438,7 @@ async def stream_ais(
         "APIKey": api_key,
         "BoundingBoxes": bounding_boxes,
         "FiltersShipMMSI": [],
-        "FilterMessageTypes": ["PositionReport", "ShipStaticData"],
+        "FilterMessageTypes": ["PositionReport", "StandardClassBPositionReport", "ShipStaticData"],
     }
 
     stats: dict[str, Any] = {
@@ -376,8 +493,8 @@ async def stream_ais(
                     stats["messages_received"] += 1
                     msg_type = msg.get("MessageType", "")
 
-                    if msg_type == "PositionReport":
-                        pt = _map_position_report(msg)
+                    if msg_type in ("PositionReport", "StandardClassBPositionReport"):
+                        pt = _map_position_report(msg, msg_type=msg_type)
                         if pt:
                             stats["position_reports"] += 1
                             stats["vessels_seen"].add(pt["mmsi"])

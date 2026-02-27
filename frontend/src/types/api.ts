@@ -99,6 +99,7 @@ export interface VesselSummary {
   deadweight: number | null
   last_risk_score: number | null
   watchlist_status: boolean
+  matched_via_absorbed_mmsi?: string
 }
 
 export interface WatchlistEntry {
@@ -272,4 +273,39 @@ export interface SearchMission {
   updated_at: string | null
   target_count: number
   candidate_count: number
+}
+
+// ---------------------------------------------------------------------------
+// Merge types
+// ---------------------------------------------------------------------------
+
+export interface MergeCandidateSummary {
+  candidate_id: number
+  vessel_a: { vessel_id: number; mmsi: string | null; name: string | null }
+  vessel_b: { vessel_id: number; mmsi: string | null; name: string | null }
+  distance_nm: number | null
+  time_delta_hours: number | null
+  confidence_score: number
+  match_reasons: Record<string, unknown> | null
+  satellite_corroboration: Record<string, unknown> | null
+  status: string
+  created_at: string | null
+  resolved_at: string | null
+  resolved_by: string | null
+}
+
+export interface VesselAlias {
+  mmsi: string
+  name: string | null
+  flag: string | null
+  status: 'current' | 'absorbed'
+  absorbed_at?: string | null
+}
+
+export interface TimelineEvent {
+  event_type: string
+  timestamp: string | null
+  summary: string
+  details: Record<string, unknown>
+  related_entity_id: number
 }
