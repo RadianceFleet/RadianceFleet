@@ -178,7 +178,7 @@ def validate_ais_row(row: dict[str, Any]) -> str | None:
 
     imo = row.get("imo")
     if imo:
-        imo_str = str(imo).strip().removeprefix("IMO ")
+        imo_str = str(imo).strip().removeprefix("IMO ").removeprefix("IMO")
         if not re.fullmatch(r"\d{7}", imo_str):
             return f"Invalid IMO: {imo!r} (must be 7 digits)"
 
@@ -242,9 +242,66 @@ def validate_ais_row(row: dict[str, Any]) -> str | None:
         return f"Unparseable timestamp {ts!r}"
 
     now = datetime.now(timezone.utc)
-    if ts_dt > now:
+    # Handle naive datetimes (e.g., NOAA BaseDateTime has no timezone)
+    ts_cmp = ts_dt.replace(tzinfo=timezone.utc) if ts_dt.tzinfo is None else ts_dt
+    if ts_cmp > now:
         return f"Future timestamp rejected: {ts_dt}"
     if ts_dt.year < 2010:
         return f"Timestamp too old (pre-2010): {ts_dt}"
 
     return None
+
+
+# --- NOAA-specific normalization ---
+
+# NOAA CSV column names (case varies across years):
+# MMSI, BaseDateTime, LAT, LON, SOG, COG, Heading, VesselName, IMO, CallSign,
+# VesselType, Status, Length, Width, Draft, Cargo, TransceiverClass
+_NOAA_ALIASES: dict[str, str] = {
+    "basedatetime": "timestamp_utc",
+    "vesselname": "vessel_name",
+    "vesseltype": "vessel_type",
+    "transceiverclass": "ais_class",
+    "callsign": "call_sign",
+    "status": "nav_status",
+    "length": "length_m",
+    "width": "beam_m",
+    "draft": "draft_m",
+    "cargo": "cargo_type",
+}
+
+
+def normalize_noaa_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Normalize a single NOAA CSV row to canonical field names.
+
+    Returns normalized dict or None if the row is invalid.
+    """
+    # Case-insensitive key mapping
+    normalized: dict[str, Any] = {}
+    for key, value in row.items():
+        lower_key = key.strip().lower()
+        canonical = _NOAA_ALIASES.get(lower_key, lower_key)
+        # Strip BOM from first column name
+        canonical = canonical.lstrip("\ufeff")
+        normalized[canonical] = value
+
+    # Ensure required fields exist
+    if "mmsi" not in normalized or "lat" not in normalized or "lon" not in normalized:
+        return None
+
+    # Handle IMO prefix (NOAA uses "IMO9869693" format — no space)
+    imo = normalized.get("imo")
+    if imo:
+        imo_str = str(imo).strip().removeprefix("IMO ").removeprefix("IMO")
+        normalized["imo"] = imo_str if re.fullmatch(r"\d{7}", imo_str) else None
+
+    # Validate and parse timestamp
+    ts = normalized.get("timestamp_utc")
+    if ts is None:
+        return None
+    ts_dt = parse_timestamp_flexible(ts)
+    if ts_dt is None:
+        return None
+    normalized["timestamp_utc"] = ts_dt
+
+    return normalized

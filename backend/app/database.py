@@ -34,3 +34,28 @@ def init_db() -> None:
     """Create all tables. Called on first run or after migrations."""
     from app.models import Base  # noqa: F401 — ensure all models are registered
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
+
+
+def _run_migrations() -> None:
+    """Idempotent ALTER TABLE migrations for columns added after initial schema.
+
+    Each statement is wrapped in try/except so re-running is safe (column already exists).
+    """
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    migrations = [
+        "ALTER TABLE ais_gap_events ADD COLUMN gap_off_lat REAL",
+        "ALTER TABLE ais_gap_events ADD COLUMN gap_off_lon REAL",
+        "ALTER TABLE ais_gap_events ADD COLUMN gap_on_lat REAL",
+        "ALTER TABLE ais_gap_events ADD COLUMN gap_on_lon REAL",
+        "ALTER TABLE ais_gap_events ADD COLUMN source VARCHAR(20)",
+    ]
+    with engine.connect() as conn:
+        for stmt in migrations:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except OperationalError:
+                conn.rollback()  # Column already exists — safe to ignore

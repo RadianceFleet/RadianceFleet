@@ -1009,16 +1009,47 @@ def compute_gap_score(
                 breakdown["sts_with_shadow_fleet_vessel"] = sts_assoc_pts
 
     # Phase 6.12: Dark vessel detection signal
+    # FIX: Use spatial+temporal proximity instead of matched_vessel_id (which is NULL
+    # for unmatched detections, making the old query always return 0 rows).
     if db is not None and gap.vessel_id is not None:
         from app.models.stubs import DarkVesselDetection
-        dark_detections = db.query(DarkVesselDetection).filter(
-            DarkVesselDetection.matched_vessel_id == gap.vessel_id,
+        from app.utils.geo import haversine_nm as _dv_haversine
+
+        # Query unmatched dark detections within the gap's time window (±6h buffer)
+        candidate_detections = db.query(DarkVesselDetection).filter(
             DarkVesselDetection.ais_match_result == "unmatched",
-            DarkVesselDetection.detection_time_utc >= gap.gap_start_utc - timedelta(days=30),
-            DarkVesselDetection.detection_time_utc <= gap.gap_end_utc + timedelta(days=7),
+            DarkVesselDetection.detection_time_utc.between(
+                gap.gap_start_utc - timedelta(hours=6),
+                gap.gap_end_utc + timedelta(hours=6),
+            ),
         ).all()
+
+        # Filter by spatial proximity: detection within gap's plausible area
+        # Use gap off/on positions, start/end AIS points, or corridor match
+        gap_lat = gap_lon = None
+        if hasattr(gap, "gap_off_lat") and gap.gap_off_lat is not None:
+            gap_lat, gap_lon = gap.gap_off_lat, gap.gap_off_lon
+        elif gap.start_point is not None:
+            gap_lat, gap_lon = gap.start_point.lat, gap.start_point.lon
+
+        max_radius = gap.max_plausible_distance_nm or 200.0  # fallback
+
+        dark_detections = []
+        for det in candidate_detections:
+            if det.detection_lat is None or det.detection_lon is None:
+                continue
+            # Match by corridor if both have one
+            if det.corridor_id is not None and gap.corridor_id is not None:
+                if det.corridor_id == gap.corridor_id:
+                    dark_detections.append(det)
+                    continue
+            # Match by spatial proximity
+            if gap_lat is not None and gap_lon is not None:
+                dist = _dv_haversine(gap_lat, gap_lon, det.detection_lat, det.detection_lon)
+                if dist <= max_radius:
+                    dark_detections.append(det)
+
         dv_cfg = config.get("dark_vessel", {})
-        # Pick the highest-scoring detection: in-corridor (35 pts) > outside (20 pts)
         has_corridor_det = any(d.corridor_id is not None for d in dark_detections)
         if dark_detections:
             if has_corridor_det:

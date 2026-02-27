@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     COPERNICUS_CLIENT_SECRET: str | None = None
     # AISHub — batch AIS positions
     AISHUB_USERNAME: str | None = None
+    # NOAA historical AIS data
+    NOAA_BASE_URL: str = "https://coast.noaa.gov/htdata/CMSP/AISDataHandler"
     # Vessel identity merging
     MERGE_MAX_SPEED_KN: float = 16.0
     MERGE_MAX_GAP_DAYS: int = 30

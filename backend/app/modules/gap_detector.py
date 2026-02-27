@@ -152,13 +152,14 @@ def detect_gaps_for_vessel(
         if delta_seconds < min_gap_seconds:
             continue
 
-        # Check if gap already recorded
+        # Check if gap already recorded (±10 min window to dedup with GFW imports)
+        _dedup_window = timedelta(minutes=10)
         existing = (
             db.query(AISGapEvent)
             .filter(
                 AISGapEvent.vessel_id == vessel.vessel_id,
-                AISGapEvent.gap_start_utc == p1.timestamp_utc,
-                AISGapEvent.gap_end_utc == p2.timestamp_utc,
+                AISGapEvent.gap_start_utc >= p1.timestamp_utc - _dedup_window,
+                AISGapEvent.gap_start_utc <= p1.timestamp_utc + _dedup_window,
             )
             .first()
         )

@@ -35,6 +35,14 @@ class AISGapEvent(Base):
     pre_gap_sog: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # SOG of the last AIS point before the gap; captured at detection time
 
+    # GFW gap event fields — positions where AIS went off/on (null for local-AIS gaps)
+    gap_off_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    gap_off_lon: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    gap_on_lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    gap_on_lon: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # Provenance: "gfw" for GFW-imported, NULL/missing for local AIS detection
+    source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="gap_events")
     corridor: Mapped[Optional["Corridor"]] = relationship("Corridor", back_populates="gap_events")
     start_point: Mapped[Optional["AISPoint"]] = relationship(

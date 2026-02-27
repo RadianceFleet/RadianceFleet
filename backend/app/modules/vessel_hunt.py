@@ -22,16 +22,42 @@ from app.models.vessel import Vessel
 from app.modules.gap_detector import compute_max_distance_nm, _haversine_nm
 
 
-def create_target_profile(vessel_id: int, db: Session) -> VesselTargetProfile:
-    """Register a vessel as a surveillance target."""
+def create_target_profile(
+    vessel_id: int,
+    db: Session,
+    last_lat: float | None = None,
+    last_lon: float | None = None,
+) -> VesselTargetProfile:
+    """Register a vessel as a surveillance target.
+
+    Auto-populates last AIS position from the vessel's most recent AIS point
+    unless overridden by explicit lat/lon (e.g. from GFW gap off-position).
+    """
+    from app.models.ais_point import AISPoint
+
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
     if vessel is None:
         raise ValueError(f"Vessel {vessel_id} not found")
+
+    # Auto-populate from latest AIS point if not explicitly provided
+    if last_lat is None or last_lon is None:
+        last_point = (
+            db.query(AISPoint)
+            .filter(AISPoint.vessel_id == vessel_id)
+            .order_by(AISPoint.timestamp_utc.desc())
+            .first()
+        )
+        if last_point:
+            last_lat = last_point.lat
+            last_lon = last_point.lon
+
     profile = VesselTargetProfile(
         vessel_id=vessel_id,
         deadweight_dwt=vessel.deadweight,
         loa_meters=None,
         beam_meters=None,
+        last_ais_position_lat=last_lat,
+        last_ais_position_lon=last_lon,
     )
     db.add(profile)
     db.commit()
@@ -116,7 +142,7 @@ def _compute_hunt_score(
       drift_probability x 15
       vessel_class_match x 10
 
-    Score bands: HIGH >= 80, MEDIUM 50-79, LOW < 50
+    Score bands (v1.1): HIGH >= 45, MEDIUM 25-44, LOW < 25
     Note: visual_similarity (weight 40) is None in v1.1, so max possible = 60.
     """
     breakdown: dict = {}
@@ -214,9 +240,10 @@ def find_hunt_candidates(mission_id: int, db: Session) -> list[HuntCandidate]:
 
         score, breakdown = _compute_hunt_score(det, mission, vessel)
 
-        if score >= 80:
+        # v1.1: max score without visual_similarity is 60, so lower thresholds
+        if score >= 45:
             band = "HIGH"
-        elif score >= 50:
+        elif score >= 25:
             band = "MEDIUM"
         else:
             band = "LOW"

@@ -26,6 +26,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "slowapi>=0.1.9",
     "websockets>=12.0",
+    "zstandard>=0.22.0",
 ]
 
 [project.optional-dependencies]

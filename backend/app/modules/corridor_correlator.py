@@ -185,6 +185,26 @@ def find_dark_zone_for_gap(db: Session, gap: AISGapEvent) -> Optional[DarkZone]:
     return min(matches, key=lambda z: z.zone_id)
 
 
+def find_corridor_for_point(db: Session, lat: float, lon: float) -> Optional[Corridor]:
+    """Find the highest-risk corridor containing a single lat/lon point.
+
+    Used for GFW gap events where we only have off-position coordinates
+    (no start/end AIS point pair).
+    """
+    corridors = db.query(Corridor).filter(Corridor.geometry.isnot(None)).all()
+    matches = []
+    for c in corridors:
+        wkt = _geometry_wkt(c.geometry)
+        if wkt is None:
+            continue
+        bbox = _parse_wkt_bbox(wkt)
+        if bbox and _point_in_bbox(lat, lon, bbox):
+            matches.append(c)
+    if not matches:
+        return None
+    return max(matches, key=lambda c: c.risk_weight)
+
+
 def correlate_all_uncorrelated_gaps(db: Session) -> dict:
     """Batch-correlate all gap events that have not yet been assigned a corridor.
 

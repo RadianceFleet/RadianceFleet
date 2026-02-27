@@ -1904,6 +1904,163 @@ def data_psc():
         db.close()
 
 
+# ── GFW Gap Events + SAR Sweep + Dark Vessel Discovery ─────────────────────
+
+@data_app.command("fetch-noaa")
+def data_fetch_noaa(
+    from_date: str = typer.Option(..., "--from", help="Start date (YYYY-MM-DD)"),
+    to_date: str = typer.Option(..., "--to", help="End date (YYYY-MM-DD)"),
+    import_db: bool = typer.Option(True, "--import/--no-import", help="Import into DB after download"),
+    corridor_filter: bool = typer.Option(True, "--corridor-filter/--no-corridor-filter", help="Filter by corridor bboxes"),
+):
+    """Download and optionally import NOAA historical AIS data."""
+    from app.database import SessionLocal
+    from app.modules.noaa_client import fetch_and_import_noaa
+    from datetime import date as _date
+
+    start = _date.fromisoformat(from_date)
+    end = _date.fromisoformat(to_date)
+
+    console.print(f"[cyan]NOAA AIS data ({from_date} → {to_date})...[/cyan]")
+    db = SessionLocal()
+    try:
+        result = fetch_and_import_noaa(
+            db, start_date=start, end_date=end,
+            corridor_filter=corridor_filter, import_data=import_db,
+        )
+        console.print(
+            f"[green]Done.[/green] Dates: {result['dates_downloaded']}/{result['dates_attempted']} downloaded, "
+            f"Rows: {result['total_rows']}, Accepted: {result['total_accepted']}"
+        )
+        if result["dates_failed"]:
+            for fail in result["dates_failed"]:
+                console.print(f"  [yellow]Failed: {fail['date']} — {fail['error']}[/yellow]")
+    finally:
+        db.close()
+
+
+@data_app.command("gfw-gaps")
+def data_gfw_gaps(
+    from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD). Default: 90 days ago."),
+    to_date: str = typer.Option(None, "--to", help="End date (YYYY-MM-DD). Default: today."),
+    limit: int = typer.Option(None, "--limit", help="Max vessels to query (default: all)"),
+    resume_from: int = typer.Option(None, "--resume-from-vessel-id", help="Resume from vessel_id (checkpoint)"),
+):
+    """Import GFW intentional AIS-disabling gap events for vessels in the DB."""
+    from app.database import SessionLocal
+    from app.modules.gfw_client import import_gfw_gap_events
+    from datetime import date as _date, timedelta as _td
+
+    start = from_date or (_date.today() - _td(days=90)).isoformat()
+    end = to_date or _date.today().isoformat()
+
+    console.print(f"[cyan]Importing GFW gap events ({start} → {end})...[/cyan]")
+    db = SessionLocal()
+    try:
+        result = import_gfw_gap_events(
+            db, start_date=start, end_date=end,
+            limit=limit, resume_from_vessel_id=resume_from,
+        )
+        console.print(
+            f"[green]Done.[/green] Vessels queried: {result['vessels_queried']}, "
+            f"Events imported: {result['imported']}, "
+            f"Skipped (dup): {result['skipped_dup']}, "
+            f"In corridors: {result['in_corridor']}"
+        )
+        if result.get("partial"):
+            console.print(
+                f"[yellow]Partial results — resume with: --resume-from-vessel-id {result['last_vessel_id']}[/yellow]"
+            )
+    finally:
+        db.close()
+
+
+@data_app.command("sar-sweep")
+def data_sar_sweep(
+    from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD). Default: 30 days ago."),
+    to_date: str = typer.Option(None, "--to", help="End date (YYYY-MM-DD). Default: today."),
+    corridors: str = typer.Option("all", "--corridors", help="Corridor filter: all, export_route, sts_zone, dark_zone"),
+):
+    """Sweep all corridors for SAR vessel detections (dark vessel candidates)."""
+    from app.database import SessionLocal
+    from app.modules.gfw_client import sweep_corridors_sar
+    from datetime import date as _date, timedelta as _td
+
+    start = from_date or (_date.today() - _td(days=30)).isoformat()
+    end = to_date or _date.today().isoformat()
+
+    corridor_types = None
+    if corridors != "all":
+        corridor_types = [corridors]
+
+    console.print(f"[cyan]SAR corridor sweep ({start} → {end}, corridors={corridors})...[/cyan]")
+    db = SessionLocal()
+    try:
+        result = sweep_corridors_sar(db, start_date=start, end_date=end, corridor_types=corridor_types)
+        console.print(
+            f"[green]Done.[/green] Corridors queried: {result['corridors_queried']}, "
+            f"Detections: {result['total_detections']}, "
+            f"Dark vessels: {result['dark_vessels']}, "
+            f"Matched: {result['matched']}"
+        )
+        if result.get("partial"):
+            console.print("[yellow]Partial results — some corridors failed[/yellow]")
+    finally:
+        db.close()
+
+
+@app.command("discover-dark-vessels")
+def discover_dark_vessels_cmd(
+    from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD). Default: 90 days ago."),
+    to_date: str = typer.Option(None, "--to", help="End date (YYYY-MM-DD). Default: today."),
+    skip_fetch: bool = typer.Option(False, "--skip-fetch", help="Skip GFW gap import + SAR sweep (use existing data)"),
+    min_score: int = typer.Option(50, "--min-score", help="Min gap risk score for auto-hunt"),
+    verbose: bool = typer.Option(False, "--verbose", help="Show detailed step output"),
+):
+    """Run the full dark vessel discovery pipeline.
+
+    Orchestrates: GFW gaps → SAR sweep → local detection → scoring → clustering → auto-hunt.
+    """
+    from app.database import SessionLocal
+    from app.modules.dark_vessel_discovery import discover_dark_vessels
+    from datetime import date as _date, timedelta as _td
+
+    start = from_date or (_date.today() - _td(days=90)).isoformat()
+    end = to_date or _date.today().isoformat()
+
+    console.print(f"[bold cyan]Dark Vessel Discovery Pipeline[/bold cyan] ({start} → {end})\n")
+    db = SessionLocal()
+    try:
+        result = discover_dark_vessels(
+            db, start_date=start, end_date=end,
+            skip_fetch=skip_fetch, min_gap_score=min_score,
+        )
+
+        # Summary report
+        status = result.get("run_status", "unknown")
+        status_color = "green" if status == "complete" else "yellow" if status == "partial" else "red"
+        console.print(f"\n[bold]═══ Dark Vessel Discovery Report ═══[/bold]")
+        console.print(f"Status: [{status_color}]{status}[/{status_color}]")
+        console.print(f"Date range: {start} → {end}")
+
+        steps = result.get("steps", {})
+        for step_name, step_data in steps.items():
+            if isinstance(step_data, dict):
+                step_status = step_data.get("status", "?")
+                s_color = "green" if step_status == "ok" else "yellow" if step_status == "skipped" else "red"
+                detail = step_data.get("detail", "")
+                console.print(f"  [{s_color}]{step_name}[/{s_color}]: {detail}")
+
+        # Top alerts
+        top_alerts = result.get("top_alerts", [])
+        if top_alerts:
+            console.print("\n[bold]Top alerts:[/bold]")
+            for a in top_alerts[:5]:
+                console.print(f"  #{a['gap_event_id']} MMSI {a['mmsi']} score={a['risk_score']}")
+    finally:
+        db.close()
+
+
 # ── Vessel Identity Merge Commands ──────────────────────────────────────────
 
 @app.command("detect-merges")
