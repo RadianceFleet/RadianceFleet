@@ -61,12 +61,29 @@ class TestAlertDetailContract:
         first_pt.sog = 7.2
         first_pt.cog = 270.0
 
-        # Configure mock_db.query to return the right objects
+        # Configure mock_db.query to return the right objects.
+        # The route handler queries in this order:
+        # 1. AISGapEvent.first()          -> alert
+        # 2. Vessel.first()               -> vessel
+        # 3. Corridor.first()             -> corridor  (only if corridor_id)
+        # 4. MovementEnvelope.first()     -> None
+        # 5. SatelliteCheck.first()       -> None
+        # 6. AISPoint.first() (start_pt)  -> last_pt   (only if start_point_id)
+        # 7. AISPoint.first() (end_pt)    -> first_pt  (only if end_point_id)
+        # 8. SpoofingAnomaly.all()        -> []
+        # 9. LoiteringEvent.all()         -> []
+        # 10. StsTransferEvent.all()      -> []
+        # 11. func.count().scalar()       -> 0 (prior_similar_count)
         call_count = [0]
 
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            # Sensible defaults for all chain endings
+            result.filter.return_value.first.return_value = None
+            result.filter.return_value.all.return_value = []
+            result.filter.return_value.scalar.return_value = 0
+
             if call_count[0] == 1:
                 # AISGapEvent query
                 result.filter.return_value.first.return_value = alert
@@ -88,8 +105,6 @@ class TestAlertDetailContract:
             elif call_count[0] == 7:
                 # End AISPoint query
                 result.filter.return_value.first.return_value = first_pt
-            else:
-                result.filter.return_value.first.return_value = None
             return result
 
         mock_db.query.side_effect = query_side_effect
@@ -216,21 +231,21 @@ class TestAlertDetailNullFields:
         alert.start_point_id = None
         alert.end_point_id = None
 
+        # corridor_id is None, start_point_id is None, end_point_id is None
+        # so the route skips corridor, AISPoint queries.
+        # Query order: 1=alert, 2=vessel, 3=envelope, 4=sat_check,
+        # then .all() for spoofing/loitering/STS (vessel_id=10),
+        # then .scalar() for prior_count.
         call_count = [0]
 
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.filter.return_value.first.return_value = None
+            result.filter.return_value.all.return_value = []
+            result.filter.return_value.scalar.return_value = 0
             if call_count[0] == 1:
                 result.filter.return_value.first.return_value = alert
-            elif call_count[0] == 2:
-                result.filter.return_value.first.return_value = None  # No vessel
-            elif call_count[0] == 3:
-                result.filter.return_value.first.return_value = None  # No envelope
-            elif call_count[0] == 4:
-                result.filter.return_value.first.return_value = None  # No sat check
-            else:
-                result.filter.return_value.first.return_value = None
             return result
 
         mock_db.query.side_effect = query_side_effect
@@ -276,10 +291,11 @@ class TestAlertDetailPerformance:
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.filter.return_value.first.return_value = None
+            result.filter.return_value.all.return_value = []
+            result.filter.return_value.scalar.return_value = 0
             if call_count[0] == 1:
                 result.filter.return_value.first.return_value = alert
-            else:
-                result.filter.return_value.first.return_value = None
             return result
 
         mock_db.query.side_effect = query_side_effect

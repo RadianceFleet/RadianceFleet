@@ -159,10 +159,16 @@ class TestListHuntCandidates:
     """GET /api/v1/hunt/missions/{id}/candidates."""
 
     def test_list_candidates_empty(self, api_client, mock_db):
-        mock_db.query.return_value.filter.return_value.all.return_value = []
+        q = mock_db.query.return_value.filter.return_value
+        q.count.return_value = 0
+        q.offset.return_value.limit.return_value.all.return_value = []
         resp = api_client.get("/api/v1/hunt/missions/1/candidates")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert "items" in data
+        assert isinstance(data["items"], list)
+        assert len(data["items"]) == 0
+        assert data["total"] == 0
 
 
 class TestConfirmHuntCandidate:

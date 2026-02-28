@@ -113,13 +113,26 @@ class TestMergedVesselRedirect:
     """When vessel is absorbed, detail returns redirect info."""
 
     def test_merged_vessel_returns_redirect(self, api_client, mock_db):
-        """Absorbed vessel returns merged=True with canonical_vessel_id."""
+        """Absorbed vessel returns full detail with merged_into_vessel_id set."""
         vessel = MagicMock()
         vessel.vessel_id = 20
         vessel.mmsi = "111111111"
+        vessel.imo = "IMO9999999"
+        vessel.name = "MERGED VESSEL"
+        vessel.flag = "PA"
+        vessel.vessel_type = "Crude Oil Tanker"
+        vessel.deadweight = 50000.0
+        vessel.year_built = 2005
+        vessel.ais_class = MagicMock(value="A")
+        vessel.flag_risk_category = MagicMock(value="high_risk")
+        vessel.pi_coverage_status = MagicMock(value="unknown")
+        vessel.psc_detained_last_12m = False
+        vessel.mmsi_first_seen_utc = None
+        vessel.vessel_laid_up_30d = False
+        vessel.vessel_laid_up_60d = False
+        vessel.vessel_laid_up_in_sts_zone = False
         vessel.merged_into_vessel_id = 10  # absorbed into vessel 10
 
-        # resolve_canonical should resolve to 10
         call_count = [0]
 
         def query_side_effect(*args, **kwargs):
@@ -129,7 +142,6 @@ class TestMergedVesselRedirect:
                 result.filter.return_value.first.return_value = vessel
             else:
                 result.filter.return_value.first.return_value = None
-                # For resolve_canonical: db.query(Vessel).get(10)
                 canonical = MagicMock()
                 canonical.vessel_id = 10
                 canonical.merged_into_vessel_id = None
@@ -137,16 +149,15 @@ class TestMergedVesselRedirect:
             return result
 
         mock_db.query.side_effect = query_side_effect
-        mock_db.query.return_value.get = MagicMock()
 
-        with MagicMock() as resolver:
-            from unittest.mock import patch
-            with patch("app.modules.identity_resolver.resolve_canonical", return_value=10):
-                resp = api_client.get("/api/v1/vessels/20")
-                assert resp.status_code == 200
-                data = resp.json()
-                assert data["merged"] is True
-                assert data["canonical_vessel_id"] == 10
+        from unittest.mock import patch
+        with patch("app.modules.identity_resolver.resolve_canonical", return_value=10):
+            resp = api_client.get("/api/v1/vessels/20")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["merged_into_vessel_id"] is not None
+            assert data["merged_into_vessel_id"] == 10
+            assert data["vessel_id"] == 20
 
 
 class TestVesselSearch:

@@ -22,7 +22,7 @@ class TestSearchVessel:
     def test_search_vessel_no_token_raises(self):
         from app.modules.gfw_client import search_vessel
 
-        with patch("app.config.settings") as mock_settings:
+        with patch("app.modules.gfw_client.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = None
             with pytest.raises(ValueError, match="GFW_API_TOKEN"):
                 search_vessel("123456789", token=None)
@@ -84,7 +84,7 @@ class TestGetVesselEvents:
     def test_no_token_raises(self):
         from app.modules.gfw_client import get_vessel_events
 
-        with patch("app.config.settings") as mock_settings:
+        with patch("app.modules.gfw_client.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = None
             with pytest.raises(ValueError, match="GFW_API_TOKEN"):
                 get_vessel_events("gfw-1", token=None)
