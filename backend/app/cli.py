@@ -2194,3 +2194,72 @@ def list_merge_candidates_cmd(
         console.print(table)
     finally:
         db.close()
+
+
+@app.command("detect-cross-receiver")
+def detect_cross_receiver_cmd(
+    date_from: Optional[str] = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: Optional[str] = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
+):
+    """Detect cross-receiver AIS position disagreements."""
+    from app.database import SessionLocal
+    from app.modules.cross_receiver_detector import detect_cross_receiver_anomalies
+
+    console.print("[cyan]Running cross-receiver detection...[/cyan]")
+    db = SessionLocal()
+    try:
+        result = detect_cross_receiver_anomalies(
+            db, date_from=_parse_date(date_from), date_to=_parse_date(date_to)
+        )
+        console.print(
+            f"[green]Cross-receiver:[/green] {result['anomalies_created']} anomalies "
+            f"from {result['mmsis_checked']} MMSIs"
+        )
+    finally:
+        db.close()
+
+
+@app.command("detect-handshakes")
+def detect_handshakes_cmd(
+    date_from: Optional[str] = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: Optional[str] = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
+):
+    """Detect AIS identity swaps (handshakes) between vessel pairs."""
+    from app.database import SessionLocal
+    from app.modules.handshake_detector import detect_handshakes
+
+    console.print("[cyan]Running handshake detection...[/cyan]")
+    db = SessionLocal()
+    try:
+        result = detect_handshakes(
+            db, date_from=_parse_date(date_from), date_to=_parse_date(date_to)
+        )
+        console.print(
+            f"[green]Handshakes:[/green] {result['handshakes_detected']} detected "
+            f"from {result['pairs_checked']} pairs"
+        )
+    finally:
+        db.close()
+
+
+@app.command("detect-fake-positions")
+def detect_fake_positions_cmd(
+    date_from: Optional[str] = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
+    date_to: Optional[str] = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
+):
+    """Detect kinematically impossible position sequences (fake port calls)."""
+    from app.database import SessionLocal
+    from app.modules.fake_position_detector import detect_fake_positions
+
+    console.print("[cyan]Running fake position detection...[/cyan]")
+    db = SessionLocal()
+    try:
+        result = detect_fake_positions(
+            db, date_from=_parse_date(date_from), date_to=_parse_date(date_to)
+        )
+        console.print(
+            f"[green]Fake positions:[/green] {result['fake_positions_detected']} "
+            f"from {result['vessels_checked']} vessels"
+        )
+    finally:
+        db.close()
