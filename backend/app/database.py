@@ -51,6 +51,7 @@ def _run_migrations() -> None:
         "ALTER TABLE ais_gap_events ADD COLUMN gap_on_lat REAL",
         "ALTER TABLE ais_gap_events ADD COLUMN gap_on_lon REAL",
         "ALTER TABLE ais_gap_events ADD COLUMN source VARCHAR(20)",
+        "ALTER TABLE vessels ADD COLUMN last_ais_received_utc DATETIME",
     ]
     with engine.connect() as conn:
         for stmt in migrations:

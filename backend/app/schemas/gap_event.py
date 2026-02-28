@@ -41,6 +41,31 @@ class SatelliteCheckSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SpoofingAnomalySummary(BaseModel):
+    anomaly_id: int
+    anomaly_type: str
+    start_time_utc: datetime
+    risk_score_component: Optional[int] = None
+    evidence_json: Optional[Any] = None
+
+
+class LoiteringSummary(BaseModel):
+    loiter_id: int
+    start_time_utc: datetime
+    duration_hours: Optional[float] = None
+    mean_lat: Optional[float] = None
+    mean_lon: Optional[float] = None
+    median_sog_kn: Optional[float] = None
+
+
+class StsSummary(BaseModel):
+    sts_id: int
+    partner_name: Optional[str] = None
+    partner_mmsi: Optional[str] = None
+    detection_type: Optional[str] = None
+    start_time_utc: datetime
+
+
 class GapEventRead(BaseModel):
     gap_event_id: int
     vessel_id: int
@@ -57,6 +82,8 @@ class GapEventRead(BaseModel):
     max_plausible_distance_nm: Optional[float] = None
     actual_gap_distance_nm: Optional[float] = None
     in_dark_zone: bool
+    prior_similar_count: Optional[int] = None
+    is_recurring_pattern: Optional[bool] = None
 
     model_config = {"from_attributes": True}
 
@@ -71,6 +98,9 @@ class GapEventDetailRead(GapEventRead):
     satellite_check: Optional[SatelliteCheckSummary] = None
     last_point: Optional[AISPointSummary] = None
     first_point_after: Optional[AISPointSummary] = None
+    spoofing_anomalies: Optional[list[SpoofingAnomalySummary]] = None
+    loitering_events: Optional[list[LoiteringSummary]] = None
+    sts_events: Optional[list[StsSummary]] = None
 
     model_config = {"from_attributes": False}
 

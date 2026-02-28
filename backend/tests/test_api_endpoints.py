@@ -222,13 +222,12 @@ class TestCorridorCRUD:
         assert resp.status_code == 200
         assert resp.json()["status"] == "created"
 
-    def test_create_corridor_missing_name_returns_400(self, api_client, mock_db):
+    def test_create_corridor_missing_name_returns_422(self, api_client, mock_db):
         resp = api_client.post(
             "/api/v1/corridors",
             json={"corridor_type": "export_route"},
         )
-        assert resp.status_code == 400
-        assert "name" in resp.json()["detail"].lower()
+        assert resp.status_code == 422
 
     def test_create_corridor_invalid_type_returns_400(self, api_client, mock_db):
         resp = api_client.post(

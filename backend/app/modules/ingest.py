@@ -129,6 +129,15 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
             errors.append("Unparseable timestamp — row skipped")
             rejected += 1
             continue
+        # H1: Update data freshness tracking
+        point_ts = _parse_timestamp(row)
+        if point_ts is not None:
+            try:
+                current = getattr(vessel, "last_ais_received_utc", None)
+                if current is None or not isinstance(current, datetime) or point_ts > current:
+                    vessel.last_ais_received_utc = point_ts
+            except (TypeError, AttributeError):
+                vessel.last_ais_received_utc = point_ts
         _check_sog_class_limit(vessel, row.get("sog"))
         result = _create_ais_point(db, vessel, row)
         if result is None:
