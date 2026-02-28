@@ -2009,6 +2009,42 @@ def data_sar_sweep(
         db.close()
 
 
+@data_app.command("gfw-encounters")
+def gfw_encounters_cmd(
+    limit: int = typer.Option(100, help="Max vessels to query"),
+    from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
+    to_date: str = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
+):
+    """Import GFW encounter events as STS transfer records."""
+    from app.database import SessionLocal
+    from app.modules.gfw_client import import_gfw_encounters
+
+    db = SessionLocal()
+    try:
+        result = import_gfw_encounters(db, date_from=from_date, date_to=to_date, limit=limit)
+        console.print(f"GFW encounters imported: {result['created']} created, {result['errors']} errors")
+    finally:
+        db.close()
+
+
+@data_app.command("gfw-port-visits")
+def gfw_port_visits_cmd(
+    limit: int = typer.Option(100, help="Max vessels to query"),
+    from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD)"),
+    to_date: str = typer.Option(None, "--to", help="End date (YYYY-MM-DD)"),
+):
+    """Import GFW port visit events as PortCall records."""
+    from app.database import SessionLocal
+    from app.modules.gfw_client import import_gfw_port_visits
+
+    db = SessionLocal()
+    try:
+        result = import_gfw_port_visits(db, date_from=from_date, date_to=to_date, limit=limit)
+        console.print(f"GFW port visits imported: {result['created']} created, {result['errors']} errors")
+    finally:
+        db.close()
+
+
 @app.command("discover-dark-vessels")
 def discover_dark_vessels_cmd(
     from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD). Default: 90 days ago."),

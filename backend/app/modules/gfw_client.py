@@ -760,6 +760,234 @@ def sweep_corridors_sar(
     return stats
 
 
+def import_gfw_encounters(
+    db: Session,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 100,
+    token: str | None = None,
+) -> dict:
+    """Import GFW encounter events as StsTransferEvents.
+
+    Fetches encounter events from GFW for all vessels in the database,
+    creates StsTransferEvent records with detection_type='gfw_encounter'.
+
+    Uses the same search_vessel → get_vessel_events pattern as import_gfw_gap_events.
+    """
+    import time
+    from app.models.vessel import Vessel
+    from app.models.sts_transfer import StsTransferEvent
+    from app.models.base import STSDetectionTypeEnum
+
+    token = token or settings.GFW_API_TOKEN
+    if not token:
+        raise ValueError("GFW_API_TOKEN not configured")
+
+    vessels = db.query(Vessel).filter(
+        Vessel.mmsi.isnot(None),
+        Vessel.merged_into_vessel_id.is_(None),
+    ).limit(limit).all()
+
+    created = 0
+    errors = 0
+
+    for vessel in vessels:
+        if not vessel.mmsi or len(vessel.mmsi) != 9:
+            continue
+
+        try:
+            # Resolve MMSI to GFW vessel ID
+            results = search_vessel(vessel.mmsi, token=token)
+            time.sleep(0.5)
+
+            if not results:
+                continue
+            gfw_id = results[0].get("gfw_id")
+            if not gfw_id:
+                continue
+
+            events = get_vessel_events(
+                gfw_id,
+                token=token,
+                event_types=["encounter"],
+                start_date=date_from,
+                end_date=date_to,
+            )
+            time.sleep(0.5)
+
+            for event in (events or []):
+                # Extract encounter data
+                lat = event.get("lat")
+                lon = event.get("lon")
+                start = event.get("start")
+                end = event.get("end")
+
+                if not (lat and lon and start and end):
+                    continue
+
+                start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+
+                # Make tz-naive for DB
+                if start_dt.tzinfo:
+                    start_dt = start_dt.replace(tzinfo=None)
+                if end_dt.tzinfo:
+                    end_dt = end_dt.replace(tzinfo=None)
+
+                duration = int((end_dt - start_dt).total_seconds() / 60)
+
+                # Try to match partner vessel via encounter info
+                encounter_info = event.get("encounter", {})
+                partner_mmsi = encounter_info.get("vessel", {}).get("ssvid")
+                partner_vessel = None
+                if partner_mmsi:
+                    partner_vessel = db.query(Vessel).filter(
+                        Vessel.mmsi == str(partner_mmsi)
+                    ).first()
+
+                # Skip if partner not found — we need both vessel IDs
+                if partner_vessel is None:
+                    continue
+
+                vid1 = min(vessel.vessel_id, partner_vessel.vessel_id)
+                vid2 = max(vessel.vessel_id, partner_vessel.vessel_id)
+
+                # Dedup check
+                existing = db.query(StsTransferEvent).filter(
+                    StsTransferEvent.vessel_1_id == vid1,
+                    StsTransferEvent.vessel_2_id == vid2,
+                    StsTransferEvent.start_time_utc == start_dt,
+                ).first()
+                if existing:
+                    continue
+
+                sts_event = StsTransferEvent(
+                    vessel_1_id=vid1,
+                    vessel_2_id=vid2,
+                    detection_type=STSDetectionTypeEnum.GFW_ENCOUNTER,
+                    start_time_utc=start_dt,
+                    end_time_utc=end_dt,
+                    duration_minutes=duration,
+                    mean_lat=round(float(lat), 6),
+                    mean_lon=round(float(lon), 6),
+                    risk_score_component=25,
+                )
+                db.add(sts_event)
+                created += 1
+
+        except Exception as e:
+            logger.warning("GFW encounter import failed for vessel %s: %s", vessel.mmsi, e)
+            errors += 1
+
+    db.commit()
+    logger.info("GFW encounter import: created=%d errors=%d", created, errors)
+    return {"created": created, "errors": errors}
+
+
+def import_gfw_port_visits(
+    db: Session,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 100,
+    token: str | None = None,
+) -> dict:
+    """Import GFW port visit events as PortCall records.
+
+    Uses the same search_vessel → get_vessel_events pattern as import_gfw_gap_events.
+    Port resolution maps GFW coordinates to internal Port records where possible.
+    """
+    import time
+    from app.models.vessel import Vessel
+    from app.models.port_call import PortCall
+    from app.modules.port_resolver import resolve_port
+
+    token = token or settings.GFW_API_TOKEN
+    if not token:
+        raise ValueError("GFW_API_TOKEN not configured")
+
+    vessels = db.query(Vessel).filter(
+        Vessel.mmsi.isnot(None),
+        Vessel.merged_into_vessel_id.is_(None),
+    ).limit(limit).all()
+
+    created = 0
+    errors = 0
+
+    for vessel in vessels:
+        if not vessel.mmsi or len(vessel.mmsi) != 9:
+            continue
+
+        try:
+            # Resolve MMSI to GFW vessel ID
+            results = search_vessel(vessel.mmsi, token=token)
+            time.sleep(0.5)
+
+            if not results:
+                continue
+            gfw_id = results[0].get("gfw_id")
+            if not gfw_id:
+                continue
+
+            events = get_vessel_events(
+                gfw_id,
+                token=token,
+                event_types=["port_visit"],
+                start_date=date_from,
+                end_date=date_to,
+            )
+            time.sleep(0.5)
+
+            for event in (events or []):
+                lat = event.get("lat")
+                lon = event.get("lon")
+                start = event.get("start")
+                end = event.get("end")
+
+                if not (lat and lon and start):
+                    continue
+
+                start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(end.replace("Z", "+00:00")) if end else None
+
+                # Make tz-naive for DB
+                if start_dt.tzinfo:
+                    start_dt = start_dt.replace(tzinfo=None)
+                if end_dt and end_dt.tzinfo:
+                    end_dt = end_dt.replace(tzinfo=None)
+
+                # Resolve port
+                port_visit_info = event.get("port_visit", {}) or event.get("port", {})
+                raw_port_name = port_visit_info.get("name") or event.get("port_name")
+                port = resolve_port(db, float(lat), float(lon), port_name=raw_port_name)
+
+                # Dedup
+                existing = db.query(PortCall).filter(
+                    PortCall.vessel_id == vessel.vessel_id,
+                    PortCall.arrival_utc == start_dt,
+                ).first()
+                if existing:
+                    continue
+
+                port_call = PortCall(
+                    vessel_id=vessel.vessel_id,
+                    port_id=port.port_id if port else None,
+                    arrival_utc=start_dt,
+                    departure_utc=end_dt,
+                    raw_port_name=raw_port_name,
+                    source="gfw",
+                )
+                db.add(port_call)
+                created += 1
+
+        except Exception as e:
+            logger.warning("GFW port visit import failed for vessel %s: %s", vessel.mmsi, e)
+            errors += 1
+
+    db.commit()
+    logger.info("GFW port visit import: created=%d errors=%d", created, errors)
+    return {"created": created, "errors": errors}
+
+
 def _extract_bbox_from_wkt(wkt: str | None) -> tuple[float, float, float, float] | None:
     """Extract (lat_min, lon_min, lat_max, lon_max) bounding box from WKT POLYGON."""
     if not wkt:
