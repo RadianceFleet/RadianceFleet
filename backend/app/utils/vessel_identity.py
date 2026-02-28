@@ -8,6 +8,12 @@ risk categories for scoring.
 from __future__ import annotations
 
 from app.models.base import FlagRiskEnum
+from app.utils.itu_mid_table import (
+    ITU_MID_ALLOCATION,
+    UNALLOCATED_MIDS,
+    LANDLOCKED_MIDS,
+    MICRO_TERRITORY_MIDS,
+)
 
 # Convenience flags known to be used by the Russian shadow fleet
 # (source: KSE Institute, CREA, s&p Global shadow fleet tracker).
@@ -109,21 +115,28 @@ def mmsi_to_flag(mmsi: str) -> str | None:
     return MID_TO_FLAG.get(mid)
 
 
-# MIDs known to be unallocated or used by stateless shadow fleet vessels
-_KNOWN_STATELESS_MIDS: frozenset[str] = frozenset({"646"})
-
-
 def is_suspicious_mid(mmsi: str) -> bool:
-    """Check if an MMSI uses an unallocated or known-stateless MID.
+    """Check if an MMSI uses an unallocated, landlocked, or micro-territory MID.
 
+    Uses the complete ITU MID allocation table for authoritative checks.
     Returns True for:
-    - MIDs not in MID_TO_FLAG (unallocated by ITU)
-    - MID 646 specifically (documented stateless shadow fleet pattern)
+    - MIDs in UNALLOCATED_MIDS (no ITU assignment)
+    - MIDs in LANDLOCKED_MIDS (suspicious for ocean-going vessels)
+    - MIDs in MICRO_TERRITORY_MIDS (uncommon, corroborating signal)
+    - MIDs not in ITU_MID_ALLOCATION at all
     """
     if not mmsi or not mmsi.isdigit() or len(mmsi) < 3:
         return False
-    mid = mmsi[:3]
-    return mid not in MID_TO_FLAG or mid in _KNOWN_STATELESS_MIDS
+    mid = int(mmsi[:3])
+    if mid in UNALLOCATED_MIDS:
+        return True
+    if mid in LANDLOCKED_MIDS:
+        return True
+    if mid in MICRO_TERRITORY_MIDS:
+        return True
+    if mid not in ITU_MID_ALLOCATION:
+        return True
+    return False
 
 
 def flag_to_risk_category(flag: str | None) -> FlagRiskEnum:

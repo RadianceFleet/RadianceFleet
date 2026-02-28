@@ -13,6 +13,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -355,6 +357,14 @@ def discover_dark_vessels(
         db, date_from=date_from, date_to=date_to,
     )
 
+    # Step 4b: Track naturalness (SOFT, feature-gated)
+    if settings.TRACK_NATURALNESS_ENABLED:
+        try:
+            from app.modules.track_naturalness_detector import run_track_naturalness_detection
+            _run_step("track_naturalness", run_track_naturalness_detection, db)
+        except ImportError:
+            result["steps"]["track_naturalness"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 5: Loitering detection (SOFT)
     try:
         from app.modules.loitering_detector import run_loitering_detection
@@ -374,6 +384,14 @@ def discover_dark_vessels(
         )
     except ImportError:
         result["steps"]["sts_detection"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6b: Draught detection (SOFT, feature-gated)
+    if settings.DRAUGHT_DETECTION_ENABLED:
+        try:
+            from app.modules.draught_detector import run_draught_detection
+            _run_step("draught_detection", run_draught_detection, db)
+        except ImportError:
+            result["steps"]["draught_detection"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 7: Score all alerts (HARD)
     try:
@@ -401,6 +419,39 @@ def discover_dark_vessels(
         _run_step("mmsi_cloning", detect_mmsi_cloning, db)
     except ImportError:
         result["steps"]["mmsi_cloning"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 11b: Identity fraud detectors (SOFT, feature-gated)
+    if settings.STATELESS_MMSI_DETECTION_ENABLED:
+        try:
+            from app.modules.stateless_detector import run_stateless_detection
+            _run_step("stateless_mmsi", run_stateless_detection, db)
+        except ImportError:
+            result["steps"]["stateless_mmsi"] = {"status": "skipped", "detail": "module not available"}
+    if settings.FLAG_HOPPING_DETECTION_ENABLED:
+        try:
+            from app.modules.flag_hopping_detector import run_flag_hopping_detection
+            _run_step("flag_hopping", run_flag_hopping_detection, db)
+        except ImportError:
+            result["steps"]["flag_hopping"] = {"status": "skipped", "detail": "module not available"}
+    if settings.IMO_FRAUD_DETECTION_ENABLED:
+        try:
+            from app.modules.imo_fraud_detector import run_imo_fraud_detection
+            _run_step("imo_fraud", run_imo_fraud_detection, db)
+        except ImportError:
+            result["steps"]["imo_fraud"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 11c: Fleet analysis (SOFT, feature-gated)
+    if settings.FLEET_ANALYSIS_ENABLED:
+        try:
+            from app.modules.owner_dedup import run_owner_dedup
+            _run_step("owner_dedup", run_owner_dedup, db)
+        except ImportError:
+            result["steps"]["owner_dedup"] = {"status": "skipped", "detail": "module not available"}
+        try:
+            from app.modules.fleet_analyzer import run_fleet_analysis
+            _run_step("fleet_analysis", run_fleet_analysis, db)
+        except ImportError:
+            result["steps"]["fleet_analysis"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 12: Top alerts summary
     from app.models.gap_event import AISGapEvent

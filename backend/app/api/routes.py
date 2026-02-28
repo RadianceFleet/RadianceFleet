@@ -2107,3 +2107,288 @@ def get_port_calls(vessel_id: int, db: Session = Depends(get_db)):
         })
 
     return {"vessel_id": vessel_id, "items": items, "total": len(items)}
+
+
+# ---------------------------------------------------------------------------
+# Phase K/L/M Detector Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/detect/track-naturalness", tags=["detection"])
+def trigger_track_naturalness(request: Request, db: Session = Depends(get_db)):
+    """Trigger track naturalness (synthetic track) detection."""
+    if not settings.TRACK_NATURALNESS_ENABLED:
+        return {"status": "disabled"}
+    from app.modules.track_naturalness_detector import run_track_naturalness_detection
+    result = run_track_naturalness_detection(db)
+    _audit_log(db, "detect_trigger", "track_naturalness", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.post("/detect/draught", tags=["detection"])
+def trigger_draught_detection(request: Request, db: Session = Depends(get_db)):
+    """Trigger draught change detection."""
+    if not settings.DRAUGHT_DETECTION_ENABLED:
+        return {"status": "disabled"}
+    from app.modules.draught_detector import run_draught_detection
+    result = run_draught_detection(db)
+    _audit_log(db, "detect_trigger", "draught", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.post("/detect/stateless-mmsi", tags=["detection"])
+def trigger_stateless_mmsi(request: Request, db: Session = Depends(get_db)):
+    """Trigger stateless MMSI detection."""
+    if not settings.STATELESS_MMSI_DETECTION_ENABLED:
+        return {"status": "disabled"}
+    from app.modules.stateless_detector import run_stateless_detection
+    result = run_stateless_detection(db)
+    _audit_log(db, "detect_trigger", "stateless_mmsi", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.post("/detect/flag-hopping", tags=["detection"])
+def trigger_flag_hopping(request: Request, db: Session = Depends(get_db)):
+    """Trigger flag hopping detection."""
+    if not settings.FLAG_HOPPING_DETECTION_ENABLED:
+        return {"status": "disabled"}
+    from app.modules.flag_hopping_detector import run_flag_hopping_detection
+    result = run_flag_hopping_detection(db)
+    _audit_log(db, "detect_trigger", "flag_hopping", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.post("/detect/imo-fraud", tags=["detection"])
+def trigger_imo_fraud(request: Request, db: Session = Depends(get_db)):
+    """Trigger IMO fraud detection."""
+    if not settings.IMO_FRAUD_DETECTION_ENABLED:
+        return {"status": "disabled"}
+    from app.modules.imo_fraud_detector import run_imo_fraud_detection
+    result = run_imo_fraud_detection(db)
+    _audit_log(db, "detect_trigger", "imo_fraud", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.get("/vessels/{vessel_id}/draught-history", tags=["vessels"])
+def get_draught_history(vessel_id: int, db: Session = Depends(get_db)):
+    """Get draught change events for a vessel."""
+    from app.models.vessel import Vessel
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    try:
+        from app.models.draught_event import DraughtChangeEvent
+        events = (
+            db.query(DraughtChangeEvent)
+            .filter(DraughtChangeEvent.vessel_id == vessel_id)
+            .order_by(DraughtChangeEvent.timestamp_utc.desc())
+            .all()
+        )
+        return {
+            "vessel_id": vessel_id,
+            "events": [
+                {
+                    "event_id": e.event_id,
+                    "timestamp_utc": e.timestamp_utc.isoformat() if e.timestamp_utc else None,
+                    "old_draught_m": e.old_draught_m,
+                    "new_draught_m": e.new_draught_m,
+                    "delta_m": e.delta_m,
+                    "distance_to_port_nm": e.distance_to_port_nm,
+                    "is_offshore": e.is_offshore,
+                    "risk_score_component": e.risk_score_component,
+                }
+                for e in events
+            ],
+            "total": len(events),
+        }
+    except Exception:
+        return {"vessel_id": vessel_id, "events": [], "total": 0}
+
+
+# ---------------------------------------------------------------------------
+# Phase N: Dark STS Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/detect/dark-sts", tags=["detection"])
+def trigger_dark_sts(request: Request, db: Session = Depends(get_db)):
+    """Trigger dark-dark STS hypothesis generation."""
+    if not settings.DARK_STS_DETECTION_ENABLED:
+        return {"status": "disabled"}
+    from app.modules.sts_detector import detect_sts_events
+    result = detect_sts_events(db)
+    _audit_log(db, "detect_trigger", "dark_sts", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.get("/satellite-tasking/candidates", tags=["detection"])
+def get_satellite_tasking_candidates(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    """List satellite tasking candidates from dark-dark STS analysis."""
+    try:
+        from app.models.satellite_tasking_candidate import SatelliteTaskingCandidate
+        candidates = (
+            db.query(SatelliteTaskingCandidate)
+            .order_by(SatelliteTaskingCandidate.created_utc.desc())
+            .limit(min(limit, 200))
+            .all()
+        )
+        return {
+            "candidates": [
+                {
+                    "candidate_id": c.candidate_id,
+                    "corridor_id": c.corridor_id,
+                    "vessel_a_id": c.vessel_a_id,
+                    "vessel_b_id": c.vessel_b_id,
+                    "gap_overlap_hours": c.gap_overlap_hours,
+                    "proximity_nm": c.proximity_nm,
+                    "confidence_level": c.confidence_level,
+                    "risk_score_component": c.risk_score_component,
+                    "created_utc": c.created_utc.isoformat() if c.created_utc else None,
+                }
+                for c in candidates
+            ],
+            "total": len(candidates),
+        }
+    except Exception:
+        return {"candidates": [], "total": 0}
+
+
+# ---------------------------------------------------------------------------
+# Phase O: Fleet & Owner Intelligence Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/detect/owner-dedup", tags=["detection"])
+def trigger_owner_dedup(request: Request, db: Session = Depends(get_db)):
+    """Trigger owner name deduplication and clustering."""
+    if not settings.FLEET_ANALYSIS_ENABLED:
+        return {"status": "disabled"}
+    from app.modules.owner_dedup import run_owner_dedup
+    result = run_owner_dedup(db)
+    _audit_log(db, "detect_trigger", "owner_dedup", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.post("/detect/fleet-patterns", tags=["detection"])
+def trigger_fleet_patterns(request: Request, db: Session = Depends(get_db)):
+    """Trigger fleet pattern analysis."""
+    if not settings.FLEET_ANALYSIS_ENABLED:
+        return {"status": "disabled"}
+    from app.modules.fleet_analyzer import run_fleet_analysis
+    result = run_fleet_analysis(db)
+    _audit_log(db, "detect_trigger", "fleet_patterns", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.get("/fleet/clusters", tags=["fleet"])
+def list_fleet_clusters(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    """List owner clusters."""
+    try:
+        from app.models.owner_cluster import OwnerCluster
+        clusters = (
+            db.query(OwnerCluster)
+            .order_by(OwnerCluster.vessel_count.desc())
+            .limit(min(limit, 200))
+            .all()
+        )
+        return {
+            "clusters": [
+                {
+                    "cluster_id": c.cluster_id,
+                    "canonical_name": c.canonical_name,
+                    "country": c.country,
+                    "is_sanctioned": c.is_sanctioned,
+                    "vessel_count": c.vessel_count,
+                }
+                for c in clusters
+            ],
+            "total": len(clusters),
+        }
+    except Exception:
+        return {"clusters": [], "total": 0}
+
+
+@router.get("/fleet/clusters/{cluster_id}", tags=["fleet"])
+def get_fleet_cluster(cluster_id: int, db: Session = Depends(get_db)):
+    """Get details for a specific owner cluster."""
+    try:
+        from app.models.owner_cluster import OwnerCluster
+        from app.models.owner_cluster_member import OwnerClusterMember
+        from app.models.vessel_owner import VesselOwner
+
+        cluster = db.query(OwnerCluster).filter(OwnerCluster.cluster_id == cluster_id).first()
+        if not cluster:
+            raise HTTPException(status_code=404, detail="Cluster not found")
+
+        members = (
+            db.query(OwnerClusterMember)
+            .filter(OwnerClusterMember.cluster_id == cluster_id)
+            .all()
+        )
+        member_details = []
+        for m in members:
+            owner = db.query(VesselOwner).filter(VesselOwner.owner_id == m.owner_id).first()
+            member_details.append({
+                "member_id": m.member_id,
+                "owner_id": m.owner_id,
+                "owner_name": owner.owner_name if owner else None,
+                "similarity_score": m.similarity_score,
+            })
+
+        return {
+            "cluster_id": cluster.cluster_id,
+            "canonical_name": cluster.canonical_name,
+            "country": cluster.country,
+            "is_sanctioned": cluster.is_sanctioned,
+            "vessel_count": cluster.vessel_count,
+            "members": member_details,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error fetching cluster details")
+
+
+@router.get("/fleet/alerts", tags=["fleet"])
+def list_fleet_alerts(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    """List fleet-level alerts."""
+    try:
+        from app.models.fleet_alert import FleetAlert
+        alerts = (
+            db.query(FleetAlert)
+            .order_by(FleetAlert.created_utc.desc())
+            .limit(min(limit, 200))
+            .all()
+        )
+        return {
+            "alerts": [
+                {
+                    "alert_id": a.alert_id,
+                    "owner_cluster_id": a.owner_cluster_id,
+                    "alert_type": a.alert_type,
+                    "vessel_ids": a.vessel_ids_json,
+                    "evidence": a.evidence_json,
+                    "risk_score_component": a.risk_score_component,
+                    "created_utc": a.created_utc.isoformat() if a.created_utc else None,
+                }
+                for a in alerts
+            ],
+            "total": len(alerts),
+        }
+    except Exception:
+        return {"alerts": [], "total": 0}

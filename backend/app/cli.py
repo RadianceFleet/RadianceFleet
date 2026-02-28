@@ -1185,14 +1185,52 @@ def setup(
                 spoof = run_spoofing_detection(db)
                 console.print(f"  Spoofing: {spoof}")
 
+                if _settings.TRACK_NATURALNESS_ENABLED:
+                    try:
+                        from app.modules.track_naturalness_detector import run_track_naturalness_detection
+                        tn = run_track_naturalness_detection(db)
+                        console.print(f"  Track naturalness: {tn.get('flagged', 0)} flagged")
+                    except Exception as e:
+                        console.print(f"[dim]  Track naturalness skipped: {e}[/dim]")
+
                 loiter = run_loitering_detection(db)
                 console.print(f"  Loitering: {loiter['loitering_events_created']}")
 
                 sts = detect_sts_events(db)
                 console.print(f"  STS: {sts['sts_events_created']}")
 
+                if _settings.DRAUGHT_DETECTION_ENABLED:
+                    try:
+                        from app.modules.draught_detector import run_draught_detection
+                        dr = run_draught_detection(db)
+                        console.print(f"  Draught: {dr.get('events_created', 0)} events")
+                    except Exception as e:
+                        console.print(f"[dim]  Draught detection skipped: {e}[/dim]")
+
                 corr = correlate_all_uncorrelated_gaps(db)
                 console.print(f"  Corridors: {corr['correlated']} correlated")
+
+                if _settings.STATELESS_MMSI_DETECTION_ENABLED:
+                    try:
+                        from app.modules.stateless_detector import run_stateless_detection
+                        run_stateless_detection(db)
+                        console.print("  Stateless MMSI detection: complete")
+                    except Exception as e:
+                        console.print(f"[dim]  Stateless MMSI skipped: {e}[/dim]")
+                if _settings.FLAG_HOPPING_DETECTION_ENABLED:
+                    try:
+                        from app.modules.flag_hopping_detector import run_flag_hopping_detection
+                        run_flag_hopping_detection(db)
+                        console.print("  Flag hopping detection: complete")
+                    except Exception as e:
+                        console.print(f"[dim]  Flag hopping skipped: {e}[/dim]")
+                if _settings.IMO_FRAUD_DETECTION_ENABLED:
+                    try:
+                        from app.modules.imo_fraud_detector import run_imo_fraud_detection
+                        run_imo_fraud_detection(db)
+                        console.print("  IMO fraud detection: complete")
+                    except Exception as e:
+                        console.print(f"[dim]  IMO fraud skipped: {e}[/dim]")
 
                 scored = score_all_alerts(db)
                 console.print(f"  Scored: {scored['scored']} alerts")
@@ -1227,6 +1265,17 @@ def setup(
                         console.print("[dim]  No MMSI cloning detected[/dim]")
                 except Exception as e:
                     console.print(f"[dim]  Cloning detection skipped: {e}[/dim]")
+
+                if _settings.FLEET_ANALYSIS_ENABLED:
+                    try:
+                        from app.modules.owner_dedup import run_owner_dedup
+                        run_owner_dedup(db)
+                        console.print("  Owner dedup: complete")
+                        from app.modules.fleet_analyzer import run_fleet_analysis
+                        fa = run_fleet_analysis(db)
+                        console.print(f"  Fleet analysis: {fa.get('alerts_created', 0)} alerts")
+                    except Exception as e:
+                        console.print(f"[dim]  Fleet analysis skipped: {e}[/dim]")
 
                 console.print("[green]✓[/green] Detection pipeline complete")
             except Exception as e:
@@ -1403,9 +1452,39 @@ def data_refresh(
                 gaps = run_gap_detection(db)
                 console.print(f"  Gaps: {gaps['gaps_detected']}")
                 run_spoofing_detection(db)
+
+                if _settings.TRACK_NATURALNESS_ENABLED:
+                    from app.modules.track_naturalness_detector import run_track_naturalness_detection
+                    tn = run_track_naturalness_detection(db)
+                    console.print(f"  Track naturalness: {tn.get('flagged', 0)} flagged")
+
                 run_loitering_detection(db)
                 detect_sts_events(db)
+
+                if _settings.DRAUGHT_DETECTION_ENABLED:
+                    from app.modules.draught_detector import run_draught_detection
+                    dr = run_draught_detection(db)
+                    console.print(f"  Draught: {dr.get('events_created', 0)} events")
+
                 correlate_all_uncorrelated_gaps(db)
+
+                if _settings.STATELESS_MMSI_DETECTION_ENABLED:
+                    from app.modules.stateless_detector import run_stateless_detection
+                    run_stateless_detection(db)
+                if _settings.FLAG_HOPPING_DETECTION_ENABLED:
+                    from app.modules.flag_hopping_detector import run_flag_hopping_detection
+                    run_flag_hopping_detection(db)
+                if _settings.IMO_FRAUD_DETECTION_ENABLED:
+                    from app.modules.imo_fraud_detector import run_imo_fraud_detection
+                    run_imo_fraud_detection(db)
+
+                if _settings.FLEET_ANALYSIS_ENABLED:
+                    from app.modules.owner_dedup import run_owner_dedup
+                    run_owner_dedup(db)
+                    from app.modules.fleet_analyzer import run_fleet_analysis
+                    fa = run_fleet_analysis(db)
+                    console.print(f"  Fleet: {fa.get('alerts_created', 0)} alerts")
+
                 scored = score_all_alerts(db)
                 console.print(f"  Scored: {scored['scored']} alerts")
                 console.print("[green]Detection pipeline complete.[/green]")

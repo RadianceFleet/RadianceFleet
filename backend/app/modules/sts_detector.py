@@ -1,6 +1,6 @@
 """STS (ship-to-ship) transfer event detector.
 
-Implements two-phase proximity analysis over AIS data to surface suspected
+Implements three-phase proximity analysis over AIS data to surface suspected
 oil-transfer events between tankers:
 
   Phase A — Confirmed transfers (detection_type='visible_visible')
@@ -12,6 +12,12 @@ oil-transfer events between tankers:
     Identifies stationary tankers inside known STS-zone corridors and finds
     other tankers on an intercept course.  An event is created when the
     computed ETA is under 4 hours.
+
+  Phase C — Dark-dark transfers (detection_type='dark_dark')
+    Finds tanker pairs where both vessels have overlapping AIS gaps (>4h)
+    within the same corridor.  Tiered confidence by last-known proximity:
+    <5nm HIGH, 5-15nm MEDIUM, 15-50nm LOW.  Feature-gated by
+    DARK_STS_DETECTION_ENABLED.
 
 Performance note: AIS points are first indexed into a 1-degree lat/lon grid
 so that only vessels sharing a grid cell are compared, avoiding an O(n²)
@@ -134,11 +140,12 @@ def detect_sts_events(
 
     created_a = _phase_a(db, points, sts_zone_bboxes, corridors, config)
     created_b = _phase_b(db, points, sts_zone_bboxes, corridors, config)
+    created_c = _phase_c_dark_dark(db, corridors, config)
 
-    total = created_a + created_b
+    total = created_a + created_b + created_c
     logger.info(
-        "STS detector complete: %d events created (Phase A: %d, Phase B: %d).",
-        total, created_a, created_b,
+        "STS detector complete: %d events created (Phase A: %d, Phase B: %d, Phase C: %d).",
+        total, created_a, created_b, created_c,
     )
     return {"sts_events_created": total}
 
@@ -647,3 +654,247 @@ def _phase_b(
     db.commit()
     logger.info("Phase B: %d approaching-vector STS events created.", created)
     return created
+
+
+# ── Phase C — dark-dark STS transfers ─────────────────────────────────────────
+
+_DARK_DARK_HIGH_NM: float = 5.0
+_DARK_DARK_MEDIUM_NM: float = 15.0
+_DARK_DARK_LOW_NM: float = 50.0
+_DARK_DARK_MIN_OVERLAP_HOURS: float = 4.0
+_DARK_DARK_MAX_CANDIDATES_PER_CORRIDOR: int = 100
+
+
+def _phase_c_dark_dark(
+    db: Session,
+    corridors: list[Corridor],
+    config: dict | None = None,
+) -> int:
+    """Detect dark-dark STS transfers — both vessels AIS-dark simultaneously.
+
+    Feature-gated by ``settings.DARK_STS_DETECTION_ENABLED``.
+    Returns the count of new StsTransferEvents created.
+    """
+    if not _settings.DARK_STS_DETECTION_ENABLED:
+        return 0
+
+    from app.models.gap_event import AISGapEvent
+    from app.models.satellite_tasking_candidate import SatelliteTaskingCandidate
+    from app.modules.gap_rate_baseline import is_above_p95
+    from app.utils.geo import haversine_nm
+
+    dark_sts_config = (config or {}).get("dark_sts", {})
+    risk_high = dark_sts_config.get("dark_dark_high_confidence", dark_sts_config.get("high_confidence_5nm", 30))
+    risk_medium = dark_sts_config.get("dark_dark_medium_confidence", dark_sts_config.get("medium_confidence_15nm", 20))
+    risk_low = dark_sts_config.get("dark_dark_low_confidence", dark_sts_config.get("low_confidence_50nm", 10))
+    min_overlap_hours = dark_sts_config.get("min_overlap_hours", _DARK_DARK_MIN_OVERLAP_HOURS)
+    max_candidates = dark_sts_config.get("max_candidates_per_corridor", _DARK_DARK_MAX_CANDIDATES_PER_CORRIDOR)
+    p95_suppression = dark_sts_config.get("p95_suppression", True)
+
+    corridor_bboxes: list[tuple[Corridor, tuple[float, float, float, float]]] = []
+    for c in corridors:
+        bbox = _parse_wkt_bbox(c.geometry)
+        if bbox is not None:
+            corridor_bboxes.append((c, bbox))
+
+    if not corridor_bboxes:
+        return 0
+
+    all_gaps = db.query(AISGapEvent).all()
+    if not all_gaps:
+        return 0
+
+    all_vessels = db.query(Vessel).all()
+    vessel_map: dict[int, Vessel] = {v.vessel_id: v for v in all_vessels}
+
+    tanker_gaps: list[AISGapEvent] = []
+    for gap in all_gaps:
+        vessel = vessel_map.get(gap.vessel_id)
+        if vessel and "tanker" in (vessel.vessel_type or "").lower():
+            tanker_gaps.append(gap)
+
+    if not tanker_gaps:
+        return 0
+
+    created = 0
+
+    for corridor, bbox in corridor_bboxes:
+        if p95_suppression:
+            corridor_gap_list = [
+                g for g in tanker_gaps
+                if g.corridor_id == corridor.corridor_id or _gap_in_bbox(g, bbox)
+            ]
+            if corridor_gap_list:
+                ref_time = corridor_gap_list[0].gap_start_utc
+                if is_above_p95(db, corridor.corridor_id, ref_time):
+                    continue
+
+        corridor_gaps = [
+            g for g in tanker_gaps
+            if g.corridor_id == corridor.corridor_id or _gap_in_bbox(g, bbox)
+        ]
+
+        if len(corridor_gaps) < 2:
+            continue
+
+        candidates_in_corridor = 0
+        for i in range(len(corridor_gaps)):
+            if candidates_in_corridor >= max_candidates:
+                break
+
+            gap_a = corridor_gaps[i]
+            for j in range(i + 1, len(corridor_gaps)):
+                if candidates_in_corridor >= max_candidates:
+                    break
+
+                gap_b = corridor_gaps[j]
+                if gap_a.vessel_id == gap_b.vessel_id:
+                    continue
+
+                vessel_a = vessel_map.get(gap_a.vessel_id)
+                vessel_b = vessel_map.get(gap_b.vessel_id)
+                if vessel_a is None or vessel_b is None:
+                    continue
+
+                overlap_start = max(gap_a.gap_start_utc, gap_b.gap_start_utc)
+                overlap_end = min(gap_a.gap_end_utc, gap_b.gap_end_utc)
+                if overlap_end <= overlap_start:
+                    continue
+
+                overlap_hours = (overlap_end - overlap_start).total_seconds() / 3600.0
+                if overlap_hours < min_overlap_hours:
+                    continue
+
+                proximity_nm = _dark_dark_proximity(gap_a, gap_b)
+                if proximity_nm is None or proximity_nm > _DARK_DARK_LOW_NM:
+                    continue
+
+                if proximity_nm < _DARK_DARK_HIGH_NM:
+                    confidence = "high"
+                    risk_score = risk_high
+                elif proximity_nm < _DARK_DARK_MEDIUM_NM:
+                    confidence = "medium"
+                    risk_score = risk_medium
+                else:
+                    confidence = "low"
+                    risk_score = risk_low
+
+                a_has_risk = _vessel_has_risk_factor(vessel_a)
+                b_has_risk = _vessel_has_risk_factor(vessel_b)
+                if not (a_has_risk and b_has_risk):
+                    if confidence == "low":
+                        continue
+                    if not (a_has_risk or b_has_risk):
+                        continue
+
+                vid1 = min(gap_a.vessel_id, gap_b.vessel_id)
+                vid2 = max(gap_a.vessel_id, gap_b.vessel_id)
+                if _overlap_exists(db, vid1, vid2, overlap_start, overlap_end):
+                    continue
+
+                duration_minutes = int((overlap_end - overlap_start).total_seconds() / 60)
+                mean_lat = _mean_position_lat(gap_a, gap_b)
+                mean_lon = _mean_position_lon(gap_a, gap_b)
+
+                event = StsTransferEvent(
+                    vessel_1_id=vid1,
+                    vessel_2_id=vid2,
+                    detection_type=STSDetectionTypeEnum.DARK_DARK,
+                    start_time_utc=overlap_start,
+                    end_time_utc=overlap_end,
+                    duration_minutes=duration_minutes,
+                    mean_proximity_meters=round(proximity_nm * _NM_TO_METERS, 1),
+                    mean_lat=round(mean_lat, 6) if mean_lat is not None else None,
+                    mean_lon=round(mean_lon, 6) if mean_lon is not None else None,
+                    corridor_id=corridor.corridor_id,
+                    risk_score_component=risk_score,
+                )
+                db.add(event)
+
+                candidate = SatelliteTaskingCandidate(
+                    corridor_id=corridor.corridor_id,
+                    vessel_a_id=vid1,
+                    vessel_b_id=vid2,
+                    gap_overlap_hours=round(overlap_hours, 2),
+                    proximity_nm=round(proximity_nm, 2),
+                    confidence_level=confidence,
+                    recommended_imagery_window_start=overlap_start,
+                    recommended_imagery_window_end=overlap_end,
+                    risk_score_component=risk_score,
+                )
+                db.add(candidate)
+
+                created += 1
+                candidates_in_corridor += 1
+
+    db.commit()
+    logger.info("Phase C: %d dark-dark STS events created.", created)
+    return created
+
+
+def _gap_in_bbox(gap, bbox: tuple[float, float, float, float]) -> bool:
+    """Check if a gap's off or on position falls within a bounding box."""
+    if gap.gap_off_lat is not None and gap.gap_off_lon is not None:
+        if _in_bbox(gap.gap_off_lat, gap.gap_off_lon, bbox):
+            return True
+    if gap.gap_on_lat is not None and gap.gap_on_lon is not None:
+        if _in_bbox(gap.gap_on_lat, gap.gap_on_lon, bbox):
+            return True
+    return False
+
+
+def _dark_dark_proximity(gap_a, gap_b) -> Optional[float]:
+    """Compute proximity in nm between two gaps using position pairs."""
+    from app.utils.geo import haversine_nm
+
+    distances = []
+    position_pairs = [
+        (gap_a.gap_off_lat, gap_a.gap_off_lon, gap_b.gap_off_lat, gap_b.gap_off_lon),
+        (gap_a.gap_on_lat, gap_a.gap_on_lon, gap_b.gap_on_lat, gap_b.gap_on_lon),
+        (gap_a.gap_off_lat, gap_a.gap_off_lon, gap_b.gap_on_lat, gap_b.gap_on_lon),
+        (gap_a.gap_on_lat, gap_a.gap_on_lon, gap_b.gap_off_lat, gap_b.gap_off_lon),
+    ]
+    for lat1, lon1, lat2, lon2 in position_pairs:
+        if lat1 is not None and lon1 is not None and lat2 is not None and lon2 is not None:
+            distances.append(haversine_nm(lat1, lon1, lat2, lon2))
+    return min(distances) if distances else None
+
+
+def _vessel_has_risk_factor(vessel) -> bool:
+    """Check if a vessel has at least one risk factor."""
+    from app.models.base import FlagRiskEnum
+    if vessel.flag_risk_category is not None:
+        flag_val = vessel.flag_risk_category.value if hasattr(vessel.flag_risk_category, "value") else str(vessel.flag_risk_category)
+        if flag_val == FlagRiskEnum.HIGH_RISK.value:
+            return True
+    if vessel.year_built is not None:
+        age = datetime.now().year - vessel.year_built
+        if age > 20:
+            return True
+    if getattr(vessel, 'psc_detained_last_12m', False):
+        return True
+    if getattr(vessel, 'vessel_laid_up_in_sts_zone', False):
+        return True
+    return False
+
+
+def _mean_position_lat(gap_a, gap_b) -> Optional[float]:
+    """Compute mean latitude from available gap positions."""
+    lats = []
+    for gap in (gap_a, gap_b):
+        if gap.gap_off_lat is not None:
+            lats.append(gap.gap_off_lat)
+        elif gap.gap_on_lat is not None:
+            lats.append(gap.gap_on_lat)
+    return sum(lats) / len(lats) if lats else None
+
+
+def _mean_position_lon(gap_a, gap_b) -> Optional[float]:
+    """Compute mean longitude from available gap positions."""
+    lons = []
+    for gap in (gap_a, gap_b):
+        if gap.gap_off_lon is not None:
+            lons.append(gap.gap_off_lon)
+        elif gap.gap_on_lon is not None:
+            lons.append(gap.gap_on_lon)
+    return sum(lons) / len(lons) if lons else None

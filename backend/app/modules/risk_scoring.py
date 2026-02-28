@@ -674,6 +674,9 @@ def compute_gap_score(
                 "owner_or_manager_on_sanctions_list", 35
             )
 
+    # Shadow-mode settings import (used for Phase K/L/M/N scoring gates)
+    from app.config import settings as _scoring_settings
+
     # Phase 6.4: Spoofing signals (only linked to this gap or vessel-level within 2h of gap start)
     if db is not None:
         from app.models.spoofing_anomaly import SpoofingAnomaly
@@ -696,10 +699,26 @@ def compute_gap_score(
             if str(s.anomaly_type.value if hasattr(s.anomaly_type, "value") else s.anomaly_type)
             == "erratic_nav_status"
         ]
+        # Shadow-mode exclusion: new anomaly types excluded from scoring
+        # when their *_SCORING_ENABLED flag is False (detection creates records
+        # but they don't contribute to risk scores).
+        _shadow_excluded_types: set[str] = set()
+        if not _scoring_settings.TRACK_NATURALNESS_SCORING_ENABLED:
+            _shadow_excluded_types.add("synthetic_track")
+        if not _scoring_settings.STATELESS_MMSI_SCORING_ENABLED:
+            _shadow_excluded_types.add("stateless_mmsi")
+        if not _scoring_settings.FLAG_HOPPING_SCORING_ENABLED:
+            _shadow_excluded_types.add("flag_hopping")
+        if not _scoring_settings.IMO_FRAUD_SCORING_ENABLED:
+            _shadow_excluded_types.add("imo_fraud")
+
+        def _type_val(s):
+            return str(s.anomaly_type.value if hasattr(s.anomaly_type, "value") else s.anomaly_type)
+
         non_erratic = [
             s for s in vessel_spoofing
-            if str(s.anomaly_type.value if hasattr(s.anomaly_type, "value") else s.anomaly_type)
-            != "erratic_nav_status"
+            if _type_val(s) != "erratic_nav_status"
+            and _type_val(s) not in _shadow_excluded_types
         ]
         if erratic_anomalies:
             breakdown["spoofing_erratic_nav_status"] = max(
@@ -779,6 +798,12 @@ def compute_gap_score(
             StsTransferEvent.start_time_utc >= gap.gap_start_utc - timedelta(days=7),
             StsTransferEvent.end_time_utc <= gap.gap_end_utc + timedelta(days=7),
         ).all()
+        # Shadow-mode: exclude dark_dark STS events when scoring is disabled
+        if not _scoring_settings.DARK_STS_SCORING_ENABLED:
+            sts_events = [
+                e for e in sts_events
+                if str(getattr(e.detection_type, 'value', e.detection_type)) != 'dark_dark'
+            ]
         if sts_events:
             sts_cfg = config.get("sts", {})
             best_sts_score = 0
@@ -1186,6 +1211,118 @@ def compute_gap_score(
                 breakdown["gap_reactivation_in_jamming_zone"] = merge_cfg.get(
                     "gap_reactivation_in_jamming_zone", 15
                 )
+
+    # ── Phase K/L/M: New detector scoring (gated by dual flags) ─────────────
+    from app.models.base import SpoofingTypeEnum
+
+    # ── Phase K: Track naturalness scoring ──────────────────────────────────
+    if _scoring_settings.TRACK_NATURALNESS_SCORING_ENABLED and db is not None and vessel is not None:
+        tn_cfg = config.get("track_naturalness", {})
+        tn_anomalies = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == vessel.vessel_id,
+            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.SYNTHETIC_TRACK,
+        ).all()
+        if tn_anomalies:
+            best = max(tn_anomalies, key=lambda a: a.risk_score_component)
+            ev = best.evidence_json or {}
+            tier = ev.get("tier", "low")
+            tier_key = f"synthetic_track_{tier}"
+            pts = tn_cfg.get(tier_key, best.risk_score_component)
+            breakdown[f"track_naturalness_{tier}"] = pts
+
+    # ── Phase L: Draught intelligence scoring (corroborating only) ────────
+    if _scoring_settings.DRAUGHT_SCORING_ENABLED and db is not None and vessel is not None:
+        draught_cfg = config.get("draught", {})
+        try:
+            from app.models.draught_event import DraughtChangeEvent
+            draught_events = db.query(DraughtChangeEvent).filter(
+                DraughtChangeEvent.vessel_id == vessel.vessel_id,
+            ).all()
+            for de in draught_events:
+                score = de.risk_score_component
+                if de.linked_sts_id is not None:
+                    breakdown[f"draught_sts_confirmation_{de.event_id}"] = draught_cfg.get(
+                        "draught_sts_confirmation", score
+                    )
+                elif abs(de.delta_m) > 5.0:
+                    breakdown[f"draught_swing_extreme_{de.event_id}"] = draught_cfg.get(
+                        "draught_swing_extreme", score
+                    )
+                elif de.risk_score_component > 0:
+                    breakdown[f"draught_offshore_change_{de.event_id}"] = draught_cfg.get(
+                        "offshore_draught_change_corroboration", score
+                    )
+        except Exception:
+            pass  # Graceful skip if DraughtChangeEvent table doesn't exist yet
+
+    # ── Phase M: Identity fraud scoring ───────────────────────────────────
+    if db is not None and vessel is not None:
+        id_fraud_cfg = config.get("identity_fraud", {})
+
+        # Stateless MMSI scoring
+        if _scoring_settings.STATELESS_MMSI_SCORING_ENABLED:
+            stateless = db.query(SpoofingAnomaly).filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI,
+            ).first()
+            if stateless:
+                ev = stateless.evidence_json or {}
+                tier = ev.get("tier", 1)
+                tier_key = f"stateless_mmsi_tier{tier}"
+                pts = id_fraud_cfg.get(tier_key, stateless.risk_score_component)
+                breakdown["stateless_mmsi"] = pts
+
+        # Flag hopping scoring
+        if _scoring_settings.FLAG_HOPPING_SCORING_ENABLED:
+            flag_hop = db.query(SpoofingAnomaly).filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING,
+            ).first()
+            if flag_hop:
+                breakdown["flag_hopping"] = flag_hop.risk_score_component
+
+        # IMO fraud scoring
+        if _scoring_settings.IMO_FRAUD_SCORING_ENABLED:
+            imo_fraud = db.query(SpoofingAnomaly).filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+            ).first()
+            if imo_fraud:
+                ev = imo_fraud.evidence_json or {}
+                fraud_type = ev.get("type", "simultaneous")
+                if fraud_type == "simultaneous":
+                    pts = id_fraud_cfg.get("imo_simultaneous_use", 45)
+                else:
+                    pts = id_fraud_cfg.get("imo_near_miss_qualified", 20)
+                breakdown[f"imo_fraud_{fraud_type}"] = pts
+
+    # ── Phase O: Fleet scoring ───────────────────────────────────────────────
+    if _scoring_settings.FLEET_SCORING_ENABLED and db is not None and vessel is not None:
+        fleet_cfg = config.get("fleet", {})
+        try:
+            from app.models.fleet_alert import FleetAlert
+            from app.models.owner_cluster_member import OwnerClusterMember
+            from app.models.vessel_owner import VesselOwner as _VO_fleet
+
+            # Find cluster for this vessel via owner -> cluster member
+            owner = db.query(_VO_fleet).filter(
+                _VO_fleet.vessel_id == vessel.vessel_id
+            ).first()
+            if owner:
+                member = db.query(OwnerClusterMember).filter(
+                    OwnerClusterMember.owner_id == owner.owner_id
+                ).first()
+                if member:
+                    fleet_alerts = db.query(FleetAlert).filter(
+                        FleetAlert.owner_cluster_id == member.cluster_id
+                    ).all()
+                    for fa in fleet_alerts:
+                        key = f"fleet_{fa.alert_type}"
+                        if key not in breakdown:
+                            pts = fleet_cfg.get(fa.alert_type, fa.risk_score_component)
+                            breakdown[key] = pts
+        except Exception:
+            pass  # Graceful skip if fleet tables don't exist yet
 
     # ── Phase 2+3: Multiplier composition (asymmetric) ─────────────────────
     # Multipliers amplify ONLY risk signals (positive); legitimacy deductions

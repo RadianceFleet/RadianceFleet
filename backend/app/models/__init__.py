@@ -21,6 +21,12 @@ from app.models.merge_candidate import MergeCandidate
 from app.models.merge_operation import MergeOperation
 from app.models.verification_log import VerificationLog
 from app.models.crea_voyage import CreaVoyage
+from app.models.draught_event import DraughtChangeEvent
+from app.models.corridor_gap_baseline import CorridorGapBaseline
+from app.models.satellite_tasking_candidate import SatelliteTaskingCandidate
+from app.models.owner_cluster import OwnerCluster
+from app.models.owner_cluster_member import OwnerClusterMember
+from app.models.fleet_alert import FleetAlert
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -50,4 +56,10 @@ __all__ = [
     "SearchMission",
     "HuntCandidate",
     "DarkVesselDetection",
+    "DraughtChangeEvent",
+    "CorridorGapBaseline",
+    "SatelliteTaskingCandidate",
+    "OwnerCluster",
+    "OwnerClusterMember",
+    "FleetAlert",
 ]
