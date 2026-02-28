@@ -404,10 +404,13 @@ class TestAlertMap:
 
 class TestDarkVessels:
     def test_list_dark_vessels_empty(self, api_client, mock_db):
+        mock_db.query.return_value.count.return_value = 0
         mock_db.query.return_value.offset.return_value.limit.return_value.all.return_value = []
         resp = api_client.get("/api/v1/dark-vessels")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     def test_get_dark_vessel_404(self, api_client, mock_db):
         mock_db.query.return_value.filter.return_value.first.return_value = None

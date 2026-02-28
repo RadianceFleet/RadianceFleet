@@ -59,6 +59,7 @@ class VesselDetailRead(BaseModel):
     vessel_laid_up_30d: bool = False
     vessel_laid_up_60d: bool = False
     vessel_laid_up_in_sts_zone: bool = False
+    merged_into_vessel_id: Optional[int] = None
     watchlist_entries: list[WatchlistEntryRead] = []
     total_gaps_7d: int = 0
     total_gaps_30d: int = 0

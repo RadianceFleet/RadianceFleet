@@ -7,6 +7,9 @@ export function useStsEvents(filters?: { vessel_id?: string }) {
   if (filters?.vessel_id) params.set('vessel_id', filters.vessel_id)
   return useQuery({
     queryKey: ['sts-events', filters],
-    queryFn: () => apiFetch<StsEventSummary[]>(`/sts-events?${params}`),
+    queryFn: async () => {
+      const resp = await apiFetch<{ items: StsEventSummary[]; total: number }>(`/sts-events?${params}`)
+      return resp.items
+    },
   })
 }

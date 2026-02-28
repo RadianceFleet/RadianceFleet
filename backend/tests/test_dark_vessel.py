@@ -121,26 +121,36 @@ class TestDarkVesselAPI:
     """Test dark vessel API endpoints."""
 
     def test_list_dark_vessels_returns_200(self, api_client, mock_db):
-        """GET /dark-vessels returns 200."""
-        # Ensure offset/limit chain returns an empty list
+        """GET /dark-vessels returns 200 with {items, total} envelope."""
+        # Ensure count and offset/limit chain returns correct values
+        mock_db.query.return_value.count.return_value = 0
         mock_db.query.return_value.offset.return_value.limit.return_value.all.return_value = []
         resp = api_client.get("/api/v1/dark-vessels")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        data = resp.json()
+        assert "items" in data
+        assert "total" in data
+        assert isinstance(data["items"], list)
 
     def test_list_dark_vessels_filter_by_match_result(self, api_client, mock_db):
         """GET /dark-vessels?ais_match_result=unmatched returns 200."""
+        mock_db.query.return_value.filter.return_value.count.return_value = 0
         mock_db.query.return_value.filter.return_value.offset.return_value.limit.return_value.all.return_value = []
         resp = api_client.get("/api/v1/dark-vessels?ais_match_result=unmatched")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        data = resp.json()
+        assert "items" in data
+        assert isinstance(data["items"], list)
 
     def test_list_dark_vessels_filter_by_corridor(self, api_client, mock_db):
         """GET /dark-vessels?corridor_id=1 returns 200."""
+        mock_db.query.return_value.filter.return_value.count.return_value = 0
         mock_db.query.return_value.filter.return_value.offset.return_value.limit.return_value.all.return_value = []
         resp = api_client.get("/api/v1/dark-vessels?corridor_id=1")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        data = resp.json()
+        assert "items" in data
+        assert isinstance(data["items"], list)
 
     def test_get_dark_vessel_not_found(self, api_client):
         """GET /dark-vessels/99999 returns 404."""

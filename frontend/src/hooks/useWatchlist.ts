@@ -15,7 +15,10 @@ export interface WatchlistEntry {
 export function useWatchlist() {
   return useQuery({
     queryKey: ['watchlist'],
-    queryFn: () => apiFetch<WatchlistEntry[]>('/watchlist'),
+    queryFn: async () => {
+      const resp = await apiFetch<{ items: WatchlistEntry[]; total: number }>('/watchlist')
+      return resp.items
+    },
   })
 }
 
