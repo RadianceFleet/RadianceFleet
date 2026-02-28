@@ -161,5 +161,13 @@ def _get_gap_center(gap: AISGapEvent, db: Session) -> tuple[float, float]:
         return start_lat, start_lon
     if end_lat:
         return end_lat, end_lon
+
+    # Try vessel's last known AIS position
+    last = db.query(AISPoint).filter(
+        AISPoint.vessel_id == gap.vessel_id
+    ).order_by(AISPoint.timestamp_utc.desc()).first()
+    if last:
+        return last.lat, last.lon
+
     # Fallback — North Sea center
     return 55.0, 15.0

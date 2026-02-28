@@ -20,6 +20,7 @@ from app.models.vessel_owner import VesselOwner
 from app.models.merge_candidate import MergeCandidate
 from app.models.merge_operation import MergeOperation
 from app.models.verification_log import VerificationLog
+from app.models.crea_voyage import CreaVoyage
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -44,6 +45,7 @@ __all__ = [
     "MergeCandidate",
     "MergeOperation",
     "VerificationLog",
+    "CreaVoyage",
     "VesselTargetProfile",
     "SearchMission",
     "HuntCandidate",

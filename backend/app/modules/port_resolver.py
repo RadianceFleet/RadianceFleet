@@ -3,7 +3,8 @@
 Strategy (in order):
 1. Geo-nearest port within 10nm of provided coordinates
 2. Name normalization match (if port_name provided)
-3. Return None if no match (caller creates PortCall with port_id=NULL)
+3. Fuzzy name match via rapidfuzz with threshold 80 (if port_name provided)
+4. Return None if no match (caller creates PortCall with port_id=NULL)
 """
 from __future__ import annotations
 
@@ -63,5 +64,24 @@ def resolve_port(
         for port in ports:
             if port.name and port.name.strip().upper() == normalized:
                 return port
+
+    # 3. Fuzzy name match (if port_name provided)
+    if port_name:
+        from rapidfuzz import fuzz
+        from unidecode import unidecode
+
+        normalized_input = unidecode(port_name).strip().upper()
+        best_match = None
+        best_score = 80  # threshold
+        for port in ports:
+            if not port.name:
+                continue
+            normalized_port = unidecode(port.name).strip().upper()
+            score = fuzz.ratio(normalized_input, normalized_port)
+            if score > best_score:
+                best_score = score
+                best_match = port
+        if best_match is not None:
+            return best_match
 
     return None
