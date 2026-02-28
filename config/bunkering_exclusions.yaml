@@ -1,0 +1,56 @@
+# Known bunkering vessels to exclude from STS transfer detection.
+# These are legitimate fuel supply vessels that operate in close proximity
+# to tankers in anchorage areas (especially Fujairah, Singapore, Gibraltar).
+# Without this exclusion list, every bunkering operation triggers a false STS alert.
+#
+# Maintenance: Update via CLI or manual edit. MMSI is the primary key.
+# Set excluded: false to re-include a vessel.
+
+bunkering_vessels:
+  # Fujairah-based bunkering operators
+  - mmsi: "470000001"
+    name: "COCKETT BUNKER 1"
+    operator: "Cockett Marine"
+    region: "Fujairah"
+    reason: "Known bunkering vessel — Cockett Marine fleet"
+
+  - mmsi: "470000002"
+    name: "BOMIN SUPPLIER"
+    operator: "Bomin Group"
+    region: "Fujairah"
+    reason: "Known bunkering vessel — Bomin Group fleet"
+
+  - mmsi: "470000003"
+    name: "TFG MARINE 1"
+    operator: "TFG Marine"
+    region: "Fujairah"
+    reason: "Known bunkering vessel — TFG Marine fleet"
+
+  - mmsi: "563000001"
+    name: "GP GLOBAL BUNKER"
+    operator: "GP Global"
+    region: "Singapore"
+    reason: "Known bunkering vessel — GP Global fleet"
+
+  - mmsi: "563000002"
+    name: "UNIOIL SUPPLIER"
+    operator: "Unioil"
+    region: "Singapore"
+    reason: "Known bunkering vessel — Unioil fleet"
+
+  # Gibraltar/Ceuta bunkering
+  - mmsi: "236000001"
+    name: "AEGEAN BUNKER"
+    operator: "Aegean Marine"
+    region: "Gibraltar"
+    reason: "Known bunkering vessel — Aegean Marine fleet"
+
+  - mmsi: "236000002"
+    name: "PENINSULA SUPPLIER"
+    operator: "Peninsula Petroleum"
+    region: "Gibraltar"
+    reason: "Known bunkering vessel — Peninsula fleet"
+
+  # NOTE: These are placeholder MMSIs. In production, replace with actual MMSIs
+  # from vessel tracking databases. The exclusion mechanism works regardless of
+  # specific MMSI values — what matters is the loading and filtering logic.
