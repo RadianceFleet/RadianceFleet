@@ -12,10 +12,16 @@ export interface WatchlistEntry {
   is_active: boolean
 }
 
-export function useWatchlist() {
+export function useWatchlist(filters?: { skip?: number; limit?: number }) {
+  const params = new URLSearchParams()
+  if (filters?.skip != null) params.set('skip', String(filters.skip))
+  if (filters?.limit != null) params.set('limit', String(filters.limit))
   return useQuery({
-    queryKey: ['watchlist'],
-    queryFn: () => apiFetch<WatchlistEntry[]>('/watchlist'),
+    queryKey: ['watchlist', filters],
+    queryFn: async () => {
+      const resp = await apiFetch<{ items: WatchlistEntry[]; total: number }>(`/watchlist?${params}`)
+      return resp
+    },
   })
 }
 

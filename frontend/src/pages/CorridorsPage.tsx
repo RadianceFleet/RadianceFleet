@@ -1,8 +1,13 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useCorridors } from '../hooks/useCorridors'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { Pagination } from '../components/ui/Pagination'
+import { CreateCorridorModal } from '../components/CreateCorridorModal'
+
+const PAGE_SIZE = 20
 
 const cellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.8125rem' }
 const headStyle: React.CSSProperties = {
@@ -18,14 +23,37 @@ function formatType(raw: string): string {
 }
 
 export function CorridorsPage() {
-  const { data, isLoading, error } = useCorridors()
+  const [page, setPage] = useState(0)
+  const [showCreate, setShowCreate] = useState(false)
+  const { data, isLoading, error } = useCorridors({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const corridors = data?.items
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
     <div style={{ maxWidth: 1000 }}>
-      <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', color: 'var(--text-muted)' }}>
-        Corridors &amp; Zones
-      </h2>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-muted)' }}>
+          Corridors &amp; Zones
+        </h2>
+        <button
+          onClick={() => setShowCreate(true)}
+          style={{
+            padding: '0.375rem 0.75rem',
+            fontSize: '0.8125rem',
+            fontWeight: 600,
+            borderRadius: 'var(--radius)',
+            cursor: 'pointer',
+            border: 'none',
+            background: 'var(--accent-primary)',
+            color: '#fff',
+          }}
+        >
+          Create Corridor
+        </button>
+      </div>
+
+      {showCreate && <CreateCorridorModal onClose={() => setShowCreate(false)} />}
 
       <Card>
         {isLoading && <Spinner text="Loading corridors..." />}
@@ -43,75 +71,85 @@ export function CorridorsPage() {
         )}
 
         {corridors && corridors.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-base)' }}>
-                  <th style={headStyle}>Name</th>
-                  <th style={headStyle}>Type</th>
-                  <th style={{ ...headStyle, textAlign: 'right' }}>Risk Weight</th>
-                  <th style={headStyle}>Jamming Zone</th>
-                  <th style={{ ...headStyle, textAlign: 'right' }}>Alerts (7d)</th>
-                  <th style={{ ...headStyle, textAlign: 'right' }}>Alerts (30d)</th>
-                  <th style={{ ...headStyle, textAlign: 'right' }}>Avg Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {corridors.map(c => (
-                  <tr
-                    key={String(c.corridor_id)}
-                    style={{ borderBottom: '1px solid var(--border)' }}
-                  >
-                    <td style={cellStyle}>
-                      <Link
-                        to={`/corridors/${c.corridor_id}`}
-                        style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}
-                      >
-                        {String(c.name)}
-                      </Link>
-                    </td>
-                    <td style={{ ...cellStyle, color: 'var(--text-dim)' }}>
-                      {formatType(String(c.corridor_type ?? ''))}
-                    </td>
-                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'monospace' }}>
-                      {c.risk_weight != null ? Number(c.risk_weight).toFixed(1) : '-'}
-                    </td>
-                    <td style={cellStyle}>
-                      <span
-                        style={{
-                          display: 'inline-block',
-                          padding: '0.125rem 0.5rem',
-                          borderRadius: 'var(--radius)',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          background: c.is_jamming_zone
-                            ? 'rgba(239, 68, 68, 0.15)'
-                            : 'rgba(255, 255, 255, 0.06)',
-                          color: c.is_jamming_zone
-                            ? 'var(--score-critical)'
-                            : 'var(--text-dim)',
-                          border: c.is_jamming_zone
-                            ? '1px solid rgba(239, 68, 68, 0.3)'
-                            : '1px solid var(--border)',
-                        }}
-                      >
-                        {c.is_jamming_zone ? 'Yes' : 'No'}
-                      </span>
-                    </td>
-                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'monospace' }}>
-                      {Number(c.alert_count_7d ?? 0)}
-                    </td>
-                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'monospace' }}>
-                      {Number(c.alert_count_30d ?? 0)}
-                    </td>
-                    <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'monospace' }}>
-                      {c.avg_risk_score != null ? Number(c.avg_risk_score).toFixed(1) : '-'}
-                    </td>
+          <>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-base)' }}>
+                    <th style={headStyle}>Name</th>
+                    <th style={headStyle}>Type</th>
+                    <th style={{ ...headStyle, textAlign: 'right' }}>Risk Weight</th>
+                    <th style={headStyle}>Jamming Zone</th>
+                    <th style={{ ...headStyle, textAlign: 'right' }}>Alerts (7d)</th>
+                    <th style={{ ...headStyle, textAlign: 'right' }}>Alerts (30d)</th>
+                    <th style={{ ...headStyle, textAlign: 'right' }}>Avg Score</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {corridors.map(c => (
+                    <tr
+                      key={String(c.corridor_id)}
+                      style={{ borderBottom: '1px solid var(--border)' }}
+                    >
+                      <td style={cellStyle}>
+                        <Link
+                          to={`/corridors/${c.corridor_id}`}
+                          style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}
+                        >
+                          {String(c.name)}
+                        </Link>
+                      </td>
+                      <td style={{ ...cellStyle, color: 'var(--text-dim)' }}>
+                        {formatType(String(c.corridor_type ?? ''))}
+                      </td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'monospace' }}>
+                        {c.risk_weight != null ? Number(c.risk_weight).toFixed(1) : '-'}
+                      </td>
+                      <td style={cellStyle}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '0.125rem 0.5rem',
+                            borderRadius: 'var(--radius)',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            background: c.is_jamming_zone
+                              ? 'rgba(239, 68, 68, 0.15)'
+                              : 'rgba(255, 255, 255, 0.06)',
+                            color: c.is_jamming_zone
+                              ? 'var(--score-critical)'
+                              : 'var(--text-dim)',
+                            border: c.is_jamming_zone
+                              ? '1px solid rgba(239, 68, 68, 0.3)'
+                              : '1px solid var(--border)',
+                          }}
+                        >
+                          {c.is_jamming_zone ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'monospace' }}>
+                        {Number(c.alert_count_7d ?? 0)}
+                      </td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'monospace' }}>
+                        {Number(c.alert_count_30d ?? 0)}
+                      </td>
+                      <td style={{ ...cellStyle, textAlign: 'right', fontFamily: 'monospace' }}>
+                        {c.avg_risk_score != null ? Number(c.avg_risk_score).toFixed(1) : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+              label="corridors"
+            />
+          </>
         )}
       </Card>
     </div>
