@@ -40,6 +40,7 @@ _EXPECTED_SECTIONS = [
     "watchlist", "dark_zone", "sts", "behavioral", "legitimacy", "corridor",
     "score_bands", "ais_class", "dark_vessel", "pi_insurance", "psc_detention",
     "sts_patterns",
+    "track_naturalness", "draught", "identity_fraud", "dark_sts", "fleet",
 ]
 
 

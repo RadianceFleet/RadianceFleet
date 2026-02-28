@@ -33,5 +33,6 @@ class AISPoint(Base):
     cog_delta: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     raw_payload_ref: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    draught: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="ais_points")

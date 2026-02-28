@@ -90,15 +90,12 @@ class TestAISObservationDualWrite:
         mock_db.query.return_value.filter.return_value.first.return_value = None
         mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
-        # Make the second db.add call (AISObservation) fail
-        call_count = [0]
-        original_add = mock_db.add
+        # Make db.add raise for AISObservation objects only
+        from app.models.ais_observation import AISObservation
 
         def add_side_effect(obj):
-            call_count[0] += 1
-            if call_count[0] > 1:
+            if isinstance(obj, AISObservation):
                 raise Exception("AISObservation write failure")
-            return original_add(obj)
 
         mock_db.add = MagicMock(side_effect=add_side_effect)
 

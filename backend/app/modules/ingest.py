@@ -336,6 +336,10 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
     if ts is None:
         return None
 
+    # Parse draught (manually entered, may be absent)
+    draught_raw = row.get("draught")
+    draught_val = float(draught_raw) if draught_raw is not None else None
+
     # Dual-write: raw observation for cross-receiver comparison (no dedup)
     try:
         from app.models.ais_observation import AISObservation
@@ -348,6 +352,7 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
             sog=float(row["sog"]) if row.get("sog") is not None else None,
             cog=float(row["cog"]) if row.get("cog") is not None else None,
             heading=float(row["heading"]) if row.get("heading") is not None else None,
+            draught=draught_val,
         )
         db.add(obs)
     except Exception:
@@ -433,19 +438,21 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
         source=row.get("source", "csv_import"),
         sog_delta=sog_delta,
         cog_delta=cog_delta,
+        draught=draught_val,
     )
     db.add(point)
 
     # Phase C dual-write: persist per-source AIS observation for cross-receiver detection.
     # Failures must not block main ingest — log and track error rate.
-    _write_ais_observation(db, vessel, row, ts, sog_val, cog_val, heading_val)
+    _write_ais_observation(db, vessel, row, ts, sog_val, cog_val, heading_val, draught_val)
 
     return point
 
 
 def _write_ais_observation(
     db: Session, vessel: Vessel, row: dict,
-    ts: datetime, sog_val: float | None, cog_val: float | None, heading_val: float | None,
+    ts: datetime, sog_val: float | None, cog_val: float | None,
+    heading_val: float | None, draught_val: float | None = None,
 ) -> None:
     """Dual-write AIS observation for cross-receiver detection (Phase C).
 
@@ -456,7 +463,6 @@ def _write_ais_observation(
     try:
         from app.models.ais_observation import AISObservation
         obs = AISObservation(
-            vessel_id=vessel.vessel_id,
             mmsi=mmsi,
             timestamp_utc=ts,
             lat=float(row["lat"]),
@@ -464,6 +470,7 @@ def _write_ais_observation(
             sog=sog_val,
             cog=cog_val,
             heading=heading_val,
+            draught=draught_val,
             source=row.get("source", "csv_import"),
         )
         db.add(obs)

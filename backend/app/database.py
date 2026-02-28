@@ -40,31 +40,65 @@ def init_db() -> None:
 def _run_migrations() -> None:
     """Idempotent ALTER TABLE migrations for columns added after initial schema.
 
-    Each statement is wrapped in try/except so re-running is safe (column already exists).
+    Uses sqlalchemy.inspect() to check column existence before ALTER — real SQL
+    errors (syntax, permissions) propagate instead of being silently swallowed.
     """
-    from sqlalchemy import text
-    from sqlalchemy.exc import OperationalError
+    from sqlalchemy import inspect as sa_inspect, text
 
-    migrations = [
-        "ALTER TABLE ais_gap_events ADD COLUMN gap_off_lat REAL",
-        "ALTER TABLE ais_gap_events ADD COLUMN gap_off_lon REAL",
-        "ALTER TABLE ais_gap_events ADD COLUMN gap_on_lat REAL",
-        "ALTER TABLE ais_gap_events ADD COLUMN gap_on_lon REAL",
-        "ALTER TABLE ais_gap_events ADD COLUMN source VARCHAR(20)",
-        "ALTER TABLE port_calls ADD COLUMN raw_port_name VARCHAR",
-        "ALTER TABLE port_calls ADD COLUMN source VARCHAR NOT NULL DEFAULT 'manual'",
+    inspector = sa_inspect(engine)
+
+    # (table_name, column_name, column_type_sql)
+    column_migrations = [
+        ("ais_gap_events", "gap_off_lat", "REAL"),
+        ("ais_gap_events", "gap_off_lon", "REAL"),
+        ("ais_gap_events", "gap_on_lat", "REAL"),
+        ("ais_gap_events", "gap_on_lon", "REAL"),
+        ("ais_gap_events", "source", "VARCHAR(20)"),
+        ("port_calls", "raw_port_name", "VARCHAR"),
+        ("port_calls", "source", "VARCHAR NOT NULL DEFAULT 'manual'"),
         # Phase C15 — ownership verification fields
-        "ALTER TABLE vessel_owners ADD COLUMN verified_by VARCHAR",
-        "ALTER TABLE vessel_owners ADD COLUMN verified_at DATETIME",
-        "ALTER TABLE vessel_owners ADD COLUMN source_url VARCHAR",
-        "ALTER TABLE vessel_owners ADD COLUMN verification_notes TEXT",
+        ("vessel_owners", "verified_by", "VARCHAR"),
+        ("vessel_owners", "verified_at", "DATETIME"),
+        ("vessel_owners", "source_url", "VARCHAR"),
+        ("vessel_owners", "verification_notes", "TEXT"),
         # Phase H1 — data freshness
-        "ALTER TABLE vessels ADD COLUMN last_ais_received_utc DATETIME",
+        ("vessels", "last_ais_received_utc", "DATETIME"),
+        # Stage 1 — new detector schema additions
+        ("ais_points", "draught", "REAL"),
+        ("ais_observations", "draught", "REAL"),
+        ("vessel_owners", "ism_manager", "VARCHAR(500)"),
+        ("vessel_owners", "pi_club_name", "VARCHAR(200)"),
+        ("ports", "is_offshore_terminal", "BOOLEAN DEFAULT 0"),
     ]
+
+    _col_cache: dict[str, set[str]] = {}
+
     with engine.connect() as conn:
-        for stmt in migrations:
-            try:
-                conn.execute(text(stmt))
+        for table_name, col_name, col_type in column_migrations:
+            if table_name not in _col_cache:
+                _col_cache[table_name] = {
+                    c["name"] for c in inspector.get_columns(table_name)
+                }
+            if col_name not in _col_cache[table_name]:
+                conn.execute(text(
+                    f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
+                ))
                 conn.commit()
-            except OperationalError:
-                conn.rollback()  # Column already exists — safe to ignore
+                _col_cache[table_name].add(col_name)
+
+    # Postgres-only: add new enum values to native ENUM type.
+    # ALTER TYPE ... ADD VALUE cannot run inside a transaction on Postgres.
+    # Use raw DBAPI connection in autocommit mode. IF NOT EXISTS (PG 9.3+)
+    # makes this idempotent — real errors propagate.
+    if engine.dialect.name == "postgresql":
+        raw_conn = engine.raw_connection()
+        try:
+            raw_conn.set_isolation_level(0)  # ISOLATION_LEVEL_AUTOCOMMIT
+            cursor = raw_conn.cursor()
+            for val in ("synthetic_track", "stateless_mmsi", "flag_hopping", "imo_fraud"):
+                cursor.execute(
+                    f"ALTER TYPE spoofingtypeenum ADD VALUE IF NOT EXISTS '{val}'"
+                )
+            cursor.close()
+        finally:
+            raw_conn.close()

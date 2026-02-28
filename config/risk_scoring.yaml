@@ -229,3 +229,46 @@ hunt_scoring:
   class_score: 10.0            # vessel class match score
   high_score_band: 45          # score >= this -> HIGH band
   medium_score_band: 25        # score >= this -> MEDIUM band (below = LOW)
+
+# TRACK NATURALNESS (Phase K) — Kalman filter residual analysis
+# Detects pre-programmed route spoofing (synthetic tracks are too smooth)
+track_naturalness:
+  synthetic_track_high: 45       # 5/5 features outside natural bounds
+  synthetic_track_medium: 35     # 4/5 features
+  synthetic_track_low: 25        # 3/5 features
+
+# DRAUGHT INTELLIGENCE (Phase L) — corroborating signal only
+# AIS draught is manually entered; extreme swings far from port corroborate other detectors
+draught:
+  offshore_draught_change_corroboration: 20
+  draught_swing_extreme: 25
+  draught_delta_across_gap: 20
+  draught_sts_confirmation: 15
+
+# IDENTITY FRAUD (Phase M) — stateless MMSI, flag hopping, IMO fraud
+identity_fraud:
+  stateless_mmsi_tier1: 35       # truly unallocated MIDs
+  stateless_mmsi_tier2: 20       # landlocked country MIDs on ocean tankers
+  stateless_mmsi_tier3: 10       # micro-territory MIDs (corroborating)
+  flag_hopping_2_in_90d: 20
+  flag_hopping_3_in_90d: 40
+  flag_hopping_5_in_365d: 50
+  flag_hopping_to_shadow_registry: 10
+  imo_simultaneous_use: 45
+  imo_near_miss_qualified: 20
+
+# DARK STS (Phase N) — hypothesis generator for satellite tasking
+dark_sts:
+  dark_dark_high_confidence: 30    # <5nm proximity, sufficient overlap
+  dark_dark_medium_confidence: 20  # 5-15nm, converging trajectories
+  dark_dark_low_confidence: 10     # 15-50nm, both high-risk
+  dark_dark_draught_confirmed: 15  # draught delta corroboration
+
+# FLEET & OWNER INTELLIGENCE (Phase O) — cluster-level patterns
+fleet:
+  fleet_sts_concentration: 30       # 3+ vessels, same zone, 30d
+  fleet_dark_coordination: 25       # 3+ vessels going dark within 48h
+  fleet_flag_diversity: 20          # 4+ flags in one cluster
+  fleet_high_risk_average: 15       # cluster avg risk >50
+  shared_manager_different_owners: 15
+  shared_pi_club_high_risk: 10
