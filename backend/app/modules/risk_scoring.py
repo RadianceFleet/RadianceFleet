@@ -39,6 +39,7 @@ _EXPECTED_SECTIONS = [
     "spoofing", "metadata", "vessel_age", "flag_state", "vessel_size_multiplier",
     "watchlist", "dark_zone", "sts", "behavioral", "legitimacy", "corridor",
     "score_bands", "ais_class", "dark_vessel", "pi_insurance", "psc_detention",
+    "sts_patterns",
 ]
 
 
@@ -475,9 +476,36 @@ def compute_gap_score(
             if _pre_sog_dz > spike_thresh and (gap.duration_minutes or 0) < 360:
                 breakdown["dark_zone_entry"] = dz_cfg.get("gap_immediately_before_dark_zone_entry", 20)
             else:
-                # Normal-speed gap in dark zone: expected noise from jamming (-10),
-                # regardless of duration. Only high-speed entry gets +20.
-                breakdown["dark_zone_deduction"] = dz_cfg.get("gap_in_known_jamming_zone", -10)
+                # Normal-speed gap in dark zone: check if selective evasion vs ambient jamming
+                # Query how many OTHER vessels also have gaps in same dark zone / time window
+                _selective_evasion = False
+                if db is not None:
+                    try:
+                        from app.models.gap_event import AISGapEvent as _GapDZ
+                        # Count other vessels with gaps overlapping this gap's time window in same dark zone
+                        _other_dark_gaps = db.query(_GapDZ).filter(
+                            _GapDZ.vessel_id != gap.vessel_id,
+                            _GapDZ.in_dark_zone == True,
+                            _GapDZ.gap_start_utc <= gap.gap_end_utc,
+                            _GapDZ.gap_end_utc >= gap.gap_start_utc,
+                        )
+                        if gap.dark_zone_id is not None:
+                            _other_dark_gaps = _other_dark_gaps.filter(
+                                _GapDZ.dark_zone_id == gap.dark_zone_id,
+                            )
+                        _other_count = _other_dark_gaps.count()
+                        if _other_count <= 2:
+                            # Only this vessel (+ maybe 1-2 others) dark = selective evasion
+                            _selective_evasion = True
+                    except Exception:
+                        pass  # If query fails, fall back to standard deduction
+
+                if _selective_evasion:
+                    # Selective dark: only this vessel went dark, others are transmitting
+                    breakdown["selective_dark_zone_evasion"] = dz_cfg.get("selective_dark_zone_evasion", 20)
+                else:
+                    # Ambient jamming: everyone dark = expected noise
+                    breakdown["dark_zone_deduction"] = dz_cfg.get("gap_in_known_jamming_zone", -10)
         else:
             # in_dark_zone=True but no explicit dark_zone_id — corridor is_jamming_zone=True
             breakdown["dark_zone_deduction"] = dz_cfg.get("gap_in_known_jamming_zone", -10)
@@ -526,6 +554,21 @@ def compute_gap_score(
         elif flag_risk == "high_risk":
             breakdown["flag_high_risk"] = flag_cfg.get("high_risk_registry", 15)
 
+        # Flag + corridor coupling: high-risk flag vessel in geographically suspicious corridor
+        if flag_risk == "high_risk" and gap.corridor is not None:
+            from app.utils.vessel_identity import RUSSIAN_ORIGIN_FLAGS as _ROF_coupling
+            if vessel.flag and vessel.flag.upper() in _ROF_coupling:
+                _ct_coupling = str(
+                    gap.corridor.corridor_type.value
+                    if hasattr(gap.corridor.corridor_type, "value")
+                    else gap.corridor.corridor_type
+                )
+                _tags = getattr(gap.corridor, 'tags', None) or ""
+                # Cameroon/Palau/etc flag in Baltic or transit corridor = high signal
+                if _ct_coupling in ("export_route", "sts_zone") or "russian_ports" in str(_tags) or "transit" in str(_tags):
+                    coupling_cfg = config.get("sts_patterns", {})
+                    breakdown["flag_corridor_coupling"] = coupling_cfg.get("flag_corridor_coupling", 20)
+
         # Vessel age — age_25_plus_AND_high_risk_flag supersedes plain age_25_plus_y
         vessel_age_cfg = config.get("vessel_age", {})
         if vessel.year_built is not None:
@@ -556,6 +599,19 @@ def compute_gap_score(
         if ais_cls == "B" and vessel.deadweight is not None and vessel.deadweight > 3_000:
             ais_cfg = config.get("ais_class", {})
             breakdown["ais_class_mismatch"] = ais_cfg.get("large_tanker_using_class_b", 25)
+
+        # Invalid AIS metadata: generic names or impossible DWT values
+        metadata_signals_cfg = config.get("sts_patterns", {})
+        _vessel_name = (vessel.name or "").strip().upper()
+        _GENERIC_NAMES = {"TANKER", "VESSEL", "UNKNOWN", "SHIP", "BOAT", "TBN", "TBA", "N/A", "TEST"}
+        if _vessel_name in _GENERIC_NAMES or (len(_vessel_name) == 1 and _vessel_name.isalpha()):
+            breakdown["invalid_metadata_generic_name"] = metadata_signals_cfg.get("invalid_metadata_generic_name", 10)
+        if vessel.deadweight is not None and isinstance(vessel.deadweight, (int, float)):
+            _vessel_type_str = str(vessel.vessel_type or "").lower()
+            if vessel.deadweight > 500_000:
+                breakdown["invalid_metadata_impossible_dwt"] = metadata_signals_cfg.get("invalid_metadata_impossible_dwt", 15)
+            elif vessel.deadweight < 100 and "tanker" in _vessel_type_str:
+                breakdown["invalid_metadata_impossible_dwt"] = metadata_signals_cfg.get("invalid_metadata_impossible_dwt", 15)
 
         # P&I insurance coverage scoring (PRD: 82% shadow fleet lacks reputable P&I)
         pi_status = str(
@@ -739,6 +795,28 @@ def compute_gap_score(
                     best_sts = sts
             if best_sts:
                 breakdown[f"sts_event_{best_sts.sts_id}"] = best_sts_score
+
+    # Phase: Repeat STS partnerships — same vessel pair doing STS 3+ times
+    if db is not None and vessel is not None:
+        from app.models.sts_transfer import StsTransferEvent as _STS_repeat
+        from sqlalchemy import or_ as _or_repeat, func as _func_repeat
+        # Get all STS events for this vessel
+        all_sts = db.query(_STS_repeat).filter(
+            _or_repeat(
+                _STS_repeat.vessel_1_id == vessel.vessel_id,
+                _STS_repeat.vessel_2_id == vessel.vessel_id,
+            )
+        ).all()
+        # Count events per partner
+        partner_counts: dict[int, int] = {}
+        for sts in all_sts:
+            partner = sts.vessel_2_id if sts.vessel_1_id == vessel.vessel_id else sts.vessel_1_id
+            partner_counts[partner] = partner_counts.get(partner, 0) + 1
+        # Flag if any partner has 3+ events
+        repeat_partners = {pid: cnt for pid, cnt in partner_counts.items() if cnt >= 3}
+        if repeat_partners:
+            sts_pattern_cfg = config.get("sts_patterns", {})
+            breakdown["repeat_sts_partnership"] = sts_pattern_cfg.get("repeat_sts_partnership_3plus", 30)
 
     # Phase 6.7: Watchlist scoring (all weights from YAML)
     if db is not None and vessel is not None:
@@ -998,6 +1076,15 @@ def compute_gap_score(
                 breakdown["russian_port_gap_sts"] = behavioral_cfg.get("russian_port_gap_sts", 40)
             else:
                 breakdown["russian_port_recent"] = behavioral_cfg.get("russian_port_recent", 25)
+
+    # Voyage pattern cycles: Russian port + STS + repeated gaps suggests trade cycle
+    if db is not None and vessel is not None:
+        _has_russian_port = "russian_port_recent" in breakdown or "russian_port_gap_sts" in breakdown
+        _has_sts = any(k.startswith("sts_event_") for k in breakdown)
+        _has_freq_gaps = any(k.startswith("gap_frequency_") for k in breakdown)
+        if _has_russian_port and _has_sts and _has_freq_gaps:
+            voyage_cfg = config.get("sts_patterns", {})
+            breakdown["voyage_cycle_pattern"] = voyage_cfg.get("voyage_cycle_pattern", 30)
 
     # STS network association: guilt-by-association with watchlisted partners
     if db is not None and vessel is not None:
