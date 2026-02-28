@@ -36,7 +36,8 @@ def test_validate_rejects_invalid_lat():
 
 
 def test_validate_rejects_future_timestamp():
-    future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    # E2: Future ceiling is now + 7 days — use 10 days to trigger rejection
+    future = (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
     row = {"mmsi": "241234567", "lat": 55.0, "lon": 25.0, "timestamp_utc": future}
     assert validate_ais_row(row) is not None
 

@@ -391,8 +391,9 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
                 shape = load_geometry(envelope.confidence_ellipse_geometry)
                 if shape is not None:
                     geojson_str = json.dumps(shapely.geometry.mapping(shape))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to deserialize geometry: %s", e)
+                geojson_str = None  # Explicitly return null geometry in response
         envelope_data = MovementEnvelopeRead(
             envelope_id=envelope.envelope_id,
             max_plausible_distance_nm=envelope.max_plausible_distance_nm,

@@ -22,6 +22,9 @@ from app.models.vessel_history import VesselHistory
 
 logger = logging.getLogger(__name__)
 
+# Counter for AIS observation dual-write failures (E1: track failure rate)
+_ais_observation_errors: int = 0
+
 # AIS vessel type codes that classify as tankers (ITU-R M.1371)
 TANKER_TYPE_CODES = set(range(80, 90))  # 80-89 = tanker types
 
@@ -423,4 +426,38 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
         cog_delta=cog_delta,
     )
     db.add(point)
+
+    # Phase C dual-write: persist per-source AIS observation for cross-receiver detection.
+    # Failures must not block main ingest — log and track error rate.
+    _write_ais_observation(db, vessel, row, ts, sog_val, cog_val, heading_val)
+
     return point
+
+
+def _write_ais_observation(
+    db: Session, vessel: Vessel, row: dict,
+    ts: datetime, sog_val: float | None, cog_val: float | None, heading_val: float | None,
+) -> None:
+    """Dual-write AIS observation for cross-receiver detection (Phase C).
+
+    Non-blocking: logs warning on failure and increments error counter.
+    """
+    global _ais_observation_errors
+    mmsi = str(row["mmsi"]).strip().zfill(9)
+    try:
+        from app.models.ais_observation import AISObservation
+        obs = AISObservation(
+            vessel_id=vessel.vessel_id,
+            mmsi=mmsi,
+            timestamp_utc=ts,
+            lat=float(row["lat"]),
+            lon=float(row["lon"]),
+            sog=sog_val,
+            cog=cog_val,
+            heading=heading_val,
+            source=row.get("source", "csv_import"),
+        )
+        db.add(obs)
+    except Exception as e:
+        _ais_observation_errors += 1
+        logger.warning("Failed to write AIS observation for MMSI %s: %s", mmsi, e)

@@ -902,8 +902,10 @@ def compute_gap_score(
                 if (last_departure
                         and isinstance(getattr(last_departure, 'departure_utc', None), datetime)):
                     _voyage_window_days = max(1, (gap.gap_start_utc - last_departure.departure_utc).days)
-            except Exception:
-                pass  # PortCall table unavailable — use default 30d window
+            except Exception as e:
+                logger.warning("Port call voyage window calculation failed: %s", e)
+                _voyage_window_days = 30  # documented default
+                breakdown["_voyage_window_fallback"] = "default_30d_used"
         recent_name_changes = [
             h for h in name_changes
             if (gap.gap_start_utc - h.observed_at).days <= _voyage_window_days
@@ -943,9 +945,9 @@ def compute_gap_score(
                         # Can't verify position — assume same position (conservative)
                         _mmsi_same_position = True
                         break
-            except Exception:
-                # Position check unavailable — conservative: assume same position
-                _mmsi_same_position = True
+            except Exception as e:
+                logger.warning("Dark zone evasion scoring failed for vessel %s: %s", vessel.vessel_id, e)
+                _mmsi_same_position = False  # Fall back to 0 — don't assign wrong +45 score
             if _mmsi_same_position:
                 breakdown["mmsi_change"] = meta_cfg.get("mmsi_change_mapped_same_position", 45)
             else:

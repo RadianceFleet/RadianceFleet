@@ -4,11 +4,14 @@ Implements validation rules from PRD §7.2.
 """
 from __future__ import annotations
 
+import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import polars as pl
+
+logger = logging.getLogger(__name__)
 
 
 # --- Shared helpers ---
@@ -205,8 +208,14 @@ def validate_ais_row(row: dict[str, Any]) -> str | None:
         # 1.1: SOG sentinel 102.3 (raw 1023 = "not available")
         if sog >= 102.2:
             row["sog"] = None  # Sentinel → not available
-        elif sog > 35:
-            return f"SOG exceeds physical limit: {sog} knots"
+        else:
+            # E2: Impossible SOG warning (> 50 knots for any vessel type) — tag, don't reject
+            if sog > 50:
+                mmsi_tag = row.get("mmsi", "unknown")
+                logger.warning("Suspicious SOG %s knots for MMSI %s", sog, mmsi_tag)
+                row.setdefault("_quality_flags", []).append(f"suspicious_sog_{sog}")
+            if sog > 35:
+                return f"SOG exceeds physical limit: {sog} knots"
 
     # --- COG validation with AIS sentinel handling ---
     cog = row.get("cog")
@@ -244,10 +253,27 @@ def validate_ais_row(row: dict[str, Any]) -> str | None:
     now = datetime.now(timezone.utc)
     # Handle naive datetimes (e.g., NOAA BaseDateTime has no timezone)
     ts_cmp = ts_dt.replace(tzinfo=timezone.utc) if ts_dt.tzinfo is None else ts_dt
-    if ts_cmp > now:
+    # E2: Future timestamp ceiling — reject if > now + 7 days (allows minor clock skew)
+    future_ceiling = now + timedelta(days=7)
+    if ts_cmp > future_ceiling:
+        logger.warning("AIS row has future timestamp %s, rejecting", ts_dt)
         return f"Future timestamp rejected: {ts_dt}"
     if ts_dt.year < 2010:
         return f"Timestamp too old (pre-2010): {ts_dt}"
+
+    # E2: Anchored + high SOG data quality warning — nav_status 1 = anchored
+    nav_status = row.get("nav_status")
+    sog_final = row.get("sog")
+    if nav_status is not None and sog_final is not None:
+        try:
+            nav_int = int(nav_status)
+            sog_float = float(sog_final)
+            if nav_int == 1 and sog_float > 3:
+                mmsi_tag = row.get("mmsi", "unknown")
+                logger.warning("Anchored vessel MMSI %s reporting SOG %s knots", mmsi_tag, sog_float)
+                row.setdefault("_quality_flags", []).append(f"anchored_high_sog_{sog_float}")
+        except (TypeError, ValueError):
+            pass  # Non-numeric nav_status or SOG — skip quality check
 
     return None
 
