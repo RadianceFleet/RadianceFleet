@@ -24,6 +24,8 @@ export interface AlertSummary {
   vessel_mmsi: string | null
   pre_gap_sog?: number
   dark_zone_id?: number
+  prior_similar_count?: number | null
+  is_recurring_pattern?: boolean | null
 }
 
 export interface AISPointSummary {
@@ -56,6 +58,35 @@ export interface SatelliteCheckSummary {
   cloud_cover_pct: number | null
 }
 
+// ---------------------------------------------------------------------------
+// Alert enrichment types (Phase H)
+// ---------------------------------------------------------------------------
+
+export interface SpoofingAnomalySummary {
+  anomaly_id: number
+  anomaly_type: string
+  start_time_utc: string
+  risk_score_component: number | null
+  evidence_json: Record<string, unknown> | null
+}
+
+export interface LoiteringSummary {
+  loiter_id: number
+  start_time_utc: string
+  duration_hours: number | null
+  mean_lat: number | null
+  mean_lon: number | null
+  median_sog_kn: number | null
+}
+
+export interface StsSummary {
+  sts_id: number
+  partner_name: string | null
+  partner_mmsi: string | null
+  detection_type: string | null
+  start_time_utc: string
+}
+
 export interface AlertDetail extends AlertSummary {
   vessel_name: string | null
   vessel_mmsi: string | null
@@ -66,6 +97,11 @@ export interface AlertDetail extends AlertSummary {
   satellite_check: SatelliteCheckSummary | null
   last_point: AISPointSummary | null
   first_point_after: AISPointSummary | null
+  spoofing_anomalies?: SpoofingAnomalySummary[] | null
+  loitering_events?: LoiteringSummary[] | null
+  sts_events?: StsSummary[] | null
+  prior_similar_count?: number | null
+  is_recurring_pattern?: boolean | null
 }
 
 export type AlertStatus =

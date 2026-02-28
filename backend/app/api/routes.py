@@ -834,6 +834,8 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
             "total_gaps_30d": 0,
             "equasis_url": f"https://www.equasis.org/EquasisWeb/restricted/Search?P_IMO={vessel.imo}" if vessel.imo else None,
             "opencorporates_url": None,
+            "data_age_hours": _compute_data_age_hours(vessel, now),
+            "data_freshness_warning": _compute_freshness_warning(vessel, now),
         }
 
     gaps_7d = db.query(AISGapEvent).filter(

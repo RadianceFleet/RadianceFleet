@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/ui/StatusBadge'
 import { EmptyState } from '../components/ui/EmptyState'
 import { VerificationPanel } from '../components/VerificationPanel'
 import { VerificationBadge } from '../components/VerificationBadge'
+import { VesselTimeline } from '../components/VesselTimeline'
 
 /* ------------------------------------------------------------------ */
 /*  Shared styles (matching AlertDetail / AlertList conventions)       */
@@ -422,6 +423,9 @@ export function VesselDetailPage() {
             </table>
           )}
       </Card>
+
+      {/* ---- Activity Timeline ---- */}
+      <VesselTimeline vesselId={id!} />
 
       {/* ---- STS events (60d) ---- */}
       <Card style={{ marginBottom: 16 }}>
