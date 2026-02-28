@@ -23,7 +23,10 @@ import logging
 import math
 from collections import defaultdict
 from datetime import datetime, date, timedelta, timezone
+from pathlib import Path
 from typing import Optional
+
+import yaml
 
 from sqlalchemy.orm import Session
 
@@ -34,6 +37,43 @@ from app.models.vessel import Vessel
 from app.models.base import STSDetectionTypeEnum, CorridorTypeEnum
 
 logger = logging.getLogger(__name__)
+
+# ── Bunkering vessel exclusion ────────────────────────────────────────────────
+
+_BUNKERING_EXCLUSIONS: set[str] | None = None
+
+
+def _load_bunkering_exclusions() -> set[str]:
+    """Load set of MMSIs to exclude from STS detection (known bunkering vessels)."""
+    global _BUNKERING_EXCLUSIONS
+    if _BUNKERING_EXCLUSIONS is not None:
+        return _BUNKERING_EXCLUSIONS
+    config_path = Path(__file__).resolve().parent.parent.parent.parent / "config" / "bunkering_exclusions.yaml"
+    _BUNKERING_EXCLUSIONS = set()
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                data = yaml.safe_load(f)
+            for entry in (data or {}).get("bunkering_vessels", []):
+                mmsi = str(entry.get("mmsi", "")).strip()
+                if mmsi:
+                    _BUNKERING_EXCLUSIONS.add(mmsi)
+            logger.info("Loaded %d bunkering vessel exclusions.", len(_BUNKERING_EXCLUSIONS))
+        except Exception as e:
+            logger.warning("Failed to load bunkering exclusions: %s", e)
+    return _BUNKERING_EXCLUSIONS
+
+
+def _is_bunkering_vessel(db: Session, vessel_id: int) -> bool:
+    """Check if vessel_id belongs to a known bunkering vessel."""
+    exclusions = _load_bunkering_exclusions()
+    if not exclusions:
+        return False
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if vessel and vessel.mmsi in exclusions:
+        return True
+    return False
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -455,6 +495,12 @@ def _phase_a(
                     except Exception:
                         pass  # If port check fails, proceed with STS detection
 
+                    # Bunkering vessel exclusion: skip if either vessel is a known bunkering vessel
+                    if _is_bunkering_vessel(db, vid1) or _is_bunkering_vessel(db, vid2):
+                        logger.debug("STS Phase A: skipping bunkering vessel pair (%d, %d)", vid1, vid2)
+                        run_start = idx
+                        continue
+
                     corridor = _corridor_for_position(mean_lat, mean_lon, sts_zone_bboxes)
                     if corridor is not None:
                         risk = _RISK_STS_ZONE
@@ -569,6 +615,11 @@ def _phase_b(
             )
 
             if _overlap_exists(db, vid1, vid2, event_time, eta_end):
+                continue
+
+            # Bunkering vessel exclusion: skip if either vessel is a known bunkering vessel
+            if _is_bunkering_vessel(db, vid1) or _is_bunkering_vessel(db, vid2):
+                logger.debug("STS Phase B: skipping bunkering vessel pair (%d, %d)", vid1, vid2)
                 continue
 
             mean_lat = (stat_pt.lat + mov_pt.lat) / 2.0
