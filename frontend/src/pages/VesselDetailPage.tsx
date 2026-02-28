@@ -6,6 +6,8 @@ import { Spinner } from '../components/ui/Spinner'
 import { ScoreBadge } from '../components/ui/ScoreBadge'
 import { StatusBadge } from '../components/ui/StatusBadge'
 import { EmptyState } from '../components/ui/EmptyState'
+import { VerificationPanel } from '../components/VerificationPanel'
+import { VerificationBadge } from '../components/VerificationBadge'
 
 /* ------------------------------------------------------------------ */
 /*  Shared styles (matching AlertDetail / AlertList conventions)       */
@@ -141,6 +143,7 @@ export function VesselDetailPage() {
             MERGED ({absorbedCount} identit{absorbedCount === 1 ? 'y' : 'ies'})
           </span>
         )}
+        <VerificationBadge verifiedBy={vessel.owner_name} />
       </div>
       <p style={{ color: 'var(--text-dim)', margin: '0 0 20px', fontSize: 13 }}>
         MMSI {vessel.mmsi ?? '?'} &middot; IMO {vessel.imo ?? '?'} &middot; {vessel.flag ?? '??'}
@@ -247,6 +250,9 @@ export function VesselDetailPage() {
           </tr>
         </tbody></table>
       </Card>
+
+      {/* ---- Ownership Verification ---- */}
+      <VerificationPanel vesselId={id!} currentOwner={vessel.owner_name} />
 
       {/* ---- Watchlist entries ---- */}
       <Card style={{ marginBottom: 16 }}>
