@@ -27,6 +27,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "websockets>=12.0",
     "zstandard>=0.22.0",
+    "pyais>=2.5.0",
 ]
 
 [project.optional-dependencies]

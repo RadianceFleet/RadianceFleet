@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     AISHUB_USERNAME: str | None = None
     # NOAA historical AIS data
     NOAA_BASE_URL: str = "https://coast.noaa.gov/htdata/CMSP/AISDataHandler"
+    # Kystverket (Norway) AIS TCP stream
+    KYSTVERKET_ENABLED: bool = False
+    KYSTVERKET_HOST: str = "153.44.253.27"
+    KYSTVERKET_PORT: int = 5631
+    # Digitraffic (Finland) Marine API
+    DIGITRAFFIC_ENABLED: bool = False
+    # CREA Russia Fossil Tracker
+    CREA_ENABLED: bool = False
+    CREA_API_BASE_URL: str = "https://api.russiafossiltracker.com"
     # Vessel identity merging
     MERGE_MAX_SPEED_KN: float = 16.0
     MERGE_MAX_GAP_DAYS: int = 30

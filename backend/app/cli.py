@@ -2009,6 +2009,110 @@ def data_sar_sweep(
         db.close()
 
 
+@data_app.command("kystverket-stream")
+def kystverket_stream_cmd(
+    duration: int = typer.Option(300, help="Stream duration in seconds"),
+):
+    """Stream AIS data from Kystverket (Norway) TCP feed."""
+    from app.database import SessionLocal
+    from app.modules.kystverket_client import stream_kystverket
+
+    db = SessionLocal()
+    try:
+        result = stream_kystverket(db, duration_seconds=duration)
+        console.print(
+            f"Kystverket: {result['points_ingested']} points, "
+            f"{result['vessels_seen']} vessels, {result['errors']} errors"
+        )
+    finally:
+        db.close()
+
+
+@data_app.command("digitraffic-fetch")
+def digitraffic_fetch_cmd():
+    """Fetch latest AIS positions from Digitraffic (Finland)."""
+    from app.database import SessionLocal
+    from app.modules.digitraffic_client import fetch_digitraffic_ais
+
+    db = SessionLocal()
+    try:
+        result = fetch_digitraffic_ais(db)
+        console.print(
+            f"Digitraffic: {result['points_ingested']} points, "
+            f"{result['vessels_seen']} vessels"
+        )
+    finally:
+        db.close()
+
+
+@data_app.command("digitraffic-port-calls")
+def digitraffic_port_calls_cmd():
+    """Fetch port call data from Digitraffic (Finland)."""
+    from app.database import SessionLocal
+    from app.modules.digitraffic_client import fetch_digitraffic_port_calls
+
+    db = SessionLocal()
+    try:
+        result = fetch_digitraffic_port_calls(db)
+        console.print(f"Digitraffic port calls: {result['port_calls_created']} created")
+    finally:
+        db.close()
+
+
+@data_app.command("fleetleaks-import")
+def fleetleaks_import_cmd(
+    path: str = typer.Argument(..., help="Path to FleetLeaks JSON"),
+):
+    """Import FleetLeaks vessel database into watchlist."""
+    from app.database import SessionLocal
+    from app.modules.watchlist_loader import load_fleetleaks
+
+    db = SessionLocal()
+    try:
+        result = load_fleetleaks(db, path)
+        console.print(
+            f"FleetLeaks: {result['matched']} matched, {result['unmatched']} unmatched"
+        )
+    finally:
+        db.close()
+
+
+@data_app.command("gur-import")
+def gur_import_cmd(
+    path: str = typer.Argument(..., help="Path to GUR CSV"),
+):
+    """Import Ukraine GUR shadow fleet database into watchlist."""
+    from app.database import SessionLocal
+    from app.modules.watchlist_loader import load_gur_list
+
+    db = SessionLocal()
+    try:
+        result = load_gur_list(db, path)
+        console.print(
+            f"GUR: {result['matched']} matched, {result['unmatched']} unmatched"
+        )
+    finally:
+        db.close()
+
+
+@data_app.command("crea-fetch")
+def crea_fetch_cmd(
+    limit: int = typer.Option(100, help="Max vessels to query"),
+):
+    """Fetch CREA Russia Fossil Tracker data for known vessels."""
+    from app.database import SessionLocal
+    from app.modules.crea_client import import_crea_data
+
+    db = SessionLocal()
+    try:
+        result = import_crea_data(db, limit=limit)
+        console.print(
+            f"CREA: {result['queried']} queried, {result['enriched']} enriched"
+        )
+    finally:
+        db.close()
+
+
 @app.command("discover-dark-vessels")
 def discover_dark_vessels_cmd(
     from_date: str = typer.Option(None, "--from", help="Start date (YYYY-MM-DD). Default: 90 days ago."),
