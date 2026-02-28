@@ -15,10 +15,79 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.config import settings
+from app.schemas.corridor import CorridorCreateRequest, CorridorUpdateRequest
+from app.schemas.alerts import BulkStatusUpdateRequest, WatchlistAddRequest, NoteAddRequest
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# H2: Coverage Quality — load coverage.yaml at module level
+# ---------------------------------------------------------------------------
+import re
+import yaml
+from pathlib import Path
+from unidecode import unidecode as _unidecode
+
+_COVERAGE_DATA: dict = {}
+# config/ is at repo root (one level above backend/)
+_coverage_path = Path(__file__).resolve().parents[3] / "config" / "coverage.yaml"
+if not _coverage_path.exists():
+    # Fallback: try relative to backend/
+    _coverage_path = Path(__file__).resolve().parents[2] / "config" / "coverage.yaml"
+if _coverage_path.exists():
+    with open(_coverage_path) as f:
+        _COVERAGE_DATA = yaml.safe_load(f) or {}
+
+_REGION_MATCH_ORDER: list[tuple[str, list[str]]] = [
+    ("Nakhodka", ["nakhodka"]),
+    ("Baltic", ["baltic", "primorsk", "ust luga", "kaliningrad", "oresund", "great belt", "murmansk"]),
+    ("Turkish Straits", ["turkish", "bosphorus", "dardanelles", "ceyhan", "iskenderun"]),
+    ("Black Sea", ["black sea", "kavkaz", "novorossiysk", "crimea", "bulgaria"]),
+    ("Persian Gulf", ["hormuz", "fujairah", "khor al zubair", "basra", "gulf of oman"]),
+    ("Singapore", ["singapore", "tanjung pelepas", "malacca"]),
+    ("Mediterranean", ["mediterranean", "ceuta", "gibraltar", "laconian", "malta", "hurd", "ain sukhna", "nador", "cyprus", "syria", "ras lanuf"]),
+    ("Far East", ["kozmino", "east china", "de kastri", "sakhalin", "daesan", "onsan", "ulsan", "yeosu", "shandong"]),
+]
+
+
+def _get_coverage_quality(corridor_name: str) -> str:
+    """Map corridor name to coverage quality from coverage.yaml."""
+    normalized = re.sub(r"[^a-z0-9 ]", " ", _unidecode(corridor_name).casefold())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    for region, keywords in _REGION_MATCH_ORDER:
+        for kw in keywords:
+            if kw in normalized:
+                region_data = _COVERAGE_DATA.get(region, {})
+                return region_data.get("quality", "UNKNOWN")
+    return "UNKNOWN"
+
+
+def _compute_data_age_hours(vessel, now) -> Optional[float]:
+    """Compute data age in hours from vessel.last_ais_received_utc."""
+    try:
+        last_utc = getattr(vessel, "last_ais_received_utc", None)
+        if last_utc is None or not isinstance(last_utc, datetime):
+            return None
+        tz_last = last_utc.replace(tzinfo=timezone.utc) if last_utc.tzinfo is None else last_utc
+        return round((now - tz_last).total_seconds() / 3600, 1)
+    except (TypeError, AttributeError):
+        return None
+
+
+def _compute_freshness_warning(vessel, now) -> Optional[str]:
+    """Return warning string if vessel AIS data is stale (>48h)."""
+    try:
+        last_utc = getattr(vessel, "last_ais_received_utc", None)
+        if last_utc is None or not isinstance(last_utc, datetime):
+            return None
+        tz_last = last_utc.replace(tzinfo=timezone.utc) if last_utc.tzinfo is None else last_utc
+        if (now - tz_last).total_seconds() > 48 * 3600:
+            return "AIS data is more than 48 hours old"
+        return None
+    except (TypeError, AttributeError):
+        return None
 
 
 def _audit_log(db: Session, action: str, entity_type: str, entity_id: int = None,
@@ -92,6 +161,12 @@ def import_ais(
                 "rejected": result["rejected"],
                 "percent_complete": 100.0,
             }
+        _audit_log(db, "ais_import", "ingestion", details={
+            "file_name": file.filename,
+            "accepted": result.get("accepted", 0),
+            "rejected": result.get("rejected", 0),
+        }, request=request)
+        db.commit()
         return result
     except Exception as e:
         if state:
@@ -352,8 +427,12 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
     from app.models.movement_envelope import MovementEnvelope
     from app.models.satellite_check import SatelliteCheck
     from app.models.ais_point import AISPoint
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.loitering_event import LoiteringEvent
+    from app.models.sts_transfer import StsTransferEvent
     from app.schemas.gap_event import (
-        GapEventDetailRead, MovementEnvelopeRead, SatelliteCheckSummary, AISPointSummary
+        GapEventDetailRead, MovementEnvelopeRead, SatelliteCheckSummary, AISPointSummary,
+        SpoofingAnomalySummary, LoiteringSummary, StsSummary,
     )
     import json
 
@@ -408,6 +487,72 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
                 if hasattr(envelope.estimated_method, "value") else envelope.estimated_method,
         )
 
+    # Alert enrichment: linked anomalies
+    spoofing_list = None
+    if alert.vessel_id:
+        spoofing_raw = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == alert.vessel_id,
+            SpoofingAnomaly.start_time_utc >= alert.gap_start_utc - timedelta(days=1),
+            SpoofingAnomaly.start_time_utc <= alert.gap_end_utc + timedelta(days=1),
+        ).all()
+        if spoofing_raw:
+            spoofing_list = [SpoofingAnomalySummary(
+                anomaly_id=s.anomaly_id,
+                anomaly_type=str(s.anomaly_type.value) if hasattr(s.anomaly_type, "value") else str(s.anomaly_type),
+                start_time_utc=s.start_time_utc,
+                risk_score_component=s.risk_score_component,
+                evidence_json=s.evidence_json,
+            ) for s in spoofing_raw]
+
+    loitering_list = None
+    if alert.vessel_id:
+        loitering_raw = db.query(LoiteringEvent).filter(
+            LoiteringEvent.vessel_id == alert.vessel_id,
+            LoiteringEvent.start_time_utc >= alert.gap_start_utc - timedelta(days=7),
+            LoiteringEvent.start_time_utc <= alert.gap_end_utc + timedelta(days=7),
+        ).all()
+        if loitering_raw:
+            loitering_list = [LoiteringSummary(
+                loiter_id=le.loiter_id,
+                start_time_utc=le.start_time_utc,
+                duration_hours=le.duration_hours,
+                mean_lat=le.mean_lat,
+                mean_lon=le.mean_lon,
+                median_sog_kn=le.median_sog_kn,
+            ) for le in loitering_raw]
+
+    sts_list = None
+    if alert.vessel_id:
+        sts_raw = db.query(StsTransferEvent).filter(
+            or_(
+                StsTransferEvent.vessel_1_id == alert.vessel_id,
+                StsTransferEvent.vessel_2_id == alert.vessel_id,
+            ),
+            StsTransferEvent.start_time_utc >= alert.gap_start_utc - timedelta(days=7),
+            StsTransferEvent.start_time_utc <= alert.gap_end_utc + timedelta(days=7),
+        ).all()
+        if sts_raw:
+            sts_list = []
+            for s in sts_raw:
+                partner_id = s.vessel_2_id if s.vessel_1_id == alert.vessel_id else s.vessel_1_id
+                partner = db.query(Vessel).filter(Vessel.vessel_id == partner_id).first()
+                sts_list.append(StsSummary(
+                    sts_id=s.sts_id,
+                    partner_name=partner.name if partner else None,
+                    partner_mmsi=partner.mmsi if partner else None,
+                    detection_type=str(s.detection_type.value) if hasattr(s.detection_type, "value") else str(s.detection_type),
+                    start_time_utc=s.start_time_utc,
+                ))
+
+    # H3: Prior similar count
+    prior_count = db.query(func.count(AISGapEvent.gap_event_id)).filter(
+        AISGapEvent.vessel_id == alert.vessel_id,
+        AISGapEvent.corridor_id == alert.corridor_id,
+        AISGapEvent.gap_event_id != alert.gap_event_id,
+        AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=90),
+        AISGapEvent.gap_start_utc < alert.gap_start_utc,
+    ).scalar() or 0
+
     status_val = str(alert.status.value) if hasattr(alert.status, "value") else str(alert.status)
     return GapEventDetailRead(
         gap_event_id=alert.gap_event_id,
@@ -440,6 +585,11 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
             timestamp_utc=first_pt.timestamp_utc, lat=first_pt.lat,
             lon=first_pt.lon, sog=first_pt.sog, cog=first_pt.cog
         ) if first_pt else None,
+        spoofing_anomalies=spoofing_list,
+        loitering_events=loitering_list,
+        sts_events=sts_list,
+        prior_similar_count=prior_count,
+        is_recurring_pattern=prior_count >= 3,
     )
 
 
@@ -478,10 +628,8 @@ def update_alert_status(
 
 
 @router.post("/alerts/{alert_id}/notes", tags=["alerts"])
-def add_note(alert_id: int, body: dict, db: Session = Depends(get_db)):
+def add_note(alert_id: int, body: NoteAddRequest, db: Session = Depends(get_db)):
     from app.models.gap_event import AISGapEvent
-    from app.schemas.gap_event import AlertNoteUpdate
-    body = AlertNoteUpdate(**body)
 
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
     if not alert:
@@ -493,16 +641,14 @@ def add_note(alert_id: int, body: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/alerts/bulk-status", tags=["alerts"])
-def bulk_update_alert_status(payload: dict, db: Session = Depends(get_db)):
+def bulk_update_alert_status(payload: BulkStatusUpdateRequest, db: Session = Depends(get_db)):
     """Bulk-update alert statuses for triage workflow."""
     from app.models.gap_event import AISGapEvent
 
-    alert_ids = payload.get("alert_ids", [])
-    new_status = payload.get("status", "")
+    alert_ids = payload.alert_ids
+    new_status = payload.status
     valid_statuses = {"new", "under_review", "needs_satellite_check", "documented", "dismissed"}
 
-    if not alert_ids:
-        raise HTTPException(status_code=422, detail="alert_ids must be a non-empty list")
     if new_status not in valid_statuses:
         raise HTTPException(status_code=422, detail=f"Invalid status '{new_status}'. Must be one of: {', '.join(sorted(valid_statuses))}")
 
@@ -769,6 +915,8 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         "total_gaps_30d": gaps_30d,
         "equasis_url": equasis_url,
         "opencorporates_url": opencorporates_url,
+        "data_age_hours": _compute_data_age_hours(vessel, now),
+        "data_freshness_warning": _compute_freshness_warning(vessel, now),
     }
 
 
@@ -914,6 +1062,7 @@ def list_corridors(
             "alert_count_7d": s.get("alert_7d", 0),
             "alert_count_30d": s.get("alert_30d", 0),
             "avg_risk_score": s.get("avg_score"),
+            "coverage_quality": _get_coverage_quality(c.name),
         })
     return {"items": result, "total": total}
 
@@ -947,6 +1096,7 @@ def get_corridor(corridor_id: int, db: Session = Depends(get_db)):
         "description": corridor.description,
         "alert_count_7d": alert_7d,
         "alert_count_30d": alert_30d,
+        "coverage_quality": _get_coverage_quality(corridor.name),
     }
 
 
@@ -1072,12 +1222,12 @@ def get_stats(
 # ---------------------------------------------------------------------------
 
 @router.post("/watchlist", tags=["watchlist"])
-def add_to_watchlist(body: dict, db: Session = Depends(get_db)):
+def add_to_watchlist(body: WatchlistAddRequest, request: Request, db: Session = Depends(get_db)):
     """Add a vessel to the local watchlist."""
     from app.models.vessel import Vessel
     from app.models.vessel_watchlist import VesselWatchlist
 
-    vessel_id = body.get("vessel_id")
+    vessel_id = body.vessel_id
     if not vessel_id:
         raise HTTPException(status_code=400, detail="vessel_id required")
 
@@ -1087,11 +1237,14 @@ def add_to_watchlist(body: dict, db: Session = Depends(get_db)):
 
     entry = VesselWatchlist(
         vessel_id=vessel_id,
-        watchlist_source=body.get("watchlist_source", "LOCAL_INVESTIGATION"),
-        reason=body.get("reason"),
+        watchlist_source=body.watchlist_source or body.source or "LOCAL_INVESTIGATION",
+        reason=body.reason,
         is_active=True,
     )
     db.add(entry)
+    _audit_log(db, "add", "watchlist", vessel_id, details={
+        "reason": body.reason, "source": body.source,
+    }, request=request)
     db.commit()
     return {"watchlist_entry_id": entry.watchlist_entry_id, "status": "added"}
 
@@ -1113,7 +1266,7 @@ def list_watchlist(
 
 
 @router.delete("/watchlist/{watchlist_entry_id}", tags=["watchlist"])
-def remove_from_watchlist(watchlist_entry_id: int, db: Session = Depends(get_db)):
+def remove_from_watchlist(watchlist_entry_id: int, request: Request, db: Session = Depends(get_db)):
     """Remove a watchlist entry (soft delete)."""
     from app.models.vessel_watchlist import VesselWatchlist
     entry = db.query(VesselWatchlist).filter(
@@ -1122,6 +1275,7 @@ def remove_from_watchlist(watchlist_entry_id: int, db: Session = Depends(get_db)
     if not entry:
         raise HTTPException(status_code=404, detail="Watchlist entry not found")
     entry.is_active = False
+    _audit_log(db, "remove", "watchlist", watchlist_entry_id, request=request)
     db.commit()
     return {"status": "removed"}
 
@@ -1182,45 +1336,44 @@ def detect_sts(
 # ---------------------------------------------------------------------------
 
 @router.post("/corridors", tags=["corridors"])
-def create_corridor(body: dict, db: Session = Depends(get_db)):
+def create_corridor(body: CorridorCreateRequest, request: Request, db: Session = Depends(get_db)):
     """Create a new corridor. Body fields: name, corridor_type, risk_weight, description, is_jamming_zone, geometry_wkt (optional)."""
     from app.models.corridor import Corridor
     from app.models.base import CorridorTypeEnum
 
-    name = body.get("name")
-    if not name:
-        raise HTTPException(status_code=400, detail="name is required")
-
-    ct_str = body.get("corridor_type", "import_route")
+    ct_str = body.corridor_type
     valid_types = [e.value for e in CorridorTypeEnum]
     if ct_str not in valid_types:
         raise HTTPException(status_code=400, detail=f"corridor_type must be one of: {valid_types}")
 
     geom = None
-    wkt = body.get("geometry_wkt")
-    if wkt:
+    if body.geometry_wkt:
         try:
             from shapely import wkt as shapely_wkt
-            shape = shapely_wkt.loads(wkt)
+            shape = shapely_wkt.loads(body.geometry_wkt)
             geom = shape.wkt  # Store as WKT text
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid geometry_wkt: {e}")
 
     corridor = Corridor(
-        name=name,
+        name=body.name,
         corridor_type=ct_str,
-        risk_weight=float(body.get("risk_weight", 1.0)),
-        description=body.get("description"),
-        is_jamming_zone=bool(body.get("is_jamming_zone", False)),
+        risk_weight=body.risk_weight,
+        description=body.description,
+        is_jamming_zone=body.is_jamming_zone,
         geometry=geom,
     )
     db.add(corridor)
+    db.flush()
+    _audit_log(db, "create", "corridor", corridor.corridor_id, details={
+        "name": body.name, "corridor_type": ct_str,
+    }, request=request)
     db.commit()
     return {"corridor_id": corridor.corridor_id, "status": "created"}
 
 
 @router.patch("/corridors/{corridor_id}", tags=["corridors"])
-def update_corridor(corridor_id: int, body: dict, db: Session = Depends(get_db)):
+def update_corridor(corridor_id: int, body: CorridorUpdateRequest, request: Request, db: Session = Depends(get_db)):
     """Update corridor metadata (name, risk_weight, description, corridor_type, is_jamming_zone).
     Geometry is not updatable via API to prevent accidental spatial data corruption."""
     from app.models.corridor import Corridor
@@ -1230,20 +1383,22 @@ def update_corridor(corridor_id: int, body: dict, db: Session = Depends(get_db))
     if not corridor:
         raise HTTPException(status_code=404, detail="Corridor not found")
 
-    if "name" in body:
-        corridor.name = body["name"]
-    if "risk_weight" in body:
-        corridor.risk_weight = float(body["risk_weight"])
-    if "description" in body:
-        corridor.description = body["description"]
-    if "is_jamming_zone" in body:
-        corridor.is_jamming_zone = bool(body["is_jamming_zone"])
-    if "corridor_type" in body:
+    updates = body.model_dump(exclude_unset=True)
+    if "name" in updates:
+        corridor.name = updates["name"]
+    if "risk_weight" in updates:
+        corridor.risk_weight = float(updates["risk_weight"])
+    if "description" in updates:
+        corridor.description = updates["description"]
+    if "is_jamming_zone" in updates:
+        corridor.is_jamming_zone = bool(updates["is_jamming_zone"])
+    if "corridor_type" in updates:
         valid_types = [e.value for e in CorridorTypeEnum]
-        if body["corridor_type"] not in valid_types:
+        if updates["corridor_type"] not in valid_types:
             raise HTTPException(status_code=400, detail=f"corridor_type must be one of: {valid_types}")
-        corridor.corridor_type = body["corridor_type"]
+        corridor.corridor_type = updates["corridor_type"]
 
+    _audit_log(db, "update", "corridor", corridor_id, details=updates, request=request)
     db.commit()
     return {
         "corridor_id": corridor.corridor_id,
@@ -1256,7 +1411,7 @@ def update_corridor(corridor_id: int, body: dict, db: Session = Depends(get_db))
 
 
 @router.delete("/corridors/{corridor_id}", tags=["corridors"])
-def delete_corridor(corridor_id: int, db: Session = Depends(get_db)):
+def delete_corridor(corridor_id: int, request: Request, db: Session = Depends(get_db)):
     """Delete a corridor. Returns 409 if gap events are linked to it."""
     from app.models.corridor import Corridor
     from app.models.gap_event import AISGapEvent
@@ -1275,6 +1430,7 @@ def delete_corridor(corridor_id: int, db: Session = Depends(get_db)):
                    "Unlink or reassign those gaps first.",
         )
 
+    _audit_log(db, "delete", "corridor", corridor_id, details={"name": corridor.name}, request=request)
     db.delete(corridor)
     db.commit()
     return {"status": "deleted", "corridor_id": corridor_id}
@@ -1345,11 +1501,15 @@ def get_dark_vessel(detection_id: int, db: Session = Depends(get_db)):
 # ─── Vessel Hunt (FR9) ────────────────────────────────────────────────────────
 
 @router.post("/hunt/targets", status_code=201, tags=["hunt"])
-def create_hunt_target(vessel_id: int, db: Session = Depends(get_db)):
+def create_hunt_target(vessel_id: int, request: Request, db: Session = Depends(get_db)):
     """Register a vessel as a hunt target."""
     from app.modules.vessel_hunt import create_target_profile
     try:
         profile = create_target_profile(vessel_id, db)
+        _audit_log(db, "create", "hunt_target", profile.profile_id, details={
+            "vessel_id": vessel_id,
+        }, request=request)
+        db.commit()
         return {
             "profile_id": profile.profile_id,
             "vessel_id": profile.vessel_id,
@@ -1383,6 +1543,7 @@ def create_hunt_mission(
     target_profile_id: int,
     search_start_utc: str,
     search_end_utc: str,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Create a search mission with drift ellipse."""
@@ -1391,6 +1552,10 @@ def create_hunt_mission(
         start = datetime.fromisoformat(search_start_utc)
         end = datetime.fromisoformat(search_end_utc)
         mission = create_search_mission(target_profile_id, start, end, db)
+        _audit_log(db, "create", "search_mission", mission.mission_id, details={
+            "target_profile_id": target_profile_id,
+        }, request=request)
+        db.commit()
         return {
             "mission_id": mission.mission_id,
             "vessel_id": mission.vessel_id,
@@ -1416,11 +1581,15 @@ def get_hunt_mission(mission_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/hunt/missions/{mission_id}/find-candidates", status_code=201, tags=["hunt"])
-def run_find_candidates(mission_id: int, db: Session = Depends(get_db)):
+def run_find_candidates(mission_id: int, request: Request, db: Session = Depends(get_db)):
     """Find and score dark vessel detections within mission drift ellipse."""
     from app.modules.vessel_hunt import find_hunt_candidates
     try:
         candidates = find_hunt_candidates(mission_id, db)
+        _audit_log(db, "create", "hunt_candidate", mission_id, details={
+            "candidates_found": len(candidates),
+        }, request=request)
+        db.commit()
         return [
             {
                 "candidate_id": c.candidate_id,
@@ -1837,3 +2006,102 @@ def verification_budget(db: Session = Depends(get_db)):
     """Show current verification budget status."""
     from app.modules.paid_verification import get_budget_status
     return get_budget_status(db)
+
+
+# ---------------------------------------------------------------------------
+# H1: Data Freshness Monitoring
+# ---------------------------------------------------------------------------
+
+@router.get("/health/data-freshness", tags=["health"])
+def get_data_freshness(db: Session = Depends(get_db)):
+    """Data freshness monitoring -- reports AIS data staleness."""
+    from app.models.vessel import Vessel
+
+    now = datetime.now(timezone.utc)
+
+    latest = db.query(func.max(Vessel.last_ais_received_utc)).scalar()
+
+    one_hour_ago = now - timedelta(hours=1)
+    twenty_four_hours_ago = now - timedelta(hours=24)
+
+    vessels_1h = db.query(func.count(Vessel.vessel_id)).filter(
+        Vessel.last_ais_received_utc >= one_hour_ago
+    ).scalar() or 0
+
+    vessels_24h = db.query(func.count(Vessel.vessel_id)).filter(
+        Vessel.last_ais_received_utc >= twenty_four_hours_ago
+    ).scalar() or 0
+
+    staleness_minutes = None
+    if latest:
+        staleness_minutes = int((now - latest.replace(tzinfo=timezone.utc)).total_seconds() / 60)
+
+    return {
+        "latest_ais_utc": latest.isoformat() if latest else None,
+        "staleness_minutes": staleness_minutes,
+        "vessels_updated_last_1h": vessels_1h,
+        "vessels_updated_last_24h": vessels_24h,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Detector API Exposure
+# ---------------------------------------------------------------------------
+
+@router.post("/detect/cross-receiver", tags=["detection"])
+def trigger_cross_receiver_detection(request: Request, db: Session = Depends(get_db)):
+    """Trigger cross-receiver anomaly detection."""
+    from app.modules.cross_receiver_detector import detect_cross_receiver_anomalies
+    result = detect_cross_receiver_anomalies(db)
+    _audit_log(db, "detect_trigger", "cross_receiver", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.post("/detect/handshake", tags=["detection"])
+def trigger_handshake_detection(request: Request, db: Session = Depends(get_db)):
+    """Trigger handshake (identity swap) detection."""
+    from app.modules.handshake_detector import detect_handshakes
+    result = detect_handshakes(db)
+    _audit_log(db, "detect_trigger", "handshake", details=result, request=request)
+    db.commit()
+    return result
+
+
+@router.post("/detect/mmsi-cloning", tags=["detection"])
+def trigger_mmsi_cloning_detection(request: Request, db: Session = Depends(get_db)):
+    """Trigger MMSI cloning detection."""
+    from app.modules.mmsi_cloning_detector import detect_mmsi_cloning
+    results = detect_mmsi_cloning(db)
+    _audit_log(db, "detect_trigger", "mmsi_cloning", details={"clones_detected": len(results)}, request=request)
+    db.commit()
+    return {"clones_detected": len(results), "details": results}
+
+
+@router.get("/port-calls/{vessel_id}", tags=["port-calls"])
+def get_port_calls(vessel_id: int, db: Session = Depends(get_db)):
+    """List port calls for a vessel."""
+    from app.models.port_call import PortCall
+    from app.models.port import Port
+    from app.models.vessel import Vessel
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    port_calls = db.query(PortCall).filter(PortCall.vessel_id == vessel_id).order_by(PortCall.arrival_utc.desc()).all()
+
+    items = []
+    for pc in port_calls:
+        port = db.query(Port).filter(Port.port_id == pc.port_id).first() if pc.port_id else None
+        items.append({
+            "port_call_id": pc.port_call_id,
+            "vessel_id": pc.vessel_id,
+            "port_id": pc.port_id,
+            "port_name": port.name if port else getattr(pc, "raw_port_name", None),
+            "arrival_utc": pc.arrival_utc.isoformat() if pc.arrival_utc else None,
+            "departure_utc": pc.departure_utc.isoformat() if pc.departure_utc else None,
+            "source": pc.source if hasattr(pc, "source") else None,
+        })
+
+    return {"vessel_id": vessel_id, "items": items, "total": len(items)}

@@ -47,6 +47,7 @@ class Vessel(Base):
     merged_into_vessel_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("vessels.vessel_id"), nullable=True, index=True
     )
+    last_ais_received_utc: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
     )
