@@ -646,13 +646,27 @@ class TestMergeCandidatesAPI:
 
 
 class TestAbsorbedVesselAPI:
-    """Absorbed vessel should return redirect info, not 404."""
+    """Absorbed vessel should return VesselDetailRead with merged_into_vessel_id populated."""
 
     def test_absorbed_vessel_returns_merge_info(self, api_client, mock_db):
-        """GET /vessels/{absorbed_id} returns merge redirect info."""
+        """GET /vessels/{absorbed_id} returns VesselDetailRead with merged_into_vessel_id."""
         vessel = MagicMock()
         vessel.vessel_id = 2
         vessel.mmsi = "351000002"
+        vessel.imo = None
+        vessel.name = "ABSORBED VESSEL"
+        vessel.flag = "PA"
+        vessel.vessel_type = "Crude Oil Tanker"
+        vessel.deadweight = 50000.0
+        vessel.year_built = 2005
+        vessel.ais_class = MagicMock(value="A")
+        vessel.flag_risk_category = MagicMock(value="high")
+        vessel.pi_coverage_status = MagicMock(value="unknown")
+        vessel.psc_detained_last_12m = False
+        vessel.mmsi_first_seen_utc = None
+        vessel.vessel_laid_up_30d = False
+        vessel.vessel_laid_up_60d = False
+        vessel.vessel_laid_up_in_sts_zone = False
         # Key: merged_into_vessel_id is set (this is an absorbed vessel)
         vessel.merged_into_vessel_id = 1
 
@@ -666,7 +680,12 @@ class TestAbsorbedVesselAPI:
         resp = api_client.get("/api/v1/vessels/2")
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("merged") is True
+        # New format: consistent VesselDetailRead with merged_into_vessel_id set
+        assert data["vessel_id"] == 2
+        assert data["mmsi"] == "351000002"
+        assert data["merged_into_vessel_id"] is not None
+        assert "watchlist_entries" in data
+        assert "total_gaps_7d" in data
 
 
 # ── Timeline aggregation ─────────────────────────────────────────────────────

@@ -256,8 +256,12 @@ class TestHuntAPI:
         assert resp.status_code == 404
 
     def test_list_candidates_200(self, api_client, mock_db):
-        """GET /hunt/missions/1/candidates returns 200."""
-        mock_db.query.return_value.filter.return_value.all.return_value = []
+        """GET /hunt/missions/1/candidates returns 200 with {items, total} envelope."""
+        mock_db.query.return_value.filter.return_value.count.return_value = 0
+        mock_db.query.return_value.filter.return_value.offset.return_value.limit.return_value.all.return_value = []
         resp = api_client.get("/api/v1/hunt/missions/1/candidates")
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        data = resp.json()
+        assert "items" in data
+        assert "total" in data
+        assert isinstance(data["items"], list)

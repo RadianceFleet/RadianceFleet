@@ -653,19 +653,39 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
     if not vessel:
         raise HTTPException(status_code=404, detail="Vessel not found")
 
-    # Absorbed vessel: return redirect info instead of 404
-    _merged_into = vessel.merged_into_vessel_id
-    if _merged_into is not None:
+    now = datetime.now(timezone.utc)
+
+    # For absorbed (merged) vessels, return minimal detail with merged_into_vessel_id set.
+    # Gap/watchlist/spoofing/loitering/STS queries are skipped since the vessel's data
+    # has been migrated to the canonical vessel.
+    if vessel.merged_into_vessel_id is not None:
         from app.modules.identity_resolver import resolve_canonical
         canonical_id = resolve_canonical(vessel_id, db)
         return {
-            "merged": True,
-            "canonical_vessel_id": canonical_id,
-            "redirect_url": f"/vessels/{canonical_id}",
-            "absorbed_mmsi": vessel.mmsi,
+            "vessel_id": vessel.vessel_id,
+            "mmsi": vessel.mmsi,
+            "imo": vessel.imo,
+            "name": vessel.name,
+            "flag": vessel.flag,
+            "vessel_type": vessel.vessel_type,
+            "deadweight": vessel.deadweight,
+            "year_built": vessel.year_built,
+            "ais_class": str(vessel.ais_class.value) if hasattr(vessel.ais_class, "value") else vessel.ais_class,
+            "flag_risk_category": str(vessel.flag_risk_category.value) if hasattr(vessel.flag_risk_category, "value") else vessel.flag_risk_category,
+            "pi_coverage_status": str(vessel.pi_coverage_status.value) if hasattr(vessel.pi_coverage_status, "value") else vessel.pi_coverage_status,
+            "psc_detained_last_12m": vessel.psc_detained_last_12m,
+            "mmsi_first_seen_utc": vessel.mmsi_first_seen_utc,
+            "vessel_laid_up_30d": vessel.vessel_laid_up_30d,
+            "vessel_laid_up_60d": vessel.vessel_laid_up_60d,
+            "vessel_laid_up_in_sts_zone": vessel.vessel_laid_up_in_sts_zone,
+            "merged_into_vessel_id": canonical_id,
+            "watchlist_entries": [],
+            "spoofing_anomalies_30d": [],
+            "loitering_events_30d": [],
+            "sts_events_60d": [],
+            "total_gaps_7d": 0,
+            "total_gaps_30d": 0,
         }
-
-    now = datetime.now(timezone.utc)
 
     gaps_7d = db.query(AISGapEvent).filter(
         AISGapEvent.vessel_id == vessel_id,
@@ -721,6 +741,7 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         "vessel_laid_up_30d": vessel.vessel_laid_up_30d,
         "vessel_laid_up_60d": vessel.vessel_laid_up_60d,
         "vessel_laid_up_in_sts_zone": vessel.vessel_laid_up_in_sts_zone,
+        "merged_into_vessel_id": None,
         "watchlist_entries": [
             {"watchlist_entry_id": w.watchlist_entry_id, "watchlist_source": w.watchlist_source,
              "reason": w.reason, "date_listed": w.date_listed, "is_active": w.is_active}
@@ -1049,9 +1070,12 @@ def list_watchlist(
 ):
     """List all watchlist entries (paginated)."""
     from app.models.vessel_watchlist import VesselWatchlist
-    return db.query(VesselWatchlist).filter(
+    q = db.query(VesselWatchlist).filter(
         VesselWatchlist.is_active == True
-    ).offset(skip).limit(limit).all()
+    )
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+    return {"items": items, "total": total}
 
 
 @router.delete("/watchlist/{watchlist_entry_id}", tags=["watchlist"])
@@ -1256,8 +1280,8 @@ async def import_gfw_detections(
 def list_dark_vessels(
     ais_match_result: Optional[str] = None,
     corridor_id: Optional[int] = None,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     from app.models.stubs import DarkVesselDetection
@@ -1266,7 +1290,9 @@ def list_dark_vessels(
         q = q.filter(DarkVesselDetection.ais_match_result == ais_match_result)
     if corridor_id:
         q = q.filter(DarkVesselDetection.corridor_id == corridor_id)
-    return q.offset(skip).limit(limit).all()
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+    return {"items": items, "total": total}
 
 
 @router.get("/dark-vessels/{detection_id}")
@@ -1377,12 +1403,20 @@ def run_find_candidates(mission_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/hunt/missions/{mission_id}/candidates", tags=["hunt"])
-def list_hunt_candidates(mission_id: int, db: Session = Depends(get_db)):
-    """List all candidates for a mission."""
+def list_hunt_candidates(
+    mission_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """List all candidates for a mission (paginated)."""
     from app.models.stubs import HuntCandidate
-    return db.query(HuntCandidate).filter(
+    q = db.query(HuntCandidate).filter(
         HuntCandidate.mission_id == mission_id
-    ).all()
+    )
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+    return {"items": items, "total": total}
 
 
 @router.post("/hunt/missions/{mission_id}/confirm/{candidate_id}", tags=["hunt"])

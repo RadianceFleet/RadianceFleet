@@ -152,6 +152,7 @@ export interface VesselDetail {
   vessel_laid_up_30d: boolean
   vessel_laid_up_60d: boolean
   vessel_laid_up_in_sts_zone: boolean
+  merged_into_vessel_id: number | null
   watchlist_entries: WatchlistEntry[]
   spoofing_anomalies_30d: SpoofingAnomaly[]
   loitering_events_30d: LoiteringEvent[]

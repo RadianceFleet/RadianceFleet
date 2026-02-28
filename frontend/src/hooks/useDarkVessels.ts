@@ -11,6 +11,9 @@ export function useDarkVessels(filters?: {
   if (filters?.corridor_id != null) params.set('corridor_id', String(filters.corridor_id))
   return useQuery({
     queryKey: ['dark-vessels', filters],
-    queryFn: () => apiFetch<DarkVesselDetection[]>(`/dark-vessels?${params}`),
+    queryFn: async () => {
+      const resp = await apiFetch<{ items: DarkVesselDetection[]; total: number }>(`/dark-vessels?${params}`)
+      return resp.items
+    },
   })
 }
