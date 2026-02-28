@@ -1744,6 +1744,7 @@ def verify_vessel_endpoint(vessel_id: int, provider: str = "skylight", db: Sessi
     """Trigger pay-per-query verification for a vessel."""
     from app.modules.paid_verification import verify_vessel
     result = verify_vessel(db, vessel_id, provider_name=provider)
+    db.commit()
     return {
         "provider": result.provider,
         "success": result.success,

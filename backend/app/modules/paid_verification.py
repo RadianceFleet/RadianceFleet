@@ -184,7 +184,7 @@ def verify_vessel(
             result_summary=f"Monthly budget ${budget:.2f} exceeded (current: ${current_spend:.2f})",
         )
         db.add(log)
-        db.commit()
+        db.flush()
         return VerificationResult(
             provider=provider_name, success=False,
             error=f"Monthly budget exceeded: ${current_spend:.2f} / ${budget:.2f}",
@@ -202,7 +202,7 @@ def verify_vessel(
         result_summary=str(result.data)[:500] if result.success else result.error,
     )
     db.add(log)
-    db.commit()
+    db.flush()
 
     return result
 

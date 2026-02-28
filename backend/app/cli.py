@@ -869,9 +869,10 @@ def setup(
                             )
                             db.add(corridor)
                             upserted += 1
-                    db.commit()
+                    db.flush()
                     console.print(f"[green]✓[/green] Imported {upserted} corridors")
         except Exception as e:
+            db.rollback()
             console.print(f"[yellow]⚠ Corridor import failed: {e}[/yellow]")
 
         # 4. Fetch watchlists
@@ -2416,6 +2417,7 @@ def verify_vessel_cmd(
     db = SessionLocal()
     try:
         result = verify_vessel(db, vessel_id, provider_name=provider)
+        db.commit()
         if result.success:
             console.print(f"[green]Verification successful ({result.provider}): {result.data}")
         else:

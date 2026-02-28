@@ -292,9 +292,9 @@ def test_budget_check():
 
     assert result.success is False
     assert "budget exceeded" in result.error.lower()
-    # Verify a log was created
+    # Verify a log was created (flushed, not committed -- caller manages commit)
     db.add.assert_called()
-    db.commit.assert_called()
+    db.flush.assert_called()
 
 
 def test_provider_stub_returns_error():
@@ -342,7 +342,7 @@ def test_verification_log_created():
     assert added_obj.vessel_id == 1
     assert added_obj.provider == "skylight"
     assert added_obj.response_status == "error"  # stub returns error
-    db.commit.assert_called()
+    db.flush.assert_called()  # flushed, not committed -- caller manages commit
 
 
 def test_unknown_provider():

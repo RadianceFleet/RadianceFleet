@@ -33,14 +33,18 @@ class AISObservation(Base):
 
     __table_args__ = (
         Index("ix_ais_obs_mmsi_ts", "mmsi", "timestamp_utc"),
+        Index("ix_ais_obs_received_utc", "received_utc"),
     )
 
     @staticmethod
     def purge_old(db: Session, hours: int = 72) -> int:
-        """Delete observations older than `hours`. Returns count deleted."""
+        """Delete observations older than `hours`. Returns count deleted.
+
+        Note: Does NOT commit the transaction. The caller is responsible
+        for calling db.commit() when ready.
+        """
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         count = db.query(AISObservation).filter(
             AISObservation.received_utc < cutoff
         ).delete()
-        db.commit()
         return count
