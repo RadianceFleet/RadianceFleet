@@ -66,6 +66,7 @@ class STSDetectionTypeEnum(str, enum.Enum):
     VISIBLE_DARK = "visible_dark"
     DARK_DARK = "dark_dark"
     APPROACHING = "approaching"
+    GFW_ENCOUNTER = "gfw_encounter"
 
 
 class EstimatedMethodEnum(str, enum.Enum):
