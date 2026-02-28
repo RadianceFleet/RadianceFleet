@@ -324,6 +324,23 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
     if ts is None:
         return None
 
+    # Dual-write: raw observation for cross-receiver comparison (no dedup)
+    try:
+        from app.models.ais_observation import AISObservation
+        obs = AISObservation(
+            mmsi=str(vessel.mmsi),
+            source=row.get("source", "csv_import") or "unknown",
+            timestamp_utc=ts,
+            lat=float(row["lat"]),
+            lon=float(row["lon"]),
+            sog=float(row["sog"]) if row.get("sog") is not None else None,
+            cog=float(row["cog"]) if row.get("cog") is not None else None,
+            heading=float(row["heading"]) if row.get("heading") is not None else None,
+        )
+        db.add(obs)
+    except Exception:
+        pass  # Don't let observation write failure block main ingestion
+
     # 1.2: SOG/COG default to None (not 0) when missing
     sog_raw = row.get("sog")
     cog_raw = row.get("cog")

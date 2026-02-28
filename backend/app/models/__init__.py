@@ -2,6 +2,7 @@
 from app.models.base import Base
 from app.models.vessel import Vessel
 from app.models.ais_point import AISPoint
+from app.models.ais_observation import AISObservation
 from app.models.dark_zone import DarkZone
 from app.models.corridor import Corridor
 from app.models.gap_event import AISGapEvent
@@ -24,6 +25,7 @@ __all__ = [
     "Base",
     "Vessel",
     "AISPoint",
+    "AISObservation",
     "DarkZone",
     "Corridor",
     "AISGapEvent",
