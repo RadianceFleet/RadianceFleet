@@ -521,3 +521,134 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
         "OpenSanctions load complete: matched=%d unmatched=%d", matched, unmatched
     )
     return {"matched": matched, "unmatched": unmatched}
+
+
+# ── FleetLeaks loader ────────────────────────────────────────────────────────
+
+
+def load_fleetleaks(db: Session, json_path: str) -> dict:
+    """Load FleetLeaks sanctioned vessel database into the watchlist.
+
+    FleetLeaks (fleetleaks.com) maintains a daily-updated list of 792+ sanctioned vessels.
+    Expected format: JSON array of objects with imo, mmsi, name, flag fields.
+
+    Args:
+        db: Active SQLAlchemy session.
+        json_path: Absolute path to the FleetLeaks JSON file.
+
+    Returns:
+        ``{"matched": N, "unmatched": M}``
+    """
+    matched = 0
+    unmatched = 0
+
+    try:
+        with open(json_path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.error("Failed to parse FleetLeaks file %s: %s", json_path, exc)
+        return {"matched": 0, "unmatched": 0}
+
+    vessels_list = (
+        data
+        if isinstance(data, list)
+        else data.get("vessels", data.get("data", []))
+    )
+
+    for entry in vessels_list:
+        if not isinstance(entry, dict):
+            continue
+
+        name = (entry.get("name") or entry.get("vessel_name") or "").strip() or None
+        mmsi = str(entry.get("mmsi") or "").strip() or None
+        imo = (
+            str(entry.get("imo") or entry.get("imo_number") or "").strip() or None
+        )
+        flag = (entry.get("flag") or entry.get("flag_state") or "").strip() or None
+
+        result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
+        if result is None:
+            logger.warning(
+                "FleetLeaks: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo
+            )
+            unmatched += 1
+            continue
+
+        vessel, match_type, confidence = result
+        _upsert_watchlist(
+            db,
+            vessel=vessel,
+            watchlist_source="FLEETLEAKS",
+            reason="FleetLeaks sanctioned vessel database",
+            match_confidence=confidence,
+            match_type=match_type,
+        )
+        matched += 1
+
+    db.commit()
+    logger.info("FleetLeaks load: matched=%d unmatched=%d", matched, unmatched)
+    return {"matched": matched, "unmatched": unmatched}
+
+
+# ── Ukraine GUR loader ───────────────────────────────────────────────────────
+
+
+def load_gur_list(db: Session, csv_path: str) -> dict:
+    """Load Ukraine GUR shadow fleet database into the watchlist.
+
+    Source: https://war-sanctions.gur.gov.ua/en/transport/shadow-fleet
+    238+ intelligence-verified shadow fleet vessels with IMO numbers.
+    Expected format: CSV with columns including imo, name, flag.
+
+    Args:
+        db: Active SQLAlchemy session.
+        csv_path: Absolute path to the GUR CSV file.
+
+    Returns:
+        ``{"matched": N, "unmatched": M}``
+    """
+    matched = 0
+    unmatched = 0
+
+    _NAME_FIELDS = ["name", "vessel_name", "ship_name", "Name", "VESSEL_NAME"]
+    _MMSI_FIELDS = ["mmsi", "MMSI"]
+    _IMO_FIELDS = ["imo", "IMO", "imo_number"]
+    _FLAG_FIELDS = ["flag", "FLAG", "flag_state"]
+
+    def _first(row: dict, keys: list[str]) -> Optional[str]:
+        for k in keys:
+            val = row.get(k, "")
+            if val and str(val).strip():
+                return str(val).strip()
+        return None
+
+    with open(csv_path, newline="", encoding="utf-8-sig") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            name = _first(row, _NAME_FIELDS)
+            mmsi = _first(row, _MMSI_FIELDS)
+            imo = _first(row, _IMO_FIELDS)
+            flag = _first(row, _FLAG_FIELDS)
+
+            result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
+            if result is None:
+                logger.warning(
+                    "GUR: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo
+                )
+                unmatched += 1
+                continue
+
+            vessel, match_type, confidence = result
+            _upsert_watchlist(
+                db,
+                vessel=vessel,
+                watchlist_source="UKRAINE_GUR",
+                reason="Ukraine GUR shadow fleet intelligence",
+                match_confidence=confidence,
+                match_type=match_type,
+            )
+            matched += 1
+
+    db.commit()
+    logger.info("GUR load: matched=%d unmatched=%d", matched, unmatched)
+    return {"matched": matched, "unmatched": unmatched}

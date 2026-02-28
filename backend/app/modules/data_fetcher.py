@@ -453,6 +453,25 @@ def fetch_emsa_bans(
     return {"path": path, "status": "downloaded", "error": None}
 
 
+def fetch_fleetleaks(data_dir: str | None = None) -> str | None:
+    """Check for FleetLeaks vessel database (manual download).
+
+    FleetLeaks provides a public website but no stable download API yet.
+    Returns path if data file already exists, else None with guidance.
+    """
+    data_dir = data_dir or str(settings.DATA_DIR)
+    dest = Path(data_dir) / "fleetleaks_vessels.json"
+    if dest.exists():
+        logger.info("FleetLeaks data already present at %s", dest)
+        return str(dest)
+    logger.warning(
+        "FleetLeaks data not found at %s. Download manually from https://fleetleaks.com/ "
+        "or wait for API integration.",
+        dest,
+    )
+    return None
+
+
 def _find_latest(directory: Path, prefix: str) -> Path | None:
     """Find the most recently modified file matching a prefix."""
     matches = sorted(directory.glob(f"{prefix}*"), key=lambda p: p.stat().st_mtime)
