@@ -53,6 +53,11 @@ def _run_migrations() -> None:
         "ALTER TABLE ais_gap_events ADD COLUMN source VARCHAR(20)",
         "ALTER TABLE port_calls ADD COLUMN raw_port_name VARCHAR",
         "ALTER TABLE port_calls ADD COLUMN source VARCHAR NOT NULL DEFAULT 'manual'",
+        # Phase C15 — ownership verification fields
+        "ALTER TABLE vessel_owners ADD COLUMN verified_by VARCHAR",
+        "ALTER TABLE vessel_owners ADD COLUMN verified_at DATETIME",
+        "ALTER TABLE vessel_owners ADD COLUMN source_url VARCHAR",
+        "ALTER TABLE vessel_owners ADD COLUMN verification_notes TEXT",
     ]
     with engine.connect() as conn:
         for stmt in migrations:

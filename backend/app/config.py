@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     MERGE_MAX_GAP_DAYS: int = 30
     MERGE_AUTO_CONFIDENCE_THRESHOLD: int = 85
     MERGE_CANDIDATE_MIN_CONFIDENCE: int = 50
+    # Paid verification providers (Phase D17-19)
+    SKYLIGHT_API_KEY: str = ""
+    SPIRE_API_KEY: str = ""
+    SEAWEB_API_KEY: str = ""
+    VERIFICATION_MONTHLY_BUDGET_USD: float = 500.0
 
 
 settings = Settings()
