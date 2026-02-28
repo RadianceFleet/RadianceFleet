@@ -18,6 +18,7 @@ from app.models.port_call import PortCall
 from app.models.vessel_owner import VesselOwner
 from app.models.merge_candidate import MergeCandidate
 from app.models.merge_operation import MergeOperation
+from app.models.verification_log import VerificationLog
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "VesselOwner",
     "MergeCandidate",
     "MergeOperation",
+    "VerificationLog",
     "VesselTargetProfile",
     "SearchMission",
     "HuntCandidate",

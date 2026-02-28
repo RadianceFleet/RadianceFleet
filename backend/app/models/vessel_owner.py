@@ -1,9 +1,10 @@
 """VesselOwner entity — vessel ownership and sanctions status."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, String, Boolean, ForeignKey
+from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
@@ -16,3 +17,8 @@ class VesselOwner(Base):
     owner_name: Mapped[str] = mapped_column(String(255), nullable=False)
     country: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     is_sanctioned: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Ownership verification fields (Phase C15)
+    verified_by: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    verification_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

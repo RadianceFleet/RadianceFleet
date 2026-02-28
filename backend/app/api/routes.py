@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -642,6 +643,7 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
     """Full vessel profile including watchlist, spoofing, loitering, STS, gap counts."""
     from app.models.vessel import Vessel
     from app.models.vessel_watchlist import VesselWatchlist
+    from app.models.vessel_owner import VesselOwner
     from app.models.spoofing_anomaly import SpoofingAnomaly
     from app.models.loitering_event import LoiteringEvent
     from app.models.sts_transfer import StsTransferEvent
@@ -692,6 +694,16 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         StsTransferEvent.start_time_utc >= now - timedelta(days=60),
     ).all()
 
+    # External verification deep-links (Phase C15)
+    import urllib.parse
+    equasis_url = None
+    opencorporates_url = None
+    if vessel.imo:
+        equasis_url = f"https://www.equasis.org/EquasisWeb/restricted/Search?P_IMO={vessel.imo}"
+    owner = db.query(VesselOwner).filter(VesselOwner.vessel_id == vessel_id).first()
+    if owner and owner.owner_name and isinstance(owner.owner_name, str):
+        opencorporates_url = f"https://opencorporates.com/companies?q={urllib.parse.quote(owner.owner_name)}"
+
     return {
         "vessel_id": vessel.vessel_id,
         "mmsi": vessel.mmsi,
@@ -731,6 +743,8 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         ],
         "total_gaps_7d": gaps_7d,
         "total_gaps_30d": gaps_30d,
+        "equasis_url": equasis_url,
+        "opencorporates_url": opencorporates_url,
     }
 
 
@@ -1680,3 +1694,67 @@ def get_vessel_aliases_endpoint(vessel_id: int, db: Session = Depends(get_db)):
 
     aliases = get_vessel_aliases(db, vessel_id)
     return {"vessel_id": vessel_id, "aliases": aliases}
+
+
+# ── Ownership verification (Phase C15) ───────────────────────────────────────
+
+class OwnerUpdateRequest(BaseModel):
+    owner_name: Optional[str] = None
+    is_sanctioned: Optional[bool] = None
+    source_url: Optional[str] = None
+    notes: Optional[str] = None
+    verified_by: Optional[str] = None
+
+
+@router.patch("/vessels/{vessel_id}/owner", tags=["vessels"])
+def update_vessel_owner(vessel_id: int, body: OwnerUpdateRequest, db: Session = Depends(get_db)):
+    """Update or create vessel ownership verification record."""
+    from app.models.vessel_owner import VesselOwner
+    from app.models.vessel import Vessel
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    owner = db.query(VesselOwner).filter(VesselOwner.vessel_id == vessel_id).first()
+    if not owner:
+        owner = VesselOwner(vessel_id=vessel_id, owner_name=body.owner_name or "Unknown")
+        db.add(owner)
+
+    if body.owner_name is not None:
+        owner.owner_name = body.owner_name
+    if body.is_sanctioned is not None:
+        owner.is_sanctioned = body.is_sanctioned
+    if body.source_url is not None:
+        owner.source_url = body.source_url
+    if body.notes is not None:
+        owner.verification_notes = body.notes
+    if body.verified_by is not None:
+        owner.verified_by = body.verified_by
+        owner.verified_at = datetime.now(timezone.utc)
+
+    db.commit()
+    return {"status": "updated", "vessel_id": vessel_id}
+
+
+# ── Paid verification (Phase D17-19) ─────────────────────────────────────────
+
+@router.post("/vessels/{vessel_id}/verify", tags=["vessels"])
+def verify_vessel_endpoint(vessel_id: int, provider: str = "skylight", db: Session = Depends(get_db)):
+    """Trigger pay-per-query verification for a vessel."""
+    from app.modules.paid_verification import verify_vessel
+    result = verify_vessel(db, vessel_id, provider_name=provider)
+    return {
+        "provider": result.provider,
+        "success": result.success,
+        "data": result.data,
+        "cost_usd": result.cost_usd,
+        "error": result.error,
+    }
+
+
+@router.get("/verification/budget", tags=["verification"])
+def verification_budget(db: Session = Depends(get_db)):
+    """Show current verification budget status."""
+    from app.modules.paid_verification import get_budget_status
+    return get_budget_status(db)

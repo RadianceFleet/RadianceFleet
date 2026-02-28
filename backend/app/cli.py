@@ -2194,3 +2194,22 @@ def list_merge_candidates_cmd(
         console.print(table)
     finally:
         db.close()
+
+
+@app.command("verify-vessel")
+def verify_vessel_cmd(
+    vessel_id: int = typer.Argument(..., help="Vessel ID to verify"),
+    provider: str = typer.Option("skylight", help="Provider: skylight, spire, seaweb"),
+):
+    """Trigger pay-per-query verification for a vessel."""
+    from app.modules.paid_verification import verify_vessel
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        result = verify_vessel(db, vessel_id, provider_name=provider)
+        if result.success:
+            console.print(f"[green]Verification successful ({result.provider}): {result.data}")
+        else:
+            console.print(f"[yellow]Verification pending ({result.provider}): {result.error}")
+    finally:
+        db.close()
