@@ -223,9 +223,7 @@ class TestHuntThresholdFix:
 
     def test_score_bands_v1_1(self):
         """find_hunt_candidates should use updated thresholds: HIGH>=45, MEDIUM>=25."""
-        # Verify by checking the source for the threshold values
-        import inspect
-        from app.modules.vessel_hunt import find_hunt_candidates
-        source = inspect.getsource(find_hunt_candidates)
-        assert "score >= 45" in source
-        assert "score >= 25" in source
+        # Verify thresholds via config constants (moved from hardcoded to config)
+        from app.modules.vessel_hunt import HIGH_SCORE_BAND, MEDIUM_SCORE_BAND
+        assert HIGH_SCORE_BAND == 45
+        assert MEDIUM_SCORE_BAND == 25

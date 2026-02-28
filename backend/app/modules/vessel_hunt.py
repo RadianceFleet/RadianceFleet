@@ -8,6 +8,7 @@ Workflow:
 """
 from __future__ import annotations
 
+import logging
 import math
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -20,6 +21,29 @@ from app.models.stubs import (
 )
 from app.models.vessel import Vessel
 from app.modules.gap_detector import compute_max_distance_nm, _haversine_nm
+
+logger = logging.getLogger(__name__)
+
+# ── Constants (loaded from config/risk_scoring.yaml with hardcoded fallbacks) ──
+
+def _load_hunt_scoring() -> dict:
+    """Load hunt scoring parameters from YAML config, falling back to defaults."""
+    try:
+        from app.modules.risk_scoring import load_scoring_config
+        cfg = load_scoring_config()
+        return cfg.get("hunt_scoring", {})
+    except Exception:
+        return {}
+
+_HUNT_CFG = _load_hunt_scoring()
+
+LENGTH_RATIO_MIN: float = _HUNT_CFG.get("length_ratio_min", 0.8)
+LENGTH_RATIO_MAX: float = _HUNT_CFG.get("length_ratio_max", 1.2)
+HEADING_THRESHOLD: float = _HUNT_CFG.get("heading_threshold", 15.0)
+DRIFT_MULTIPLIER: float = _HUNT_CFG.get("drift_multiplier", 15.0)
+CLASS_SCORE: float = _HUNT_CFG.get("class_score", 10.0)
+HIGH_SCORE_BAND: float = _HUNT_CFG.get("high_score_band", 45)
+MEDIUM_SCORE_BAND: float = _HUNT_CFG.get("medium_score_band", 25)
 
 
 def create_target_profile(
@@ -147,7 +171,7 @@ def _compute_hunt_score(
     """
     breakdown: dict = {}
 
-    # Length match (0 or 1): within 20% of profile LOA
+    # Length match (0 or 1): within configured ratio of profile LOA
     length_score = 0.0
     if (
         det.length_estimate_m is not None
@@ -158,11 +182,11 @@ def _compute_hunt_score(
         # Rough LOA estimate from DWT (tanker approximation)
         estimated_loa = 150 + (vessel.deadweight / 3000)
         ratio = det.length_estimate_m / estimated_loa
-        length_score = 20.0 if 0.8 <= ratio <= 1.2 else 0.0
+        length_score = 20.0 if LENGTH_RATIO_MIN <= ratio <= LENGTH_RATIO_MAX else 0.0
     breakdown["length_match"] = length_score
 
     # Heading plausible: always True for dark vessel (no heading to check)
-    heading_score = 15.0
+    heading_score = HEADING_THRESHOLD
     breakdown["heading_plausible"] = heading_score
 
     # Drift probability: inverse of distance / max_radius
@@ -174,7 +198,7 @@ def _compute_hunt_score(
                 det.detection_lat, det.detection_lon,
             )
             proximity_ratio = max(0.0, 1.0 - dist_nm / mission.max_radius_nm)
-            drift_score = 15.0 * proximity_ratio
+            drift_score = DRIFT_MULTIPLIER * proximity_ratio
     breakdown["drift_probability"] = drift_score
 
     # Vessel class match: type inference matches vessel type
@@ -185,7 +209,7 @@ def _compute_hunt_score(
         and vessel.vessel_type is not None
         and det.vessel_type_inferred.lower() in vessel.vessel_type.lower()
     ):
-        class_score = 10.0
+        class_score = CLASS_SCORE
     breakdown["vessel_class_match"] = class_score
 
     total = length_score + heading_score + drift_score + class_score
@@ -241,9 +265,9 @@ def find_hunt_candidates(mission_id: int, db: Session) -> list[HuntCandidate]:
         score, breakdown = _compute_hunt_score(det, mission, vessel)
 
         # v1.1: max score without visual_similarity is 60, so lower thresholds
-        if score >= 45:
+        if score >= HIGH_SCORE_BAND:
             band = "HIGH"
-        elif score >= 25:
+        elif score >= MEDIUM_SCORE_BAND:
             band = "MEDIUM"
         else:
             band = "LOW"

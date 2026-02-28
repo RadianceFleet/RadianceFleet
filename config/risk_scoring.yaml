@@ -218,3 +218,14 @@ detection_thresholds:
     laid_up_30d_days: 30        # days threshold for 30d laid-up detection
     laid_up_60d_days: 60        # days threshold for 60d laid-up detection
     laid_up_bbox_deg: 0.033     # ±degrees positional stability (~2 nm at mid-lat)
+
+# VESSEL HUNT SCORING (FR9) — candidate detection scoring parameters
+# These are loaded at module init; code falls back to hardcoded defaults if missing.
+hunt_scoring:
+  length_ratio_min: 0.8        # min LOA ratio for length match (within 20%)
+  length_ratio_max: 1.2        # max LOA ratio for length match
+  heading_threshold: 15.0      # heading plausible score (always True for dark vessel v1.1)
+  drift_multiplier: 15.0       # max drift probability score (scaled by proximity)
+  class_score: 10.0            # vessel class match score
+  high_score_band: 45          # score >= this -> HIGH band
+  medium_score_band: 25        # score >= this -> MEDIUM band (below = LOW)

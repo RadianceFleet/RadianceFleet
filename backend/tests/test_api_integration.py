@@ -34,10 +34,17 @@ class TestAlertsEndpoint:
 class TestStatsEndpoint:
     def test_stats_returns_200(self, api_client, mock_db):
         """GET /api/v1/stats returns 200 with stats object containing zeroes."""
-        # stats chain: db.query(X).all() for alert list
-        mock_db.query.return_value.all.return_value = []
+        # Stats now uses SQL aggregation with with_entities instead of loading all rows.
+        # count aggregation result: (total, critical, high, medium, low)
+        count_result = (0, 0, 0, 0, 0)
+        mock_db.query.return_value.with_entities.return_value.first.return_value = count_result
+        # status/corridor group_by queries
+        mock_db.query.return_value.with_entities.return_value.group_by.return_value.all.return_value = []
         # stats subquery: db.query(func.count()).select_from(subq).scalar()
         mock_db.query.return_value.select_from.return_value.scalar.return_value = 0
+        mock_db.query.return_value.scalar.return_value = 0
+        # multi-gap subquery chain
+        mock_db.query.return_value.filter.return_value.group_by.return_value.having.return_value.subquery.return_value = "subq"
 
         resp = api_client.get("/api/v1/stats")
         assert resp.status_code == 200

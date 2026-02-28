@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -872,19 +872,35 @@ def list_corridors(
     total = q.count()
     corridors = q.offset(skip).limit(limit).all()
     now = datetime.now(timezone.utc)
+
+    # Pre-compute all corridor stats in a single aggregation query (avoids N+1)
+    corridor_ids = [c.corridor_id for c in corridors]
+    stats_map: dict = {}
+    if corridor_ids:
+        stats_rows = db.query(
+            AISGapEvent.corridor_id,
+            func.sum(case(
+                (AISGapEvent.gap_start_utc >= now - timedelta(days=7), 1),
+                else_=0,
+            )).label("alert_7d"),
+            func.sum(case(
+                (AISGapEvent.gap_start_utc >= now - timedelta(days=30), 1),
+                else_=0,
+            )).label("alert_30d"),
+            func.avg(AISGapEvent.risk_score).label("avg_score"),
+        ).filter(
+            AISGapEvent.corridor_id.in_(corridor_ids),
+        ).group_by(AISGapEvent.corridor_id).all()
+        for row in stats_rows:
+            stats_map[row[0]] = {
+                "alert_7d": int(row[1] or 0),
+                "alert_30d": int(row[2] or 0),
+                "avg_score": round(float(row[3]), 1) if row[3] else None,
+            }
+
     result = []
     for c in corridors:
-        alert_7d = db.query(AISGapEvent).filter(
-            AISGapEvent.corridor_id == c.corridor_id,
-            AISGapEvent.gap_start_utc >= now - timedelta(days=7),
-        ).count()
-        alert_30d = db.query(AISGapEvent).filter(
-            AISGapEvent.corridor_id == c.corridor_id,
-            AISGapEvent.gap_start_utc >= now - timedelta(days=30),
-        ).count()
-        avg_score = db.query(func.avg(AISGapEvent.risk_score)).filter(
-            AISGapEvent.corridor_id == c.corridor_id,
-        ).scalar()
+        s = stats_map.get(c.corridor_id, {})
         result.append({
             "corridor_id": c.corridor_id,
             "name": c.name,
@@ -892,9 +908,9 @@ def list_corridors(
             "risk_weight": c.risk_weight,
             "is_jamming_zone": c.is_jamming_zone,
             "description": c.description,
-            "alert_count_7d": alert_7d,
-            "alert_count_30d": alert_30d,
-            "avg_risk_score": round(float(avg_score), 1) if avg_score else None,
+            "alert_count_7d": s.get("alert_7d", 0),
+            "alert_count_30d": s.get("alert_30d", 0),
+            "avg_risk_score": s.get("avg_score"),
         })
     return {"items": result, "total": total}
 
@@ -987,23 +1003,38 @@ def get_stats(
     if date_to:
         q = q.filter(AISGapEvent.gap_end_utc <= datetime.combine(date_to, datetime.max.time()))
 
-    all_alerts = q.all()
+    # Use SQL aggregation instead of loading all rows into memory
+    count_q = q.with_entities(
+        func.count().label("total"),
+        func.sum(case((AISGapEvent.risk_score >= 76, 1), else_=0)).label("critical"),
+        func.sum(case((AISGapEvent.risk_score.between(51, 75), 1), else_=0)).label("high"),
+        func.sum(case((AISGapEvent.risk_score.between(21, 50), 1), else_=0)).label("medium"),
+        func.sum(case((AISGapEvent.risk_score < 21, 1), else_=0)).label("low"),
+    ).first()
 
-    total = len(all_alerts)
-    critical = sum(1 for a in all_alerts if a.risk_score >= 76)
-    high = sum(1 for a in all_alerts if 51 <= a.risk_score < 76)
-    medium = sum(1 for a in all_alerts if 21 <= a.risk_score < 51)
-    low = sum(1 for a in all_alerts if a.risk_score < 21)
+    total = count_q[0] or 0
+    critical = int(count_q[1] or 0)
+    high = int(count_q[2] or 0)
+    medium = int(count_q[3] or 0)
+    low = int(count_q[4] or 0)
 
+    # Aggregate by status in SQL
     by_status: dict[str, int] = {}
-    for a in all_alerts:
-        s = str(a.status.value) if hasattr(a.status, "value") else str(a.status)
-        by_status[s] = by_status.get(s, 0) + 1
+    status_rows = q.with_entities(
+        AISGapEvent.status, func.count()
+    ).group_by(AISGapEvent.status).all()
+    for row in status_rows:
+        s = str(row[0].value) if hasattr(row[0], "value") else str(row[0])
+        by_status[s] = row[1]
 
+    # Aggregate by corridor in SQL
     by_corridor: dict[str, int] = {}
-    for a in all_alerts:
-        key = str(a.corridor_id) if a.corridor_id else "no_corridor"
-        by_corridor[key] = by_corridor.get(key, 0) + 1
+    corridor_rows = q.with_entities(
+        AISGapEvent.corridor_id, func.count()
+    ).group_by(AISGapEvent.corridor_id).all()
+    for row in corridor_rows:
+        key = str(row[0]) if row[0] else "no_corridor"
+        by_corridor[key] = row[1]
 
     # Vessels with multiple gaps in last 7 days
     now = datetime.now(timezone.utc)
@@ -1528,10 +1559,20 @@ def list_merge_candidates(
     total = q.count()
     candidates = q.offset(skip).limit(limit).all()
 
+    # Collect all vessel IDs and fetch in a single IN query (avoids N+1)
+    vessel_ids = set()
+    for c in candidates:
+        vessel_ids.add(c.vessel_a_id)
+        vessel_ids.add(c.vessel_b_id)
+    vessel_map: dict = {}
+    if vessel_ids:
+        vessels = db.query(Vessel).filter(Vessel.vessel_id.in_(vessel_ids)).all()
+        vessel_map = {v.vessel_id: v for v in vessels}
+
     results = []
     for c in candidates:
-        va = db.query(Vessel).get(c.vessel_a_id)
-        vb = db.query(Vessel).get(c.vessel_b_id)
+        va = vessel_map.get(c.vessel_a_id)
+        vb = vessel_map.get(c.vessel_b_id)
         results.append({
             "candidate_id": c.candidate_id,
             "vessel_a": {"vessel_id": c.vessel_a_id, "mmsi": va.mmsi if va else None, "name": va.name if va else None},
