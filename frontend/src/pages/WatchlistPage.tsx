@@ -3,7 +3,9 @@ import { useWatchlist, useImportWatchlist, useRemoveWatchlistEntry } from '../ho
 import { Spinner } from '../components/ui/Spinner'
 import { Card } from '../components/ui/Card'
 import { EmptyState } from '../components/ui/EmptyState'
+import { Pagination } from '../components/ui/Pagination'
 
+const PAGE_SIZE = 20
 const SOURCES = ['OFAC', 'KSE', 'OpenSanctions'] as const
 
 const cellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.8125rem' }
@@ -16,7 +18,12 @@ const headStyle: React.CSSProperties = {
 }
 
 export function WatchlistPage() {
-  const { data: entries, isLoading, error } = useWatchlist()
+  const [page, setPage] = useState(0)
+  const { data, isLoading, error } = useWatchlist({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const entries = data?.items
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
   const importMutation = useImportWatchlist()
   const removeMutation = useRemoveWatchlistEntry()
 
@@ -118,56 +125,66 @@ export function WatchlistPage() {
         )}
 
         {entries && entries.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg-base)' }}>
-                  <th style={headStyle}>Vessel</th>
-                  <th style={headStyle}>MMSI</th>
-                  <th style={headStyle}>Source</th>
-                  <th style={headStyle}>Reason</th>
-                  <th style={headStyle}>Listed</th>
-                  <th style={headStyle}>Active</th>
-                  <th style={headStyle}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map(entry => (
-                  <tr key={entry.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={cellStyle}>{entry.vessel_name ?? '-'}</td>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace' }}>{entry.mmsi ?? '-'}</td>
-                    <td style={cellStyle}>{entry.source}</td>
-                    <td style={{ ...cellStyle, color: 'var(--text-dim)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {entry.reason ?? '-'}
-                    </td>
-                    <td style={cellStyle}>{entry.listed_date?.slice(0, 10) ?? '-'}</td>
-                    <td style={cellStyle}>
-                      <span style={{ color: entry.is_active ? 'var(--score-low)' : 'var(--text-dim)' }}>
-                        {entry.is_active ? 'Yes' : 'No'}
-                      </span>
-                    </td>
-                    <td style={cellStyle}>
-                      <button
-                        onClick={() => removeMutation.mutate(entry.id)}
-                        disabled={removeMutation.isPending}
-                        style={{
-                          padding: '0.25rem 0.5rem',
-                          background: 'transparent',
-                          color: 'var(--score-critical)',
-                          border: '1px solid var(--score-critical)',
-                          borderRadius: 'var(--radius)',
-                          cursor: 'pointer',
-                          fontSize: '0.75rem',
-                        }}
-                      >
-                        Remove
-                      </button>
-                    </td>
+          <>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--bg-base)' }}>
+                    <th style={headStyle}>Vessel</th>
+                    <th style={headStyle}>MMSI</th>
+                    <th style={headStyle}>Source</th>
+                    <th style={headStyle}>Reason</th>
+                    <th style={headStyle}>Listed</th>
+                    <th style={headStyle}>Active</th>
+                    <th style={headStyle}></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {entries.map(entry => (
+                    <tr key={entry.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={cellStyle}>{entry.vessel_name ?? '-'}</td>
+                      <td style={{ ...cellStyle, fontFamily: 'monospace' }}>{entry.mmsi ?? '-'}</td>
+                      <td style={cellStyle}>{entry.source}</td>
+                      <td style={{ ...cellStyle, color: 'var(--text-dim)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {entry.reason ?? '-'}
+                      </td>
+                      <td style={cellStyle}>{entry.listed_date?.slice(0, 10) ?? '-'}</td>
+                      <td style={cellStyle}>
+                        <span style={{ color: entry.is_active ? 'var(--score-low)' : 'var(--text-dim)' }}>
+                          {entry.is_active ? 'Yes' : 'No'}
+                        </span>
+                      </td>
+                      <td style={cellStyle}>
+                        <button
+                          onClick={() => removeMutation.mutate(entry.id)}
+                          disabled={removeMutation.isPending}
+                          style={{
+                            padding: '0.25rem 0.5rem',
+                            background: 'transparent',
+                            color: 'var(--score-critical)',
+                            border: '1px solid var(--score-critical)',
+                            borderRadius: 'var(--radius)',
+                            cursor: 'pointer',
+                            fontSize: '0.75rem',
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+              label="entries"
+            />
+          </>
         )}
       </Card>
     </div>

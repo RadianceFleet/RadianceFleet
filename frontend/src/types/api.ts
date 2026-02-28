@@ -204,6 +204,15 @@ export interface CorridorUpdatePayload {
   is_jamming_zone: boolean
 }
 
+export interface CorridorCreatePayload {
+  name: string
+  corridor_type?: string
+  risk_weight?: number
+  description?: string
+  is_jamming_zone?: boolean
+  geometry_wkt?: string
+}
+
 // ---------------------------------------------------------------------------
 // STS types
 // ---------------------------------------------------------------------------

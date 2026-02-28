@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useCorridorDetail } from '../hooks/useCorridors'
-import { useUpdateCorridor } from '../hooks/useCorridorMutation'
+import { useUpdateCorridor, useDeleteCorridor } from '../hooks/useCorridorMutation'
 import type { CorridorUpdatePayload } from '../types/api'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
@@ -49,8 +49,10 @@ function formatType(raw: string): string {
 
 export function CorridorDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { data: corridor, isLoading, error } = useCorridorDetail(id)
   const mutation = useUpdateCorridor(id ?? '')
+  const deleteMutation = useDeleteCorridor()
 
   const [editing, setEditing] = useState(false)
   const [editName, setEditName] = useState('')
@@ -90,6 +92,17 @@ export function CorridorDetailPage() {
     }
     mutation.mutate(payload, {
       onSuccess: () => setEditing(false),
+    })
+  }
+
+  function handleDelete() {
+    if (!corridor) return
+    const confirmed = window.confirm(
+      `Are you sure you want to delete corridor "${corridor.name}"? This action cannot be undone.`
+    )
+    if (!confirmed) return
+    deleteMutation.mutate(corridor.corridor_id, {
+      onSuccess: () => navigate('/corridors'),
     })
   }
 
@@ -135,16 +148,31 @@ export function CorridorDetailPage() {
             </h2>
 
             {!editing ? (
-              <button
-                onClick={handleEdit}
-                style={{
-                  ...btnBase,
-                  background: 'var(--accent-primary)',
-                  color: '#fff',
-                }}
-              >
-                Edit
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  onClick={handleEdit}
+                  style={{
+                    ...btnBase,
+                    background: 'var(--accent-primary)',
+                    color: '#fff',
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleteMutation.isPending}
+                  style={{
+                    ...btnBase,
+                    background: 'transparent',
+                    color: 'var(--score-critical)',
+                    border: '1px solid var(--score-critical)',
+                    opacity: deleteMutation.isPending ? 0.6 : 1,
+                  }}
+                >
+                  {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             ) : (
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
@@ -177,6 +205,12 @@ export function CorridorDetailPage() {
           {mutation.isError && (
             <p style={{ color: 'var(--score-critical)', fontSize: '0.8125rem', margin: '0 0 0.75rem' }}>
               Failed to update corridor. Please try again.
+            </p>
+          )}
+
+          {deleteMutation.isError && (
+            <p style={{ color: 'var(--score-critical)', fontSize: '0.8125rem', margin: '0 0 0.75rem' }}>
+              Failed to delete corridor. Please try again.
             </p>
           )}
 

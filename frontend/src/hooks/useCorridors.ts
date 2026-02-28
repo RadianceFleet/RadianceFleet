@@ -2,10 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
 import type { CorridorSummary, CorridorDetail } from '../types/api'
 
-export function useCorridors() {
+export function useCorridors(filters?: { skip?: number; limit?: number }) {
+  const params = new URLSearchParams()
+  if (filters?.skip != null) params.set('skip', String(filters.skip))
+  if (filters?.limit != null) params.set('limit', String(filters.limit))
   return useQuery({
-    queryKey: ['corridors'],
-    queryFn: () => apiFetch<{ items: CorridorSummary[]; total: number }>('/corridors'),
+    queryKey: ['corridors', filters],
+    queryFn: () => apiFetch<{ items: CorridorSummary[]; total: number }>(`/corridors?${params}`),
   })
 }
 
