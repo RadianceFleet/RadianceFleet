@@ -76,7 +76,8 @@ metadata:
 # VESSEL CHARACTERISTICS
 vessel_age:
   age_0_to_10y: -5
-  age_10_to_20y: 0
+  age_10_to_15y: 0
+  age_15_to_20y: 5       # prime shadow fleet age bracket (avg age 17y per KSE)
   age_20_to_25y: 10
   age_25_plus_y: 20
   age_25_plus_AND_high_risk_flag: 30

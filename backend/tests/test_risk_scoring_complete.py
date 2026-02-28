@@ -1374,11 +1374,21 @@ def test_laid_up_scores_from_yaml():
         assert behavioral_cfg.get("vessel_laid_up_30d_plus") == 15
 
 
-def test_age_10_20y_visible_in_breakdown():
-    """Bug 3.3: Age 10-20y (0 pts) must appear in breakdown for transparency."""
+def test_age_10_15y_visible_in_breakdown():
+    """Age 10-15y (0 pts) must appear in breakdown for transparency."""
+    config = load_scoring_config()
+    gap = _make_gap(duration_minutes=6 * 60, year_built=2014)
+    _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
+
+    assert "vessel_age_10_15y" in bd, "Age 10-15y must appear in breakdown even when 0 pts"
+    assert bd["vessel_age_10_15y"] == 0
+
+
+def test_age_15_20y_visible_in_breakdown():
+    """Age 15-20y (5 pts) must appear in breakdown."""
     config = load_scoring_config()
     gap = _make_gap(duration_minutes=6 * 60, year_built=2010)
     _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
 
-    assert "vessel_age_10_20y" in bd, "Age 10-20y must appear in breakdown even when 0 pts"
-    assert bd["vessel_age_10_20y"] == 0
+    assert "vessel_age_15_20y" in bd, "Age 15-20y must appear in breakdown"
+    assert bd["vessel_age_15_20y"] == 5

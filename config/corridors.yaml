@@ -270,6 +270,46 @@ corridors:
     description: "Nador STS hotspot — Bloomberg-documented since June 2024"
     tags: [ship_to_ship, documented]
 
+  - name: "Gulf of Oman offshore STS"
+    geometry: "POLYGON((56.5 24.5, 58.5 24.5, 58.5 26.5, 56.5 26.5, 56.5 24.5))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Gulf of Oman offshore STS — record 92K b/d Russian crude transfers (CREA 2025)"
+    tags: [ship_to_ship, documented]
+
+  - name: "Bulgaria offshore STS"
+    geometry: "POLYGON((27.5 42.0, 29.0 42.0, 29.0 43.0, 27.5 43.0, 27.5 42.0))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Bulgaria offshore STS zone — 38% of EU STS value (Dec 2025, CREA)"
+    tags: [ship_to_ship, documented, eu_sts]
+
+  - name: "Cyprus offshore STS"
+    geometry: "POLYGON((32.0 34.0, 34.5 34.0, 34.5 35.5, 32.0 35.5, 32.0 34.0))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Cyprus offshore STS zone — 32% of EU STS value (Dec 2025, CREA)"
+    tags: [ship_to_ship, documented, eu_sts]
+
+  - name: "Cape Verde / South Atlantic STS"
+    geometry: "POLYGON((-26.0 14.0, -23.0 14.0, -23.0 17.0, -26.0 17.0, -26.0 14.0))"
+    corridor_type: sts_zone
+    risk_weight: 1.8
+    is_jamming_zone: false
+    description: "Cape Verde / South Atlantic STS — emerging Russian crude transfer zone"
+    tags: [ship_to_ship, emerging]
+
+  - name: "Khor al Zubair / Basra"
+    geometry: "POLYGON((47.5 29.5, 48.5 29.5, 48.5 30.5, 47.5 30.5, 47.5 29.5))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Khor al Zubair / Basra — Iraqi re-export point; 460 fake voyages documented in H1 2025"
+    tags: [ship_to_ship, fake_port_calls, documented]
+
   # --- ADDITIONAL IMPORT ROUTES ---
   - name: "Ras Lanuf / Brega (Libya)"
     geometry: "POLYGON((18.0 30.0, 20.5 30.0, 20.5 31.0, 18.0 31.0, 18.0 30.0))"

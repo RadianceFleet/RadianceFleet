@@ -534,9 +534,10 @@ def compute_gap_score(
                 pts = vessel_age_cfg.get("age_0_to_10y", -5)
                 if pts != 0:
                     breakdown["vessel_age_0_10y"] = pts
+            elif age <= 15:
+                breakdown["vessel_age_10_15y"] = vessel_age_cfg.get("age_10_to_15y", 0)
             elif age <= 20:
-                # Always include in breakdown for explainability (NFR4), even when 0
-                breakdown["vessel_age_10_20y"] = vessel_age_cfg.get("age_10_to_20y", 0)
+                breakdown["vessel_age_15_20y"] = vessel_age_cfg.get("age_15_to_20y", 5)
             elif age <= 25:
                 breakdown["vessel_age_20_25y"] = vessel_age_cfg.get("age_20_to_25y", 10)
             else:

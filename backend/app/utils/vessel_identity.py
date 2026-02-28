@@ -25,6 +25,8 @@ RUSSIAN_ORIGIN_FLAGS: frozenset[str] = frozenset({
     "GQ",  # Equatorial Guinea — cited in CSIS shadow fleet reports
     "TV",  # Tuvalu — documented shadow fleet re-flagging destination
     "VU",  # Vanuatu — documented shadow fleet re-flagging destination
+    "BB",  # Barbados — used by 5-8% of shadow fleet (KSE 2025)
+    "GN",  # Guinea — emerging shadow fleet re-flagging destination
     # NOTE: Marshall Islands (MH) intentionally excluded — 2nd largest open registry
     # (~4,000 vessels). MH is MEDIUM_RISK to avoid mass false positives.
 })
@@ -43,7 +45,7 @@ MID_TO_FLAG: dict[str, str] = {
     "511": "PW", "538": "MH", "620": "KM", "667": "SL",
     "334": "HN", "626": "GA", "613": "CM", "674": "TZ",
     "668": "ST", "629": "GM", "518": "CK", "631": "GQ",
-    "553": "TV", "550": "VU",
+    "553": "TV", "550": "VU", "314": "BB", "632": "GN",
     # Major open registries
     "351": "PA", "352": "PA", "353": "PA", "354": "PA", "355": "PA", "356": "PA", "357": "PA",
     "636": "LR", "637": "LR",
