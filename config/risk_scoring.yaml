@@ -108,6 +108,7 @@ dark_zone:
   gap_in_known_jamming_zone: -10          # REDUCES score (expected gap)
   gap_immediately_before_dark_zone_entry: 20
   vessel_exits_dark_zone_with_impossible_jump: 35
+  selective_dark_zone_evasion: 20    # only this vessel dark while others transmit = evasion, not jamming
 
 # STS TRANSFER INDICATORS
 sts:
@@ -195,6 +196,14 @@ identity_merge:
   imo_scrapped_vessel: 35           # transmitted IMO matches a known-scrapped vessel
   imo_fabricated: 40                # IMO fails checksum validation
   gap_reactivation_in_jamming_zone: 15  # re-enables AIS in jamming zone + other risk signals
+
+# STS PATTERN SIGNALS (Phase A6)
+sts_patterns:
+  repeat_sts_partnership_3plus: 30   # same two vessels doing STS 3+ times
+  flag_corridor_coupling: 20         # high-risk flag vessel in geographically suspicious corridor
+  invalid_metadata_generic_name: 10  # vessel has generic/placeholder name
+  invalid_metadata_impossible_dwt: 15  # DWT value is physically impossible
+  voyage_cycle_pattern: 30           # Russian port + STS + repeated gaps pattern
 
 # DETECTION THRESHOLDS — loitering detector constants
 # These are loaded at module init; code falls back to hardcoded defaults if missing.
