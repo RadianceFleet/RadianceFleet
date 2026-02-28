@@ -174,7 +174,11 @@ class TestSOGCOGNoneDefaults:
             "timestamp_utc": "2025-06-01T00:00:00Z",
         }
         result = _create_ais_point(mock_db, vessel, row)
-        added_point = mock_db.add.call_args_list[0][0][0]
+        from app.models.ais_point import AISPoint
+        added_point = next(
+            c[0][0] for c in mock_db.add.call_args_list
+            if isinstance(c[0][0], AISPoint)
+        )
         assert added_point.sog_delta is None, "sog_delta should be None when current sog is None"
         assert added_point.cog_delta is None, "cog_delta should be None when current cog is None"
 
@@ -206,7 +210,11 @@ class TestHeading511InIngest:
             "timestamp_utc": "2025-06-01T00:00:00Z",
         }
         result = _create_ais_point(mock_db, vessel, row)
-        added_point = mock_db.add.call_args_list[0][0][0]
+        from app.models.ais_point import AISPoint
+        added_point = next(
+            c[0][0] for c in mock_db.add.call_args_list
+            if isinstance(c[0][0], AISPoint)
+        )
         assert added_point.heading is None, f"Heading 511 should be None, got {added_point.heading}"
 
     def test_heading_normal_value_preserved(self):

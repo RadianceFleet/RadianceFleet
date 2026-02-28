@@ -71,6 +71,25 @@ class Settings(BaseSettings):
     SPIRE_API_KEY: str = ""
     SEAWEB_API_KEY: str = ""
     VERIFICATION_MONTHLY_BUDGET_USD: float = 500.0
+    # Phase K: Track naturalness
+    TRACK_NATURALNESS_ENABLED: bool = False
+    TRACK_NATURALNESS_SCORING_ENABLED: bool = False
+    # Phase L: Draught intelligence
+    DRAUGHT_DETECTION_ENABLED: bool = False
+    DRAUGHT_SCORING_ENABLED: bool = False
+    # Phase M: Identity fraud
+    STATELESS_MMSI_DETECTION_ENABLED: bool = False
+    STATELESS_MMSI_SCORING_ENABLED: bool = False
+    FLAG_HOPPING_DETECTION_ENABLED: bool = False
+    FLAG_HOPPING_SCORING_ENABLED: bool = False
+    IMO_FRAUD_DETECTION_ENABLED: bool = False
+    IMO_FRAUD_SCORING_ENABLED: bool = False
+    # Phase N: Dark STS
+    DARK_STS_DETECTION_ENABLED: bool = False
+    DARK_STS_SCORING_ENABLED: bool = False
+    # Phase O: Fleet analysis
+    FLEET_ANALYSIS_ENABLED: bool = False
+    FLEET_SCORING_ENABLED: bool = False
 
 
 settings = Settings()

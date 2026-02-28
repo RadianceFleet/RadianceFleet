@@ -60,6 +60,11 @@ class SpoofingTypeEnum(str, enum.Enum):
     CROSS_RECEIVER_DISAGREEMENT = "cross_receiver_disagreement"
     IDENTITY_SWAP = "identity_swap"
     FAKE_PORT_CALL = "fake_port_call"
+    # Phase K-M detection types
+    SYNTHETIC_TRACK = "synthetic_track"
+    STATELESS_MMSI = "stateless_mmsi"
+    FLAG_HOPPING = "flag_hopping"
+    IMO_FRAUD = "imo_fraud"
     # Sub-types (extended_restricted_maneuverability, nav_status_15) are stored
     # in evidence_json["subtype"] on an ERRATIC_NAV_STATUS anomaly record.
 

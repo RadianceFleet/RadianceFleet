@@ -30,6 +30,7 @@ class AISObservation(Base):
     cog = Column(Float, nullable=True)
     heading = Column(Float, nullable=True)
     raw_data = Column(Text, nullable=True)
+    draught = Column(Float, nullable=True)
 
     __table_args__ = (
         Index("ix_ais_obs_mmsi_ts", "mmsi", "timestamp_utc"),
