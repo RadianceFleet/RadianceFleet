@@ -169,6 +169,100 @@ export function AlertDetail() {
         </section>
       )}
 
+      {/* Linked Spoofing Anomalies */}
+      {alert.spoofing_anomalies && alert.spoofing_anomalies.length > 0 && (
+        <section style={card}>
+          <h3 style={sectionHead}>Linked Spoofing Anomalies</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-base)' }}>
+                <th style={{ ...labelCell, width: 'auto' }}>ID</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Type</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Time</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Risk Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alert.spoofing_anomalies.map(s => (
+                <tr key={s.anomaly_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={valueCell}>#{s.anomaly_id}</td>
+                  <td style={valueCell}><span style={{ color: '#9b59b6' }}>{s.anomaly_type.replace(/_/g, ' ')}</span></td>
+                  <td style={valueCell}>{s.start_time_utc?.slice(0, 19).replace('T', ' ') ?? '--'} UTC</td>
+                  <td style={valueCell}>{s.risk_score_component ?? '--'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {/* Linked Loitering Events */}
+      {alert.loitering_events && alert.loitering_events.length > 0 && (
+        <section style={card}>
+          <h3 style={sectionHead}>Linked Loitering Events</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-base)' }}>
+                <th style={{ ...labelCell, width: 'auto' }}>ID</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Start Time</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Duration</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Position</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Median SOG</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alert.loitering_events.map(l => (
+                <tr key={l.loiter_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={valueCell}>#{l.loiter_id}</td>
+                  <td style={valueCell}>{l.start_time_utc?.slice(0, 19).replace('T', ' ') ?? '--'} UTC</td>
+                  <td style={valueCell}>{l.duration_hours != null ? `${l.duration_hours.toFixed(1)}h` : '--'}</td>
+                  <td style={valueCell}>
+                    {l.mean_lat != null && l.mean_lon != null
+                      ? `${l.mean_lat.toFixed(4)}, ${l.mean_lon.toFixed(4)}`
+                      : '--'}
+                  </td>
+                  <td style={valueCell}>{l.median_sog_kn != null ? `${l.median_sog_kn.toFixed(1)} kn` : '--'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {/* Linked STS Transfers */}
+      {alert.sts_events && alert.sts_events.length > 0 && (
+        <section style={card}>
+          <h3 style={sectionHead}>Linked STS Transfers</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-base)' }}>
+                <th style={{ ...labelCell, width: 'auto' }}>ID</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Partner</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Detection Type</th>
+                <th style={{ ...labelCell, width: 'auto' }}>Start Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alert.sts_events.map(s => (
+                <tr key={s.sts_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={valueCell}>#{s.sts_id}</td>
+                  <td style={valueCell}>
+                    {s.partner_name ?? s.partner_mmsi ?? '--'}
+                    {s.partner_name && s.partner_mmsi && (
+                      <span style={{ color: 'var(--text-dim)', marginLeft: 4, fontSize: 11 }}>
+                        ({s.partner_mmsi})
+                      </span>
+                    )}
+                  </td>
+                  <td style={valueCell}>{s.detection_type?.replace(/_/g, ' ') ?? '--'}</td>
+                  <td style={valueCell}>{s.start_time_utc?.slice(0, 19).replace('T', ' ') ?? '--'} UTC</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
       {/* Error banners */}
       {statusMutation.error && (
         <div style={{ background: 'var(--score-critical)', color: 'white', padding: '8px 12px', borderRadius: 'var(--radius)', marginBottom: 12, fontSize: 13 }}>

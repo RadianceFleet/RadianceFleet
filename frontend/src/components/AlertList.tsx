@@ -53,6 +53,7 @@ export function AlertListPage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [patternsOnly, setPatternsOnly] = useState(false)
   const [bulkStatus, setBulkStatus] = useState('under_review')
   const bulkUpdate = useBulkUpdateAlertStatus()
   const { addToast } = useToast()
@@ -71,6 +72,7 @@ export function AlertListPage() {
 
   const { data, isLoading, error } = useAlerts(filters)
   const alerts = data?.items ?? []
+  const displayAlerts = patternsOnly ? alerts.filter(a => a.is_recurring_pattern) : alerts
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -141,15 +143,26 @@ export function AlertListPage() {
           title="Date to"
         />
         <ExportButton filters={exportFilters} />
+        <button
+          onClick={() => setPatternsOnly(p => !p)}
+          style={{
+            ...btnStyle,
+            background: patternsOnly ? '#9b59b6' : 'var(--bg-card)',
+            color: patternsOnly ? 'white' : 'var(--text-muted)',
+            borderColor: patternsOnly ? '#9b59b6' : 'var(--border)',
+          }}
+        >
+          {patternsOnly ? 'Patterns only' : 'Patterns only'}
+        </button>
       </div>
 
       {isLoading && <Spinner text="Loading alerts…" />}
       {error && <p style={{ color: 'var(--score-critical)' }}>Error loading alerts.</p>}
-      {!isLoading && !error && alerts.length === 0 && (
-        <EmptyState title="No alerts found" description="Adjust filters or run: make detect" />
+      {!isLoading && !error && displayAlerts.length === 0 && (
+        <EmptyState title="No alerts found" description={patternsOnly ? 'No recurring patterns found. Try disabling the patterns filter.' : 'Adjust filters or run: make detect'} />
       )}
 
-      {alerts.length > 0 && (
+      {displayAlerts.length > 0 && (
         <>
           {/* Bulk action bar */}
           {selected.size > 0 && (
@@ -194,10 +207,10 @@ export function AlertListPage() {
                 <th style={{ ...thStyle, width: 36 }}>
                   <input
                     type="checkbox"
-                    checked={alerts.length > 0 && selected.size === alerts.length}
+                    checked={displayAlerts.length > 0 && selected.size === displayAlerts.length}
                     onChange={e => {
                       if (e.target.checked) {
-                        setSelected(new Set(alerts.map(a => a.gap_event_id)))
+                        setSelected(new Set(displayAlerts.map(a => a.gap_event_id)))
                       } else {
                         setSelected(new Set())
                       }
@@ -220,7 +233,7 @@ export function AlertListPage() {
               </tr>
             </thead>
             <tbody>
-              {alerts.map(a => (
+              {displayAlerts.map(a => (
                 <tr key={a.gap_event_id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={tdStyle}>
                     <input
@@ -247,8 +260,22 @@ export function AlertListPage() {
                   <td style={tdStyle}>{(a.duration_minutes / 60).toFixed(1)}h</td>
                   <td style={tdStyle}><StatusBadge status={a.status} /></td>
                   <td style={tdStyle}>
-                    {a.impossible_speed_flag && <span title="Impossible speed">⚠️</span>}
-                    {a.in_dark_zone && <span title="Dark zone">🌑</span>}
+                    {a.impossible_speed_flag && <span title="Impossible speed">!!</span>}
+                    {a.in_dark_zone && <span title="Dark zone">DZ</span>}
+                    {a.is_recurring_pattern && (
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px 6px',
+                        borderRadius: 'var(--radius)',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        background: '#9b59b6',
+                        color: 'white',
+                        marginLeft: 4,
+                      }}>
+                        Recurring{a.prior_similar_count != null ? ` (${a.prior_similar_count} in 90d)` : ''}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
