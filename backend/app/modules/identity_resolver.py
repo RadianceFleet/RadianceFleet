@@ -147,6 +147,12 @@ def detect_merge_candidates(
     new_vessels = _find_new_vessels(db, cutoff)
 
     if not dark_vessels or not new_vessels:
+        logger.info(
+            "No merge candidates: dark_vessels=%d, new_vessels=%d. "
+            "Dark requires gap events + last AIS >2h ago. "
+            "New requires mmsi_first_seen_utc within %d days.",
+            len(dark_vessels or []), len(new_vessels or []), max_gap_days,
+        )
         return stats
 
     # Pre-load anchorage density info for filtering
@@ -427,6 +433,81 @@ def _find_new_vessels(
                 "ts": first_pt.timestamp_utc,
             }))
     return results
+
+
+# ---------------------------------------------------------------------------
+# Merge readiness diagnostic
+# ---------------------------------------------------------------------------
+
+def diagnose_merge_readiness(db: Session) -> dict:
+    """Read-only diagnostic: check whether the database has enough data for
+    identity merging to produce useful results.
+
+    Returns a dict with counts, issues list, and current merge config.
+    """
+    now = datetime.utcnow()
+    max_gap_days = settings.MERGE_MAX_GAP_DAYS
+    two_h_ago = now - timedelta(hours=2)
+    cutoff = now - timedelta(days=max_gap_days)
+
+    # Total canonical vessels (not merged into another)
+    total_vessels = (
+        db.query(func.count(Vessel.vessel_id))
+        .filter(Vessel.merged_into_vessel_id.is_(None))
+        .scalar()
+    ) or 0
+
+    # Vessels with at least one gap event
+    vessels_with_gaps = (
+        db.query(func.count(func.distinct(AISGapEvent.vessel_id)))
+        .scalar()
+    ) or 0
+
+    # Dark candidates (gap events + last AIS > 2h ago)
+    dark_vessels = _find_dark_vessels(db, two_h_ago)
+    dark_candidates = len(dark_vessels)
+
+    # New candidates (mmsi_first_seen within window)
+    new_vessels = _find_new_vessels(db, cutoff)
+    new_candidates = len(new_vessels)
+
+    # Average AIS points per vessel
+    total_points = (
+        db.query(func.count(AISPoint.ais_point_id)).scalar()
+    ) or 0
+    avg_points = total_points / total_vessels if total_vessels > 0 else 0.0
+
+    # Build issues list
+    issues: list[str] = []
+    if vessels_with_gaps == 0:
+        issues.append("No vessels have gap events")
+    if dark_candidates == 0:
+        issues.append(
+            "No dark candidates found (need vessels with gap events + last AIS >2h ago)"
+        )
+    if new_candidates == 0:
+        issues.append(
+            f"No new vessel candidates found (need vessels with mmsi_first_seen within {max_gap_days} days)"
+        )
+    if total_vessels > 0 and avg_points < 5:
+        issues.append(
+            f"Sparse AIS data: average {avg_points:.1f} points per vessel (need 4+ for most detectors)"
+        )
+
+    return {
+        "total_vessels": total_vessels,
+        "dark_candidates": dark_candidates,
+        "new_candidates": new_candidates,
+        "vessels_with_gaps": vessels_with_gaps,
+        "avg_points_per_vessel": round(avg_points, 1),
+        "issues": issues,
+        "merge_config": {
+            "max_gap_days": settings.MERGE_MAX_GAP_DAYS,
+            "max_speed_kn": settings.MERGE_MAX_SPEED_KN,
+            "auto_threshold": settings.MERGE_AUTO_CONFIDENCE_THRESHOLD,
+            "min_threshold": settings.MERGE_CANDIDATE_MIN_CONFIDENCE,
+        },
+    }
 
 
 def _score_candidate(
