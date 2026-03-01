@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     COPERNICUS_CLIENT_SECRET: str | None = None
     # AISHub — batch AIS positions
     AISHUB_USERNAME: str | None = None
+    AISHUB_ENABLED: bool = False
     # NOAA historical AIS data
     NOAA_BASE_URL: str = "https://coast.noaa.gov/htdata/CMSP/AISDataHandler"
     # Kystverket (Norway) AIS TCP stream

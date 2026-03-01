@@ -595,12 +595,13 @@ def test_search_no_results(mock_sl):
 # ---------------------------------------------------------------------------
 
 
-def test_help_shows_six_commands():
-    """--help lists all 6 commands without panel grouping."""
+def test_help_shows_commands():
+    """--help lists all commands without panel grouping."""
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     output = result.output
-    for cmd in ["start", "update", "check-vessels", "open", "status", "search"]:
+    for cmd in ["start", "update", "check-vessels", "open", "status", "search",
+                "rescore", "evaluate-detector", "confirm-detector", "backfill"]:
         assert cmd in output, f"Command '{cmd}' not found in help output"
     # No panel grouping
     assert "Getting Started" not in output

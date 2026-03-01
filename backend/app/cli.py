@@ -10,6 +10,7 @@ Commands:
   rescore            — re-run scoring without re-running detectors
   evaluate-detector  — sample anomalies for holdout review
   confirm-detector   — re-enable scoring after drift review
+  backfill           — import historical AIS data for a date range
 """
 from __future__ import annotations
 
@@ -95,6 +96,10 @@ def start(
                         "[yellow]No AISSTREAM_API_KEY — skipping live AIS collection[/yellow]"
                     )
 
+                # Collect multi-source AIS
+                console.print("[bold]Collecting multi-source AIS...[/bold]")
+                _collect_multi_source_ais(db, stream_time)
+
                 # Enrich vessel metadata
                 with console.status("[bold]Enriching vessel metadata..."):
                     try:
@@ -133,6 +138,7 @@ def update(
     stream_time: str = typer.Option("15m", "--stream-time", help="AIS stream duration (e.g. 30s, 5m, 1h)"),
     offline: bool = typer.Option(False, "--offline", help="Skip all network operations"),
     days: int = typer.Option(90, "--days", help="Analysis window (days back from today)"),
+    check_identity: bool = typer.Option(False, "--check-identity", help="Show merge readiness diagnostic after detection"),
 ):
     """Refresh data and re-run analysis (daily)."""
     from app.database import SessionLocal
@@ -166,6 +172,10 @@ def update(
                     "[yellow]No AISSTREAM_API_KEY — skipping live AIS collection[/yellow]"
                 )
 
+            # Collect multi-source AIS
+            console.print("[bold]Collecting multi-source AIS...[/bold]")
+            _collect_multi_source_ais(db, stream_time)
+
         # Phase 3: Detection (always runs)
         with console.status("[bold]Analyzing vessel behavior..."):
             try:
@@ -179,6 +189,17 @@ def update(
             except Exception as e:
                 console.print(f"[yellow]Detection had issues: {e}[/yellow]")
 
+        # Optional identity diagnostic
+        if check_identity:
+            try:
+                from app.modules.identity_resolver import diagnose_merge_readiness
+                diag = diagnose_merge_readiness(db)
+                console.print("\n[bold]Merge Readiness Diagnostic[/bold]")
+                for key, val in diag.items():
+                    console.print(f"  {key}: {val}")
+            except (ImportError, AttributeError):
+                console.print("[dim]Merge diagnostic not available[/dim]")
+
         console.print("[green]Update complete![/green]")
         _print_summary(console)
         _print_next_steps(console, after="update")
@@ -190,6 +211,7 @@ def update(
 def check_vessels(
     auto: bool = typer.Option(False, "--auto", help="Only show auto-merge results"),
     list_mode: bool = typer.Option(False, "--list", help="List pending candidates without interactive review"),
+    diagnose: bool = typer.Option(False, "--diagnose", help="Show merge readiness diagnostic and exit"),
 ):
     """Review and fix vessel identity issues."""
     from app.database import SessionLocal
@@ -200,6 +222,23 @@ def check_vessels(
 
     db = SessionLocal()
     try:
+        # --diagnose: print diagnostic and exit immediately
+        if diagnose:
+            from app.modules.identity_resolver import diagnose_merge_readiness
+            diag = diagnose_merge_readiness(db)
+            max_gap_days = diag["merge_config"]["max_gap_days"]
+            console.print("[bold]Merge Readiness Diagnostic[/bold]")
+            console.print(f"  Total vessels: {diag['total_vessels']}")
+            console.print(f"  Vessels with gap events: {diag['vessels_with_gaps']}")
+            console.print(f"  Dark candidates (went dark >2h ago): {diag['dark_candidates']}")
+            console.print(f"  New candidates (appeared last {max_gap_days}d): {diag['new_candidates']}")
+            console.print(f"  Avg AIS points/vessel: {diag['avg_points_per_vessel']}")
+            if diag["issues"]:
+                console.print("\n[bold]Issues:[/bold]")
+                for issue in diag["issues"]:
+                    console.print(f"  - {issue}")
+            return
+
         # Step 1: Run detection
         with console.status("[bold]Scanning for vessel identity changes..."):
             result = detect_merge_candidates(db)
@@ -643,9 +682,119 @@ def search_vessel(
         db.close()
 
 
+@app.command("backfill")
+def backfill(
+    start: str = typer.Option(..., "--start", help="Start date (ISO format, e.g. 2025-12-01)"),
+    end: str = typer.Option(..., "--end", help="End date (ISO format, e.g. 2025-12-31)"),
+    source: str = typer.Option("noaa", "--source", help="Data source (noaa)"),
+    detect: bool = typer.Option(True, "--detect/--no-detect", help="Run detection after import"),
+    corridor_filter: bool = typer.Option(True, "--corridor-filter/--no-corridor-filter", help="Only import within corridor bounding boxes"),
+):
+    """Import historical AIS data for a date range."""
+    from app.database import SessionLocal
+
+    # Validate source
+    if source != "noaa":
+        console.print(f"[red]Unknown source: {source}[/red]")
+        console.print("[dim]Supported sources: noaa[/dim]")
+        raise typer.Exit(1)
+
+    # Parse and validate dates
+    try:
+        start_date = date.fromisoformat(start)
+        end_date = date.fromisoformat(end)
+    except ValueError as e:
+        console.print(f"[red]Invalid date format: {e}[/red]")
+        raise typer.Exit(1)
+
+    if start_date > end_date:
+        console.print("[red]--start must be before or equal to --end[/red]")
+        raise typer.Exit(1)
+
+    db = SessionLocal()
+    try:
+        # Import historical data
+        console.print(f"[bold]Importing {source} data from {start} to {end}...[/bold]")
+        from app.modules.noaa_client import fetch_and_import_noaa
+        stats = fetch_and_import_noaa(
+            db,
+            start_date=start_date,
+            end_date=end_date,
+            corridor_filter=corridor_filter,
+        )
+        console.print(
+            f"  Downloaded {stats['dates_downloaded']}/{stats['dates_attempted']} days, "
+            f"{stats['total_accepted']:,} positions imported"
+        )
+        if stats["dates_failed"]:
+            console.print(f"  [yellow]{len(stats['dates_failed'])} days failed[/yellow]")
+
+        # Run detection if requested
+        if detect:
+            lookback_end = end_date
+            lookback_start = start_date - timedelta(days=90)
+            with console.status("[bold]Analyzing vessel behavior..."):
+                from app.modules.dark_vessel_discovery import discover_dark_vessels
+                discover_dark_vessels(
+                    db,
+                    start_date=lookback_start.isoformat(),
+                    end_date=lookback_end.isoformat(),
+                    skip_fetch=True,
+                )
+
+        db.commit()
+        console.print("[green]Backfill complete![/green]")
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Backfill failed: {e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _collect_multi_source_ais(db, stream_time: str) -> None:
+    """Collect AIS data from enabled secondary sources (Digitraffic, Kystverket, AISHub)."""
+    from app.config import settings
+
+    # Digitraffic (Finnish AIS — Baltic Sea)
+    if settings.DIGITRAFFIC_ENABLED:
+        try:
+            from app.modules.digitraffic_client import fetch_digitraffic_ais
+            result = fetch_digitraffic_ais(db)
+            console.print(f"  Digitraffic: {result['points_ingested']} points")
+        except Exception as e:
+            console.print(f"[yellow]Digitraffic: {e}[/yellow]")
+
+    # Kystverket (Norwegian AIS — Barents/Norwegian Sea)
+    if settings.KYSTVERKET_ENABLED:
+        try:
+            from app.modules.kystverket_client import stream_kystverket
+            result = stream_kystverket(db, duration_seconds=_parse_duration(stream_time))
+            console.print(f"  Kystverket: {result['points_ingested']} points")
+        except Exception as e:
+            console.print(f"[yellow]Kystverket: {e}[/yellow]")
+
+    # AISHub (batch positions — global corridor coverage)
+    if getattr(settings, 'AISHUB_ENABLED', False):
+        try:
+            from app.modules.aishub_client import fetch_area_positions, ingest_aishub_positions
+            from app.modules.aisstream_client import get_corridor_bounding_boxes
+            boxes = get_corridor_bounding_boxes(db)
+            total_stored = 0
+            for box in boxes:
+                bbox_tuple = (box[0][0], box[0][1], box[1][0], box[1][1])
+                positions = fetch_area_positions(bbox_tuple)
+                ah_result = ingest_aishub_positions(positions, db)
+                total_stored += ah_result['stored']
+            console.print(f"  AISHub: {total_stored} positions")
+        except Exception as e:
+            console.print(f"[yellow]AISHub: {e}[/yellow]")
 
 
 def _is_interactive() -> bool:
