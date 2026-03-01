@@ -78,6 +78,27 @@ def reload_scoring_config() -> dict[str, Any]:
     return load_scoring_config()
 
 
+def _gap_frequency_filter(alert: AISGapEvent):
+    """Return the provenance-aware filter for gap frequency counting.
+
+    If original_vessel_id is set (post-Stage-0 gaps or merged gaps with
+    provenance), count only gaps from the same original identity.
+    If null (legacy data), fall back to vessel_id.
+    """
+    if getattr(alert, "original_vessel_id", None) is not None:
+        return AISGapEvent.original_vessel_id == alert.original_vessel_id
+    return AISGapEvent.vessel_id == alert.vessel_id
+
+
+def _count_gaps_in_window(db: Session, alert: AISGapEvent, days: int) -> int:
+    """Count gap events for the same identity within a time window."""
+    return db.query(AISGapEvent).filter(
+        _gap_frequency_filter(alert),
+        AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=days),
+        AISGapEvent.gap_event_id != alert.gap_event_id,
+    ).count()
+
+
 def score_all_alerts(db: Session, scoring_date: datetime = None) -> dict:
     """Score all unscored gap events.
 
@@ -88,23 +109,16 @@ def score_all_alerts(db: Session, scoring_date: datetime = None) -> dict:
     config = load_scoring_config()
     alerts = db.query(AISGapEvent).filter(AISGapEvent.risk_score == 0).all()
     scored = 0
+    feed_outage_skipped = 0
     for alert in alerts:
-        # Count gap frequency windows
-        gaps_7d = db.query(AISGapEvent).filter(
-            AISGapEvent.vessel_id == alert.vessel_id,
-            AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=7),
-            AISGapEvent.gap_event_id != alert.gap_event_id,
-        ).count()
-        gaps_14d = db.query(AISGapEvent).filter(
-            AISGapEvent.vessel_id == alert.vessel_id,
-            AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=14),
-            AISGapEvent.gap_event_id != alert.gap_event_id,
-        ).count()
-        gaps_30d = db.query(AISGapEvent).filter(
-            AISGapEvent.vessel_id == alert.vessel_id,
-            AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=30),
-            AISGapEvent.gap_event_id != alert.gap_event_id,
-        ).count()
+        # Skip gaps caused by feed outages — they are infrastructure noise, not evasion
+        if getattr(alert, "is_feed_outage", False):
+            feed_outage_skipped += 1
+            continue
+        # Count gap frequency windows (provenance-aware to prevent inflation)
+        gaps_7d = _count_gaps_in_window(db, alert, 7)
+        gaps_14d = _count_gaps_in_window(db, alert, 14)
+        gaps_30d = _count_gaps_in_window(db, alert, 30)
         score, breakdown = compute_gap_score(
             alert, config,
             gaps_in_7d=gaps_7d,
@@ -118,8 +132,11 @@ def score_all_alerts(db: Session, scoring_date: datetime = None) -> dict:
         alert.risk_breakdown_json = breakdown
         scored += 1
     db.commit()
-    logger.info("Scored %d alerts", scored)
-    return {"scored": scored}
+    if feed_outage_skipped:
+        logger.info("Scored %d alerts (skipped %d feed outage gaps)", scored, feed_outage_skipped)
+    else:
+        logger.info("Scored %d alerts", scored)
+    return {"scored": scored, "feed_outage_skipped": feed_outage_skipped}
 
 
 def rescore_all_alerts(db: Session, clear_detections: bool = False) -> dict:
@@ -496,8 +513,25 @@ def compute_gap_score(
                             )
                         _other_count = _other_dark_gaps.count()
                         if _other_count <= 2:
-                            # Only this vessel (+ maybe 1-2 others) dark = selective evasion
-                            _selective_evasion = True
+                            # Partial outage guard: if the ≤2 other-dark vessels
+                            # share the same AIS data source, this may be a partial
+                            # feed outage rather than selective evasion.
+                            _same_source = False
+                            _vessel_source = getattr(gap, "source", None)
+                            if _other_count > 0 and _vessel_source:
+                                try:
+                                    _other_sources = [
+                                        r.source for r in _other_dark_gaps.all()
+                                        if getattr(r, "source", None)
+                                    ]
+                                    if _other_sources and all(
+                                        s == _vessel_source for s in _other_sources
+                                    ):
+                                        _same_source = True
+                                except Exception:
+                                    pass
+                            if not _same_source:
+                                _selective_evasion = True
                     except Exception:
                         pass  # If query fails, fall back to standard deduction
 

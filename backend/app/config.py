@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     FLAG_HOPPING_SCORING_ENABLED: bool = False
     IMO_FRAUD_DETECTION_ENABLED: bool = False
     IMO_FRAUD_SCORING_ENABLED: bool = False
+    # Stage 1-A: Feed outage detection
+    FEED_OUTAGE_DETECTION_ENABLED: bool = False
+    # Stage 1-C: Coverage quality tagging (metadata only, never reduces score)
+    COVERAGE_QUALITY_TAGGING_ENABLED: bool = False
     # Phase N: Dark STS
     DARK_STS_DETECTION_ENABLED: bool = False
     DARK_STS_SCORING_ENABLED: bool = False

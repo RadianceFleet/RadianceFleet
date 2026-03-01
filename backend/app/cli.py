@@ -1,12 +1,15 @@
 """RadianceFleet CLI — maritime anomaly detection for shadow fleet triage.
 
 Commands:
-  start          — first-time setup
-  update         — daily data refresh + detection
-  check-vessels  — vessel identity merge workflow
-  open           — launch web dashboard
-  status         — system health check
-  search         — vessel lookup by MMSI/IMO/name
+  start              — first-time setup
+  update             — daily data refresh + detection
+  check-vessels      — vessel identity merge workflow
+  open               — launch web dashboard
+  status             — system health check
+  search             — vessel lookup by MMSI/IMO/name
+  rescore            — re-run scoring without re-running detectors
+  evaluate-detector  — sample anomalies for holdout review
+  confirm-detector   — re-enable scoring after drift review
 """
 from __future__ import annotations
 
@@ -400,6 +403,187 @@ def status():
                 "\n[yellow]Not set up yet. Run [cyan]radiancefleet start[/cyan] to begin.[/yellow]"
             )
 
+    finally:
+        db.close()
+
+
+@app.command("rescore")
+def rescore():
+    """Re-run scoring without re-running detectors."""
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        from app.modules.risk_scoring import score_all_alerts, rescore_all_alerts
+        with console.status("[bold]Re-scoring all alerts..."):
+            result = rescore_all_alerts(db)
+        console.print(
+            f"[green]Rescored {result.get('rescored', 0)} alerts[/green] "
+            f"(config hash: {result.get('config_hash', '?')})"
+        )
+
+        # Run confidence classification after rescore
+        try:
+            from app.modules.confidence_classifier import classify_all_vessels
+            with console.status("[bold]Classifying vessel confidence..."):
+                cls_result = classify_all_vessels(db)
+            by_level = cls_result.get("by_level", {})
+            console.print(
+                f"  Classified {cls_result.get('classified', 0)} vessels: "
+                + ", ".join(f"{k}={v}" for k, v in sorted(by_level.items()))
+            )
+        except ImportError:
+            pass
+    finally:
+        db.close()
+
+
+@app.command("evaluate-detector")
+def evaluate_detector(
+    name: str = typer.Argument(..., help="Detector name (e.g. gap_detector, spoofing_detector)"),
+    sample_size: int = typer.Option(50, "--sample-size", help="Number of anomalies to sample"),
+):
+    """Sample anomalies from a detector for holdout review.
+
+    Outputs CSV to stdout: vessel_id, mmsi, anomaly_type, evidence_json,
+    score_contribution, created_at, verdict (empty — operator fills in).
+    """
+    import csv
+    import io
+
+    from app.database import SessionLocal
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.vessel import Vessel
+
+    # Map detector name to anomaly types
+    _DETECTOR_TYPE_MAP = {
+        "gap_detector": ["AIS_GAP"],
+        "spoofing_detector": ["ERRATIC_NAV_STATUS", "IMPOSSIBLE_POSITION", "CROSS_RECEIVER_DISAGREEMENT",
+                              "IDENTITY_SWAP", "FAKE_PORT_CALL"],
+        "track_naturalness": ["SYNTHETIC_TRACK"],
+        "stateless_mmsi": ["STATELESS_MMSI"],
+        "flag_hopping": ["FLAG_HOPPING"],
+        "imo_fraud": ["IMO_FRAUD"],
+        "draught": ["DRAUGHT_CHANGE"],
+    }
+
+    anomaly_types = _DETECTOR_TYPE_MAP.get(name)
+    if anomaly_types is None:
+        console.print(f"[red]Unknown detector: {name}[/red]")
+        console.print(f"[dim]Known detectors: {', '.join(sorted(_DETECTOR_TYPE_MAP))}[/dim]")
+        raise typer.Exit(1)
+
+    db = SessionLocal()
+    try:
+        query = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.anomaly_type.in_(anomaly_types)
+        ).order_by(SpoofingAnomaly.spoofing_id.desc()).limit(sample_size)
+        anomalies = query.all()
+
+        if not anomalies:
+            console.print(f"[yellow]No anomalies found for detector: {name}[/yellow]")
+            raise typer.Exit(0)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "vessel_id", "mmsi", "anomaly_type", "evidence_json",
+            "score_contribution", "created_at", "verdict",
+        ])
+
+        for a in anomalies:
+            vessel = db.query(Vessel).filter(Vessel.vessel_id == a.vessel_id).first()
+            mmsi = vessel.mmsi if vessel else "?"
+            writer.writerow([
+                a.vessel_id,
+                mmsi,
+                a.anomaly_type,
+                str(a.evidence_json) if a.evidence_json else "",
+                getattr(a, "risk_score_component", ""),
+                str(getattr(a, "created_at", "")) if getattr(a, "created_at", None) else "",
+                "",  # verdict — operator fills in
+            ])
+
+        # Print CSV to stdout (not through Rich — raw output for piping)
+        print(output.getvalue(), end="")
+    finally:
+        db.close()
+
+
+@app.command("confirm-detector")
+def confirm_detector(
+    name: str = typer.Argument(..., help="Detector name"),
+    holdout_csv: str = typer.Option(..., "--holdout-csv", help="Path to reviewed CSV with verdicts"),
+):
+    """Re-enable scoring after drift holdout review.
+
+    Parses the CSV, computes precision = TP / (TP + FP) from the 'verdict'
+    column. If precision >= 70%, clears the detector from drift-disabled list.
+    """
+    import csv
+
+    from app.database import SessionLocal
+    from app.models.pipeline_run import PipelineRun
+
+    csv_path = Path(holdout_csv)
+    if not csv_path.exists():
+        console.print(f"[red]File not found: {holdout_csv}[/red]")
+        raise typer.Exit(1)
+
+    # Parse verdicts
+    tp = fp = 0
+    total_rows = 0
+    with open(csv_path) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            verdict = row.get("verdict", "").strip().upper()
+            if verdict == "TP":
+                tp += 1
+                total_rows += 1
+            elif verdict == "FP":
+                fp += 1
+                total_rows += 1
+            # Skip rows without verdict
+
+    if total_rows == 0:
+        console.print("[red]No TP/FP verdicts found in CSV.[/red]")
+        console.print("[dim]Mark the 'verdict' column as TP or FP for each row.[/dim]")
+        raise typer.Exit(1)
+
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    console.print(f"  TP={tp}  FP={fp}  Total={total_rows}  Precision={precision:.1%}")
+
+    db = SessionLocal()
+    try:
+        if precision >= 0.70:
+            # Clear detector from drift-disabled list in latest pipeline run
+            latest_run = (
+                db.query(PipelineRun)
+                .order_by(PipelineRun.run_id.desc())
+                .first()
+            )
+            if latest_run and latest_run.drift_disabled_detectors_json:
+                disabled = list(latest_run.drift_disabled_detectors_json)
+                if name in disabled:
+                    disabled.remove(name)
+                    latest_run.drift_disabled_detectors_json = disabled
+                    db.commit()
+                    console.print(f"[green]Scoring re-enabled for {name}[/green]")
+                else:
+                    console.print(f"[dim]{name} was not in drift-disabled list.[/dim]")
+            else:
+                console.print(f"[dim]No pipeline run found or no disabled detectors.[/dim]")
+
+            console.print(
+                f"[green]Precision {precision:.1%} >= 70% threshold — {name} confirmed.[/green]"
+            )
+        else:
+            console.print(
+                f"[red]Precision {precision:.1%} below 70% threshold — "
+                f"scoring stays disabled for {name}.[/red]\n"
+                f"[dim]Investigate detector logic before re-enabling.[/dim]"
+            )
+            raise typer.Exit(1)
     finally:
         db.close()
 

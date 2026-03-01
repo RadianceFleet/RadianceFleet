@@ -151,15 +151,31 @@ def _make_vessel(
     return v
 
 
+def _scoring_db():
+    """Create a MagicMock DB suitable for _score_candidate tests.
+
+    Sets up db.execute + db.bind for _has_overlapping_ais (returns no overlap)
+    and default scalar/filter returns.
+    """
+    db = MagicMock()
+    db.query.return_value.filter.return_value.scalar.return_value = 0
+    db.query.return_value.filter.return_value.filter.return_value.scalar.return_value = 0
+    db.query.return_value.filter.return_value.all.return_value = []
+    # _has_overlapping_ais uses db.execute and db.bind
+    _exec_result = MagicMock()
+    _exec_result.scalar.return_value = 0
+    db.execute.return_value = _exec_result
+    db.bind = MagicMock()
+    db.bind.dialect.name = "sqlite"
+    return db
+
+
 class TestCandidateScoring:
     """Test the _score_candidate signal breakdown."""
 
     def test_proximity_ratio_full_points(self):
         """Vessel right at the origin: distance=0, max_travel=100 → 20 pts proximity."""
-        db = MagicMock()
-        # Stub all DB queries to return 0 or empty
-        db.query.return_value.filter.return_value.scalar.return_value = 0
-        db.query.return_value.filter.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         dark_v = _make_vessel(vessel_id=1, mmsi="211000001")
         new_v = _make_vessel(vessel_id=2, mmsi="211000002")
@@ -177,8 +193,7 @@ class TestCandidateScoring:
 
     def test_time_tightness_short_gap(self):
         """6 hour gap: int(10 - 6/24) = int(9.75) = 9 points."""
-        db = MagicMock()
-        db.query.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         dark_v = _make_vessel(vessel_id=1, mmsi="211000001")
         new_v = _make_vessel(vessel_id=2, mmsi="211000002")
@@ -196,8 +211,7 @@ class TestCandidateScoring:
 
     def test_same_imo_valid(self):
         """Both vessels share a valid IMO → +25 pts."""
-        db = MagicMock()
-        db.query.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         dark_v = _make_vessel(vessel_id=1, mmsi="211000001", imo="9074729")
         new_v = _make_vessel(vessel_id=2, mmsi="211000002", imo="9074729")
@@ -216,8 +230,7 @@ class TestCandidateScoring:
 
     def test_same_imo_invalid_checksum_no_bonus(self):
         """Both vessels share a FABRICATED IMO → no +25 bonus."""
-        db = MagicMock()
-        db.query.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         dark_v = _make_vessel(vessel_id=1, mmsi="211000001", imo="1111111")
         new_v = _make_vessel(vessel_id=2, mmsi="211000002", imo="1111111")
@@ -235,8 +248,7 @@ class TestCandidateScoring:
 
     def test_same_vessel_type_points(self):
         """Matching vessel_type → +10 pts."""
-        db = MagicMock()
-        db.query.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         dark_v = _make_vessel(vessel_id=1, mmsi="211000001", vessel_type="Crude Oil Tanker")
         new_v = _make_vessel(vessel_id=2, mmsi="211000002", vessel_type="Crude Oil Tanker")
@@ -254,8 +266,7 @@ class TestCandidateScoring:
 
     def test_similar_dwt_within_20pct(self):
         """DWT 100000 vs 85000 (ratio=0.85 >= 0.8) → +10."""
-        db = MagicMock()
-        db.query.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         dark_v = _make_vessel(vessel_id=1, mmsi="211000001", deadweight=100000)
         new_v = _make_vessel(vessel_id=2, mmsi="211000002", deadweight=85000)
@@ -274,8 +285,7 @@ class TestCandidateScoring:
 
     def test_dwt_too_different_no_points(self):
         """DWT 100000 vs 50000 (ratio=0.5 < 0.8) → no DWT bonus."""
-        db = MagicMock()
-        db.query.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         dark_v = _make_vessel(vessel_id=1, mmsi="211000001", deadweight=100000)
         new_v = _make_vessel(vessel_id=2, mmsi="211000002", deadweight=50000)
@@ -293,8 +303,7 @@ class TestCandidateScoring:
 
     def test_flag_change_detected(self):
         """MMSI from different MIDs (DE 211→PA 351) → +5 flag_change."""
-        db = MagicMock()
-        db.query.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         dark_v = _make_vessel(vessel_id=1, mmsi="211000001")  # DE
         new_v = _make_vessel(vessel_id=2, mmsi="351000002")  # PA
@@ -312,8 +321,7 @@ class TestCandidateScoring:
 
     def test_score_capped_at_100(self):
         """Maximum score cannot exceed 100."""
-        db = MagicMock()
-        db.query.return_value.filter.return_value.scalar.return_value = 0
+        db = _scoring_db()
 
         # Stack every signal: valid IMO match, same type, similar DWT, year_built...
         dark_v = _make_vessel(

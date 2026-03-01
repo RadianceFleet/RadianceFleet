@@ -27,6 +27,7 @@ from app.models.satellite_tasking_candidate import SatelliteTaskingCandidate
 from app.models.owner_cluster import OwnerCluster
 from app.models.owner_cluster_member import OwnerClusterMember
 from app.models.fleet_alert import FleetAlert
+from app.models.pipeline_run import PipelineRun
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -62,4 +63,5 @@ __all__ = [
     "OwnerCluster",
     "OwnerClusterMember",
     "FleetAlert",
+    "PipelineRun",
 ]

@@ -286,7 +286,7 @@ def discover_dark_vessels(
 
     Returns dict with run_status, steps, top_alerts.
     """
-    from datetime import date as _date
+    from datetime import date as _date, datetime as _datetime
 
     result: dict[str, Any] = {
         "run_status": "complete",
@@ -295,6 +295,16 @@ def discover_dark_vessels(
     }
     date_from = _date.fromisoformat(start_date)
     date_to = _date.fromisoformat(end_date)
+
+    # Create PipelineRun record
+    pipeline_run = None
+    try:
+        from app.models.pipeline_run import PipelineRun
+        pipeline_run = PipelineRun(status="running")
+        db.add(pipeline_run)
+        db.flush()  # get run_id
+    except Exception as exc:
+        logger.debug("Could not create PipelineRun: %s", exc)
 
     def _run_step(name: str, fn, *args, hard: bool = False, **kwargs) -> Any:
         """Execute a pipeline step with failure policy."""
@@ -350,6 +360,24 @@ def discover_dark_vessels(
     except Exception:
         return result  # Abort on hard fail
 
+    # Step 3b: Feed outage detection (SOFT, feature-gated)
+    # Must run AFTER gap detection but BEFORE scoring so is_feed_outage=True
+    # gaps are excluded from scoring.
+    if settings.FEED_OUTAGE_DETECTION_ENABLED:
+        try:
+            from app.modules.feed_outage_detector import detect_feed_outages
+            _run_step("feed_outage_detection", detect_feed_outages, db)
+        except ImportError:
+            result["steps"]["feed_outage_detection"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 3c: Coverage quality tagging (SOFT, feature-gated)
+    if settings.COVERAGE_QUALITY_TAGGING_ENABLED:
+        try:
+            from app.modules.feed_outage_detector import tag_coverage_quality
+            _run_step("coverage_quality_tagging", tag_coverage_quality, db)
+        except ImportError:
+            result["steps"]["coverage_quality_tagging"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 4: Spoofing detection (SOFT)
     from app.modules.gap_detector import run_spoofing_detection
     _run_step(
@@ -400,6 +428,14 @@ def discover_dark_vessels(
     except Exception:
         return result
 
+    # Step 7b: Confidence classification (SOFT)
+    # Runs after scoring to classify vessels into CONFIRMED/HIGH/MEDIUM/LOW/NONE
+    try:
+        from app.modules.confidence_classifier import classify_all_vessels
+        _run_step("confidence_classification", classify_all_vessels, db)
+    except ImportError:
+        result["steps"]["confidence_classification"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 8: Cluster dark detections (SOFT)
     _run_step("dark_clustering", cluster_dark_detections, db)
 
@@ -440,6 +476,15 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["imo_fraud"] = {"status": "skipped", "detail": "module not available"}
 
+    # Step 11d: IMO fraud merge recheck (SOFT)
+    # After IMO fraud detection, recheck auto-merges where IMO was dominant signal
+    if settings.IMO_FRAUD_DETECTION_ENABLED:
+        try:
+            from app.modules.identity_resolver import recheck_merges_for_imo_fraud
+            _run_step("imo_fraud_merge_recheck", recheck_merges_for_imo_fraud, db)
+        except ImportError:
+            result["steps"]["imo_fraud_merge_recheck"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 11c: Fleet analysis (SOFT, feature-gated)
     if settings.FLEET_ANALYSIS_ENABLED:
         try:
@@ -476,4 +521,99 @@ def discover_dark_vessels(
         for g, v in top
     ]
 
+    # Finalize PipelineRun — record anomaly counts, data volume, and drift
+    if pipeline_run is not None:
+        try:
+            _finalize_pipeline_run(db, pipeline_run, result)
+        except Exception as exc:
+            logger.debug("Could not finalize PipelineRun: %s", exc)
+
     return result
+
+
+def _finalize_pipeline_run(db: Session, pipeline_run, result: dict) -> None:
+    """Record anomaly counts, data volume, and detect drift.
+
+    Drift detection: if any detector's anomaly count changed >50% between
+    consecutive runs AND data volume change is <20%, auto-disable scoring
+    for that detector.
+    """
+    from datetime import datetime as _dt
+    from sqlalchemy import func
+
+    from app.models.pipeline_run import PipelineRun
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.gap_event import AISGapEvent
+    from app.models.ais_point import AISPoint
+    from app.models.vessel import Vessel
+
+    # Collect anomaly counts per detector type
+    anomaly_counts: dict[str, int] = {}
+    try:
+        rows = db.query(
+            SpoofingAnomaly.anomaly_type,
+            func.count(SpoofingAnomaly.spoofing_id),
+        ).group_by(SpoofingAnomaly.anomaly_type).all()
+        for atype, count in rows:
+            atype_str = atype.value if hasattr(atype, "value") else str(atype)
+            anomaly_counts[atype_str] = count
+    except Exception:
+        pass
+
+    anomaly_counts["gap_events"] = db.query(AISGapEvent).count()
+
+    # Data volume
+    data_volume = {
+        "ais_points_count": db.query(AISPoint).count(),
+        "vessels_count": db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).count(),
+    }
+
+    pipeline_run.detector_anomaly_counts_json = anomaly_counts
+    pipeline_run.data_volume_json = data_volume
+    pipeline_run.completed_at = _dt.now(tz=__import__('datetime').timezone.utc)
+    pipeline_run.status = result.get("run_status", "complete")
+
+    # Drift detection — compare with previous run
+    drift_disabled: list[str] = []
+    prev_run = (
+        db.query(PipelineRun)
+        .filter(
+            PipelineRun.run_id != pipeline_run.run_id,
+            PipelineRun.status.in_(["complete", "partial"]),
+        )
+        .order_by(PipelineRun.run_id.desc())
+        .first()
+    )
+
+    if prev_run and prev_run.detector_anomaly_counts_json and prev_run.data_volume_json:
+        prev_counts = prev_run.detector_anomaly_counts_json
+        prev_volume = prev_run.data_volume_json
+
+        # Check data volume change
+        prev_pts = prev_volume.get("ais_points_count", 0)
+        curr_pts = data_volume.get("ais_points_count", 0)
+        data_change_pct = abs(curr_pts - prev_pts) / max(prev_pts, 1) * 100
+
+        if data_change_pct < 20:
+            # Only check drift when data volume is stable
+            for detector, curr_count in anomaly_counts.items():
+                prev_count = prev_counts.get(detector, 0)
+                if prev_count == 0:
+                    continue
+                count_change_pct = abs(curr_count - prev_count) / prev_count * 100
+                if count_change_pct > 50:
+                    logger.warning(
+                        "Drift detected: %s anomaly count changed %.0f%% "
+                        "(data volume change: %.0f%%) — scoring auto-disabled",
+                        detector, count_change_pct, data_change_pct,
+                    )
+                    drift_disabled.append(detector)
+
+    # Carry forward previously disabled detectors (unless confirmed)
+    if prev_run and prev_run.drift_disabled_detectors_json:
+        for det in prev_run.drift_disabled_detectors_json:
+            if det not in drift_disabled:
+                drift_disabled.append(det)
+
+    pipeline_run.drift_disabled_detectors_json = drift_disabled or None
+    db.commit()

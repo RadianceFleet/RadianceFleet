@@ -69,6 +69,14 @@ def _run_migrations() -> None:
         ("vessel_owners", "ism_manager", "VARCHAR(500)"),
         ("vessel_owners", "pi_club_name", "VARCHAR(200)"),
         ("ports", "is_offshore_terminal", "BOOLEAN DEFAULT 0"),
+        # Stage 0 — merge bug fixes
+        ("spoofing_anomalies", "created_at", "DATETIME"),
+        ("ais_gap_events", "original_vessel_id", "INTEGER"),
+        # Stage 1 — accuracy foundation
+        ("ais_gap_events", "is_feed_outage", "BOOLEAN DEFAULT 0"),
+        ("ais_gap_events", "coverage_quality", "VARCHAR(20)"),
+        ("vessels", "dark_fleet_confidence", "VARCHAR(20)"),
+        ("vessels", "confidence_evidence_json", "TEXT"),
     ]
 
     _col_cache: dict[str, set[str]] = {}

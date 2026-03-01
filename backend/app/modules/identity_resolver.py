@@ -247,6 +247,110 @@ def detect_merge_candidates(
     return stats
 
 
+def recheck_merges_for_imo_fraud(
+    db: Session,
+    pipeline_start_time: datetime | None = None,
+) -> dict:
+    """Post-merge recheck: flag auto-merges that may involve fraudulent IMOs.
+
+    Called as Step 11d, after IMO fraud detection (Step 11b). Checks merges
+    where IMO match was the dominant signal (>25% of total score) against
+    newly-created IMO_FRAUD anomalies from this pipeline run.
+
+    Does NOT auto-reverse merges (destructive). Instead creates a warning
+    anomaly for analyst review.
+    """
+    from app.models.base import SpoofingTypeEnum
+
+    if pipeline_start_time is None:
+        pipeline_start_time = datetime.utcnow() - timedelta(hours=1)
+
+    stats = {"checked": 0, "flagged": 0}
+
+    # Find recent IMO_FRAUD anomalies from this pipeline run
+    recent_frauds = (
+        db.query(SpoofingAnomaly)
+        .filter(
+            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+            SpoofingAnomaly.created_at >= pipeline_start_time,
+        )
+        .all()
+    )
+    if not recent_frauds:
+        return stats
+
+    # Collect IMOs and vessel IDs from fraud anomalies
+    fraud_vessel_ids = {f.vessel_id for f in recent_frauds}
+    fraud_imos = set()
+    for f in recent_frauds:
+        ev = f.evidence_json or {}
+        if isinstance(ev, dict) and "imo" in ev:
+            fraud_imos.add(str(ev["imo"]))
+
+    # Find auto-merged candidates where IMO was dominant
+    merged = (
+        db.query(MergeCandidate)
+        .filter(
+            MergeCandidate.status == MergeCandidateStatusEnum.AUTO_MERGED,
+        )
+        .all()
+    )
+
+    for cand in merged:
+        stats["checked"] += 1
+        reasons = cand.match_reasons_json or {}
+        if "same_imo" not in reasons:
+            continue
+
+        imo_pts = reasons["same_imo"].get("points", 0)
+        total = cand.confidence_score or 1
+        if total > 0 and imo_pts / total <= 0.25:
+            continue
+
+        # Check if this IMO or these vessels are flagged
+        cand_imo = reasons["same_imo"].get("imo", "")
+        cand_vessels = {cand.vessel_a_id, cand.vessel_b_id}
+        if cand_imo not in fraud_imos and not cand_vessels.intersection(fraud_vessel_ids):
+            continue
+
+        # Flag: create warning anomaly on the canonical vessel
+        canonical_id = min(cand.vessel_a_id, cand.vessel_b_id)
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == canonical_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+                SpoofingAnomaly.evidence_json["subtype"].as_string() == "post_merge_imo_fraud",
+            )
+            .first()
+        )
+        if not existing:
+            db.add(SpoofingAnomaly(
+                vessel_id=canonical_id,
+                anomaly_type=SpoofingTypeEnum.IMO_FRAUD,
+                start_time_utc=datetime.utcnow(),
+                end_time_utc=datetime.utcnow(),
+                risk_score_component=0,
+                evidence_json={
+                    "subtype": "post_merge_imo_fraud",
+                    "candidate_id": cand.candidate_id,
+                    "imo": cand_imo,
+                    "merged_vessels": list(cand_vessels),
+                },
+            ))
+            stats["flagged"] += 1
+            logger.warning(
+                "Auto-merge candidate_id=%d may involve fraudulent IMO %s — manual review recommended",
+                cand.candidate_id, cand_imo,
+            )
+
+    if stats["flagged"]:
+        db.commit()
+
+    logger.info("IMO fraud merge recheck: %s", stats)
+    return stats
+
+
 def _find_dark_vessels(
     db: Session, cutoff: datetime,
 ) -> list[tuple["Vessel", dict]]:
@@ -393,6 +497,70 @@ def _score_candidate(
         score += 10
         reasons["russian_port_call"] = {"points": 10}
 
+    # --- Negative signals (anti-merge evidence) ---
+
+    # DWT mismatch (>30% difference): strong anti-evidence
+    if dark_v.deadweight and new_v.deadweight and "similar_dwt" not in reasons:
+        dwt_ratio = min(dark_v.deadweight, new_v.deadweight) / max(dark_v.deadweight, new_v.deadweight)
+        if dwt_ratio < 0.7:
+            score = max(0, score - 15)
+            reasons["dwt_mismatch"] = {"points": -15, "ratio": round(dwt_ratio, 3)}
+
+    # Different vessel type: active penalty (not just 0 points)
+    if (dark_v.vessel_type and new_v.vessel_type
+            and dark_v.vessel_type != new_v.vessel_type
+            and "same_vessel_type" not in reasons):
+        score = max(0, score - 10)
+        reasons["vessel_type_mismatch"] = {
+            "points": -10,
+            "dark": dark_v.vessel_type,
+            "new": new_v.vessel_type,
+        }
+
+    # Conflicting port calls during gap period: both vessels at different ports
+    if dark_last["ts"] and new_first["ts"]:
+        gap_start = dark_last["ts"]
+        gap_end = new_first["ts"]
+        dark_ports = (
+            db.query(PortCall.port_id)
+            .filter(
+                PortCall.vessel_id == dark_v.vessel_id,
+                PortCall.arrival_utc >= gap_start,
+                PortCall.arrival_utc <= gap_end,
+                PortCall.port_id.isnot(None),
+            )
+            .all()
+        )
+        new_ports = (
+            db.query(PortCall.port_id)
+            .filter(
+                PortCall.vessel_id == new_v.vessel_id,
+                PortCall.arrival_utc >= gap_start,
+                PortCall.arrival_utc <= gap_end,
+                PortCall.port_id.isnot(None),
+            )
+            .all()
+        )
+        dark_port_ids = {p.port_id for p in dark_ports}
+        new_port_ids = {p.port_id for p in new_ports}
+        conflicting = dark_port_ids - new_port_ids
+        if dark_port_ids and new_port_ids and conflicting:
+            penalty = min(len(conflicting) * -15, -45)  # cap at -45
+            score = max(0, score + penalty)
+            reasons["conflicting_port_calls"] = {
+                "points": penalty,
+                "dark_ports": list(dark_port_ids),
+                "new_ports": list(new_port_ids),
+            }
+
+    # Hard guard: overlapping AIS tracks block merge entirely.
+    # If both vessels transmitted within the same hour, they are different
+    # physical hulls — no merge regardless of score.
+    overlap = _has_overlapping_ais(db, dark_v.vessel_id, new_v.vessel_id)
+    if overlap:
+        reasons["overlapping_ais_tracks"] = {"blocked": True}
+        return 0, reasons
+
     # Anchorage density filter: require extra matching in busy STS areas
     density_count = _count_nearby_vessels(
         db, new_first["lat"], new_first["lon"], new_first["ts"],
@@ -414,10 +582,94 @@ def _score_candidate(
                 "points": penalty,
                 "nearby_vessels": density_count,
             }
+        elif has_triple_match and not has_strong_match:
+            # Sister ships: triple-match reduces penalty but doesn't eliminate it
+            penalty = -10
+            score = max(0, score + penalty)
+            reasons["anchorage_density_penalty"] = {
+                "points": penalty,
+                "nearby_vessels": density_count,
+                "triple_match_reduced": True,
+            }
+
+    # IMO fraud cross-check: if IMO match is the dominant signal, check
+    # for prior-run IMO_FRAUD anomalies. If found, cap confidence to
+    # prevent auto-merge (leave as PENDING for analyst review).
+    if "same_imo" in reasons and score > 0:
+        imo_pts = reasons["same_imo"]["points"]
+        if score > 0 and imo_pts / score > 0.25:
+            imo_val = reasons["same_imo"]["imo"]
+            from app.models.base import SpoofingTypeEnum as _ST
+            fraud_count = (
+                db.query(func.count(SpoofingAnomaly.anomaly_id))
+                .filter(
+                    SpoofingAnomaly.anomaly_type == _ST.IMO_FRAUD,
+                    SpoofingAnomaly.evidence_json["imo"].as_string() == imo_val,
+                )
+                .scalar()
+            ) or 0
+            if fraud_count == 0:
+                # Fallback: check by vessel IDs associated with this IMO
+                fraud_count = (
+                    db.query(func.count(SpoofingAnomaly.anomaly_id))
+                    .filter(
+                        SpoofingAnomaly.anomaly_type == _ST.IMO_FRAUD,
+                        SpoofingAnomaly.vessel_id.in_([dark_v.vessel_id, new_v.vessel_id]),
+                    )
+                    .scalar()
+                ) or 0
+            if fraud_count > 0:
+                # Cap below auto-merge threshold to force manual review
+                auto_thresh = settings.MERGE_AUTO_CONFIDENCE_THRESHOLD
+                if score >= auto_thresh:
+                    score = auto_thresh - 1
+                reasons["imo_fraud_flag"] = {
+                    "capped": True,
+                    "prior_fraud_anomalies": fraud_count,
+                    "imo": imo_val,
+                }
 
     # Cap at 100
     score = min(100, max(0, score))
     return score, reasons
+
+
+def _has_overlapping_ais(
+    db: Session, vessel_a_id: int, vessel_b_id: int,
+    granularity_seconds: int = 3600,
+) -> bool:
+    """Check if two vessels have AIS transmissions within the same time window.
+
+    Uses hourly buckets: if both vessels transmitted at least once in any
+    shared hour, they are different physical hulls and must NOT be merged.
+    Dialect-aware: uses strftime on SQLite, EXTRACT(EPOCH) on Postgres.
+    """
+    dialect = db.bind.dialect.name if db.bind else "sqlite"
+    if dialect == "postgresql":
+        sql = """
+            SELECT COUNT(*) FROM (
+                SELECT CAST(EXTRACT(EPOCH FROM timestamp_utc) / :gran AS INTEGER) AS bucket
+                FROM ais_points WHERE vessel_id = :va
+                INTERSECT
+                SELECT CAST(EXTRACT(EPOCH FROM timestamp_utc) / :gran AS INTEGER) AS bucket
+                FROM ais_points WHERE vessel_id = :vb
+            ) AS overlap
+        """
+    else:
+        sql = """
+            SELECT COUNT(*) FROM (
+                SELECT CAST(strftime('%s', timestamp_utc) / :gran AS INTEGER) AS bucket
+                FROM ais_points WHERE vessel_id = :va
+                INTERSECT
+                SELECT CAST(strftime('%s', timestamp_utc) / :gran AS INTEGER) AS bucket
+                FROM ais_points WHERE vessel_id = :vb
+            )
+        """
+    overlap_count = db.execute(
+        text(sql),
+        {"va": vessel_a_id, "vb": vessel_b_id, "gran": granularity_seconds},
+    ).scalar()
+    return (overlap_count or 0) > 0
 
 
 def _count_nearby_vessels(
@@ -513,6 +765,25 @@ def execute_merge(
     # 4. Merge vessel history (skip duplicates)
     vh_result = _merge_vessel_history(db, canonical_id, absorbed_id)
     affected["vessel_history"] = vh_result
+
+    # 4b. Set forward provenance on gap events before FK reassignment.
+    # original_vessel_id captures which identity generated the gap — used
+    # by scoring to prevent frequency inflation after merges.
+    db.query(AISGapEvent).filter(
+        AISGapEvent.vessel_id == absorbed_id,
+        AISGapEvent.original_vessel_id.is_(None),
+    ).update(
+        {AISGapEvent.original_vessel_id: absorbed_id},
+        synchronize_session="fetch",
+    )
+    # Also tag canonical's own gaps (if not already tagged)
+    db.query(AISGapEvent).filter(
+        AISGapEvent.vessel_id == canonical_id,
+        AISGapEvent.original_vessel_id.is_(None),
+    ).update(
+        {AISGapEvent.original_vessel_id: canonical_id},
+        synchronize_session="fetch",
+    )
 
     # 5. Reassign simple FK tables (no unique constraints)
     simple_result = _reassign_simple_fks(db, canonical_id, absorbed_id)
@@ -880,27 +1151,16 @@ def _record_merge_history(
 
 def _rescore_vessel(db: Session, vessel_id: int, commit: bool = True) -> None:
     """Rescore all gap events for a specific vessel."""
-    from app.modules.risk_scoring import load_scoring_config, compute_gap_score
+    from app.modules.risk_scoring import load_scoring_config, compute_gap_score, _count_gaps_in_window
 
     config = load_scoring_config()
     alerts = db.query(AISGapEvent).filter(AISGapEvent.vessel_id == vessel_id).all()
 
     for alert in alerts:
-        gaps_7d = db.query(AISGapEvent).filter(
-            AISGapEvent.vessel_id == alert.vessel_id,
-            AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=7),
-            AISGapEvent.gap_event_id != alert.gap_event_id,
-        ).count()
-        gaps_14d = db.query(AISGapEvent).filter(
-            AISGapEvent.vessel_id == alert.vessel_id,
-            AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=14),
-            AISGapEvent.gap_event_id != alert.gap_event_id,
-        ).count()
-        gaps_30d = db.query(AISGapEvent).filter(
-            AISGapEvent.vessel_id == alert.vessel_id,
-            AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=30),
-            AISGapEvent.gap_event_id != alert.gap_event_id,
-        ).count()
+        # Use provenance-aware counting to prevent inflation
+        gaps_7d = _count_gaps_in_window(db, alert, 7)
+        gaps_14d = _count_gaps_in_window(db, alert, 14)
+        gaps_30d = _count_gaps_in_window(db, alert, 30)
 
         score, breakdown = compute_gap_score(
             alert, config,

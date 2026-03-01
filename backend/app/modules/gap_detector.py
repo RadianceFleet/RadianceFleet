@@ -174,6 +174,7 @@ def detect_gaps_for_vessel(
 
         gap = AISGapEvent(
             vessel_id=vessel.vessel_id,
+            original_vessel_id=vessel.vessel_id,  # forward provenance for scoring
             start_point_id=p1.ais_point_id,
             end_point_id=p2.ais_point_id,
             gap_start_utc=p1.timestamp_utc,

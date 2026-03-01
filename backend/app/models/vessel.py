@@ -48,6 +48,9 @@ class Vessel(Base):
         Integer, ForeignKey("vessels.vessel_id"), nullable=True, index=True
     )
     last_ais_received_utc: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Stage 1-B: multi-signal confidence classification
+    dark_fleet_confidence: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    confidence_evidence_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
     )

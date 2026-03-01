@@ -42,6 +42,16 @@ class AISGapEvent(Base):
     gap_on_lon: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     # Provenance: "gfw" for GFW-imported, NULL/missing for local AIS detection
     source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Forward provenance: which vessel identity generated this gap.
+    # Set at creation time (= vessel_id) and preserved through merges.
+    # Used by scoring to count per-identity gap frequency, preventing
+    # inflation when merged vessels accumulate gaps from multiple identities.
+    original_vessel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Feed outage: True if this gap was caused by a data feed failure,
+    # not by the vessel going dark. Scored gaps with is_feed_outage=True are skipped.
+    is_feed_outage: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Coverage quality tag from corridor metadata (GOOD/MODERATE/PARTIAL/POOR/NONE/UNKNOWN)
+    coverage_quality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="gap_events")
     corridor: Mapped[Optional["Corridor"]] = relationship("Corridor", back_populates="gap_events")

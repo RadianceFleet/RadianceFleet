@@ -25,6 +25,9 @@ class SpoofingAnomaly(Base):
     implied_speed_kn: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     plausibility_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     risk_score_component: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, default=datetime.utcnow
+    )
 
     vessel: Mapped["Vessel"] = relationship("Vessel")
     gap_event: Mapped[Optional["AISGapEvent"]] = relationship("AISGapEvent", back_populates="spoofing_anomalies")
