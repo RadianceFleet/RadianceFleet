@@ -205,47 +205,9 @@ class TestPaidVerificationAtomicity:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# E3: corridor import rollback on failure
+# E3: corridor import transaction semantics — moved to tests/test_cli.py
+# (test_import_corridors_uses_flush, test_import_corridors_rollback_on_error)
 # ══════════════════════════════════════════════════════════════════════════════
-
-
-class TestCorridorImportRollback:
-    """Verify that the corridor import in setup() uses flush (not commit),
-    so failures can roll back without partial data persisting."""
-
-    def test_cli_corridor_import_uses_flush_not_commit(self):
-        """The corridor import code path should call flush, not commit."""
-        # We test this by inspecting the source code directly
-        import inspect
-        from app import cli
-
-        source = inspect.getsource(cli.setup)
-        # The old code had db.commit() for corridor import, now it should use db.flush()
-        # Find the corridor import section: starts at "Step 2" (Importing corridors)
-        # and ends at "# 4. Fetch watchlists" (the comment for the next section)
-        corridor_section_start = source.find("Step 2/{total_steps}: Importing corridors")
-        corridor_section_end = source.find("# 4. Fetch watchlists")
-        assert corridor_section_start > 0, "Could not find corridor import section"
-        assert corridor_section_end > corridor_section_start, (
-            f"Corridor section end ({corridor_section_end}) should be after start ({corridor_section_start})"
-        )
-
-        corridor_section = source[corridor_section_start:corridor_section_end]
-        assert "db.flush()" in corridor_section, "corridor import should use db.flush()"
-        assert "db.commit()" not in corridor_section, "corridor import should NOT use db.commit()"
-
-    def test_cli_corridor_import_rollback_on_error(self):
-        """If corridor import fails after adding some records, db.rollback() is called."""
-        import inspect
-        from app import cli
-
-        source = inspect.getsource(cli.setup)
-        # The except block for corridor import should call db.rollback()
-        corridor_section_start = source.find("Step 2/{total_steps}: Importing corridors")
-        corridor_section_end = source.find("# 4. Fetch watchlists")
-        assert corridor_section_start > 0
-        corridor_section = source[corridor_section_start:corridor_section_end]
-        assert "db.rollback()" in corridor_section, "corridor import exception handler should rollback"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
