@@ -61,6 +61,8 @@ def _run_migrations() -> None:
         ("vessel_owners", "verified_at", "DATETIME"),
         ("vessel_owners", "source_url", "VARCHAR"),
         ("vessel_owners", "verification_notes", "TEXT"),
+        # Identity merge column (required for vessel identity resolution)
+        ("vessels", "merged_into_vessel_id", "INTEGER REFERENCES vessels(vessel_id)"),
         # Phase H1 — data freshness
         ("vessels", "last_ais_received_utc", "DATETIME"),
         # Stage 1 — new detector schema additions
