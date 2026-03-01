@@ -81,6 +81,8 @@ def _run_migrations() -> None:
         ("vessel_owners", "parent_owner_id", "INTEGER"),
         ("vessel_owners", "ownership_type", "VARCHAR(50)"),
         ("vessel_owners", "ownership_pct", "REAL"),
+        # Stage B — destination field on AIS points
+        ("ais_points", "destination", "VARCHAR(20)"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
@@ -98,6 +100,21 @@ def _run_migrations() -> None:
                 conn.commit()
                 _col_cache[table_name].add(col_name)
 
+    # Idempotent index creation (Stage B — destination lookup)
+    _idx_migrations = [
+        ("ix_ais_points_destination", "ais_points", "destination"),
+    ]
+    with engine.connect() as conn:
+        existing_indexes: set[str] = set()
+        for idx_info in inspector.get_indexes("ais_points"):
+            existing_indexes.add(idx_info["name"])
+        for idx_name, tbl, col in _idx_migrations:
+            if idx_name not in existing_indexes:
+                conn.execute(text(
+                    f"CREATE INDEX {idx_name} ON {tbl} ({col})"
+                ))
+                conn.commit()
+
     # Postgres-only: add new enum values to native ENUM type.
     # ALTER TYPE ... ADD VALUE cannot run inside a transaction on Postgres.
     # Use raw DBAPI connection in autocommit mode. IF NOT EXISTS (PG 9.3+)
@@ -107,7 +124,11 @@ def _run_migrations() -> None:
         try:
             raw_conn.set_isolation_level(0)  # ISOLATION_LEVEL_AUTOCOMMIT
             cursor = raw_conn.cursor()
-            for val in ("synthetic_track", "stateless_mmsi", "flag_hopping", "imo_fraud", "stale_ais_data", "destination_deviation", "track_replay"):
+            for val in (
+                "synthetic_track", "stateless_mmsi", "flag_hopping", "imo_fraud",
+                "stale_ais_data", "destination_deviation", "track_replay",
+                "route_laundering", "pi_cycling", "sparse_transmission", "type_dwt_mismatch",
+            ):
                 cursor.execute(
                     f"ALTER TYPE spoofingtypeenum ADD VALUE IF NOT EXISTS '{val}'"
                 )

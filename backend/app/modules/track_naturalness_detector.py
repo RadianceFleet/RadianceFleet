@@ -171,17 +171,9 @@ def _compute_features(
     else:
         features["speed_autocorr_lag1"] = None
 
-    # Feature 4: Heading-change entropy (binned into 36 bins of 10°)
-    headings = [p[2] for p in points]  # using COG as heading proxy
-    if len(headings) >= 3:
-        h_changes = []
-        for i in range(1, len(headings)):
-            # Use lon field index 2 — but actually we need COG
-            # points are (ts, lat, lon, sog) — we need heading changes
-            # Since we lack heading in tuple, compute bearing changes from lat/lon
-            pass
-        # Compute bearing from consecutive lat/lon instead
-        bearings: list[float] = []
+    # Compute bearings from consecutive lat/lon (shared by Features 4 & 5)
+    bearings: list[float] = []
+    if len(points) >= 2:
         for i in range(1, len(points)):
             lat1, lon1 = math.radians(points[i - 1][1]), math.radians(points[i - 1][2])
             lat2, lon2 = math.radians(points[i][1]), math.radians(points[i][2])
@@ -191,49 +183,41 @@ def _compute_features(
             bearing = math.degrees(math.atan2(x, y)) % 360
             bearings.append(bearing)
 
-        if len(bearings) >= 2:
-            bearing_changes: list[float] = []
-            for i in range(1, len(bearings)):
-                dc = (bearings[i] - bearings[i - 1] + 180) % 360 - 180
-                bearing_changes.append(dc)
+    # Compute bearing changes (shared by Features 4 & 5)
+    bearing_changes: list[float] = []
+    if len(bearings) >= 2:
+        for i in range(1, len(bearings)):
+            dc = (bearings[i] - bearings[i - 1] + 180) % 360 - 180
+            bearing_changes.append(dc)
 
-            # Bin into 36 bins of 10°
-            n_bins = 36
-            bins = [0] * n_bins
-            for dc in bearing_changes:
-                idx = int(((dc + 180) % 360) / 10) % n_bins
-                bins[idx] += 1
-            total = sum(bins)
-            if total > 0:
-                entropy = 0.0
-                for count in bins:
-                    if count > 0:
-                        p = count / total
-                        entropy -= p * math.log2(p)
-                features["heading_entropy_bits"] = entropy
-            else:
-                features["heading_entropy_bits"] = None
+    # Feature 4: Heading-change entropy (binned into 36 bins of 10°)
+    if len(bearing_changes) >= 1:
+        n_bins = 36
+        bins = [0] * n_bins
+        for dc in bearing_changes:
+            idx = int(((dc + 180) % 360) / 10) % n_bins
+            bins[idx] += 1
+        total = sum(bins)
+        if total > 0:
+            entropy = 0.0
+            for count in bins:
+                if count > 0:
+                    p = count / total
+                    entropy -= p * math.log2(p)
+            features["heading_entropy_bits"] = entropy
         else:
             features["heading_entropy_bits"] = None
     else:
         features["heading_entropy_bits"] = None
 
     # Feature 5: Course-change kurtosis
-    if len(bearings) >= 4 if "bearings" in dir() and bearings else False:
-        bearing_changes_k = []
-        for i in range(1, len(bearings)):
-            dc = (bearings[i] - bearings[i - 1] + 180) % 360 - 180
-            bearing_changes_k.append(dc)
-
-        if len(bearing_changes_k) >= 4:
-            n = len(bearing_changes_k)
-            mean_bc = sum(bearing_changes_k) / n
-            var_bc = sum((bc - mean_bc) ** 2 for bc in bearing_changes_k) / n
-            if var_bc > 1e-12:
-                m4 = sum((bc - mean_bc) ** 4 for bc in bearing_changes_k) / n
-                features["course_kurtosis"] = m4 / (var_bc ** 2)
-            else:
-                features["course_kurtosis"] = None
+    if len(bearing_changes) >= 4:
+        n = len(bearing_changes)
+        mean_bc = sum(bearing_changes) / n
+        var_bc = sum((bc - mean_bc) ** 2 for bc in bearing_changes) / n
+        if var_bc > 1e-12:
+            m4 = sum((bc - mean_bc) ** 4 for bc in bearing_changes) / n
+            features["course_kurtosis"] = m4 / (var_bc ** 2)
         else:
             features["course_kurtosis"] = None
     else:

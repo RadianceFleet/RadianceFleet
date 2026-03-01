@@ -38,7 +38,7 @@ def _make_vessel(vessel_id=1, mmsi="123456789", deadweight=80000, merged_into=No
 
 
 def _make_point(vessel_id=1, ts=None, lat=25.0, lon=56.0, cog=180.0, sog=12.0,
-                raw_payload_ref=None):
+                raw_payload_ref=None, destination=None):
     pt = MagicMock()
     pt.vessel_id = vessel_id
     pt.timestamp_utc = ts or _utcnow()
@@ -47,6 +47,8 @@ def _make_point(vessel_id=1, ts=None, lat=25.0, lon=56.0, cog=180.0, sog=12.0,
     pt.cog = cog
     pt.sog = sog
     pt.raw_payload_ref = raw_payload_ref
+    # Stage B: destination detector now reads from the dedicated column
+    pt.destination = destination if destination is not None else raw_payload_ref
     return pt
 
 
@@ -135,7 +137,7 @@ class TestBlankDestination:
         from app.modules.destination_detector import detect_destination_anomalies
 
         vessel = _make_vessel()
-        point = _make_point(raw_payload_ref=dest_value)
+        point = _make_point(destination=dest_value)
 
         db = _setup_db(
             vessels=[vessel],
@@ -152,10 +154,10 @@ class TestBlankDestination:
         return result, db
 
     def test_none_destination(self):
+        """None destination means no data — should NOT trigger blank anomaly (B6 fix)."""
         result, db = self._run_with_dest(None)
-        assert result["blank_destination"] >= 1
-        assert result["anomalies_created"] >= 1
-        db.add.assert_called()
+        assert result["blank_destination"] == 0
+        assert result["anomalies_created"] == 0
 
     def test_for_orders_destination(self):
         result, db = self._run_with_dest("FOR ORDERS")
@@ -184,7 +186,7 @@ class TestFrequentDestinationChanges:
 
         # Create points with 4 different destinations (none blank)
         points = [
-            _make_point(ts=now - timedelta(hours=i), raw_payload_ref=dest)
+            _make_point(ts=now - timedelta(hours=i), destination=dest)
             for i, dest in enumerate(["ROTTERDAM", "SINGAPORE", "FUJAIRAH", "KALAMATA"])
         ]
 
@@ -211,7 +213,7 @@ class TestFrequentDestinationChanges:
         now = _utcnow()
 
         points = [
-            _make_point(ts=now - timedelta(hours=i), raw_payload_ref=dest)
+            _make_point(ts=now - timedelta(hours=i), destination=dest)
             for i, dest in enumerate(["ROTTERDAM", "SINGAPORE", "FUJAIRAH"])
         ]
 
@@ -269,7 +271,7 @@ class TestSTSHeadingDeviation:
                 ts=now - timedelta(hours=i),
                 lat=30.0, lon=56.0,
                 cog=180.0,  # heading south
-                raw_payload_ref="ROTTERDAM",
+                destination="ROTTERDAM",
             )
             for i in range(3)
         ]
@@ -329,7 +331,7 @@ class TestNormalVessel:
                 ts=now - timedelta(hours=i),
                 lat=45.0, lon=5.0,
                 cog=350.0,
-                raw_payload_ref="ROTTERDAM",
+                destination="ROTTERDAM",
             )
             for i in range(3)
         ]
@@ -363,7 +365,7 @@ class TestDedup:
         from app.modules.destination_detector import detect_destination_anomalies
 
         vessel = _make_vessel()
-        point = _make_point(raw_payload_ref=None)  # blank dest
+        point = _make_point(destination="TBA")  # blank generic dest
         existing_anomaly = MagicMock()
 
         db = _setup_db(
@@ -548,7 +550,8 @@ class TestBearingCalculation:
 class TestBlankClassification:
     def test_blank_patterns(self):
         from app.modules.destination_detector import _is_blank_or_generic
-        assert _is_blank_or_generic(None) is True
+        # None means missing data — NOT a deception signal (B6 fix)
+        assert _is_blank_or_generic(None) is False
         assert _is_blank_or_generic("") is True
         assert _is_blank_or_generic("FOR ORDERS") is True
         assert _is_blank_or_generic("tba") is True  # case insensitive

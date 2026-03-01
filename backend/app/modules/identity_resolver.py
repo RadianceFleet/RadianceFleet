@@ -1590,11 +1590,12 @@ def get_vessel_aliases(db: Session, vessel_id: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def detect_merge_chains(db: Session) -> dict:
-    """Find connected components of merged/pending vessels and create MergeChain records.
+    """Find connected components of confirmed-merged vessels and create MergeChain records.
 
     Algorithm:
-      1. Query MergeCandidate rows with status IN (AUTO_MERGED, ANALYST_MERGED, PENDING)
-         and confidence_score >= 50
+      1. Query MergeCandidate rows with status IN (AUTO_MERGED, ANALYST_MERGED)
+         and confidence_score >= 50.  PENDING candidates are excluded because
+         unconfirmed links inflate chain length and reduce chain confidence.
       2. Build undirected graph: each candidate connects vessel_a_id and vessel_b_id
       3. Find connected components (BFS)
       4. For components with >= 3 vessels, create MergeChain records
@@ -1609,14 +1610,13 @@ def detect_merge_chains(db: Session) -> dict:
 
     stats: dict = {"chains_created": 0, "chains_by_band": {"HIGH": 0, "MEDIUM": 0, "LOW": 0}}
 
-    # 1. Query qualifying merge candidates
+    # 1. Query qualifying merge candidates (only confirmed merges)
     candidates = (
         db.query(MergeCandidate)
         .filter(
             MergeCandidate.status.in_([
                 MergeCandidateStatusEnum.AUTO_MERGED,
                 MergeCandidateStatusEnum.ANALYST_MERGED,
-                MergeCandidateStatusEnum.PENDING,
             ]),
             MergeCandidate.confidence_score >= 50,
         )
@@ -1735,6 +1735,38 @@ def detect_merge_chains(db: Session) -> dict:
     db.commit()
     logger.info("Merge chain detection: %s", stats)
     return stats
+
+
+def invalidate_chains_for_rejected_candidate(db: Session, candidate_id: int) -> int:
+    """Mark chains as stale when a merge candidate is rejected.
+
+    When an analyst rejects a candidate, any chain that includes that
+    candidate link is no longer reliable.  This function finds all
+    MergeChain rows whose ``links_json`` references the rejected
+    *candidate_id* and deletes them so they can be re-detected on the
+    next chain-detection pass without the rejected link.
+
+    Returns the number of chains invalidated (deleted).
+    """
+    from app.models.merge_chain import MergeChain
+
+    chains = db.query(MergeChain).all()
+    invalidated = 0
+    for chain in chains:
+        links = chain.links_json or []
+        if candidate_id in links:
+            db.delete(chain)
+            invalidated += 1
+
+    if invalidated > 0:
+        db.commit()
+
+    logger.info(
+        "Invalidated %d merge chain(s) referencing rejected candidate %d",
+        invalidated,
+        candidate_id,
+    )
+    return invalidated
 
 
 def extended_merge_pass(db: Session) -> dict:

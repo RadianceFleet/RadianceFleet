@@ -82,9 +82,14 @@ def _bearing_diff(b1: float, b2: float) -> float:
 
 
 def _is_blank_or_generic(dest: Optional[str]) -> bool:
-    """Check whether a destination string is blank or generic."""
+    """Check whether a destination string is blank or generic.
+
+    Returns False for None/missing — a missing destination simply means
+    no data was broadcast, not that the vessel is being deceptive.  Only
+    explicitly-set generic placeholders should trigger.
+    """
     if dest is None:
-        return True
+        return False
     normalized = dest.strip().upper()
     return normalized in _BLANK_DESTINATIONS
 
@@ -187,14 +192,9 @@ def detect_destination_anomalies(
 
         stats["vessels_analysed"] += 1
 
-        # Extract destination from the most recent AIS point's source field
-        # (In the codebase, destination is stored in raw_payload_ref or
-        # evidence_json on points. We use the source field as a proxy for
-        # destination text since AISPoint doesn't have a dedicated destination
-        # column. The detector uses the raw_payload_ref field which may contain
-        # destination text from AIS sentence type 5.)
+        # Extract destination from the dedicated AIS destination column
         latest_point = recent_points[0]
-        declared_dest = getattr(latest_point, "raw_payload_ref", None)
+        declared_dest = getattr(latest_point, "destination", None)
 
         # ── Check 1: Blank/generic destination ──────────────────────────────
         if _is_blank_or_generic(declared_dest):
@@ -221,10 +221,10 @@ def detect_destination_anomalies(
                 stats["anomalies_created"] += 1
 
         # ── Check 2: Frequent destination changes (>3 in 7 days) ────────────
-        # Collect unique destinations from raw_payload_ref across the window
+        # Collect unique destinations from the destination column across the window
         dest_values = []
         for pt in recent_points:
-            dest = getattr(pt, "raw_payload_ref", None)
+            dest = getattr(pt, "destination", None)
             if dest is not None:
                 dest_values.append(dest.strip().upper())
 

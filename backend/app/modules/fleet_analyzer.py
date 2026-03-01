@@ -122,8 +122,23 @@ def _check_sts_concentration(db, cluster: OwnerCluster, vessels: List[Vessel]) -
     return None
 
 
+def _geo_bin_key(lat: Optional[float], lon: Optional[float], bin_deg: float = 5.0) -> Optional[tuple]:
+    """Return a (lat_bin, lon_bin) key for grouping by geographic proximity.
+
+    Gaps whose lat/lon is unknown return None (excluded from proximity check).
+    """
+    if lat is None or lon is None:
+        return None
+    return (int(lat / bin_deg), int(lon / bin_deg))
+
+
 def _check_dark_coordination(db, cluster: OwnerCluster, vessels: List[Vessel]) -> Optional[FleetAlert]:
-    """3+ vessels going dark (AIS gaps) within a 48h window."""
+    """3+ vessels going dark (AIS gaps) within a 48h window **and** in the same geographic area.
+
+    Gaps are grouped by corridor_id first; gaps without a corridor are binned
+    into 5-degree lat/lon cells using their gap_off_lat/gap_off_lon position.
+    Only gaps within the same geographic group are compared in the sliding window.
+    """
     if len(vessels) < DARK_COORDINATION_MIN_VESSELS:
         return None
 
@@ -138,26 +153,46 @@ def _check_dark_coordination(db, cluster: OwnerCluster, vessels: List[Vessel]) -
     if len(gaps) < DARK_COORDINATION_MIN_VESSELS:
         return None
 
-    # Sliding window: check if 3+ different vessels have gaps starting within 48h
-    for i in range(len(gaps)):
-        window_start = gaps[i].gap_start_utc
-        window_end = window_start + timedelta(hours=DARK_COORDINATION_HOURS)
-        window_vessels = set()
-        for j in range(i, len(gaps)):
-            if gaps[j].gap_start_utc > window_end:
-                break
-            window_vessels.add(gaps[j].vessel_id)
-        if len(window_vessels) >= DARK_COORDINATION_MIN_VESSELS:
-            return FleetAlert(
-                owner_cluster_id=cluster.cluster_id,
-                alert_type="fleet_dark_coordination",
-                vessel_ids_json=list(window_vessels),
-                evidence_json={
-                    "vessel_count": len(window_vessels),
-                    "window_hours": DARK_COORDINATION_HOURS,
-                },
-                risk_score_component=SCORE_DARK_COORDINATION,
-            )
+    # Group gaps by geographic proximity: corridor_id if available, else 5-deg bin
+    geo_groups: Dict[str, list] = defaultdict(list)
+    for gap in gaps:
+        cid = getattr(gap, "corridor_id", None)
+        if cid is not None:
+            geo_groups[f"corridor:{cid}"].append(gap)
+        else:
+            lat = getattr(gap, "gap_off_lat", None)
+            lon = getattr(gap, "gap_off_lon", None)
+            bk = _geo_bin_key(lat, lon)
+            if bk is not None:
+                geo_groups[f"bin:{bk[0]}:{bk[1]}"].append(gap)
+            # Gaps with no location data are silently excluded from
+            # coordination detection — they cannot be placed geographically.
+
+    # Sliding window within each geographic group
+    for group_key, group_gaps in geo_groups.items():
+        if len(group_gaps) < DARK_COORDINATION_MIN_VESSELS:
+            continue
+        group_gaps.sort(key=lambda g: g.gap_start_utc)
+        for i in range(len(group_gaps)):
+            window_start = group_gaps[i].gap_start_utc
+            window_end = window_start + timedelta(hours=DARK_COORDINATION_HOURS)
+            window_vessels = set()
+            for j in range(i, len(group_gaps)):
+                if group_gaps[j].gap_start_utc > window_end:
+                    break
+                window_vessels.add(group_gaps[j].vessel_id)
+            if len(window_vessels) >= DARK_COORDINATION_MIN_VESSELS:
+                return FleetAlert(
+                    owner_cluster_id=cluster.cluster_id,
+                    alert_type="fleet_dark_coordination",
+                    vessel_ids_json=list(window_vessels),
+                    evidence_json={
+                        "vessel_count": len(window_vessels),
+                        "window_hours": DARK_COORDINATION_HOURS,
+                        "geo_group": group_key,
+                    },
+                    risk_score_component=SCORE_DARK_COORDINATION,
+                )
     return None
 
 
@@ -475,15 +510,21 @@ def detect_batch_renames(db) -> dict:
                     break
                 window_vessels.add(changes[j]["vessel_id"])
             if len(window_vessels) > 3:
-                # Check dedup
-                existing = (
+                # Check dedup — filter by owner_name in evidence_json
+                existing_alerts = (
                     db.query(FleetAlert)
                     .filter(
                         FleetAlert.alert_type == "batch_rename",
                     )
-                    .first()
+                    .all()
                 )
-                if existing is None:
+                already_exists = False
+                for ea in existing_alerts:
+                    ej = ea.evidence_json if isinstance(ea.evidence_json, dict) else {}
+                    if ej.get("owner_name") == owner_name:
+                        already_exists = True
+                        break
+                if not already_exists:
                     alert = FleetAlert(
                         alert_type="batch_rename",
                         vessel_ids_json=list(window_vessels),

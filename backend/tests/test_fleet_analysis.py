@@ -56,11 +56,14 @@ def _make_cluster(cluster_id, canonical_name="Test Cluster", is_sanctioned=False
     return c
 
 
-def _make_gap(vessel_id, gap_start, risk_score=0):
+def _make_gap(vessel_id, gap_start, risk_score=0, corridor_id=1, gap_off_lat=60.0, gap_off_lon=25.0):
     g = MagicMock()
     g.vessel_id = vessel_id
     g.gap_start_utc = gap_start
     g.risk_score = risk_score
+    g.corridor_id = corridor_id
+    g.gap_off_lat = gap_off_lat
+    g.gap_off_lon = gap_off_lon
     return g
 
 
