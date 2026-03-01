@@ -73,8 +73,12 @@ def search_vessel(
         ship_name_list = info.get("shipsData", [{}])
         ship = ship_name_list[0] if ship_name_list else {}
 
+        # GFW v3 nests vessel ID in selfReportedInfo[0].id, not top-level entry.id
+        self_reported = entry.get("selfReportedInfo", [])
+        gfw_id = self_reported[0].get("id") if self_reported else entry.get("id")
+
         results.append({
-            "gfw_id": entry.get("id"),
+            "gfw_id": gfw_id,
             "name": ship.get("shipname"),
             "mmsi": entry.get("ssvid"),
             "imo": ship.get("imo"),

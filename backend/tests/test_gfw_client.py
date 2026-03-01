@@ -34,8 +34,10 @@ class TestSearchVessel:
         mock_resp.json.return_value = {
             "entries": [
                 {
-                    "id": "gfw-vessel-1",
                     "ssvid": "123456789",
+                    "selfReportedInfo": [
+                        {"id": "gfw-vessel-1"}
+                    ],
                     "combinedSourcesInfo": [
                         {
                             "shipsData": [
