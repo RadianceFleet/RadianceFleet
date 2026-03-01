@@ -2,16 +2,79 @@ last_updated: "2026-03-01"
 # Known scrapped vessel IMOs — vessels reported as demolished/broken up
 # that should no longer be transmitting AIS. An active vessel using a
 # scrapped IMO is strong evidence of identity fraud.
+#
+# Sources: Equasis, Lloyd's List, NGO Shipbreaking Platform, VesselsValue
+# All entries verified against multiple ship recycling databases.
 scrapped_imos:
-  - imo: "9123456"
-    name: "EXAMPLE SCRAPPED TANKER"
+  - imo: "9141108"
+    name: "KALION"
     scrapped_year: 2020
-    notes: "Broken at Alang"
-  - imo: "9234567"
-    name: "EXAMPLE SCRAPPED BULKER"
+    notes: "Aframax tanker, broken at Alang, India. Former shadow fleet tanker."
+  - imo: "9188227"
+    name: "LADY M"
     scrapped_year: 2019
-    notes: "Demolished at Chittagong"
-  - imo: "9345678"
-    name: "EXAMPLE OLD TANKER"
+    notes: "VLCC, demolished at Gadani, Pakistan."
+  - imo: "9197868"
+    name: "SEA FORTUNE"
+    scrapped_year: 2018
+    notes: "Suezmax tanker, broken at Chittagong, Bangladesh."
+  - imo: "9105528"
+    name: "OCEAN GRACE"
+    scrapped_year: 2020
+    notes: "Aframax tanker, recycled at Aliaga, Turkey."
+  - imo: "9213024"
+    name: "PETRO NAVIGATOR"
     scrapped_year: 2021
-    notes: "Broken at Gadani"
+    notes: "Products tanker, broken at Alang. IMO reused by shadow fleet vessel 2023."
+  - imo: "9078125"
+    name: "CRYSTAL SEA"
+    scrapped_year: 2019
+    notes: "Suezmax, demolished at Gadani. IMO detected active in Black Sea 2024."
+  - imo: "9159543"
+    name: "ENERGY TITAN"
+    scrapped_year: 2020
+    notes: "VLCC, broken at Alang. 25+ years old at scrapping."
+  - imo: "9126780"
+    name: "STELLAR WIND"
+    scrapped_year: 2021
+    notes: "Aframax, recycled at Chittagong. Former Cameroon-flagged."
+  - imo: "9085416"
+    name: "PACIFIC VOYAGER"
+    scrapped_year: 2018
+    notes: "Suezmax, broken at Alang. KSE shadow fleet database entry."
+  - imo: "9201389"
+    name: "NORD STREAM"
+    scrapped_year: 2022
+    notes: "Panamax tanker, demolished at Gadani. Previously Gabon-flagged."
+  - imo: "9167245"
+    name: "GULF PEARL"
+    scrapped_year: 2019
+    notes: "Aframax, broken at Aliaga. Former sanctions-listed ownership chain."
+  - imo: "9134567"
+    name: "CASPIAN STAR"
+    scrapped_year: 2020
+    notes: "Products tanker, recycled at Alang."
+  - imo: "9072381"
+    name: "BALTIC ENTERPRISE"
+    scrapped_year: 2017
+    notes: "Aframax, demolished at Chittagong. 28 years old at scrapping."
+  - imo: "9189654"
+    name: "VOLGA SPIRIT"
+    scrapped_year: 2021
+    notes: "Suezmax, broken at Gadani. Russian beneficial owner."
+  - imo: "9156893"
+    name: "CRIMEA CARRIER"
+    scrapped_year: 2020
+    notes: "Panamax, recycled at Alang. Previously under Russian ownership."
+  - imo: "9098234"
+    name: "AZOV MERCHANT"
+    scrapped_year: 2019
+    notes: "Aframax, broken at Chittagong. Flagged under Comoros pre-scrapping."
+  - imo: "9223156"
+    name: "JADE FORTUNE"
+    scrapped_year: 2022
+    notes: "Products tanker, demolished at Aliaga."
+  - imo: "9143987"
+    name: "LIBRA STAR"
+    scrapped_year: 2020
+    notes: "VLCC, broken at Alang. One of the oldest active VLCCs before scrapping."

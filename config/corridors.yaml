@@ -376,3 +376,28 @@ corridors:
     is_jamming_zone: false
     description: "Malacca Strait transit corridor — excellent AIS coverage, NOT a jamming zone"
     tags: [transit, chokepoint]
+
+  # --- ADDITIONAL STS / ANCHORAGE ZONES (Stage D) ---
+  - name: "Batam/Bintan (Indonesia) STS Zone"
+    geometry: "POLYGON((104.0 0.5, 105.0 0.5, 105.0 1.5, 104.0 1.5, 104.0 0.5))"
+    corridor_type: sts_zone
+    risk_weight: 2.0
+    is_jamming_zone: false
+    description: "Batam/Bintan offshore STS zone — emerging transfer area near Singapore Strait, documented by CREA and TankerTrackers (2024-25)"
+    tags: [ship_to_ship, emerging, southeast_asia]
+
+  - name: "Zhoushan/Ningbo (China) Anchorage"
+    geometry: "POLYGON((122.0 29.5, 123.0 29.5, 123.0 30.5, 122.0 30.5, 122.0 29.5))"
+    corridor_type: anchorage_holding
+    risk_weight: 1.8
+    is_jamming_zone: false
+    description: "Zhoushan/Ningbo anchorage — major Chinese crude import hub, STS and lightering operations for teapot refineries (CREA 2025)"
+    tags: [anchorage, import, far_east]
+
+  - name: "Mundra (India) Import Zone"
+    geometry: "POLYGON((69.0 22.3, 70.0 22.3, 70.0 23.3, 69.0 23.3, 69.0 22.3))"
+    corridor_type: import_route
+    risk_weight: 1.5
+    is_jamming_zone: false
+    description: "Mundra / Kandla port complex — Adani's main crude import terminal, significant Russian crude volumes (CREA 2024-25)"
+    tags: [import, india, documented]

@@ -499,10 +499,12 @@ class TestCargoInference:
 
 class TestWeatherCorrelation:
 
-    def test_weather_stub_returns_empty(self):
-        """Stub weather API returns empty dict."""
+    def test_weather_stub_delegates_to_get_weather(self):
+        """get_weather_stub delegates to get_weather (backward compat wrapper)."""
         from app.modules.weather_correlator import get_weather_stub
-        result = get_weather_stub(55.0, 20.0)
+        with patch("app.modules.weather_correlator.get_weather", return_value={}) as mock_gw:
+            result = get_weather_stub(55.0, 20.0)
+        mock_gw.assert_called_once_with(55.0, 20.0, None)
         assert result == {}
 
     def test_wind_deduction(self):
@@ -513,9 +515,9 @@ class TestWeatherCorrelation:
         assert reason == "high_wind"
 
     def test_storm_deduction(self):
-        """Wind > 35kn => -15 deduction."""
+        """Wind > 40kn => -15 deduction (Stage D: Open-Meteo threshold)."""
         from app.modules.weather_correlator import compute_weather_deduction
-        deduction, reason = compute_weather_deduction({"wind_speed_kn": 40.0})
+        deduction, reason = compute_weather_deduction({"wind_speed_kn": 41.0})
         assert deduction == -15
         assert reason == "storm_conditions"
 
@@ -561,8 +563,8 @@ class TestWeatherCorrelation:
         ais_query.filter.return_value.order_by.return_value.all.return_value = [pt]
         db.query.return_value = ais_query
 
-        # Patch get_weather_stub to return actual weather data
-        with patch("app.modules.weather_correlator.get_weather_stub") as mock_weather:
+        # Patch get_weather (correlate_weather calls get_weather, not get_weather_stub)
+        with patch("app.modules.weather_correlator.get_weather") as mock_weather:
             mock_weather.return_value = {"wind_speed_kn": 30.0, "conditions": "rough"}
             result = correlate_weather(db, vessel_id=1)
 
@@ -599,8 +601,8 @@ class TestWeatherCorrelation:
         ais_query.filter.return_value.order_by.return_value.all.return_value = [pt]
         db.query.return_value = ais_query
 
-        with patch("app.modules.weather_correlator.get_weather_stub") as mock_weather:
-            mock_weather.return_value = {"wind_speed_kn": 40.0, "conditions": "storm"}
+        with patch("app.modules.weather_correlator.get_weather") as mock_weather:
+            mock_weather.return_value = {"wind_speed_kn": 41.0, "conditions": "storm"}
             result = correlate_weather(db, vessel_id=1)
 
         assert result["total_deduction"] == -15

@@ -1,4 +1,7 @@
 last_updated: "2026-03-01"
+# International Group of P&I Clubs (IG) — the 12 legitimate mutual insurers
+# that provide liability cover to ~90% of the world's ocean-going tonnage.
+# A vessel NOT covered by an IG club is a significant risk indicator.
 legitimate_clubs:
   - name: "The American Steamship Owners Mutual Protection and Indemnity Association (American Club)"
     short: "American Club"
@@ -26,6 +29,19 @@ legitimate_clubs:
     short: "UK Club"
   - name: "The West of England Ship Owners Mutual Insurance Association (Luxembourg) (West)"
     short: "West"
+
+# Known fraudulent or non-legitimate P&I entities
+# These entities are NOT recognized IG clubs and have been documented in
+# connection with shadow fleet or sanctions-evading vessels.
+# Sources: Windward, TankerTrackers, OFAC advisories, KSE research
 known_fraudulent:
   - "Pacific Maritime Insurance"
   - "Global Shipping Guarantee Corp"
+  - "Ingosstrakh Insurance Company"
+  - "Sogaz Insurance Group"
+  - "VSK Insurance House"
+  - "Rosgosstrakh"
+  - "AlfaStrakhovanie"
+  - "Reso-Garantia"
+  - "West Asia Maritime and Energy Insurance"
+  - "Ocean P&I Insurance Ltd"

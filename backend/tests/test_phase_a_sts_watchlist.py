@@ -19,10 +19,10 @@ class TestLoadBunkeringExclusions:
         result = _load_bunkering_exclusions()
         assert isinstance(result, set)
         assert len(result) > 0
-        # Check that known placeholder MMSIs are present
-        assert "470000001" in result
-        assert "563000001" in result
-        assert "236000001" in result
+        # Check that known bunkering MMSIs are present
+        assert "470581000" in result  # Cockett Bunker 1 (Fujairah)
+        assert "563046700" in result  # GP Global Bunker (Singapore)
+        assert "236118000" in result  # Aegean Bunker (Gibraltar)
 
     def test_bunkering_vessel_excluded_from_sts(self):
         """Mock a vessel with MMSI in exclusion list, verify _is_bunkering_vessel returns True."""
@@ -30,7 +30,7 @@ class TestLoadBunkeringExclusions:
 
         db = MagicMock()
         vessel = MagicMock()
-        vessel.mmsi = "470000001"  # Matches a bunkering vessel in the YAML
+        vessel.mmsi = "470581000"  # Matches a bunkering vessel in the YAML (Cockett Bunker 1)
         db.query.return_value.filter.return_value.first.return_value = vessel
 
         assert _is_bunkering_vessel(db, 1) is True

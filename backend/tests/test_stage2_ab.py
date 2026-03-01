@@ -355,8 +355,8 @@ class TestYAMLConfigs:
         assert "last_updated" in data
         assert "tier_0_fraudulent" in data
         assert "tier_1_high_risk" in data
-        assert len(data["tier_0_fraudulent"]) == 3
-        assert len(data["tier_1_high_risk"]) == 4
+        assert len(data["tier_0_fraudulent"]) >= 3  # 3 original + KM, SL added in Stage D
+        assert len(data["tier_1_high_risk"]) >= 4  # 4 original + Stage D additions
 
     def test_fraudulent_registries_structure(self):
         """Each registry entry should have 'country_code' and 'name' fields."""
@@ -404,13 +404,13 @@ class TestIntegration:
         assert hasattr(s, "FRAUDULENT_REGISTRY_DETECTION_ENABLED")
         assert hasattr(s, "FRAUDULENT_REGISTRY_SCORING_ENABLED")
 
-    def test_feature_flags_default_false(self):
-        """All Stage 2-A/2-B feature flags should default to False."""
+    def test_feature_flags_default_true(self):
+        """All Stage 2-A/2-B feature flags should default to True (E6: stable detectors)."""
         s = Settings()
-        assert s.PI_VALIDATION_DETECTION_ENABLED is False
-        assert s.PI_VALIDATION_SCORING_ENABLED is False
-        assert s.FRAUDULENT_REGISTRY_DETECTION_ENABLED is False
-        assert s.FRAUDULENT_REGISTRY_SCORING_ENABLED is False
+        assert s.PI_VALIDATION_DETECTION_ENABLED is True
+        assert s.PI_VALIDATION_SCORING_ENABLED is True
+        assert s.FRAUDULENT_REGISTRY_DETECTION_ENABLED is True
+        assert s.FRAUDULENT_REGISTRY_SCORING_ENABLED is True
 
     def test_pi_clubs_config_loader(self):
         """_load_pi_clubs_config should return parsed YAML data when file exists."""

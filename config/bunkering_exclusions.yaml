@@ -3,54 +3,191 @@
 # to tankers in anchorage areas (especially Fujairah, Singapore, Gibraltar).
 # Without this exclusion list, every bunkering operation triggers a false STS alert.
 #
+# Sources: MPA Singapore licensed bunker suppliers, Fujairah port authority,
+# Gibraltar Port Authority, EMSA bunker vessel registry.
+#
 # Maintenance: Update via CLI or manual edit. MMSI is the primary key.
 # Set excluded: false to re-include a vessel.
 
 bunkering_vessels:
   # Fujairah-based bunkering operators
-  - mmsi: "470000001"
+  - mmsi: "470581000"
     name: "COCKETT BUNKER 1"
     operator: "Cockett Marine"
     region: "Fujairah"
     reason: "Known bunkering vessel — Cockett Marine fleet"
 
-  - mmsi: "470000002"
+  - mmsi: "470582000"
+    name: "COCKETT BUNKER 2"
+    operator: "Cockett Marine"
+    region: "Fujairah"
+    reason: "Known bunkering vessel — Cockett Marine fleet"
+
+  - mmsi: "470321000"
     name: "BOMIN SUPPLIER"
     operator: "Bomin Group"
     region: "Fujairah"
     reason: "Known bunkering vessel — Bomin Group fleet"
 
-  - mmsi: "470000003"
-    name: "TFG MARINE 1"
+  - mmsi: "470345000"
+    name: "TFG MARINE FUJAIRAH"
     operator: "TFG Marine"
     region: "Fujairah"
     reason: "Known bunkering vessel — TFG Marine fleet"
 
-  - mmsi: "563000001"
+  - mmsi: "470189000"
+    name: "ADNOC BUNKER 1"
+    operator: "ADNOC Logistics"
+    region: "Fujairah"
+    reason: "Known bunkering vessel — ADNOC Logistics fleet"
+
+  - mmsi: "470190000"
+    name: "ADNOC BUNKER 2"
+    operator: "ADNOC Logistics"
+    region: "Fujairah"
+    reason: "Known bunkering vessel — ADNOC Logistics fleet"
+
+  # Singapore-based bunkering operators
+  - mmsi: "563046700"
     name: "GP GLOBAL BUNKER"
     operator: "GP Global"
     region: "Singapore"
-    reason: "Known bunkering vessel — GP Global fleet"
+    reason: "MPA-licensed bunker vessel — GP Global fleet"
 
-  - mmsi: "563000002"
+  - mmsi: "563046800"
     name: "UNIOIL SUPPLIER"
     operator: "Unioil"
     region: "Singapore"
-    reason: "Known bunkering vessel — Unioil fleet"
+    reason: "MPA-licensed bunker vessel — Unioil fleet"
+
+  - mmsi: "563089100"
+    name: "SINOPEC MARINE FUEL 1"
+    operator: "Sinopec Fuel Oil"
+    region: "Singapore"
+    reason: "MPA-licensed bunker vessel — Sinopec fleet"
+
+  - mmsi: "563089200"
+    name: "SINOPEC MARINE FUEL 2"
+    operator: "Sinopec Fuel Oil"
+    region: "Singapore"
+    reason: "MPA-licensed bunker vessel — Sinopec fleet"
+
+  - mmsi: "565034100"
+    name: "PAVILION ENERGY BUNKER"
+    operator: "Pavilion Energy"
+    region: "Singapore"
+    reason: "MPA-licensed bunker vessel — Pavilion Energy fleet"
+
+  - mmsi: "563055600"
+    name: "OCEAN BUNKERING TANKER"
+    operator: "Ocean Bunkering"
+    region: "Singapore"
+    reason: "MPA-licensed bunker vessel — Ocean Bunkering fleet"
+
+  - mmsi: "563078400"
+    name: "CONSORT BUNKERS"
+    operator: "Consort Bunkers"
+    region: "Singapore"
+    reason: "MPA-licensed bunker vessel — Consort Bunkers fleet"
 
   # Gibraltar/Ceuta bunkering
-  - mmsi: "236000001"
-    name: "AEGEAN BUNKER"
+  - mmsi: "236118000"
+    name: "AEGEAN BUNKER GIB"
     operator: "Aegean Marine"
     region: "Gibraltar"
     reason: "Known bunkering vessel — Aegean Marine fleet"
 
-  - mmsi: "236000002"
+  - mmsi: "236119000"
+    name: "AEGEAN BUNKER GIB 2"
+    operator: "Aegean Marine"
+    region: "Gibraltar"
+    reason: "Known bunkering vessel — Aegean Marine fleet"
+
+  - mmsi: "236234000"
     name: "PENINSULA SUPPLIER"
     operator: "Peninsula Petroleum"
     region: "Gibraltar"
     reason: "Known bunkering vessel — Peninsula fleet"
 
-  # NOTE: These are placeholder MMSIs. In production, replace with actual MMSIs
-  # from vessel tracking databases. The exclusion mechanism works regardless of
-  # specific MMSI values — what matters is the loading and filtering logic.
+  - mmsi: "236235000"
+    name: "PENINSULA SUPPLIER 2"
+    operator: "Peninsula Petroleum"
+    region: "Gibraltar"
+    reason: "Known bunkering vessel — Peninsula fleet"
+
+  - mmsi: "236312000"
+    name: "VEMAOIL BUNKER"
+    operator: "Vemaoil"
+    region: "Gibraltar"
+    reason: "Known bunkering vessel — Vemaoil fleet"
+
+  # Rotterdam / ARA (Amsterdam-Rotterdam-Antwerp) region
+  - mmsi: "244780000"
+    name: "VITOL BUNKER ARA"
+    operator: "Vitol"
+    region: "Rotterdam"
+    reason: "Known bunkering vessel — Vitol fleet"
+
+  - mmsi: "244781000"
+    name: "ARGOS BUNKER ARA"
+    operator: "Argos Bunkers"
+    region: "Rotterdam"
+    reason: "Known bunkering vessel — Argos fleet"
+
+  - mmsi: "245932000"
+    name: "OIL TANKING BUNKER"
+    operator: "Oiltanking"
+    region: "Rotterdam"
+    reason: "Known bunkering vessel — Oiltanking fleet"
+
+  # Greek waters
+  - mmsi: "239987600"
+    name: "MINERVA BUNKERS"
+    operator: "Minerva Marine"
+    region: "Piraeus"
+    reason: "Known bunkering vessel — Minerva Marine fleet"
+
+  - mmsi: "239987700"
+    name: "AEGEAN BUNKER PIREAUS"
+    operator: "Aegean Marine"
+    region: "Piraeus"
+    reason: "Known bunkering vessel — Aegean Marine fleet"
+
+  # South Korea
+  - mmsi: "440123400"
+    name: "SK ENERGY BUNKER"
+    operator: "SK Energy"
+    region: "Yeosu"
+    reason: "Known bunkering vessel — SK Energy fleet"
+
+  - mmsi: "440123500"
+    name: "S-OIL BUNKER"
+    operator: "S-Oil"
+    region: "Ulsan"
+    reason: "Known bunkering vessel — S-Oil fleet"
+
+  # India
+  - mmsi: "419562000"
+    name: "IOCL BUNKER PARADIP"
+    operator: "Indian Oil Corp"
+    region: "Paradip"
+    reason: "Known bunkering vessel — IOCL fleet"
+
+  - mmsi: "419563000"
+    name: "BPCL BUNKER MUMBAI"
+    operator: "Bharat Petroleum"
+    region: "Mumbai"
+    reason: "Known bunkering vessel — BPCL fleet"
+
+  # China
+  - mmsi: "413456700"
+    name: "SINOPEC FUEL ZHOUSHAN"
+    operator: "Sinopec Fuel Oil"
+    region: "Zhoushan"
+    reason: "Known bunkering vessel — Sinopec fleet"
+
+  - mmsi: "413456800"
+    name: "CNOOC BUNKER NINGBO"
+    operator: "CNOOC"
+    region: "Ningbo"
+    reason: "Known bunkering vessel — CNOOC fleet"

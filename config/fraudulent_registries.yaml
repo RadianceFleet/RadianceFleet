@@ -1,4 +1,17 @@
 last_updated: "2026-03-01"
+# Tiered classification of flag state registries by sanctions evasion risk.
+# Sources: Paris MOU grey/black lists, OFAC advisories, KSE Institute,
+# CREA shadow fleet reports, Windward research.
+#
+# tier_0: Registries with no effective maritime administration or known
+#         to issue documents without verification. Vessels flagged here
+#         are almost certainly engaged in sanctions evasion.
+# tier_1: High-risk registries with documented shadow fleet connections,
+#         weak oversight, or frequent flag-of-convenience abuse.
+# tier_2_monitored: Major open registries with generally adequate oversight
+#         but known to host shadow fleet vessels. Flag alone is not a signal;
+#         combined with other indicators it becomes relevant.
+
 tier_0_fraudulent:
   - country_code: "CM"
     name: "Cameroon (non-operational registry)"
@@ -6,6 +19,11 @@ tier_0_fraudulent:
     name: "Bolivia (landlocked, no maritime authority)"
   - country_code: "MD"
     name: "Moldova (known for minimal oversight)"
+  - country_code: "KM"
+    name: "Comoros (known shadow fleet flag, minimal oversight)"
+  - country_code: "SL"
+    name: "Sierra Leone (documented sanctions evasion flag)"
+
 tier_1_high_risk:
   - country_code: "TG"
     name: "Togo"
@@ -15,3 +33,21 @@ tier_1_high_risk:
     name: "Palau"
   - country_code: "CK"
     name: "Cook Islands"
+  - country_code: "VU"
+    name: "Vanuatu"
+  - country_code: "GA"
+    name: "Gabon"
+  - country_code: "BB"
+    name: "Barbados"
+  - country_code: "ST"
+    name: "Sao Tome and Principe"
+  - country_code: "KN"
+    name: "St Kitts and Nevis"
+  - country_code: "VC"
+    name: "St Vincent and the Grenadines"
+
+tier_2_monitored:
+  - country_code: "PA"
+    name: "Panama (largest open registry, adequate oversight but hosts shadow fleet vessels)"
+  - country_code: "LR"
+    name: "Liberia (second-largest registry, cooperates with sanctions but some shadow fleet presence)"

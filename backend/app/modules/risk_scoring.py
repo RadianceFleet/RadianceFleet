@@ -47,6 +47,7 @@ _EXPECTED_SECTIONS = [
     "destination", "sts_chains", "scrapped_registry", "track_replay",
     "merge_chains",
     "ownership_graph", "convoy", "voyage",
+    "route_laundering", "pi_cycling", "sparse_transmission", "vessel_type_consistency",
 ]
 
 
@@ -814,6 +815,14 @@ def compute_gap_score(
             _shadow_excluded_types.add("destination_deviation")
         if not _scoring_settings.TRACK_REPLAY_SCORING_ENABLED:
             _shadow_excluded_types.add("track_replay")
+        if not _scoring_settings.ROUTE_LAUNDERING_SCORING_ENABLED:
+            _shadow_excluded_types.add("route_laundering")
+        if not _scoring_settings.PI_CYCLING_SCORING_ENABLED:
+            _shadow_excluded_types.add("pi_cycling")
+        if not _scoring_settings.SPARSE_TRANSMISSION_SCORING_ENABLED:
+            _shadow_excluded_types.add("sparse_transmission")
+        if not _scoring_settings.TYPE_CONSISTENCY_SCORING_ENABLED:
+            _shadow_excluded_types.add("type_dwt_mismatch")
 
         def _type_val(s):
             return str(s.anomaly_type.value if hasattr(s.anomaly_type, "value") else s.anomaly_type)
@@ -1191,12 +1200,35 @@ def compute_gap_score(
             if _history_years > 10:
                 breakdown["legitimacy_long_trading_history"] = legitimacy_cfg.get("long_trading_history", -8)
 
-    # TODO(v1.1): flag_less_than_2y_old_AND_high_risk: +20
-    # Deferred: no authoritative data source reliably maps each ISO flag code to the year
-    # its maritime registry became operationally active for shadow fleet use. Hardcoding
-    # incorrect years would generate false signals. Requires external registry dataset
-    # (UNCTAD, Paris MOU historical records, or KSE Institute research).
-    # See risk_scoring.yaml flag_state.flag_less_than_2y_old_AND_high_risk for the weight.
+    # flag_less_than_2y_old_AND_high_risk: vessel adopted current flag < 2 years ago
+    # AND the flag is high_risk. Query VesselHistory for most recent flag change.
+    if db is not None and vessel is not None:
+        _flag_risk_str = str(
+            vessel.flag_risk_category.value
+            if hasattr(vessel.flag_risk_category, "value")
+            else vessel.flag_risk_category
+        ) if vessel.flag_risk_category else ""
+        if _flag_risk_str == "high_risk":
+            from app.models.vessel_history import VesselHistory as _VH_flag2y
+            latest_flag_change = (
+                db.query(_VH_flag2y)
+                .filter(
+                    _VH_flag2y.vessel_id == vessel.vessel_id,
+                    _VH_flag2y.field_changed == "flag",
+                )
+                .order_by(_VH_flag2y.observed_at.desc())
+                .first()
+            )
+            if latest_flag_change and latest_flag_change.observed_at:
+                _flag_change_dt = latest_flag_change.observed_at
+                if _flag_change_dt.tzinfo:
+                    _flag_change_dt = _flag_change_dt.replace(tzinfo=None)
+                _flag_age_days = (scoring_date - _flag_change_dt).days
+                if 0 <= _flag_age_days < 730:
+                    flag_cfg = config.get("flag_state", {})
+                    breakdown["flag_less_than_2y_AND_high_risk"] = flag_cfg.get(
+                        "flag_less_than_2y_old_AND_high_risk", 20
+                    )
 
     # Transmission frequency mismatch: Class A vessel transmitting at Class B intervals
     # Class A should transmit every 2-10s; if median interval > 25s, flag it
@@ -1788,6 +1820,26 @@ def compute_gap_score(
                         breakdown["ownership_shared_address_sanctioned"] = og_cfg.get(
                             "shared_address_sanctioned", 35
                         )
+
+                # E5: Sanctions propagation via OwnerCluster
+                # If this owner belongs to a sanctioned cluster, propagate the score
+                try:
+                    from app.models.owner_cluster import OwnerCluster
+                    from app.models.owner_cluster_member import OwnerClusterMember
+
+                    cluster_membership = db.query(OwnerClusterMember).filter(
+                        OwnerClusterMember.owner_id == og_owner.owner_id
+                    ).first()
+                    if cluster_membership:
+                        cluster = db.query(OwnerCluster).filter(
+                            OwnerCluster.cluster_id == cluster_membership.cluster_id
+                        ).first()
+                        if cluster and cluster.is_sanctioned and not og_owner.is_sanctioned:
+                            breakdown["ownership_cluster_sanctioned"] = og_cfg.get(
+                                "shared_address_sanctioned", 35
+                            )
+                except Exception:
+                    pass  # Graceful skip if OwnerCluster tables don't exist yet
         except Exception:
             pass  # Graceful skip if ownership graph tables don't exist yet
 
@@ -1842,6 +1894,74 @@ def compute_gap_score(
                                 break
             except Exception:
                 pass
+
+    # ── Stage C: Route laundering scoring ─────────────────────────────────
+    if _scoring_settings.ROUTE_LAUNDERING_SCORING_ENABLED and db is not None and vessel is not None:
+        rl_cfg = config.get("route_laundering", {})
+        rl_anomalies = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == vessel.vessel_id,
+            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.ROUTE_LAUNDERING,
+        ).all()
+        if rl_anomalies:
+            best = max(rl_anomalies, key=lambda a: a.risk_score_component)
+            ev = best.evidence_json or {}
+            hop_count = ev.get("hop_count", 2)
+            if hop_count >= 3:
+                pts = rl_cfg.get("confirmed_3_hop", 35)
+            elif hop_count >= 2:
+                pts = rl_cfg.get("partial_2_hop", 20)
+            else:
+                pts = rl_cfg.get("pattern_only", 15)
+            breakdown["route_laundering"] = pts
+
+    # ── Stage C: P&I cycling scoring ──────────────────────────────────────
+    if _scoring_settings.PI_CYCLING_SCORING_ENABLED and db is not None and vessel is not None:
+        pic_cfg = config.get("pi_cycling", {})
+        pic_anomalies = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == vessel.vessel_id,
+            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.PI_CYCLING,
+        ).all()
+        if pic_anomalies:
+            best = max(pic_anomalies, key=lambda a: a.risk_score_component)
+            ev = best.evidence_json or {}
+            if ev.get("non_ig_club"):
+                pts = pic_cfg.get("non_ig_club", 30)
+            else:
+                pts = pic_cfg.get("rapid_change_90d", 20)
+            breakdown["pi_cycling"] = pts
+
+    # ── Stage C: Sparse transmission scoring ──────────────────────────────
+    if _scoring_settings.SPARSE_TRANSMISSION_SCORING_ENABLED and db is not None and vessel is not None:
+        st_cfg = config.get("sparse_transmission", {})
+        st_anomalies = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == vessel.vessel_id,
+            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.SPARSE_TRANSMISSION,
+        ).all()
+        if st_anomalies:
+            best = max(st_anomalies, key=lambda a: a.risk_score_component)
+            ev = best.evidence_json or {}
+            severity = ev.get("severity", "moderate")
+            if severity == "severe":
+                pts = st_cfg.get("severe_sparsity", 25)
+            else:
+                pts = st_cfg.get("moderate_sparsity", 15)
+            breakdown["sparse_transmission"] = pts
+
+    # ── Stage C: Vessel type consistency scoring ──────────────────────────
+    if _scoring_settings.TYPE_CONSISTENCY_SCORING_ENABLED and db is not None and vessel is not None:
+        vtc_cfg = config.get("vessel_type_consistency", {})
+        vtc_anomalies = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == vessel.vessel_id,
+            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.TYPE_DWT_MISMATCH,
+        ).all()
+        if vtc_anomalies:
+            best = max(vtc_anomalies, key=lambda a: a.risk_score_component)
+            ev = best.evidence_json or {}
+            if ev.get("recent_type_change"):
+                pts = vtc_cfg.get("recent_type_change", 15)
+            else:
+                pts = vtc_cfg.get("type_dwt_mismatch", 25)
+            breakdown["vessel_type_consistency"] = pts
 
     # ── Phase 2+3: Multiplier composition (asymmetric) ─────────────────────
     # Multipliers amplify ONLY risk signals (positive); legitimacy deductions

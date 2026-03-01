@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.base import SpoofingTypeEnum
+from app.models.gap_event import AISGapEvent
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
@@ -171,6 +172,47 @@ def run_flag_hopping_detection(db: Session) -> dict:
         )
         db.add(anomaly)
         anomalies_created += 1
+
+        # Dark-period flag change sub-type: check if any flag change
+        # coincides with an AIS gap (within +/-6 hours). Vessels commonly
+        # change flags during dark periods to avoid detection.
+        for fc in changes:
+            if not fc.observed_at:
+                continue
+            gap_window_start = fc.observed_at - timedelta(hours=6)
+            gap_window_end = fc.observed_at + timedelta(hours=6)
+            overlapping_gap = db.query(AISGapEvent).filter(
+                AISGapEvent.vessel_id == vessel_id,
+                AISGapEvent.gap_start_utc <= gap_window_end,
+                AISGapEvent.gap_end_utc >= gap_window_start,
+            ).first()
+            if overlapping_gap:
+                # Create a sub-type anomaly for dark-period flag change
+                dark_flag_existing = db.query(SpoofingAnomaly).filter(
+                    SpoofingAnomaly.vessel_id == vessel_id,
+                    SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING,
+                    SpoofingAnomaly.evidence_json["sub_type"].as_string() == "dark_period_flag_change",
+                ).first()
+                if not dark_flag_existing:
+                    dark_anomaly = SpoofingAnomaly(
+                        vessel_id=vessel_id,
+                        anomaly_type=SpoofingTypeEnum.FLAG_HOPPING,
+                        start_time_utc=fc.observed_at,
+                        end_time_utc=fc.observed_at,
+                        risk_score_component=20,
+                        evidence_json={
+                            "sub_type": "dark_period_flag_change",
+                            "flag_change_date": fc.observed_at.isoformat(),
+                            "old_flag": fc.old_value,
+                            "new_flag": fc.new_value,
+                            "gap_event_id": overlapping_gap.gap_event_id,
+                            "gap_start": overlapping_gap.gap_start_utc.isoformat() if overlapping_gap.gap_start_utc else None,
+                            "gap_end": overlapping_gap.gap_end_utc.isoformat() if overlapping_gap.gap_end_utc else None,
+                        },
+                    )
+                    db.add(dark_anomaly)
+                    anomalies_created += 1
+                break  # One dark-period anomaly per vessel is sufficient
 
     db.commit()
     logger.info(
