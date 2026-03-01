@@ -44,6 +44,7 @@ _EXPECTED_SECTIONS = [
     "pi_validation", "fraudulent_registry",
     "stale_ais", "at_sea_operations",
     "ism_continuity", "rename_velocity",
+    "destination", "sts_chains", "scrapped_registry", "track_replay",
 ]
 
 
@@ -786,6 +787,10 @@ def compute_gap_score(
             _shadow_excluded_types.add("imo_fraud")
         if not _scoring_settings.STALE_AIS_SCORING_ENABLED:
             _shadow_excluded_types.add("stale_ais_data")
+        if not _scoring_settings.DESTINATION_SCORING_ENABLED:
+            _shadow_excluded_types.add("destination_deviation")
+        if not _scoring_settings.TRACK_REPLAY_SCORING_ENABLED:
+            _shadow_excluded_types.add("track_replay")
 
         def _type_val(s):
             return str(s.anomaly_type.value if hasattr(s.anomaly_type, "value") else s.anomaly_type)
@@ -1489,6 +1494,53 @@ def compute_gap_score(
             breakdown["rename_velocity_3_365d"] = rename_cfg.get("name_changes_3_per_365d", 30)
         elif rename_count >= 2:
             breakdown["rename_velocity_2_365d"] = rename_cfg.get("name_changes_2_per_365d", 15)
+
+    # ── Stage 3-B: STS relay chain scoring ─────────────────────────────────
+    if _scoring_settings.STS_CHAIN_SCORING_ENABLED and db is not None and vessel is not None:
+        sts_chain_cfg = config.get("sts_chains", {})
+        try:
+            from app.models.fleet_alert import FleetAlert as _FA_chain
+            chain_alerts = db.query(_FA_chain).filter(
+                _FA_chain.alert_type == "sts_relay_chain",
+                _FA_chain.vessel_ids_json.contains(vessel.vessel_id),
+            ).all()
+            for ca in chain_alerts:
+                ev = ca.evidence_json or {}
+                chain_len = ev.get("chain_length", 0)
+                if chain_len >= 4:
+                    breakdown["sts_chain_4_plus"] = sts_chain_cfg.get("chain_4_plus_hops", 40)
+                elif chain_len >= 3:
+                    breakdown["sts_chain_3"] = sts_chain_cfg.get("chain_3_hops", 20)
+                # Check if this vessel is an intermediary
+                intermediaries = ev.get("intermediary_vessel_ids", [])
+                if vessel.vessel_id in intermediaries:
+                    breakdown["sts_intermediary"] = sts_chain_cfg.get("intermediary_vessel", 15)
+        except Exception:
+            pass
+
+    # ── Stage 3-C: Scrapped vessel registry scoring ──────────────────────────
+    if _scoring_settings.SCRAPPED_REGISTRY_SCORING_ENABLED and db is not None and vessel is not None:
+        scrapped_cfg = config.get("scrapped_registry", {})
+        scrapped_anomalies = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == vessel.vessel_id,
+            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+        ).all()
+        for sa in scrapped_anomalies:
+            ev = sa.evidence_json or {}
+            if ev.get("subtype") == "scrapped_imo":
+                pts = scrapped_cfg.get("scrapped_imo_reuse", 50)
+                breakdown["scrapped_imo_reuse"] = pts
+
+    # ── Stage 3-C: Track replay scoring ──────────────────────────────────────
+    if _scoring_settings.TRACK_REPLAY_SCORING_ENABLED and db is not None and vessel is not None:
+        replay_cfg = config.get("track_replay", {})
+        replay_anomalies = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == vessel.vessel_id,
+            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.TRACK_REPLAY,
+        ).all()
+        for ra in replay_anomalies:
+            pts = replay_cfg.get("high_correlation_replay", 45)
+            breakdown["track_replay"] = pts
 
     # ── Phase 2+3: Multiplier composition (asymmetric) ─────────────────────
     # Multipliers amplify ONLY risk signals (positive); legitimacy deductions

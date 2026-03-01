@@ -396,7 +396,18 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["stale_ais_detection"] = {"status": "skipped", "detail": "module not available"}
 
-    # Step 4b: Track naturalness (SOFT, feature-gated)
+    # Step 4b: Destination manipulation detection (SOFT, feature-gated)
+    if settings.DESTINATION_DETECTION_ENABLED:
+        try:
+            from app.modules.destination_detector import detect_destination_anomalies
+            _run_step(
+                "destination_detection", detect_destination_anomalies,
+                db, date_from=date_from, date_to=date_to,
+            )
+        except ImportError:
+            result["steps"]["destination_detection"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 4c: Track naturalness (SOFT, feature-gated)
     if settings.TRACK_NATURALNESS_ENABLED:
         try:
             from app.modules.track_naturalness_detector import run_track_naturalness_detection
@@ -424,7 +435,18 @@ def discover_dark_vessels(
     except ImportError:
         result["steps"]["sts_detection"] = {"status": "skipped", "detail": "module not available"}
 
-    # Step 6b: Draught detection (SOFT, feature-gated)
+    # Step 6b: STS relay chain detection (SOFT, feature-gated)
+    if settings.STS_CHAIN_DETECTION_ENABLED:
+        try:
+            from app.modules.sts_chain_detector import detect_sts_chains
+            _run_step(
+                "sts_chain_detection", detect_sts_chains,
+                db, date_from=date_from, date_to=date_to,
+            )
+        except ImportError:
+            result["steps"]["sts_chain_detection"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6c: Draught detection (SOFT, feature-gated)
     if settings.DRAUGHT_DETECTION_ENABLED:
         try:
             from app.modules.draught_detector import run_draught_detection
@@ -495,6 +517,28 @@ def discover_dark_vessels(
             _run_step("imo_fraud_merge_recheck", recheck_merges_for_imo_fraud, db)
         except ImportError:
             result["steps"]["imo_fraud_merge_recheck"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 11e: Scrapped vessel registry detection (SOFT, feature-gated)
+    if settings.SCRAPPED_REGISTRY_DETECTION_ENABLED:
+        try:
+            from app.modules.scrapped_registry import detect_scrapped_imo_reuse
+            _run_step(
+                "scrapped_registry", detect_scrapped_imo_reuse,
+                db, date_from=date_from, date_to=date_to,
+            )
+        except ImportError:
+            result["steps"]["scrapped_registry"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 11f: Track replay detection (SOFT, feature-gated)
+    if settings.TRACK_REPLAY_DETECTION_ENABLED:
+        try:
+            from app.modules.scrapped_registry import detect_track_replay
+            _run_step(
+                "track_replay", detect_track_replay,
+                db, date_from=date_from, date_to=date_to,
+            )
+        except ImportError:
+            result["steps"]["track_replay"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 11c: Fleet analysis (SOFT, feature-gated)
     if settings.FLEET_ANALYSIS_ENABLED:

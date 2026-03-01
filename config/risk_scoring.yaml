@@ -298,6 +298,27 @@ rename_velocity:
   name_changes_3_per_365d: 30
   batch_rename_same_owner: 25
 
+# DESTINATION MANIPULATION (Stage 3-A) — heading vs declared destination
+destination:
+  heading_to_sts_declaring_eu: 40
+  blank_generic_destination: 10
+  destination_changes_3_in_7d: 20
+
+# STS RELAY CHAINS (Stage 3-B) — multi-hop transfer patterns
+sts_chains:
+  chain_3_hops: 20
+  chain_4_plus_hops: 40
+  intermediary_vessel: 15
+
+# SCRAPPED VESSEL REGISTRY (Stage 3-C) — IMO reuse from demolished vessels
+scrapped_registry:
+  scrapped_imo_reuse: 50
+  merge_scrapped_imo_bonus: 15
+
+# TRACK REPLAY (Stage 3-C) — historical route pattern repetition
+track_replay:
+  high_correlation_replay: 45
+
 # FLEET & OWNER INTELLIGENCE (Phase O) — cluster-level patterns
 fleet:
   fleet_sts_concentration: 30       # 3+ vessels, same zone, 30d

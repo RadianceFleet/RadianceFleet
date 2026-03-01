@@ -111,6 +111,17 @@ class Settings(BaseSettings):
     # Stage 2-F: Rename velocity
     RENAME_VELOCITY_DETECTION_ENABLED: bool = False
     RENAME_VELOCITY_SCORING_ENABLED: bool = False
+    # Stage 3-A: Destination manipulation
+    DESTINATION_DETECTION_ENABLED: bool = False
+    DESTINATION_SCORING_ENABLED: bool = False
+    # Stage 3-B: STS relay chains
+    STS_CHAIN_DETECTION_ENABLED: bool = False
+    STS_CHAIN_SCORING_ENABLED: bool = False
+    # Stage 3-C: Scrapped registry + track replay
+    SCRAPPED_REGISTRY_DETECTION_ENABLED: bool = False
+    SCRAPPED_REGISTRY_SCORING_ENABLED: bool = False
+    TRACK_REPLAY_DETECTION_ENABLED: bool = False
+    TRACK_REPLAY_SCORING_ENABLED: bool = False
 
 
 settings = Settings()

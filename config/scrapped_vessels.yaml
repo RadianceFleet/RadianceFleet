@@ -1,0 +1,17 @@
+last_updated: "2026-03-01"
+# Known scrapped vessel IMOs — vessels reported as demolished/broken up
+# that should no longer be transmitting AIS. An active vessel using a
+# scrapped IMO is strong evidence of identity fraud.
+scrapped_imos:
+  - imo: "9123456"
+    name: "EXAMPLE SCRAPPED TANKER"
+    scrapped_year: 2020
+    notes: "Broken at Alang"
+  - imo: "9234567"
+    name: "EXAMPLE SCRAPPED BULKER"
+    scrapped_year: 2019
+    notes: "Demolished at Chittagong"
+  - imo: "9345678"
+    name: "EXAMPLE OLD TANKER"
+    scrapped_year: 2021
+    notes: "Broken at Gadani"
