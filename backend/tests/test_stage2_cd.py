@@ -417,10 +417,10 @@ class TestIntegration:
         assert hasattr(s, "STALE_AIS_DETECTION_ENABLED")
         assert hasattr(s, "STALE_AIS_SCORING_ENABLED")
         assert hasattr(s, "AT_SEA_OPERATIONS_SCORING_ENABLED")
-        # All default to False
-        assert s.STALE_AIS_DETECTION_ENABLED is False
-        assert s.STALE_AIS_SCORING_ENABLED is False
-        assert s.AT_SEA_OPERATIONS_SCORING_ENABLED is False
+        # E6: Stable detectors enabled by default
+        assert s.STALE_AIS_DETECTION_ENABLED is True
+        assert s.STALE_AIS_SCORING_ENABLED is True
+        assert s.AT_SEA_OPERATIONS_SCORING_ENABLED is True
 
     def test_postgres_enum_migration_has_stale_ais_data(self):
         """database.py Postgres migration should include 'stale_ais_data'."""

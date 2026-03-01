@@ -40,6 +40,26 @@ def _extract_subsequences(port_sequence: list[int], min_length: int = 3) -> list
     return subsequences
 
 
+def _find_existing_template(db: Session, vessel_type: str | None, route_ports: list[int]):
+    """Find an existing RouteTemplate with matching vessel_type and route_ports_json.
+
+    E4b: Prevents duplicate templates on repeated pipeline runs.
+    Returns the existing template or None.
+    """
+    from app.models.route_template import RouteTemplate
+
+    # Query all templates with matching vessel_type
+    candidates = db.query(RouteTemplate).filter(
+        RouteTemplate.vessel_type == vessel_type
+    ).all()
+
+    for t in candidates:
+        existing_ports = t.route_ports_json
+        if existing_ports is not None and list(existing_ports) == list(route_ports):
+            return t
+    return None
+
+
 def build_route_templates(db: Session) -> dict:
     """Build route templates from historical port call data.
 
@@ -136,17 +156,32 @@ def build_route_templates(db: Session) -> dict:
                 "vessel_type": common_type,
             })
 
-    # Step 4: Store as RouteTemplate records
+    # Step 4: Store as RouteTemplate records (with dedup — E4b)
+    templates_updated = 0
     for cluster in clusters:
-        template = RouteTemplate(
-            vessel_type=cluster["vessel_type"],
-            route_ports_json=cluster["route_ports"],
-            frequency=cluster["frequency"],
-            avg_duration_days=0.0,  # Computed later with departure/arrival timing
-        )
-        db.add(template)
-        stats["templates_created"] += 1
+        route_ports = cluster["route_ports"]
+        vessel_type = cluster["vessel_type"]
 
+        # Dedup: check for existing template with matching vessel_type AND route_ports_json
+        existing = _find_existing_template(db, vessel_type, route_ports)
+        if existing is not None:
+            # Increment frequency and update avg_duration_days (running average)
+            old_freq = existing.frequency or 0
+            new_freq = old_freq + cluster["frequency"]
+            existing.frequency = new_freq
+            # avg_duration_days stays as-is since we don't have timing yet for new data
+            templates_updated += 1
+        else:
+            template = RouteTemplate(
+                vessel_type=vessel_type,
+                route_ports_json=route_ports,
+                frequency=cluster["frequency"],
+                avg_duration_days=0.0,  # Computed later with departure/arrival timing
+            )
+            db.add(template)
+            stats["templates_created"] += 1
+
+    stats["templates_updated"] = templates_updated
     db.commit()
     logger.info("Built %d route templates from %d vessels", stats["templates_created"], stats["vessels_analyzed"])
     return stats

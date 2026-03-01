@@ -10,6 +10,10 @@ Algorithm:
      (from CorridorGapBaseline) AND affecting unrelated vessels → feed outage
   3. Fallback (no baseline available): ≥5 unrelated vessels in the window
   4. Mark matching gaps with ``is_feed_outage=True`` — scoring skips them
+  5. Exclude gaps whose vessel has a SpoofingAnomaly or StsTransferEvent
+     within ±6h of the gap (E2: anomaly-aware suppression)
+  6. Anti-decoy: if >30% of cluster vessels are high-risk, do NOT classify
+     as feed outage (E7: coordinated decoy abuse protection)
 
 Feature-gated by ``settings.FEED_OUTAGE_DETECTION_ENABLED``.
 """
@@ -33,6 +37,10 @@ _WINDOW_HOURS = 2
 _P95_MULTIPLIER = 3.0
 # Fallback: if no baseline, this many unrelated vessels = outage
 _FALLBACK_VESSEL_COUNT = 5
+# Minimum vessels required for outage classification (E7)
+_MIN_VESSELS_FOR_OUTAGE = 5
+# Window for checking evasion signals around a gap (E2)
+_EVASION_CHECK_HOURS = 6
 
 
 class _GapCluster(NamedTuple):
@@ -42,15 +50,23 @@ class _GapCluster(NamedTuple):
     gaps: list
 
 
-def detect_feed_outages(db: Session) -> dict:
+def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
     """Scan unscored gap events for feed outage patterns.
 
+    Args:
+        max_outage_ratio: Maximum fraction of high-risk vessels (score >50 in
+            previous run) allowed in a cluster for it to be classified as a
+            feed outage. If exceeded, the cluster is treated as potential
+            coordinated decoy abuse and NOT suppressed. Default 0.3 (30%).
+
     Returns:
-        ``{"gaps_checked": N, "outages_detected": M, "gaps_marked": K}``
+        ``{"gaps_checked": N, "outages_detected": M, "gaps_marked": K,
+           "evasion_excluded": E, "decoy_rejected": D}``
     """
     if not settings.FEED_OUTAGE_DETECTION_ENABLED:
         logger.debug("Feed outage detection: disabled — skipping.")
-        return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0}
+        return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0,
+                "evasion_excluded": 0, "decoy_rejected": 0}
 
     # Fetch unscored gaps (risk_score == 0 means not yet scored)
     gaps = (
@@ -63,28 +79,54 @@ def detect_feed_outages(db: Session) -> dict:
     )
 
     if not gaps:
-        return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0}
+        return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0,
+                "evasion_excluded": 0, "decoy_rejected": 0}
 
     # Group gaps by (corridor_id, 2h time window)
     clusters = _cluster_gaps(gaps)
 
     outages_detected = 0
     gaps_marked = 0
+    evasion_excluded = 0
+    decoy_rejected = 0
+
+    # Pre-load high-risk vessel IDs from previous pipeline run (E7)
+    high_risk_vessel_ids = _get_high_risk_vessel_ids(db)
 
     for cluster in clusters:
         # Count unique vessels in this cluster
         unique_vessels = {g.vessel_id for g in cluster.gaps}
         vessel_count = len(unique_vessels)
 
-        if vessel_count < 2:
-            continue  # single vessel — not an outage pattern
+        if vessel_count < _MIN_VESSELS_FOR_OUTAGE:
+            continue  # too few vessels — not a credible outage pattern
 
         # Determine threshold
         threshold = _get_threshold(db, cluster.corridor_id, cluster.window_start)
 
         if vessel_count >= threshold:
+            # E7: Anti-decoy check — reject if too many high-risk vessels
+            high_risk_count = sum(
+                1 for vid in unique_vessels if vid in high_risk_vessel_ids
+            )
+            if vessel_count > 0 and (high_risk_count / vessel_count) > max_outage_ratio:
+                decoy_rejected += 1
+                logger.info(
+                    "Feed outage cluster rejected (decoy): corridor=%s window=%s "
+                    "high_risk=%d/%d (%.0f%% > %.0f%% threshold)",
+                    cluster.corridor_id, cluster.window_start,
+                    high_risk_count, vessel_count,
+                    high_risk_count / vessel_count * 100,
+                    max_outage_ratio * 100,
+                )
+                continue
+
             outages_detected += 1
             for gap in cluster.gaps:
+                # E2: Exclude gaps with evasion signals (SpoofingAnomaly or STS ±6h)
+                if _has_evasion_signals(db, gap):
+                    evasion_excluded += 1
+                    continue
                 gap.is_feed_outage = True
                 gaps_marked += 1
 
@@ -92,14 +134,83 @@ def detect_feed_outages(db: Session) -> dict:
         db.commit()
 
     logger.info(
-        "Feed outage detection: checked %d gaps, found %d outages, marked %d gaps.",
-        len(gaps), outages_detected, gaps_marked,
+        "Feed outage detection: checked %d gaps, found %d outages, marked %d gaps, "
+        "evasion-excluded %d, decoy-rejected %d clusters.",
+        len(gaps), outages_detected, gaps_marked, evasion_excluded, decoy_rejected,
     )
     return {
         "gaps_checked": len(gaps),
         "outages_detected": outages_detected,
         "gaps_marked": gaps_marked,
+        "evasion_excluded": evasion_excluded,
+        "decoy_rejected": decoy_rejected,
     }
+
+
+def _has_evasion_signals(db: Session, gap: AISGapEvent) -> bool:
+    """Check if a gap's vessel has SpoofingAnomaly or StsTransferEvent within ±6h.
+
+    E2: These gaps should be scored despite the outage — the vessel may be
+    deliberately using the outage for cover.
+    """
+    window = timedelta(hours=_EVASION_CHECK_HOURS)
+    gap_start = gap.gap_start_utc
+    gap_end = gap.gap_end_utc
+
+    time_lo = gap_start - window
+    time_hi = gap_end + window
+
+    try:
+        from app.models.spoofing_anomaly import SpoofingAnomaly
+
+        spoof_count = db.query(SpoofingAnomaly).filter(
+            SpoofingAnomaly.vessel_id == gap.vessel_id,
+            SpoofingAnomaly.start_time_utc <= time_hi,
+            SpoofingAnomaly.start_time_utc >= time_lo,
+        ).count()
+        if spoof_count > 0:
+            return True
+    except Exception:
+        pass
+
+    try:
+        from app.models.sts_transfer import StsTransferEvent
+        from sqlalchemy import or_
+
+        sts_count = db.query(StsTransferEvent).filter(
+            or_(
+                StsTransferEvent.vessel_1_id == gap.vessel_id,
+                StsTransferEvent.vessel_2_id == gap.vessel_id,
+            ),
+            StsTransferEvent.start_time_utc <= time_hi,
+            StsTransferEvent.end_time_utc >= time_lo,
+        ).count()
+        if sts_count > 0:
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _get_high_risk_vessel_ids(db: Session) -> set[int]:
+    """Return vessel IDs with score >50 from the most recent scored gaps.
+
+    E7: Used to detect coordinated decoy abuse — if too many high-risk
+    vessels are in a "feed outage" cluster, it's likely not a real outage.
+    """
+    high_risk: set[int] = set()
+    try:
+        rows = (
+            db.query(AISGapEvent.vessel_id)
+            .filter(AISGapEvent.risk_score > 50)
+            .distinct()
+            .all()
+        )
+        high_risk = {r[0] for r in rows}
+    except Exception:
+        pass
+    return high_risk
 
 
 def _cluster_gaps(gaps: list[AISGapEvent]) -> list[_GapCluster]:

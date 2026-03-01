@@ -465,6 +465,12 @@ def evaluate_detector(
         "flag_hopping": ["FLAG_HOPPING"],
         "imo_fraud": ["IMO_FRAUD"],
         "draught": ["DRAUGHT_CHANGE"],
+        "destination": ["DESTINATION_MISMATCH"],
+        "sts_chain": ["STS_CHAIN"],
+        "scrapped_registry": ["SCRAPPED_IMO_REUSE", "TRACK_REPLAY"],
+        "fleet_analyzer": ["FLEET_PATTERN"],
+        "convoy": ["CONVOY", "FLOATING_STORAGE", "ARCTIC_NO_ICE_CLASS"],
+        "ownership_graph": ["SHELL_CHAIN", "CIRCULAR_OWNERSHIP", "SANCTIONS_PROPAGATION"],
     }
 
     anomaly_types = _DETECTOR_TYPE_MAP.get(name)

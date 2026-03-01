@@ -70,7 +70,9 @@ class TestFeedOutageDetection:
         mock_settings.FEED_OUTAGE_DETECTION_ENABLED = False
         from app.modules.feed_outage_detector import detect_feed_outages
         result = detect_feed_outages(MagicMock())
-        assert result == {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0}
+        assert result["gaps_checked"] == 0
+        assert result["outages_detected"] == 0
+        assert result["gaps_marked"] == 0
 
     @patch("app.modules.feed_outage_detector.settings")
     def test_no_gaps_returns_zeros(self, mock_settings):
@@ -510,7 +512,7 @@ class TestStage1Integration:
         s = Settings()
         assert hasattr(s, "FEED_OUTAGE_DETECTION_ENABLED")
         assert hasattr(s, "COVERAGE_QUALITY_TAGGING_ENABLED")
-        assert s.FEED_OUTAGE_DETECTION_ENABLED is False
+        assert s.FEED_OUTAGE_DETECTION_ENABLED is True  # E6: stable detectors enabled by default
         assert s.COVERAGE_QUALITY_TAGGING_ENABLED is False
 
 

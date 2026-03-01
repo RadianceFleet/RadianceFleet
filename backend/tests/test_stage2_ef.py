@@ -501,13 +501,13 @@ class TestIntegration:
         assert "rename_velocity" in _EXPECTED_SECTIONS
 
     def test_feature_flags_exist(self):
-        """All 4 feature flags exist with default False."""
+        """All 4 feature flags exist with default True (E6: stable detectors)."""
         from app.config import Settings
         s = Settings()
-        assert s.ISM_CONTINUITY_DETECTION_ENABLED is False
-        assert s.ISM_CONTINUITY_SCORING_ENABLED is False
-        assert s.RENAME_VELOCITY_DETECTION_ENABLED is False
-        assert s.RENAME_VELOCITY_SCORING_ENABLED is False
+        assert s.ISM_CONTINUITY_DETECTION_ENABLED is True
+        assert s.ISM_CONTINUITY_SCORING_ENABLED is True
+        assert s.RENAME_VELOCITY_DETECTION_ENABLED is True
+        assert s.RENAME_VELOCITY_SCORING_ENABLED is True
 
     def test_yaml_has_ism_continuity_section(self):
         """risk_scoring.yaml contains ism_continuity section."""

@@ -78,14 +78,14 @@ class Settings(BaseSettings):
     DRAUGHT_DETECTION_ENABLED: bool = False
     DRAUGHT_SCORING_ENABLED: bool = False
     # Phase M: Identity fraud
-    STATELESS_MMSI_DETECTION_ENABLED: bool = False
-    STATELESS_MMSI_SCORING_ENABLED: bool = False
-    FLAG_HOPPING_DETECTION_ENABLED: bool = False
-    FLAG_HOPPING_SCORING_ENABLED: bool = False
-    IMO_FRAUD_DETECTION_ENABLED: bool = False
-    IMO_FRAUD_SCORING_ENABLED: bool = False
+    STATELESS_MMSI_DETECTION_ENABLED: bool = True
+    STATELESS_MMSI_SCORING_ENABLED: bool = True
+    FLAG_HOPPING_DETECTION_ENABLED: bool = True
+    FLAG_HOPPING_SCORING_ENABLED: bool = True
+    IMO_FRAUD_DETECTION_ENABLED: bool = True
+    IMO_FRAUD_SCORING_ENABLED: bool = True
     # Stage 1-A: Feed outage detection
-    FEED_OUTAGE_DETECTION_ENABLED: bool = False
+    FEED_OUTAGE_DETECTION_ENABLED: bool = True
     # Stage 1-C: Coverage quality tagging (metadata only, never reduces score)
     COVERAGE_QUALITY_TAGGING_ENABLED: bool = False
     # Phase N: Dark STS
@@ -95,22 +95,22 @@ class Settings(BaseSettings):
     FLEET_ANALYSIS_ENABLED: bool = False
     FLEET_SCORING_ENABLED: bool = False
     # Stage 2-A: P&I validation
-    PI_VALIDATION_DETECTION_ENABLED: bool = False
-    PI_VALIDATION_SCORING_ENABLED: bool = False
+    PI_VALIDATION_DETECTION_ENABLED: bool = True
+    PI_VALIDATION_SCORING_ENABLED: bool = True
     # Stage 2-B: Fraudulent registry
-    FRAUDULENT_REGISTRY_DETECTION_ENABLED: bool = False
-    FRAUDULENT_REGISTRY_SCORING_ENABLED: bool = False
+    FRAUDULENT_REGISTRY_DETECTION_ENABLED: bool = True
+    FRAUDULENT_REGISTRY_SCORING_ENABLED: bool = True
     # Stage 2-C: Stale AIS data detection
-    STALE_AIS_DETECTION_ENABLED: bool = False
-    STALE_AIS_SCORING_ENABLED: bool = False
+    STALE_AIS_DETECTION_ENABLED: bool = True
+    STALE_AIS_SCORING_ENABLED: bool = True
     # Stage 2-D: At-sea extended operations
-    AT_SEA_OPERATIONS_SCORING_ENABLED: bool = False
+    AT_SEA_OPERATIONS_SCORING_ENABLED: bool = True
     # Stage 2-E: ISM/P&I continuity
-    ISM_CONTINUITY_DETECTION_ENABLED: bool = False
-    ISM_CONTINUITY_SCORING_ENABLED: bool = False
+    ISM_CONTINUITY_DETECTION_ENABLED: bool = True
+    ISM_CONTINUITY_SCORING_ENABLED: bool = True
     # Stage 2-F: Rename velocity
-    RENAME_VELOCITY_DETECTION_ENABLED: bool = False
-    RENAME_VELOCITY_SCORING_ENABLED: bool = False
+    RENAME_VELOCITY_DETECTION_ENABLED: bool = True
+    RENAME_VELOCITY_SCORING_ENABLED: bool = True
     # Stage 3-A: Destination manipulation
     DESTINATION_DETECTION_ENABLED: bool = False
     DESTINATION_SCORING_ENABLED: bool = False
@@ -142,6 +142,16 @@ class Settings(BaseSettings):
     VOYAGE_SCORING_ENABLED: bool = False
     CARGO_INFERENCE_ENABLED: bool = False
     WEATHER_CORRELATION_ENABLED: bool = False
+    # Stage C: Missing evasion technique detectors
+    ROUTE_LAUNDERING_DETECTION_ENABLED: bool = False
+    ROUTE_LAUNDERING_SCORING_ENABLED: bool = False
+    ROUTE_LAUNDERING_LOOKBACK_DAYS: int = 180
+    PI_CYCLING_DETECTION_ENABLED: bool = False
+    PI_CYCLING_SCORING_ENABLED: bool = False
+    SPARSE_TRANSMISSION_DETECTION_ENABLED: bool = False
+    SPARSE_TRANSMISSION_SCORING_ENABLED: bool = False
+    TYPE_CONSISTENCY_DETECTION_ENABLED: bool = False
+    TYPE_CONSISTENCY_SCORING_ENABLED: bool = False
 
 
 settings = Settings()

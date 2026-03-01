@@ -522,6 +522,38 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["convoy_detection"] = {"status": "skipped", "detail": "module not available"}
 
+    # Step 6i: Vessel type consistency (SOFT, feature-gated)
+    if settings.TYPE_CONSISTENCY_DETECTION_ENABLED:
+        try:
+            from app.modules.vessel_type_consistency_detector import run_vessel_type_consistency_detection
+            _run_step("vessel_type_consistency", run_vessel_type_consistency_detection, db)
+        except ImportError:
+            result["steps"]["vessel_type_consistency"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6k: Route laundering (SOFT, feature-gated)
+    if settings.ROUTE_LAUNDERING_DETECTION_ENABLED:
+        try:
+            from app.modules.route_laundering_detector import run_route_laundering_detection
+            _run_step("route_laundering", run_route_laundering_detection, db)
+        except ImportError:
+            result["steps"]["route_laundering"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6l: P&I cycling (SOFT, feature-gated)
+    if settings.PI_CYCLING_DETECTION_ENABLED:
+        try:
+            from app.modules.pi_cycling_detector import run_pi_cycling_detection
+            _run_step("pi_cycling", run_pi_cycling_detection, db)
+        except ImportError:
+            result["steps"]["pi_cycling"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6m: Sparse transmission (SOFT, feature-gated)
+    if settings.SPARSE_TRANSMISSION_DETECTION_ENABLED:
+        try:
+            from app.modules.sparse_transmission_detector import run_sparse_transmission_detection
+            _run_step("sparse_transmission", run_sparse_transmission_detection, db)
+        except ImportError:
+            result["steps"]["sparse_transmission"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 7: Score all alerts (HARD)
     try:
         from app.modules.risk_scoring import rescore_all_alerts
@@ -665,19 +697,29 @@ def discover_dark_vessels(
     # Finalize PipelineRun — record anomaly counts, data volume, and drift
     if pipeline_run is not None:
         try:
-            _finalize_pipeline_run(db, pipeline_run, result)
+            # E4: Skip drift detection during warm-up period (< 3 pipeline runs)
+            from app.models.pipeline_run import PipelineRun as _PR_warmup
+            run_count = db.query(_PR_warmup).count()
+            if run_count < 3:
+                result["steps"]["drift_detection"] = {"status": "skipped", "detail": "warm_up_period"}
+                _finalize_pipeline_run(db, pipeline_run, result, skip_drift=True)
+            else:
+                _finalize_pipeline_run(db, pipeline_run, result)
         except Exception as exc:
             logger.debug("Could not finalize PipelineRun: %s", exc)
 
     return result
 
 
-def _finalize_pipeline_run(db: Session, pipeline_run, result: dict) -> None:
+def _finalize_pipeline_run(db: Session, pipeline_run, result: dict, skip_drift: bool = False) -> None:
     """Record anomaly counts, data volume, and detect drift.
 
     Drift detection: if any detector's anomaly count changed >50% between
     consecutive runs AND data volume change is <20%, auto-disable scoring
     for that detector.
+
+    Args:
+        skip_drift: If True, skip drift detection (warm-up period, E4).
     """
     from datetime import datetime as _dt
     from sqlalchemy import func
@@ -716,6 +758,13 @@ def _finalize_pipeline_run(db: Session, pipeline_run, result: dict) -> None:
 
     # Drift detection — compare with previous run
     drift_disabled: list[str] = []
+
+    if skip_drift:
+        logger.info("Drift detection skipped: warm-up period (< 3 pipeline runs)")
+        pipeline_run.drift_disabled_detectors_json = None
+        db.commit()
+        return
+
     prev_run = (
         db.query(PipelineRun)
         .filter(
