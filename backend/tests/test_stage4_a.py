@@ -437,7 +437,7 @@ class TestExtendedMergePass:
         from app.modules.identity_resolver import extended_merge_pass
         result = extended_merge_pass(db)
 
-        mock_detect.assert_called_once_with(db, max_gap_days=180)
+        mock_detect.assert_called_once_with(db, max_gap_days=180, require_identity_anchor=True)
         assert result["extended"] is True
         assert result["candidates_created"] == 5
 

@@ -123,6 +123,7 @@ def validate_imo_checksum(imo: str) -> bool:
 def detect_merge_candidates(
     db: Session,
     max_gap_days: int | None = None,
+    require_identity_anchor: bool = False,
 ) -> dict:
     """Find potential same-vessel pairs across MMSI changes.
 
@@ -201,6 +202,18 @@ def detect_merge_candidates(
             if confidence < min_threshold:
                 stats["skipped"] += 1
                 continue
+
+            # Extended pass pre-filter: require strong identity anchor
+            if require_identity_anchor:
+                has_imo = "same_imo" in reasons
+                has_triple = (
+                    "similar_dwt" in reasons
+                    and "same_vessel_type" in reasons
+                    and "similar_year_built" in reasons
+                )
+                if not has_imo and not has_triple:
+                    stats["skipped"] += 1
+                    continue
 
             # Create candidate
             candidate = MergeCandidate(
@@ -462,6 +475,30 @@ def _score_candidate(
             score += 5
             reasons["similar_year_built"] = {"points": 5}
 
+    # Fuzzy name matching (unidecode normalization + rapidfuzz token_sort_ratio)
+    try:
+        from unidecode import unidecode
+        from rapidfuzz.fuzz import token_sort_ratio
+        _dark_name = (unidecode(dark_v.name or "")).strip().upper()
+        _new_name = (unidecode(new_v.name or "")).strip().upper()
+        if _dark_name and _new_name and len(_dark_name) > 2 and len(_new_name) > 2:
+            name_sim = token_sort_ratio(_dark_name, _new_name)
+            if name_sim >= 95:
+                score += 10
+                reasons["similar_name"] = {"points": 10, "ratio": round(name_sim, 1)}
+            elif name_sim >= 80:
+                score += 5
+                reasons["similar_name"] = {"points": 5, "ratio": round(name_sim, 1)}
+    except ImportError:
+        pass  # unidecode/rapidfuzz not installed
+
+    # Exact callsign match
+    _dark_cs = (getattr(dark_v, "callsign", None) or "").strip().upper()
+    _new_cs = (getattr(new_v, "callsign", None) or "").strip().upper()
+    if _dark_cs and _new_cs and _dark_cs == _new_cs:
+        score += 8
+        reasons["same_callsign"] = {"points": 8, "callsign": _dark_cs}
+
     # Dark vessel silent (no new AIS after new_vessel appeared)
     new_ais_after = (
         db.query(func.count(AISPoint.ais_point_id))
@@ -520,6 +557,17 @@ def _score_candidate(
                     reasons["shared_pi_club"] = {"points": 10, "pi_club": _dark_pi}
         except Exception:
             pass  # Graceful skip if VesselOwner query fails
+
+    # Fingerprint similarity bonus: behavioral fingerprint matching
+    if settings.FINGERPRINT_ENABLED:
+        try:
+            from app.modules.vessel_fingerprint import fingerprint_merge_bonus
+            fp_bonus = fingerprint_merge_bonus(db, dark_v.vessel_id, new_v.vessel_id)
+            if fp_bonus != 0:
+                score = max(0, score + fp_bonus)
+                reasons["fingerprint_match"] = {"points": fp_bonus}
+        except Exception:
+            pass  # Graceful skip — fingerprint data may not exist yet
 
     # --- Negative signals (anti-merge evidence) ---
 
@@ -1702,6 +1750,8 @@ def extended_merge_pass(db: Session) -> dict:
     if not settings.MERGE_CHAIN_DETECTION_ENABLED:
         return {"candidates_created": 0, "extended": True, "skipped": "feature_disabled"}
 
-    extended_stats = detect_merge_candidates(db, max_gap_days=180)
+    extended_stats = detect_merge_candidates(
+        db, max_gap_days=180, require_identity_anchor=True,
+    )
     extended_stats["extended"] = True
     return extended_stats

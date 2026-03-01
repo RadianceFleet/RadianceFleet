@@ -183,23 +183,41 @@ def classify_all_vessels(db: Session) -> dict:
     by_level: dict[str, int] = defaultdict(int)
 
     for vessel in vessels_with_gaps:
-        # Find the highest-scoring gap for this vessel
-        best_gap = (
+        # Aggregate risk_breakdown_json across ALL scored gaps (take max per key)
+        scored_gaps = (
             db.query(AISGapEvent)
-            .filter(AISGapEvent.vessel_id == vessel.vessel_id)
+            .filter(
+                AISGapEvent.vessel_id == vessel.vessel_id,
+                AISGapEvent.risk_score > 0,
+            )
             .order_by(AISGapEvent.risk_score.desc())
-            .first()
+            .all()
         )
-        if best_gap is None or best_gap.risk_score == 0:
+        if not scored_gaps:
             continue
 
-        breakdown = best_gap.risk_breakdown_json or {}
+        best_score = scored_gaps[0].risk_score
+        # Merge breakdowns: take max value per key across all gaps
+        merged_breakdown: dict[str, int | float] = {}
+        for gap in scored_gaps:
+            bd = gap.risk_breakdown_json or {}
+            for k, v in bd.items():
+                if not isinstance(v, (int, float)):
+                    continue
+                if k not in merged_breakdown or v > merged_breakdown[k]:
+                    merged_breakdown[k] = v
+
+        # Multi-gap frequency bonus: 5+ scored gaps = stronger evidence
+        gap_count = len(scored_gaps)
+        if gap_count >= 5:
+            merged_breakdown["_multi_gap_frequency_bonus"] = gap_count
+
         has_watchlist = vessel.vessel_id in watchlist_vessel_ids
 
         confidence, evidence = classify_vessel_confidence(
             vessel,
-            total_score=best_gap.risk_score,
-            breakdown=breakdown,
+            total_score=best_score,
+            breakdown=merged_breakdown,
             has_watchlist_match=has_watchlist,
         )
 

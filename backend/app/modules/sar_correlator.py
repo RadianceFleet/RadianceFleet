@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-AUTO_LINK_THRESHOLD: float = 70.0
-CANDIDATE_THRESHOLD: float = 40.0
+AUTO_LINK_THRESHOLD: float = 40.0
+CANDIDATE_THRESHOLD: float = 25.0
 PROXIMITY_WEIGHT: float = 15.0
 LENGTH_WEIGHT: float = 10.0
 HEADING_WEIGHT: float = 10.0
@@ -266,13 +266,16 @@ def _score_vessel_match(
         length_score = LENGTH_WEIGHT if detected_length is None else 0.0
     breakdown["length"] = length_score
 
-    # 3. Heading match: +10 (always True for v1.1 — detections lack heading)
-    heading_score = HEADING_WEIGHT
+    # 3. Heading match: 0 default; +5 when SAR has no heading; +10 when heading matches
+    heading_score = 0.0
     det_heading = getattr(det, "heading", None)
     vessel_heading = getattr(last_point, "heading", None)
     if det_heading is not None and vessel_heading is not None:
-        if _heading_diff(det_heading, vessel_heading) > 15.0:
-            heading_score = 0.0
+        if _heading_diff(det_heading, vessel_heading) <= 15.0:
+            heading_score = HEADING_WEIGHT
+    elif det_heading is None:
+        # SAR detection lacks heading — give partial credit (+5)
+        heading_score = HEADING_WEIGHT / 2
     breakdown["heading"] = heading_score
 
     # 4. Class match: +10 if vessel_type contains "tanker" and detection suggests tanker

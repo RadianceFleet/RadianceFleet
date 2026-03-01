@@ -1,6 +1,6 @@
 """Owner deduplication — fuzzy-match VesselOwner records into OwnerCluster groups.
 
-Uses rapidfuzz token_sort_ratio with first-letter bucketing for O(N^2/26)
+Uses rapidfuzz token_sort_ratio with sorted-first-token bucketing for efficient
 comparisons, then union-find clustering.
 """
 from __future__ import annotations
@@ -104,17 +104,33 @@ def run_owner_dedup(db) -> dict:
     if not owners:
         return {"status": "ok", "clusters_created": 0, "owners_processed": 0}
 
-    # Build normalized names + first-letter buckets
+    # FK-safe cleanup of existing clusters before re-running
+    try:
+        from app.models.fleet_alert import FleetAlert
+        db.query(FleetAlert).filter(FleetAlert.owner_cluster_id.isnot(None)).delete(
+            synchronize_session="fetch"
+        )
+    except Exception:
+        pass  # FleetAlert may not have owner_cluster_id FK in all schemas
+    db.query(OwnerClusterMember).delete(synchronize_session="fetch")
+    db.query(OwnerCluster).delete(synchronize_session="fetch")
+    db.flush()
+
+    # Build normalized names + sorted-first-token buckets
+    # Fix: First-letter bucketing defeats token_sort_ratio because "MARITIME ALPINE"
+    # (bucket M) and "ALPINE MARITIME" (bucket A) are never compared.
+    # Sorted-first-token: normalize → split → sort → first sorted token as key.
     norm_map: Dict[int, str] = {}  # owner_id -> normalized name
-    buckets: Dict[str, List[int]] = defaultdict(list)  # first_letter -> [owner_ids]
+    buckets: Dict[str, List[int]] = defaultdict(list)  # bucket_key -> [owner_ids]
 
     for owner in owners:
         norm = _normalize_owner_name(owner.owner_name)
         if not norm:
             continue
         norm_map[owner.owner_id] = norm
-        first_letter = norm[0] if norm else ""
-        buckets[first_letter].append(owner.owner_id)
+        tokens = sorted(norm.split())
+        bucket_key = tokens[0] if tokens else ""
+        buckets[bucket_key].append(owner.owner_id)
 
     # Pairwise comparison within buckets, union-find clustering
     uf = _UnionFind()
