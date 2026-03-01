@@ -37,21 +37,27 @@ _AIS_GAP_PREFIXES = (
     "gap_duration", "gap_frequency", "impossible_reappear",
     "near_impossible_reappear", "dark_zone", "selective_dark_zone",
     "movement_envelope", "speed_impossible", "speed_spike",
-    "speed_spoof", "feed_outage",
+    "speed_spoof", "feed_outage", "gap_reactivation",
+    "at_sea_no_port_call", "transmission_frequency",
 )
 _SPOOFING_PREFIXES = (
     "spoofing_", "track_naturalness", "stale_ais",
-    "stateless_mmsi", "imo_fraud", "cross_receiver",
-    "identity_swap", "fake_",
+    "stateless_mmsi", "imo_fraud", "imo_fabricated",
+    "cross_receiver", "identity_swap", "fake_",
+    "scrapped_imo", "track_replay",
 )
 _STS_PREFIXES = (
     "sts_event", "sts_", "gap_in_sts_tagged_corridor",
     "repeat_sts", "dark_dark_sts", "draught_",
+    "russian_port", "voyage_cycle",
+    "laden_from_russian",
 )
 _IDENTITY_PREFIXES = (
     "flag_change", "flag_AND_name", "callsign_change",
     "class_switching", "flag_hopping", "rename_velocity",
     "invalid_metadata", "ais_class_mismatch",
+    "fraudulent_registry", "pi_known_fraudulent", "pi_unknown_insurer",
+    "pi_no_insurer",
 )
 _LOITERING_PREFIXES = (
     "loiter_", "vessel_laid_up",

@@ -139,14 +139,14 @@ def test_bb_gn_flag_risk_high():
 # ── Test: vessel age 15-20y scores +5 ────────────────────────────────────────
 
 def test_vessel_age_15_20y_scores():
-    """Vessel age 17 (year_built giving age 17) should produce vessel_age_15_20y: 5."""
+    """Vessel age 17 (year_built giving age 17) should produce vessel_age_15_20y: 12."""
     config = load_scoring_config()
     # year_built=2009 scored at 2026-01-15 => age=17
     gap = _make_gap(duration_minutes=6 * 60, year_built=2009)
     _, breakdown = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
 
     assert "vessel_age_15_20y" in breakdown, "Expected vessel_age_15_20y in breakdown"
-    assert breakdown["vessel_age_15_20y"] == 5
+    assert breakdown["vessel_age_15_20y"] == 12  # calibrated from 5 to 12 (KSE avg 17y)
 
 
 def test_vessel_age_12y_scores_zero():

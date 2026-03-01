@@ -107,7 +107,7 @@ def test_gap_frequency_subsumption_30d():
 
 
 def test_gap_frequency_subsumption_14d():
-    """3 gaps in 14d (< 5 in 30d) → only gap_frequency_3_in_14d fires."""
+    """3 in 14d AND 4 in 30d → take max score → gap_frequency_4_in_30d (+40) wins."""
     config = load_scoring_config()
     gap = _make_gap(duration_minutes=6 * 60)
 
@@ -115,13 +115,17 @@ def test_gap_frequency_subsumption_14d():
         gap, config,
         gaps_in_7d=2,
         gaps_in_14d=3,
-        gaps_in_30d=4,   # 4 < 5 → 30d does NOT fire
+        gaps_in_30d=4,   # 4_in_30d (+40) > 3_in_14d (+32) → 30d wins
     )
 
-    assert "gap_frequency_3_in_14d" in breakdown, \
-        "Expected 14d frequency key in breakdown"
+    # FIX: old code checked 3_in_14d first (elif chain), giving +32 instead of +40.
+    # Now we evaluate all tiers and take the highest score.
+    assert "gap_frequency_4_in_30d" in breakdown, \
+        "Expected 4_in_30d frequency key (highest score +40)"
+    assert "gap_frequency_3_in_14d" not in breakdown, \
+        "3_in_14d should be subsumed by higher-scoring 4_in_30d"
     assert "gap_frequency_2_in_7d" not in breakdown, \
-        "7d frequency should be subsumed by 14d"
+        "7d frequency should be subsumed"
     assert "gap_frequency_5_in_30d" not in breakdown, \
         "30d frequency should not fire (only 4 gaps)"
 
@@ -152,7 +156,7 @@ def test_gap_frequency_values_match_config():
     gap = _make_gap(duration_minutes=6 * 60)
 
     _, bd_30 = compute_gap_score(gap, config, gaps_in_7d=0, gaps_in_14d=0, gaps_in_30d=5)
-    _, bd_14 = compute_gap_score(gap, config, gaps_in_7d=0, gaps_in_14d=3, gaps_in_30d=4)
+    _, bd_14 = compute_gap_score(gap, config, gaps_in_7d=0, gaps_in_14d=3, gaps_in_30d=3)  # 3 in 30d = +25, 3 in 14d = +32 → 14d wins
     _, bd_7 = compute_gap_score(gap, config, gaps_in_7d=2, gaps_in_14d=0, gaps_in_30d=0)
 
     assert bd_30.get("gap_frequency_5_in_30d") == 50
@@ -608,10 +612,9 @@ def test_all_metadata_prefixed_keys_are_not_summed():
 # ── New signal tests (v4 gap analysis) ───────────────────────────────────────
 
 def test_gap_in_sts_corridor_adds_30_then_multiplied():
-    """gap_in_sts_tagged_corridor: +30 is in additive subtotal BEFORE the corridor multiplier.
+    """gap_in_sts_tagged_corridor: +20 (reduced from 30, amplified by 1.5× → effective ~30).
 
-    Verification: subtract the 30 from the additive total and confirm final_score
-    decreases by 30 × corridor_mult × vessel_size_mult (not a flat 30 added post-multiply).
+    Verification: the signal is in additive subtotal BEFORE the corridor multiplier.
     """
     config = load_scoring_config()
     scoring_date = datetime(2026, 1, 15, 12, 0)
@@ -625,12 +628,11 @@ def test_gap_in_sts_corridor_adds_30_then_multiplied():
 
     assert "gap_in_sts_tagged_corridor" in bd_sts, \
         "Expected gap_in_sts_tagged_corridor signal in STS corridor gap"
-    assert bd_sts["gap_in_sts_tagged_corridor"] == 30
+    assert bd_sts["gap_in_sts_tagged_corridor"] == 20  # reduced from 30 to avoid double-penalty with 1.5× corridor mult
 
     # The signal must be in the additive subtotal (before Phase 2 mult)
-    # _additive_subtotal should include the +30
-    assert bd_sts["_additive_subtotal"] >= bd_no_sts["_additive_subtotal"] + 30, \
-        "gap_in_sts_tagged_corridor (+30) must be in the additive subtotal"
+    assert bd_sts["_additive_subtotal"] >= bd_no_sts["_additive_subtotal"] + 20, \
+        "gap_in_sts_tagged_corridor (+20) must be in the additive subtotal"
 
 
 def test_speed_spoof_supersedes_spike():
@@ -1114,10 +1116,12 @@ def test_pi_coverage_lapsed_adds_20():
 
 
 def test_pi_coverage_unknown_adds_5():
+    """pi_coverage_unknown removed — duplicated by pi_validation.unknown_insurer: 25."""
     config = load_scoring_config()
     gap = _make_gap(duration_minutes=6 * 60, pi_coverage_status="unknown")
     _, bd = compute_gap_score(gap, config)
-    assert bd.get("pi_coverage_unknown") == 5
+    # Signal was removed to avoid duplication with pi_validation.unknown_insurer
+    assert "pi_coverage_unknown" not in bd
 
 
 def test_pi_coverage_active_no_signal():
@@ -1385,10 +1389,10 @@ def test_age_10_15y_visible_in_breakdown():
 
 
 def test_age_15_20y_visible_in_breakdown():
-    """Age 15-20y (5 pts) must appear in breakdown."""
+    """Age 15-20y (12 pts, calibrated from 5) must appear in breakdown."""
     config = load_scoring_config()
     gap = _make_gap(duration_minutes=6 * 60, year_built=2010)
     _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
 
     assert "vessel_age_15_20y" in bd, "Age 15-20y must appear in breakdown"
-    assert bd["vessel_age_15_20y"] == 5
+    assert bd["vessel_age_15_20y"] == 12  # calibrated from 5 to 12

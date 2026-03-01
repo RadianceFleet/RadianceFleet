@@ -360,15 +360,8 @@ def discover_dark_vessels(
     except Exception:
         return result  # Abort on hard fail
 
-    # Step 3b: Feed outage detection (SOFT, feature-gated)
-    # Must run AFTER gap detection but BEFORE scoring so is_feed_outage=True
-    # gaps are excluded from scoring.
-    if settings.FEED_OUTAGE_DETECTION_ENABLED:
-        try:
-            from app.modules.feed_outage_detector import detect_feed_outages
-            _run_step("feed_outage_detection", detect_feed_outages, db)
-        except ImportError:
-            result["steps"]["feed_outage_detection"] = {"status": "skipped", "detail": "module not available"}
+    # Step 3b: Feed outage detection — MOVED to Step 6b (after anomaly detection)
+    # so that gaps with co-occurring STS/spoofing signals are NOT suppressed.
 
     # Step 3c: Coverage quality tagging (SOFT, feature-gated)
     if settings.COVERAGE_QUALITY_TAGGING_ENABLED:
@@ -454,6 +447,81 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["draught_detection"] = {"status": "skipped", "detail": "module not available"}
 
+    # Step 6b: Feed outage detection (SOFT, feature-gated)
+    # Runs AFTER anomaly detection (Steps 4-6c) so gaps with co-occurring
+    # STS/spoofing signals are NOT marked as feed outage (see E2).
+    if settings.FEED_OUTAGE_DETECTION_ENABLED:
+        try:
+            from app.modules.feed_outage_detector import detect_feed_outages
+            _run_step("feed_outage_detection", detect_feed_outages, db)
+        except ImportError:
+            result["steps"]["feed_outage_detection"] = {"status": "skipped", "detail": "module not available"}
+
+    # Steps 6d-6h: Identity fraud + scrapped + convoy detectors (MOVED before scoring)
+    # These detectors create SpoofingAnomaly records that scoring reads.
+    # Previously at Steps 11b-11f (after scoring), their signals were ZERO.
+    if settings.STATELESS_MMSI_DETECTION_ENABLED:
+        try:
+            from app.modules.stateless_detector import run_stateless_detection
+            _run_step("stateless_mmsi", run_stateless_detection, db)
+        except ImportError:
+            result["steps"]["stateless_mmsi"] = {"status": "skipped", "detail": "module not available"}
+    if settings.FLAG_HOPPING_DETECTION_ENABLED:
+        try:
+            from app.modules.flag_hopping_detector import run_flag_hopping_detection
+            _run_step("flag_hopping", run_flag_hopping_detection, db)
+        except ImportError:
+            result["steps"]["flag_hopping"] = {"status": "skipped", "detail": "module not available"}
+    if settings.IMO_FRAUD_DETECTION_ENABLED:
+        try:
+            from app.modules.imo_fraud_detector import run_imo_fraud_detection
+            _run_step("imo_fraud", run_imo_fraud_detection, db)
+        except ImportError:
+            result["steps"]["imo_fraud"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6e2: IMO fraud merge recheck (SOFT)
+    if settings.IMO_FRAUD_DETECTION_ENABLED:
+        try:
+            from app.modules.identity_resolver import recheck_merges_for_imo_fraud
+            _run_step("imo_fraud_merge_recheck", recheck_merges_for_imo_fraud, db)
+        except ImportError:
+            result["steps"]["imo_fraud_merge_recheck"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6f: Scrapped vessel registry detection (SOFT, feature-gated)
+    if settings.SCRAPPED_REGISTRY_DETECTION_ENABLED:
+        try:
+            from app.modules.scrapped_registry import detect_scrapped_imo_reuse
+            _run_step(
+                "scrapped_registry", detect_scrapped_imo_reuse,
+                db, date_from=date_from, date_to=date_to,
+            )
+        except ImportError:
+            result["steps"]["scrapped_registry"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6g: Track replay detection (SOFT, feature-gated)
+    if settings.TRACK_REPLAY_DETECTION_ENABLED:
+        try:
+            from app.modules.scrapped_registry import detect_track_replay
+            _run_step(
+                "track_replay", detect_track_replay,
+                db, date_from=date_from, date_to=date_to,
+            )
+        except ImportError:
+            result["steps"]["track_replay"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 6h: Convoy detection (SOFT, feature-gated)
+    if settings.CONVOY_DETECTION_ENABLED:
+        try:
+            from app.modules.convoy_detector import detect_convoys, detect_floating_storage, detect_arctic_no_ice_class
+            _run_step(
+                "convoy_detection", detect_convoys,
+                db, date_from=date_from, date_to=date_to,
+            )
+            _run_step("floating_storage", detect_floating_storage, db)
+            _run_step("arctic_no_ice_class", detect_arctic_no_ice_class, db)
+        except ImportError:
+            result["steps"]["convoy_detection"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 7: Score all alerts (HARD)
     try:
         from app.modules.risk_scoring import rescore_all_alerts
@@ -506,71 +574,11 @@ def discover_dark_vessels(
     except ImportError:
         result["steps"]["mmsi_cloning"] = {"status": "skipped", "detail": "module not available"}
 
-    # Step 11b: Identity fraud detectors (SOFT, feature-gated)
-    if settings.STATELESS_MMSI_DETECTION_ENABLED:
-        try:
-            from app.modules.stateless_detector import run_stateless_detection
-            _run_step("stateless_mmsi", run_stateless_detection, db)
-        except ImportError:
-            result["steps"]["stateless_mmsi"] = {"status": "skipped", "detail": "module not available"}
-    if settings.FLAG_HOPPING_DETECTION_ENABLED:
-        try:
-            from app.modules.flag_hopping_detector import run_flag_hopping_detection
-            _run_step("flag_hopping", run_flag_hopping_detection, db)
-        except ImportError:
-            result["steps"]["flag_hopping"] = {"status": "skipped", "detail": "module not available"}
-    if settings.IMO_FRAUD_DETECTION_ENABLED:
-        try:
-            from app.modules.imo_fraud_detector import run_imo_fraud_detection
-            _run_step("imo_fraud", run_imo_fraud_detection, db)
-        except ImportError:
-            result["steps"]["imo_fraud"] = {"status": "skipped", "detail": "module not available"}
+    # Note: Identity fraud detectors (stateless, flag_hopping, imo_fraud),
+    # scrapped registry, track replay, and convoy detection were MOVED to
+    # Steps 6d-6h (before scoring) so their signals contribute to scores.
 
-    # Step 11d: IMO fraud merge recheck (SOFT)
-    # After IMO fraud detection, recheck auto-merges where IMO was dominant signal
-    if settings.IMO_FRAUD_DETECTION_ENABLED:
-        try:
-            from app.modules.identity_resolver import recheck_merges_for_imo_fraud
-            _run_step("imo_fraud_merge_recheck", recheck_merges_for_imo_fraud, db)
-        except ImportError:
-            result["steps"]["imo_fraud_merge_recheck"] = {"status": "skipped", "detail": "module not available"}
-
-    # Step 11e: Scrapped vessel registry detection (SOFT, feature-gated)
-    if settings.SCRAPPED_REGISTRY_DETECTION_ENABLED:
-        try:
-            from app.modules.scrapped_registry import detect_scrapped_imo_reuse
-            _run_step(
-                "scrapped_registry", detect_scrapped_imo_reuse,
-                db, date_from=date_from, date_to=date_to,
-            )
-        except ImportError:
-            result["steps"]["scrapped_registry"] = {"status": "skipped", "detail": "module not available"}
-
-    # Step 11f: Track replay detection (SOFT, feature-gated)
-    if settings.TRACK_REPLAY_DETECTION_ENABLED:
-        try:
-            from app.modules.scrapped_registry import detect_track_replay
-            _run_step(
-                "track_replay", detect_track_replay,
-                db, date_from=date_from, date_to=date_to,
-            )
-        except ImportError:
-            result["steps"]["track_replay"] = {"status": "skipped", "detail": "module not available"}
-
-    # Step 11b2: Convoy detection (SOFT, feature-gated)
-    if settings.CONVOY_DETECTION_ENABLED:
-        try:
-            from app.modules.convoy_detector import detect_convoys, detect_floating_storage, detect_arctic_no_ice_class
-            _run_step(
-                "convoy_detection", detect_convoys,
-                db, date_from=date_from, date_to=date_to,
-            )
-            _run_step("floating_storage", detect_floating_storage, db)
-            _run_step("arctic_no_ice_class", detect_arctic_no_ice_class, db)
-        except ImportError:
-            result["steps"]["convoy_detection"] = {"status": "skipped", "detail": "module not available"}
-
-    # Step 11c: Fleet analysis (SOFT, feature-gated)
+    # Step 11c: Fleet analysis + ISM continuity (SOFT, feature-gated)
     if settings.FLEET_ANALYSIS_ENABLED:
         try:
             from app.modules.owner_dedup import run_owner_dedup
@@ -582,6 +590,14 @@ def discover_dark_vessels(
             _run_step("fleet_analysis", run_fleet_analysis, db)
         except ImportError:
             result["steps"]["fleet_analysis"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 11c2: ISM/P&I continuity detection (SOFT, feature-gated)
+    if settings.ISM_CONTINUITY_DETECTION_ENABLED:
+        try:
+            from app.modules.fleet_analyzer import detect_ism_pi_continuity
+            _run_step("ism_pi_continuity", detect_ism_pi_continuity, db)
+        except ImportError:
+            result["steps"]["ism_pi_continuity"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 11d: Ownership graph (SOFT, feature-gated)
     if settings.OWNERSHIP_GRAPH_ENABLED:
@@ -607,6 +623,21 @@ def discover_dark_vessels(
             _run_step("route_templates", build_route_templates, db)
         except ImportError:
             result["steps"]["route_templates"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 11z: UNCONDITIONAL second scoring + classification pass.
+    # Fingerprint, voyage predictor, fleet analysis, and ownership graph can all
+    # create new SpoofingAnomaly/FleetAlert records after Step 7's first scoring pass.
+    # Re-scoring ensures ALL post-Step-10 signals are captured in risk scores.
+    try:
+        from app.modules.risk_scoring import rescore_all_alerts as _rescore_second
+        _run_step("scoring_second_pass", _rescore_second, db)
+    except Exception:
+        pass  # Non-fatal — first pass scores are still valid
+    try:
+        from app.modules.confidence_classifier import classify_all_vessels as _classify_second
+        _run_step("confidence_classification_second_pass", _classify_second, db)
+    except ImportError:
+        pass
 
     # Step 12: Top alerts summary
     from app.models.gap_event import AISGapEvent
