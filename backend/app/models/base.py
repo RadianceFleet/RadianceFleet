@@ -71,6 +71,11 @@ class SpoofingTypeEnum(str, enum.Enum):
     DESTINATION_DEVIATION = "destination_deviation"
     # Stage 3-C: Historical track replay
     TRACK_REPLAY = "track_replay"
+    # Stage C: Missing evasion technique detectors
+    ROUTE_LAUNDERING = "route_laundering"
+    PI_CYCLING = "pi_cycling"
+    SPARSE_TRANSMISSION = "sparse_transmission"
+    TYPE_DWT_MISMATCH = "type_dwt_mismatch"
     # Sub-types (extended_restricted_maneuverability, nav_status_15) are stored
     # in evidence_json["subtype"] on an ERRATIC_NAV_STATUS anomaly record.
 

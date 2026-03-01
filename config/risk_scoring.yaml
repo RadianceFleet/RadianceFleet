@@ -267,6 +267,27 @@ dark_sts:
   dark_dark_low_confidence: 10     # 15-50nm, both high-risk
   dark_dark_draught_confirmed: 15  # draught delta corroboration
 
+# ROUTE LAUNDERING (Stage C) — Russian-origin cargo via intermediary ports
+route_laundering:
+  confirmed_3_hop: 35       # Russian port -> intermediary -> sanctioned destination
+  partial_2_hop: 20         # Russian port -> intermediary (no confirmed final destination)
+  pattern_only: 15          # intermediary pattern without co-occurring risk signals
+
+# P&I CLUB CYCLING (Stage C) — rapid P&I club changes indicating sanctions evasion
+pi_cycling:
+  rapid_change_90d: 20      # 2+ P&I club changes in 90 days
+  non_ig_club: 30           # new club not in IG P&I group
+
+# SPARSE AIS TRANSMISSION (Stage C) — minimum-rate broadcasting to avoid gaps
+sparse_transmission:
+  moderate_sparsity: 15     # <=2 pts/hour when underway
+  severe_sparsity: 25       # <1 pt/hour when underway
+
+# VESSEL TYPE CONSISTENCY (Stage C) — AIS type vs physical characteristics
+vessel_type_consistency:
+  type_dwt_mismatch: 25     # large vessel reporting non-commercial AIS type
+  recent_type_change: 15    # vessel_type field changed recently
+
 # P&I VALIDATION (Stage 2-A) — fraudulent P&I certificate detection
 # 82% of shadow fleet vessels lack reputable IG P&I club coverage
 pi_validation:

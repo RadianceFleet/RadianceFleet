@@ -1,0 +1,16 @@
+# Route laundering intermediary ports
+# Ports commonly used as stopovers to obscure Russian-origin cargo
+# before delivery to sanctioned destinations.
+intermediary_ports:
+  - name: Fujairah
+    country: AE
+  - name: Sohar
+    country: OM
+  - name: Ceyhan
+    country: TR
+  - name: Jamnagar
+    country: IN
+  - name: Kalamata
+    country: GR
+  - name: Ceuta
+    country: ES
