@@ -131,6 +131,17 @@ class Settings(BaseSettings):
     # Stage 4-C: Satellite-AIS correlation
     SAR_CORRELATION_ENABLED: bool = False
     SAR_CORRELATION_SCORING_ENABLED: bool = False
+    # Stage 5-A: Corporate ownership graph
+    OWNERSHIP_GRAPH_ENABLED: bool = False
+    OWNERSHIP_GRAPH_SCORING_ENABLED: bool = False
+    # Stage 5-B: Convoy + floating storage + Arctic corridor
+    CONVOY_DETECTION_ENABLED: bool = False
+    CONVOY_SCORING_ENABLED: bool = False
+    # Stage 5-C: Voyage prediction + cargo inference + weather correlation
+    VOYAGE_PREDICTION_ENABLED: bool = False
+    VOYAGE_SCORING_ENABLED: bool = False
+    CARGO_INFERENCE_ENABLED: bool = False
+    WEATHER_CORRELATION_ENABLED: bool = False
 
 
 settings = Settings()

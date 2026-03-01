@@ -359,6 +359,15 @@ corridors:
     description: "Qingdao, Rizhao, Dongying — primary Russian crude destinations in Shandong"
     tags: [import, far_east]
 
+  # --- ARCTIC CORRIDOR (Stage 5-B) ---
+  - name: "Northern Sea Route (NSR) — Arctic Transit"
+    geometry: "POLYGON((40.0 68.0, 180.0 68.0, 180.0 78.0, 40.0 78.0, 40.0 68.0))"
+    corridor_type: export_route
+    risk_weight: 1.5
+    is_jamming_zone: false
+    description: "Northern Sea Route — Arctic transit corridor; tankers without ice class pose catastrophic environmental risk"
+    tags: [arctic, nsr, ice_class_required]
+
   # --- TRANSIT CORRIDOR (Malacca — NOT a dark zone) ---
   - name: "Malacca Strait Transit"
     geometry: "POLYGON((99.0 1.0, 104.0 1.0, 104.0 4.0, 99.0 4.0, 99.0 1.0))"

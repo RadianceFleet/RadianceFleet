@@ -30,6 +30,8 @@ from app.models.fleet_alert import FleetAlert
 from app.models.pipeline_run import PipelineRun
 from app.models.merge_chain import MergeChain
 from app.models.vessel_fingerprint import VesselFingerprint
+from app.models.convoy_event import ConvoyEvent
+from app.models.route_template import RouteTemplate
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -68,4 +70,6 @@ __all__ = [
     "PipelineRun",
     "MergeChain",
     "VesselFingerprint",
+    "ConvoyEvent",
+    "RouteTemplate",
 ]

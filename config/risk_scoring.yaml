@@ -333,3 +333,25 @@ fleet:
   fleet_high_risk_average: 15       # cluster avg risk >50
   shared_manager_different_owners: 15
   shared_pi_club_high_risk: 10
+
+# OWNERSHIP GRAPH (Stage 5-A) — corporate ownership network analysis
+ownership_graph:
+  shell_chain_depth_3_plus: 20
+  post_sanction_reshuffling: 20
+  shared_address_sanctioned: 35
+  circular_ownership: 25
+
+# CONVOY DETECTION (Stage 5-B) — synchronized vessel movement
+convoy:
+  convoy_4_to_8h: 15
+  convoy_8_to_24h: 25
+  convoy_24h_plus: 35
+  floating_storage_intermediary: 25
+  arctic_no_ice_class: 25
+
+# VOYAGE PREDICTION (Stage 5-C) — route deviation and cargo inference
+voyage:
+  route_deviation_toward_sts: 25
+  laden_from_russian_terminal_sts: 15
+  weather_speed_correction_wind: -8
+  weather_speed_correction_storm: -15

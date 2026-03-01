@@ -557,6 +557,19 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["track_replay"] = {"status": "skipped", "detail": "module not available"}
 
+    # Step 11b2: Convoy detection (SOFT, feature-gated)
+    if settings.CONVOY_DETECTION_ENABLED:
+        try:
+            from app.modules.convoy_detector import detect_convoys, detect_floating_storage, detect_arctic_no_ice_class
+            _run_step(
+                "convoy_detection", detect_convoys,
+                db, date_from=date_from, date_to=date_to,
+            )
+            _run_step("floating_storage", detect_floating_storage, db)
+            _run_step("arctic_no_ice_class", detect_arctic_no_ice_class, db)
+        except ImportError:
+            result["steps"]["convoy_detection"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 11c: Fleet analysis (SOFT, feature-gated)
     if settings.FLEET_ANALYSIS_ENABLED:
         try:
@@ -570,6 +583,15 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["fleet_analysis"] = {"status": "skipped", "detail": "module not available"}
 
+    # Step 11d: Ownership graph (SOFT, feature-gated)
+    if settings.OWNERSHIP_GRAPH_ENABLED:
+        try:
+            from app.modules.ownership_graph import build_ownership_graph, propagate_sanctions
+            _run_step("ownership_graph", build_ownership_graph, db)
+            _run_step("sanctions_propagation", propagate_sanctions, db)
+        except ImportError:
+            result["steps"]["ownership_graph"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 11g: Behavioral fingerprinting (SOFT, feature-gated)
     if settings.FINGERPRINT_ENABLED:
         try:
@@ -577,6 +599,14 @@ def discover_dark_vessels(
             _run_step("fingerprint_computation", run_fingerprint_computation, db)
         except ImportError:
             result["steps"]["fingerprint_computation"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 11h: Voyage prediction (SOFT, feature-gated)
+    if settings.VOYAGE_PREDICTION_ENABLED:
+        try:
+            from app.modules.voyage_predictor import build_route_templates
+            _run_step("route_templates", build_route_templates, db)
+        except ImportError:
+            result["steps"]["route_templates"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 12: Top alerts summary
     from app.models.gap_event import AISGapEvent

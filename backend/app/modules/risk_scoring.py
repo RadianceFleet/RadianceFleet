@@ -46,6 +46,7 @@ _EXPECTED_SECTIONS = [
     "ism_continuity", "rename_velocity",
     "destination", "sts_chains", "scrapped_registry", "track_replay",
     "merge_chains",
+    "ownership_graph", "convoy", "voyage",
 ]
 
 
@@ -1567,6 +1568,157 @@ def compute_gap_score(
                     break  # one chain match is enough
         except Exception:
             pass  # Graceful skip if merge_chains table doesn't exist yet
+
+    # ── Stage 5-B: Convoy scoring ────────────────────────────────────────────
+    if _scoring_settings.CONVOY_SCORING_ENABLED and db is not None and vessel is not None:
+        convoy_cfg = config.get("convoy", {})
+        try:
+            from app.models.convoy_event import ConvoyEvent
+            from sqlalchemy import or_ as _or_convoy
+            convoy_events = db.query(ConvoyEvent).filter(
+                _or_convoy(
+                    ConvoyEvent.vessel_a_id == vessel.vessel_id,
+                    ConvoyEvent.vessel_b_id == vessel.vessel_id,
+                ),
+                ConvoyEvent.start_time_utc >= gap.gap_start_utc - timedelta(days=7),
+                ConvoyEvent.end_time_utc <= gap.gap_end_utc + timedelta(days=7),
+            ).all()
+            if convoy_events:
+                best_convoy_score = 0
+                best_convoy = None
+                for ce in convoy_events:
+                    score = ce.risk_score_component or 0
+                    if score > best_convoy_score:
+                        best_convoy_score = score
+                        best_convoy = ce
+                if best_convoy:
+                    breakdown[f"convoy_{best_convoy.convoy_id}"] = best_convoy_score
+        except Exception:
+            pass  # Graceful skip if convoy table doesn't exist yet
+
+    # ── Stage 5-A: Ownership graph scoring ─────────────────────────────────
+    if _scoring_settings.OWNERSHIP_GRAPH_SCORING_ENABLED and db is not None and vessel is not None:
+        og_cfg = config.get("ownership_graph", {})
+        try:
+            from app.models.vessel_owner import VesselOwner as _VO_og
+
+            og_owner = db.query(_VO_og).filter(
+                _VO_og.vessel_id == vessel.vessel_id
+            ).first()
+            if og_owner:
+                # Shell chain detection: walk parent_owner_id chain
+                parent_id = getattr(og_owner, "parent_owner_id", None)
+                if isinstance(parent_id, int):
+                    chain_depth = 1
+                    visited_ids = {og_owner.owner_id}
+                    current_parent = parent_id
+                    is_circular = False
+                    while current_parent is not None and chain_depth <= 10:
+                        if current_parent in visited_ids:
+                            is_circular = True
+                            break
+                        visited_ids.add(current_parent)
+                        chain_depth += 1
+                        next_owner = db.query(_VO_og).filter(
+                            _VO_og.owner_id == current_parent
+                        ).first()
+                        if next_owner:
+                            current_parent = getattr(next_owner, "parent_owner_id", None)
+                            if not isinstance(current_parent, int):
+                                current_parent = None
+                        else:
+                            break
+                    if chain_depth > 2:
+                        breakdown["ownership_shell_chain"] = og_cfg.get(
+                            "shell_chain_depth_3_plus", 20
+                        )
+                    if is_circular:
+                        breakdown["ownership_circular"] = og_cfg.get(
+                            "circular_ownership", 25
+                        )
+
+                # Post-sanction reshuffling: >2 ownership changes in 12 months
+                all_vessel_owners = db.query(_VO_og).filter(
+                    _VO_og.vessel_id == vessel.vessel_id
+                ).all()
+                from datetime import timedelta as _td_og
+                _now_og = scoring_date
+                _window_og = _now_og - _td_og(days=365)
+                recent_changes_og = sum(
+                    1 for o in all_vessel_owners
+                    if isinstance(getattr(o, "verified_at", None), datetime)
+                    and o.verified_at >= _window_og
+                )
+                if recent_changes_og >= 3:
+                    breakdown["ownership_reshuffling"] = og_cfg.get(
+                        "post_sanction_reshuffling", 20
+                    )
+
+                # Shared address with sanctioned entity
+                if og_owner.country and not og_owner.is_sanctioned:
+                    sanctioned_same_country = db.query(_VO_og).filter(
+                        _VO_og.is_sanctioned == True,
+                        _VO_og.country == og_owner.country,
+                        _VO_og.owner_id != og_owner.owner_id,
+                    ).first()
+                    if sanctioned_same_country:
+                        breakdown["ownership_shared_address_sanctioned"] = og_cfg.get(
+                            "shared_address_sanctioned", 35
+                        )
+        except Exception:
+            pass  # Graceful skip if ownership graph tables don't exist yet
+
+    # ── Stage 5-C: Voyage prediction + cargo inference + weather scoring ────
+    if _scoring_settings.VOYAGE_SCORING_ENABLED and db is not None and vessel is not None:
+        voyage_cfg = config.get("voyage", {})
+
+        # Route deviation toward STS zone
+        if _scoring_settings.VOYAGE_PREDICTION_ENABLED:
+            try:
+                from app.modules.voyage_predictor import predict_next_destination
+                prediction = predict_next_destination(db, vessel.vessel_id)
+                if prediction and prediction.get("deviation_score", 0) > 0:
+                    breakdown["route_deviation_toward_sts"] = voyage_cfg.get(
+                        "route_deviation_toward_sts", 25
+                    )
+            except Exception:
+                pass
+
+        # Cargo inference: laden from Russian terminal + STS
+        if _scoring_settings.CARGO_INFERENCE_ENABLED:
+            try:
+                from app.modules.cargo_inference import infer_cargo_state
+                cargo = infer_cargo_state(db, vessel.vessel_id)
+                if cargo.get("russian_terminal_sts"):
+                    breakdown["laden_from_russian_terminal_sts"] = voyage_cfg.get(
+                        "laden_from_russian_terminal_sts", 15
+                    )
+            except Exception:
+                pass
+
+        # Weather correlation: deduction on speed anomaly ONLY
+        if _scoring_settings.WEATHER_CORRELATION_ENABLED:
+            try:
+                from app.modules.weather_correlator import correlate_weather
+                weather = correlate_weather(db, vessel.vessel_id)
+                if weather and weather.get("total_deduction", 0) < 0:
+                    has_speed_anomaly = any(
+                        k.startswith("speed_") for k in breakdown
+                    )
+                    if has_speed_anomaly:
+                        for corr in weather.get("correlations", []):
+                            if corr.get("reason") == "storm_conditions":
+                                breakdown["weather_speed_correction_storm"] = voyage_cfg.get(
+                                    "weather_speed_correction_storm", -15
+                                )
+                                break
+                            elif corr.get("reason") == "high_wind":
+                                breakdown["weather_speed_correction_wind"] = voyage_cfg.get(
+                                    "weather_speed_correction_wind", -8
+                                )
+                                break
+            except Exception:
+                pass
 
     # ── Phase 2+3: Multiplier composition (asymmetric) ─────────────────────
     # Multipliers amplify ONLY risk signals (positive); legitimacy deductions

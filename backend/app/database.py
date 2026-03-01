@@ -77,6 +77,10 @@ def _run_migrations() -> None:
         ("ais_gap_events", "coverage_quality", "VARCHAR(20)"),
         ("vessels", "dark_fleet_confidence", "VARCHAR(20)"),
         ("vessels", "confidence_evidence_json", "TEXT"),
+        # Stage 5-A — ownership graph
+        ("vessel_owners", "parent_owner_id", "INTEGER"),
+        ("vessel_owners", "ownership_type", "VARCHAR(50)"),
+        ("vessel_owners", "ownership_pct", "REAL"),
     ]
 
     _col_cache: dict[str, set[str]] = {}

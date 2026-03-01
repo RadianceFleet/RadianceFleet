@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Integer, String, Boolean, DateTime, Text, Float, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
@@ -24,3 +24,7 @@ class VesselOwner(Base):
     verification_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ism_manager: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     pi_club_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Stage 5-A: Ownership graph
+    parent_owner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ownership_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    ownership_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
