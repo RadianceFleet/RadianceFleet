@@ -385,6 +385,17 @@ def discover_dark_vessels(
         db, date_from=date_from, date_to=date_to,
     )
 
+    # Step 4a: Stale AIS detection (SOFT, feature-gated)
+    if settings.STALE_AIS_DETECTION_ENABLED:
+        try:
+            from app.modules.gap_detector import detect_stale_ais_data
+            _run_step(
+                "stale_ais_detection", detect_stale_ais_data,
+                db, date_from=date_from, date_to=date_to,
+            )
+        except ImportError:
+            result["steps"]["stale_ais_detection"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 4b: Track naturalness (SOFT, feature-gated)
     if settings.TRACK_NATURALNESS_ENABLED:
         try:

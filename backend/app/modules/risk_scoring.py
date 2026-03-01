@@ -41,6 +41,9 @@ _EXPECTED_SECTIONS = [
     "score_bands", "ais_class", "dark_vessel", "pi_insurance", "psc_detention",
     "sts_patterns",
     "track_naturalness", "draught", "identity_fraud", "dark_sts", "fleet",
+    "pi_validation", "fraudulent_registry",
+    "stale_ais", "at_sea_operations",
+    "ism_continuity", "rename_velocity",
 ]
 
 
@@ -76,6 +79,42 @@ def reload_scoring_config() -> dict[str, Any]:
     global _SCORING_CONFIG
     _SCORING_CONFIG = None
     return load_scoring_config()
+
+
+# ── P&I club validation config (Stage 2-A) ─────────────────────────────────
+_PI_CLUBS_CONFIG: dict[str, Any] | None = None
+
+
+def _load_pi_clubs_config() -> dict[str, Any]:
+    """Lazy-load and cache the legitimate P&I clubs YAML."""
+    global _PI_CLUBS_CONFIG
+    if _PI_CLUBS_CONFIG is None:
+        config_path = Path(settings.RISK_SCORING_CONFIG).parent / "legitimate_pi_clubs.yaml"
+        if not config_path.exists():
+            logger.warning("legitimate_pi_clubs.yaml not found at %s", config_path)
+            _PI_CLUBS_CONFIG = {}
+        else:
+            with open(config_path) as f:
+                _PI_CLUBS_CONFIG = yaml.safe_load(f) or {}
+    return _PI_CLUBS_CONFIG
+
+
+# ── Fraudulent registry config (Stage 2-B) ─────────────────────────────────
+_FRAUDULENT_REGISTRIES_CONFIG: dict[str, Any] | None = None
+
+
+def _load_fraudulent_registries_config() -> dict[str, Any]:
+    """Lazy-load and cache the fraudulent registries YAML."""
+    global _FRAUDULENT_REGISTRIES_CONFIG
+    if _FRAUDULENT_REGISTRIES_CONFIG is None:
+        config_path = Path(settings.RISK_SCORING_CONFIG).parent / "fraudulent_registries.yaml"
+        if not config_path.exists():
+            logger.warning("fraudulent_registries.yaml not found at %s", config_path)
+            _FRAUDULENT_REGISTRIES_CONFIG = {}
+        else:
+            with open(config_path) as f:
+                _FRAUDULENT_REGISTRIES_CONFIG = yaml.safe_load(f) or {}
+    return _FRAUDULENT_REGISTRIES_CONFIG
 
 
 def _gap_frequency_filter(alert: AISGapEvent):
@@ -745,6 +784,8 @@ def compute_gap_score(
             _shadow_excluded_types.add("flag_hopping")
         if not _scoring_settings.IMO_FRAUD_SCORING_ENABLED:
             _shadow_excluded_types.add("imo_fraud")
+        if not _scoring_settings.STALE_AIS_SCORING_ENABLED:
+            _shadow_excluded_types.add("stale_ais_data")
 
         def _type_val(s):
             return str(s.anomaly_type.value if hasattr(s.anomaly_type, "value") else s.anomaly_type)
@@ -1357,6 +1398,97 @@ def compute_gap_score(
                             breakdown[key] = pts
         except Exception:
             pass  # Graceful skip if fleet tables don't exist yet
+
+    # ── Stage 2-A: P&I validation scoring ──────────────────────────────────
+    if _scoring_settings.PI_VALIDATION_SCORING_ENABLED and db is not None and vessel is not None:
+        pi_val_cfg = config.get("pi_validation", {})
+        try:
+            from app.models.vessel_owner import VesselOwner as _VO_pi
+            pi_owner = db.query(_VO_pi).filter(
+                _VO_pi.vessel_id == vessel.vessel_id
+            ).first()
+            pi_club = pi_owner.pi_club_name if pi_owner else None
+
+            if pi_club and isinstance(pi_club, str) and pi_club.strip():
+                pi_club_clean = pi_club.strip()
+                pi_clubs_data = _load_pi_clubs_config()
+                known_fraudulent = pi_clubs_data.get("known_fraudulent", [])
+                legitimate_clubs = pi_clubs_data.get("legitimate_clubs", [])
+
+                # Build set of legitimate names (full + short) for matching
+                legit_names: set[str] = set()
+                for club in legitimate_clubs:
+                    legit_names.add(club["name"].lower())
+                    legit_names.add(club["short"].lower())
+
+                if pi_club_clean.lower() in {f.lower() for f in known_fraudulent}:
+                    breakdown["pi_known_fraudulent"] = pi_val_cfg.get("known_fraudulent", 40)
+                elif pi_club_clean.lower() not in legit_names:
+                    breakdown["pi_unknown_insurer"] = pi_val_cfg.get("unknown_insurer", 25)
+                # else: legitimate club, no points added
+            else:
+                breakdown["pi_no_insurer"] = pi_val_cfg.get("no_insurer", 15)
+        except Exception:
+            pass  # Graceful skip if VesselOwner table query fails
+
+    # ── Stage 2-B: Fraudulent registry scoring ─────────────────────────────
+    if _scoring_settings.FRAUDULENT_REGISTRY_SCORING_ENABLED and vessel is not None:
+        fr_cfg = config.get("fraudulent_registry", {})
+        vessel_flag = vessel.flag if isinstance(vessel.flag, str) else None
+        if vessel_flag:
+            vessel_flag_upper = vessel_flag.strip().upper()
+            fr_data = _load_fraudulent_registries_config()
+            tier_0_codes = {
+                entry["country_code"].upper()
+                for entry in fr_data.get("tier_0_fraudulent", [])
+            }
+            tier_1_codes = {
+                entry["country_code"].upper()
+                for entry in fr_data.get("tier_1_high_risk", [])
+            }
+            if vessel_flag_upper in tier_0_codes:
+                breakdown["fraudulent_registry_tier_0"] = fr_cfg.get("tier_0_fraudulent", 40)
+            elif vessel_flag_upper in tier_1_codes:
+                breakdown["fraudulent_registry_tier_1"] = fr_cfg.get("tier_1_high_risk", 20)
+
+    # ── Stage 2-D: At-sea extended operations (no port call) ─────────────
+    if _scoring_settings.AT_SEA_OPERATIONS_SCORING_ENABLED and db is not None and vessel is not None:
+        at_sea_cfg = config.get("at_sea_operations", {})
+        try:
+            from app.models.port_call import PortCall as _PC_atsea
+            last_port_call = db.query(_PC_atsea).filter(
+                _PC_atsea.vessel_id == gap.vessel_id,
+            ).order_by(_PC_atsea.departure_utc.desc()).first()
+            _last_dep = getattr(last_port_call, "departure_utc", None) if last_port_call else None
+            if _last_dep is not None and isinstance(_last_dep, datetime):
+                _dep_naive = _last_dep.replace(tzinfo=None) if _last_dep.tzinfo else _last_dep
+                _days_since = (scoring_date - _dep_naive).days
+            else:
+                _days_since = 9999  # no port call found
+            if _days_since >= 365:
+                breakdown["at_sea_no_port_call_365d"] = at_sea_cfg.get("no_port_call_365d", 35)
+            elif _days_since >= 180:
+                breakdown["at_sea_no_port_call_180d"] = at_sea_cfg.get("no_port_call_180d", 25)
+            elif _days_since >= 90:
+                breakdown["at_sea_no_port_call_90d"] = at_sea_cfg.get("no_port_call_90d", 15)
+        except Exception:
+            pass  # Graceful skip if port_call table not available
+
+    # ── Stage 2-F: Rename velocity scoring ──────────────────────────────────
+    if _scoring_settings.RENAME_VELOCITY_SCORING_ENABLED and db is not None and vessel is not None:
+        from app.models.vessel_history import VesselHistory as _VH_rename
+        one_year_ago = gap.gap_start_utc - timedelta(days=365)
+        rename_changes = db.query(_VH_rename).filter(
+            _VH_rename.vessel_id == vessel.vessel_id,
+            _VH_rename.field_changed == "name",
+            _VH_rename.observed_at >= one_year_ago,
+        ).all()
+        rename_count = len(rename_changes)
+        rename_cfg = config.get("rename_velocity", {})
+        if rename_count >= 3:
+            breakdown["rename_velocity_3_365d"] = rename_cfg.get("name_changes_3_per_365d", 30)
+        elif rename_count >= 2:
+            breakdown["rename_velocity_2_365d"] = rename_cfg.get("name_changes_2_per_365d", 15)
 
     # ── Phase 2+3: Multiplier composition (asymmetric) ─────────────────────
     # Multipliers amplify ONLY risk signals (positive); legitimacy deductions

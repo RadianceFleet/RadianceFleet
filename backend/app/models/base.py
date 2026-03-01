@@ -65,6 +65,8 @@ class SpoofingTypeEnum(str, enum.Enum):
     STATELESS_MMSI = "stateless_mmsi"
     FLAG_HOPPING = "flag_hopping"
     IMO_FRAUD = "imo_fraud"
+    # Stage 2-C: Repeating AIS data values (stale transponder data)
+    STALE_AIS_DATA = "stale_ais_data"
     # Sub-types (extended_restricted_maneuverability, nav_status_15) are stored
     # in evidence_json["subtype"] on an ERRATIC_NAV_STATUS anomaly record.
 

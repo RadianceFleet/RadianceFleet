@@ -103,7 +103,7 @@ def _run_migrations() -> None:
         try:
             raw_conn.set_isolation_level(0)  # ISOLATION_LEVEL_AUTOCOMMIT
             cursor = raw_conn.cursor()
-            for val in ("synthetic_track", "stateless_mmsi", "flag_hopping", "imo_fraud"):
+            for val in ("synthetic_track", "stateless_mmsi", "flag_hopping", "imo_fraud", "stale_ais_data"):
                 cursor.execute(
                     f"ALTER TYPE spoofingtypeenum ADD VALUE IF NOT EXISTS '{val}'"
                 )

@@ -94,6 +94,23 @@ class Settings(BaseSettings):
     # Phase O: Fleet analysis
     FLEET_ANALYSIS_ENABLED: bool = False
     FLEET_SCORING_ENABLED: bool = False
+    # Stage 2-A: P&I validation
+    PI_VALIDATION_DETECTION_ENABLED: bool = False
+    PI_VALIDATION_SCORING_ENABLED: bool = False
+    # Stage 2-B: Fraudulent registry
+    FRAUDULENT_REGISTRY_DETECTION_ENABLED: bool = False
+    FRAUDULENT_REGISTRY_SCORING_ENABLED: bool = False
+    # Stage 2-C: Stale AIS data detection
+    STALE_AIS_DETECTION_ENABLED: bool = False
+    STALE_AIS_SCORING_ENABLED: bool = False
+    # Stage 2-D: At-sea extended operations
+    AT_SEA_OPERATIONS_SCORING_ENABLED: bool = False
+    # Stage 2-E: ISM/P&I continuity
+    ISM_CONTINUITY_DETECTION_ENABLED: bool = False
+    ISM_CONTINUITY_SCORING_ENABLED: bool = False
+    # Stage 2-F: Rename velocity
+    RENAME_VELOCITY_DETECTION_ENABLED: bool = False
+    RENAME_VELOCITY_SCORING_ENABLED: bool = False
 
 
 settings = Settings()

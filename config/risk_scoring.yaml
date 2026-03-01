@@ -264,6 +264,40 @@ dark_sts:
   dark_dark_low_confidence: 10     # 15-50nm, both high-risk
   dark_dark_draught_confirmed: 15  # draught delta corroboration
 
+# P&I VALIDATION (Stage 2-A) — fraudulent P&I certificate detection
+# 82% of shadow fleet vessels lack reputable IG P&I club coverage
+pi_validation:
+  unknown_insurer: 25
+  known_fraudulent: 40
+  no_insurer: 15
+
+# FRAUDULENT REGISTRY (Stage 2-B) — non-operational or high-risk flag registries
+fraudulent_registry:
+  tier_0_fraudulent: 40
+  tier_1_high_risk: 20
+
+# STALE AIS DATA (Stage 2-C) — repeating heading/SOG/COG values
+stale_ais:
+  stale_data_detected: 20
+
+# AT-SEA EXTENDED OPERATIONS (Stage 2-D) — no port call for extended period
+at_sea_operations:
+  no_port_call_90d: 15
+  no_port_call_180d: 25
+  no_port_call_365d: 35
+
+# ISM/P&I CONTINUITY (Stage 2-E) — same manager/insurer across ownership changes
+ism_continuity:
+  same_ism_across_owners: 20
+  same_pi_across_owners: 15
+  merge_shared_ism: 10
+
+# RENAME VELOCITY (Stage 2-F) — rapid vessel renaming patterns
+rename_velocity:
+  name_changes_2_per_365d: 15
+  name_changes_3_per_365d: 30
+  batch_rename_same_owner: 25
+
 # FLEET & OWNER INTELLIGENCE (Phase O) — cluster-level patterns
 fleet:
   fleet_sts_concentration: 30       # 3+ vessels, same zone, 30d

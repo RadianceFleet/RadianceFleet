@@ -497,6 +497,30 @@ def _score_candidate(
         score += 10
         reasons["russian_port_call"] = {"points": 10}
 
+    # ISM/P&I continuity bonus: shared ISM manager or P&I club across candidates
+    if settings.ISM_CONTINUITY_SCORING_ENABLED:
+        try:
+            from app.models.vessel_owner import VesselOwner as _VO_ism
+            dark_owner = db.query(_VO_ism).filter(
+                _VO_ism.vessel_id == dark_v.vessel_id
+            ).first()
+            new_owner = db.query(_VO_ism).filter(
+                _VO_ism.vessel_id == new_v.vessel_id
+            ).first()
+            if dark_owner and new_owner:
+                _dark_ism = (dark_owner.ism_manager or "").strip().upper()
+                _new_ism = (new_owner.ism_manager or "").strip().upper()
+                if _dark_ism and _new_ism and _dark_ism == _new_ism:
+                    score += 10
+                    reasons["shared_ism_manager"] = {"points": 10, "ism_manager": _dark_ism}
+                _dark_pi = (dark_owner.pi_club_name or "").strip().upper()
+                _new_pi = (new_owner.pi_club_name or "").strip().upper()
+                if _dark_pi and _new_pi and _dark_pi == _new_pi:
+                    score += 10
+                    reasons["shared_pi_club"] = {"points": 10, "pi_club": _dark_pi}
+        except Exception:
+            pass  # Graceful skip if VesselOwner query fails
+
     # --- Negative signals (anti-merge evidence) ---
 
     # DWT mismatch (>30% difference): strong anti-evidence

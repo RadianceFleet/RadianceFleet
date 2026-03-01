@@ -294,6 +294,217 @@ def _check_shared_pi_club(
     return None
 
 
+def detect_ism_pi_continuity(db) -> dict:
+    """Detect ISM manager or P&I club persistence across ownership changes.
+
+    For each vessel with >1 owner record, checks if ism_manager or pi_club_name
+    stayed the same across different owners. If so, creates a FleetAlert.
+
+    Returns dict with {status, alerts_created}.
+    """
+    if not getattr(settings, "ISM_CONTINUITY_DETECTION_ENABLED", False):
+        logger.info("ISM continuity detection disabled — skipping")
+        return {"status": "disabled", "alerts_created": 0}
+
+    from sqlalchemy import func as _func
+
+    # Find vessels with more than one ownership record
+    vessel_groups = (
+        db.query(VesselOwner.vessel_id)
+        .group_by(VesselOwner.vessel_id)
+        .having(_func.count(VesselOwner.owner_id) > 1)
+        .all()
+    )
+
+    alerts_created = 0
+    for (vessel_id,) in vessel_groups:
+        owners = (
+            db.query(VesselOwner)
+            .filter(VesselOwner.vessel_id == vessel_id)
+            .order_by(VesselOwner.owner_id)
+            .all()
+        )
+        if len(owners) < 2:
+            continue
+
+        # Check ISM manager continuity
+        ism_values = [
+            (o.ism_manager or "").strip().upper()
+            for o in owners
+            if (o.ism_manager or "").strip()
+        ]
+        owner_names = [
+            (o.owner_name or "").strip().upper()
+            for o in owners
+        ]
+        unique_owners = set(owner_names)
+
+        if len(ism_values) >= 2 and len(unique_owners) >= 2:
+            # Check if same ISM manager appears across different owners
+            for i in range(len(owners) - 1):
+                ism_a = (owners[i].ism_manager or "").strip().upper()
+                ism_b = (owners[i + 1].ism_manager or "").strip().upper()
+                owner_a = (owners[i].owner_name or "").strip().upper()
+                owner_b = (owners[i + 1].owner_name or "").strip().upper()
+                if ism_a and ism_b and ism_a == ism_b and owner_a != owner_b:
+                    # Check dedup
+                    existing = (
+                        db.query(FleetAlert)
+                        .filter(
+                            FleetAlert.alert_type == "ism_continuity",
+                            FleetAlert.vessel_ids_json.contains(vessel_id),
+                        )
+                        .first()
+                    )
+                    if existing is None:
+                        alert = FleetAlert(
+                            alert_type="ism_continuity",
+                            vessel_ids_json=[vessel_id],
+                            evidence_json={
+                                "vessel_id": vessel_id,
+                                "ism_manager": ism_a,
+                                "owner_a": owner_a,
+                                "owner_b": owner_b,
+                            },
+                            risk_score_component=20,
+                        )
+                        db.add(alert)
+                        alerts_created += 1
+                    break
+
+        # Check P&I club continuity
+        pi_values = [
+            (o.pi_club_name or "").strip().upper()
+            for o in owners
+            if (o.pi_club_name or "").strip()
+        ]
+        if len(pi_values) >= 2 and len(unique_owners) >= 2:
+            for i in range(len(owners) - 1):
+                pi_a = (owners[i].pi_club_name or "").strip().upper()
+                pi_b = (owners[i + 1].pi_club_name or "").strip().upper()
+                owner_a = (owners[i].owner_name or "").strip().upper()
+                owner_b = (owners[i + 1].owner_name or "").strip().upper()
+                if pi_a and pi_b and pi_a == pi_b and owner_a != owner_b:
+                    existing = (
+                        db.query(FleetAlert)
+                        .filter(
+                            FleetAlert.alert_type == "pi_continuity",
+                            FleetAlert.vessel_ids_json.contains(vessel_id),
+                        )
+                        .first()
+                    )
+                    if existing is None:
+                        alert = FleetAlert(
+                            alert_type="pi_continuity",
+                            vessel_ids_json=[vessel_id],
+                            evidence_json={
+                                "vessel_id": vessel_id,
+                                "pi_club_name": pi_a,
+                                "owner_a": owner_a,
+                                "owner_b": owner_b,
+                            },
+                            risk_score_component=15,
+                        )
+                        db.add(alert)
+                        alerts_created += 1
+                    break
+
+    if alerts_created > 0:
+        db.commit()
+
+    logger.info("ISM/P&I continuity detection: %d alerts created", alerts_created)
+    return {"status": "ok", "alerts_created": alerts_created}
+
+
+def detect_batch_renames(db) -> dict:
+    """Detect batch vessel renames — same owner renaming 3+ vessels within 30 days.
+
+    Groups VesselHistory name changes by owner_name + 30-day window.
+    If >3 vessels from the same owner renamed within 30d → FleetAlert.
+
+    Returns dict with {status, alerts_created}.
+    """
+    if not getattr(settings, "RENAME_VELOCITY_DETECTION_ENABLED", False):
+        logger.info("Rename velocity detection disabled — skipping")
+        return {"status": "disabled", "alerts_created": 0}
+
+    from app.models.vessel_history import VesselHistory
+
+    # Get all name changes
+    name_changes = (
+        db.query(VesselHistory)
+        .filter(VesselHistory.field_changed == "name")
+        .order_by(VesselHistory.observed_at)
+        .all()
+    )
+
+    if not name_changes:
+        return {"status": "ok", "alerts_created": 0}
+
+    # For each name change, resolve the vessel's owner at that time
+    change_with_owner = []
+    for ch in name_changes:
+        owner = (
+            db.query(VesselOwner)
+            .filter(VesselOwner.vessel_id == ch.vessel_id)
+            .order_by(VesselOwner.owner_id.desc())
+            .first()
+        )
+        if owner and owner.owner_name:
+            change_with_owner.append({
+                "vessel_id": ch.vessel_id,
+                "owner_name": owner.owner_name.strip().upper(),
+                "observed_at": ch.observed_at,
+            })
+
+    # Group by owner_name
+    owner_changes: Dict[str, list] = defaultdict(list)
+    for item in change_with_owner:
+        owner_changes[item["owner_name"]].append(item)
+
+    alerts_created = 0
+    for owner_name, changes in owner_changes.items():
+        changes.sort(key=lambda x: x["observed_at"])
+        # Sliding 30-day window
+        for i in range(len(changes)):
+            window_start = changes[i]["observed_at"]
+            window_end = window_start + timedelta(days=30)
+            window_vessels = set()
+            for j in range(i, len(changes)):
+                if changes[j]["observed_at"] > window_end:
+                    break
+                window_vessels.add(changes[j]["vessel_id"])
+            if len(window_vessels) > 3:
+                # Check dedup
+                existing = (
+                    db.query(FleetAlert)
+                    .filter(
+                        FleetAlert.alert_type == "batch_rename",
+                    )
+                    .first()
+                )
+                if existing is None:
+                    alert = FleetAlert(
+                        alert_type="batch_rename",
+                        vessel_ids_json=list(window_vessels),
+                        evidence_json={
+                            "owner_name": owner_name,
+                            "vessel_count": len(window_vessels),
+                            "window_days": 30,
+                        },
+                        risk_score_component=25,
+                    )
+                    db.add(alert)
+                    alerts_created += 1
+                break  # One alert per owner is sufficient
+
+    if alerts_created > 0:
+        db.commit()
+
+    logger.info("Batch rename detection: %d alerts created", alerts_created)
+    return {"status": "ok", "alerts_created": alerts_created}
+
+
 def _alert_exists(db, cluster_id: int, alert_type: str) -> bool:
     """Check if a fleet alert already exists for this cluster + type."""
     existing = (

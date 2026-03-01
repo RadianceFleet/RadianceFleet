@@ -1,0 +1,17 @@
+last_updated: "2026-03-01"
+tier_0_fraudulent:
+  - country_code: "CM"
+    name: "Cameroon (non-operational registry)"
+  - country_code: "BO"
+    name: "Bolivia (landlocked, no maritime authority)"
+  - country_code: "MD"
+    name: "Moldova (known for minimal oversight)"
+tier_1_high_risk:
+  - country_code: "TG"
+    name: "Togo"
+  - country_code: "TZ"
+    name: "Tanzania"
+  - country_code: "PW"
+    name: "Palau"
+  - country_code: "CK"
+    name: "Cook Islands"

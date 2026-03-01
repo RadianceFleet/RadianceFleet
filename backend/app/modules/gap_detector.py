@@ -291,6 +291,137 @@ def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return haversine_nm(lat1, lon1, lat2, lon2)
 
 
+def detect_stale_ais_data(
+    db: Session,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+) -> dict:
+    """Detect repeating AIS data values (stale transponder data).
+
+    Identifies sequences where heading, SOG, and COG are all identical across
+    >N consecutive messages spanning >2 hours while vessel SOG > 0.5 (underway).
+
+    A stale transponder broadcasting frozen values while the vessel is moving
+    is a strong indicator of AIS manipulation or hardware tampering.
+
+    Gated by STALE_AIS_DETECTION_ENABLED feature flag.
+
+    Returns dict with count of anomalies detected.
+    """
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.base import SpoofingTypeEnum
+
+    if not settings.STALE_AIS_DETECTION_ENABLED:
+        return {"stale_ais_anomalies": 0, "skipped": True}
+
+    vessels = db.query(Vessel).all()
+    anomalies_created = 0
+    _MIN_CONSECUTIVE = 10
+    _MIN_SPAN_HOURS = 2.0
+
+    for vessel in vessels:
+        q = (
+            db.query(AISPoint)
+            .filter(AISPoint.vessel_id == vessel.vessel_id)
+            .order_by(AISPoint.timestamp_utc)
+        )
+        if date_from:
+            q = q.filter(AISPoint.timestamp_utc >= datetime.combine(date_from, datetime.min.time()))
+        if date_to:
+            q = q.filter(AISPoint.timestamp_utc <= datetime.combine(date_to, datetime.max.time()))
+
+        points = q.all()
+        if len(points) < _MIN_CONSECUTIVE:
+            continue
+
+        # Scan for stale sequences
+        run_start = 0
+        for i in range(1, len(points)):
+            p_prev = points[i - 1]
+            p_curr = points[i]
+
+            # Check if heading, SOG, and COG are all identical and vessel underway
+            same_heading = (p_prev.heading is not None and p_curr.heading is not None
+                           and p_prev.heading == p_curr.heading)
+            same_sog = (p_prev.sog is not None and p_curr.sog is not None
+                        and p_prev.sog == p_curr.sog)
+            same_cog = (p_prev.cog is not None and p_curr.cog is not None
+                        and p_prev.cog == p_curr.cog)
+            underway = p_curr.sog is not None and p_curr.sog > 0.5
+
+            if same_heading and same_sog and same_cog and underway:
+                continue  # still in a stale run
+            else:
+                # Run ended; check if it meets thresholds
+                run_length = i - run_start
+                if run_length >= _MIN_CONSECUTIVE:
+                    span_hours = (
+                        points[i - 1].timestamp_utc - points[run_start].timestamp_utc
+                    ).total_seconds() / 3600
+                    if span_hours >= _MIN_SPAN_HOURS:
+                        # Check underway for first point in run
+                        first_sog = points[run_start].sog
+                        if first_sog is not None and first_sog > 0.5:
+                            # Dedup
+                            existing = db.query(SpoofingAnomaly).filter(
+                                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STALE_AIS_DATA,
+                                SpoofingAnomaly.start_time_utc == points[run_start].timestamp_utc,
+                            ).first()
+                            if not existing:
+                                db.add(SpoofingAnomaly(
+                                    vessel_id=vessel.vessel_id,
+                                    anomaly_type=SpoofingTypeEnum.STALE_AIS_DATA,
+                                    start_time_utc=points[run_start].timestamp_utc,
+                                    end_time_utc=points[i - 1].timestamp_utc,
+                                    risk_score_component=20,
+                                    evidence_json={
+                                        "consecutive_count": run_length,
+                                        "span_hours": round(span_hours, 2),
+                                        "frozen_sog": points[run_start].sog,
+                                        "frozen_cog": points[run_start].cog,
+                                        "frozen_heading": points[run_start].heading,
+                                    },
+                                ))
+                                anomalies_created += 1
+                run_start = i
+
+        # Check final run
+        run_length = len(points) - run_start
+        if run_length >= _MIN_CONSECUTIVE:
+            span_hours = (
+                points[-1].timestamp_utc - points[run_start].timestamp_utc
+            ).total_seconds() / 3600
+            if span_hours >= _MIN_SPAN_HOURS:
+                first_sog = points[run_start].sog
+                if first_sog is not None and first_sog > 0.5:
+                    existing = db.query(SpoofingAnomaly).filter(
+                        SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STALE_AIS_DATA,
+                        SpoofingAnomaly.start_time_utc == points[run_start].timestamp_utc,
+                    ).first()
+                    if not existing:
+                        db.add(SpoofingAnomaly(
+                            vessel_id=vessel.vessel_id,
+                            anomaly_type=SpoofingTypeEnum.STALE_AIS_DATA,
+                            start_time_utc=points[run_start].timestamp_utc,
+                            end_time_utc=points[-1].timestamp_utc,
+                            risk_score_component=20,
+                            evidence_json={
+                                "consecutive_count": run_length,
+                                "span_hours": round(span_hours, 2),
+                                "frozen_sog": points[run_start].sog,
+                                "frozen_cog": points[run_start].cog,
+                                "frozen_heading": points[run_start].heading,
+                            },
+                        ))
+                        anomalies_created += 1
+
+    db.commit()
+    logger.info("Stale AIS detection complete: %d anomalies detected", anomalies_created)
+    return {"stale_ais_anomalies": anomalies_created}
+
+
 def run_spoofing_detection(
     db: Session,
     date_from: Optional[date] = None,
