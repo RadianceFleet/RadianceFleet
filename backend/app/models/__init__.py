@@ -28,6 +28,8 @@ from app.models.owner_cluster import OwnerCluster
 from app.models.owner_cluster_member import OwnerClusterMember
 from app.models.fleet_alert import FleetAlert
 from app.models.pipeline_run import PipelineRun
+from app.models.merge_chain import MergeChain
+from app.models.vessel_fingerprint import VesselFingerprint
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -64,4 +66,6 @@ __all__ = [
     "OwnerClusterMember",
     "FleetAlert",
     "PipelineRun",
+    "MergeChain",
+    "VesselFingerprint",
 ]

@@ -319,6 +319,12 @@ scrapped_registry:
 track_replay:
   high_correlation_replay: 45
 
+# MERGE CHAINS (Stage 4-A) — extended MMSI identity chain detection
+merge_chains:
+  chain_3_hops: 15              # vessel part of 3-vessel identity chain
+  chain_4_plus_hops: 25         # vessel part of 4+ vessel identity chain
+  scrapped_imo_in_chain: 35     # chain includes a scrapped IMO number
+
 # FLEET & OWNER INTELLIGENCE (Phase O) — cluster-level patterns
 fleet:
   fleet_sts_concentration: 30       # 3+ vessels, same zone, 30d

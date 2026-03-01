@@ -475,12 +475,29 @@ def discover_dark_vessels(
     # Step 9: Auto-hunt (SOFT)
     _run_step("auto_hunt", auto_hunt_dark_vessels, db, min_gap_score=min_gap_score)
 
+    # Step 9b: SAR-AIS correlation (SOFT, feature-gated)
+    if settings.SAR_CORRELATION_ENABLED:
+        try:
+            from app.modules.sar_correlator import correlate_sar_detections
+            _run_step("sar_correlation", correlate_sar_detections, db)
+        except ImportError:
+            result["steps"]["sar_correlation"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 10: Identity resolution (SOFT)
     try:
         from app.modules.identity_resolver import detect_merge_candidates
         _run_step("identity_resolution", detect_merge_candidates, db)
     except ImportError:
         result["steps"]["identity_resolution"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 10b: Extended merge pass + chain detection (SOFT, feature-gated)
+    if settings.MERGE_CHAIN_DETECTION_ENABLED:
+        try:
+            from app.modules.identity_resolver import extended_merge_pass, detect_merge_chains
+            _run_step("extended_merge_pass", extended_merge_pass, db)
+            _run_step("merge_chain_detection", detect_merge_chains, db)
+        except ImportError:
+            result["steps"]["merge_chain_detection"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 11: MMSI cloning (SOFT)
     try:
@@ -552,6 +569,14 @@ def discover_dark_vessels(
             _run_step("fleet_analysis", run_fleet_analysis, db)
         except ImportError:
             result["steps"]["fleet_analysis"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 11g: Behavioral fingerprinting (SOFT, feature-gated)
+    if settings.FINGERPRINT_ENABLED:
+        try:
+            from app.modules.vessel_fingerprint import run_fingerprint_computation
+            _run_step("fingerprint_computation", run_fingerprint_computation, db)
+        except ImportError:
+            result["steps"]["fingerprint_computation"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 12: Top alerts summary
     from app.models.gap_event import AISGapEvent

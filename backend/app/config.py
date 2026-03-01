@@ -122,6 +122,15 @@ class Settings(BaseSettings):
     SCRAPPED_REGISTRY_SCORING_ENABLED: bool = False
     TRACK_REPLAY_DETECTION_ENABLED: bool = False
     TRACK_REPLAY_SCORING_ENABLED: bool = False
+    # Stage 4-A: Extended MMSI chain detection
+    MERGE_CHAIN_DETECTION_ENABLED: bool = False
+    MERGE_CHAIN_SCORING_ENABLED: bool = False
+    # Stage 4-B: Behavioral fingerprinting
+    FINGERPRINT_ENABLED: bool = False
+    FINGERPRINT_SCORING_ENABLED: bool = False
+    # Stage 4-C: Satellite-AIS correlation
+    SAR_CORRELATION_ENABLED: bool = False
+    SAR_CORRELATION_SCORING_ENABLED: bool = False
 
 
 settings = Settings()

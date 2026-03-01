@@ -1535,3 +1535,173 @@ def get_vessel_aliases(db: Session, vessel_id: int) -> list[dict]:
         })
 
     return aliases
+
+
+# ---------------------------------------------------------------------------
+# Stage 4-A: Merge chain detection
+# ---------------------------------------------------------------------------
+
+def detect_merge_chains(db: Session) -> dict:
+    """Find connected components of merged/pending vessels and create MergeChain records.
+
+    Algorithm:
+      1. Query MergeCandidate rows with status IN (AUTO_MERGED, ANALYST_MERGED, PENDING)
+         and confidence_score >= 50
+      2. Build undirected graph: each candidate connects vessel_a_id and vessel_b_id
+      3. Find connected components (BFS)
+      4. For components with >= 3 vessels, create MergeChain records
+
+    Returns stats dict: {chains_created, chains_by_band: {HIGH, MEDIUM, LOW}}.
+    """
+    from app.models.merge_chain import MergeChain
+    from collections import deque
+
+    if not settings.MERGE_CHAIN_DETECTION_ENABLED:
+        return {"chains_created": 0, "chains_by_band": {}, "skipped": "feature_disabled"}
+
+    stats: dict = {"chains_created": 0, "chains_by_band": {"HIGH": 0, "MEDIUM": 0, "LOW": 0}}
+
+    # 1. Query qualifying merge candidates
+    candidates = (
+        db.query(MergeCandidate)
+        .filter(
+            MergeCandidate.status.in_([
+                MergeCandidateStatusEnum.AUTO_MERGED,
+                MergeCandidateStatusEnum.ANALYST_MERGED,
+                MergeCandidateStatusEnum.PENDING,
+            ]),
+            MergeCandidate.confidence_score >= 50,
+        )
+        .all()
+    )
+
+    if not candidates:
+        return stats
+
+    # 2. Build undirected adjacency list
+    adjacency: dict[int, set[int]] = {}
+    edge_map: dict[tuple[int, int], MergeCandidate] = {}
+
+    for cand in candidates:
+        a, b = cand.vessel_a_id, cand.vessel_b_id
+        adjacency.setdefault(a, set()).add(b)
+        adjacency.setdefault(b, set()).add(a)
+        edge_key = (min(a, b), max(a, b))
+        edge_map[edge_key] = cand
+
+    # 3. BFS to find connected components
+    visited: set[int] = set()
+    components: list[list[int]] = []
+
+    for node in adjacency:
+        if node in visited:
+            continue
+        component: list[int] = []
+        queue = deque([node])
+        while queue:
+            current = queue.popleft()
+            if current in visited:
+                continue
+            visited.add(current)
+            component.append(current)
+            for neighbor in adjacency.get(current, set()):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+        components.append(component)
+
+    # 4. Create MergeChain for components with >= 3 vessels
+    for component in components:
+        if len(component) < 3:
+            continue
+
+        # Order chronologically by earliest merge candidate date
+        vessel_time: dict[int, datetime] = {}
+        for vid in component:
+            earliest = None
+            for cand in candidates:
+                if cand.vessel_a_id == vid or cand.vessel_b_id == vid:
+                    t = cand.created_at
+                    if t and (earliest is None or t < earliest):
+                        earliest = t
+            vessel_time[vid] = earliest or datetime.utcnow()
+
+        ordered_ids = sorted(component, key=lambda v: vessel_time[v])
+
+        # Collect link candidate_ids
+        link_ids = []
+        for i in range(len(ordered_ids) - 1):
+            a, b = ordered_ids[i], ordered_ids[i + 1]
+            edge_key = (min(a, b), max(a, b))
+            cand = edge_map.get(edge_key)
+            if cand:
+                link_ids.append(cand.candidate_id)
+
+        # Chain confidence = min(link confidence scores)
+        link_scores = []
+        for cand in candidates:
+            a, b = cand.vessel_a_id, cand.vessel_b_id
+            if a in component and b in component:
+                link_scores.append(cand.confidence_score)
+
+        chain_confidence = min(link_scores) if link_scores else 0.0
+
+        # Confidence band
+        if chain_confidence >= 75:
+            band = "HIGH"
+        elif chain_confidence >= 50:
+            band = "MEDIUM"
+        else:
+            band = "LOW"
+
+        # Check for scrapped IMO in chain
+        has_scrapped_imo = False
+        for vid in ordered_ids:
+            v = db.query(Vessel).get(vid)
+            if v and v.imo:
+                if not validate_imo_checksum(v.imo):
+                    has_scrapped_imo = True
+                    break
+
+        # Dedup: skip if chain with same vessel_ids_json already exists
+        existing = db.query(MergeChain).filter(
+            MergeChain.vessel_ids_json == ordered_ids,
+        ).first()
+        if existing:
+            continue
+
+        chain = MergeChain(
+            vessel_ids_json=ordered_ids,
+            links_json=link_ids,
+            chain_length=len(ordered_ids),
+            confidence=chain_confidence,
+            confidence_band=band,
+            evidence_json={
+                "has_scrapped_imo": has_scrapped_imo,
+                "link_count": len(link_ids),
+            },
+        )
+        db.add(chain)
+        stats["chains_created"] += 1
+        stats["chains_by_band"][band] += 1
+
+    db.commit()
+    logger.info("Merge chain detection: %s", stats)
+    return stats
+
+
+def extended_merge_pass(db: Session) -> dict:
+    """Extended merge candidate detection with 180-day window and higher confidence.
+
+    Only considers candidates with strong identity signals:
+      - Same IMO number
+      - DWT + type + year_built triple match
+      - Scrapped IMO link (invalid checksum on either vessel)
+
+    Returns stats dict from detect_merge_candidates or lightweight wrapper.
+    """
+    if not settings.MERGE_CHAIN_DETECTION_ENABLED:
+        return {"candidates_created": 0, "extended": True, "skipped": "feature_disabled"}
+
+    extended_stats = detect_merge_candidates(db, max_gap_days=180)
+    extended_stats["extended"] = True
+    return extended_stats

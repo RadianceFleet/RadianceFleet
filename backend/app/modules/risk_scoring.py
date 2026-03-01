@@ -45,6 +45,7 @@ _EXPECTED_SECTIONS = [
     "stale_ais", "at_sea_operations",
     "ism_continuity", "rename_velocity",
     "destination", "sts_chains", "scrapped_registry", "track_replay",
+    "merge_chains",
 ]
 
 
@@ -1541,6 +1542,31 @@ def compute_gap_score(
         for ra in replay_anomalies:
             pts = replay_cfg.get("high_correlation_replay", 45)
             breakdown["track_replay"] = pts
+
+    # ── Stage 4-A: Merge chain scoring ─────────────────────────────────────
+    if _scoring_settings.MERGE_CHAIN_SCORING_ENABLED and db is not None and vessel is not None:
+        mc_cfg = config.get("merge_chains", {})
+        try:
+            from app.models.merge_chain import MergeChain
+            chains = db.query(MergeChain).all()
+            for chain in chains:
+                v_ids = chain.vessel_ids_json or []
+                if vessel.vessel_id in v_ids:
+                    if chain.chain_length >= 4:
+                        pts = mc_cfg.get("chain_4_plus_hops", 25)
+                        breakdown["merge_chain_4plus"] = pts
+                    elif chain.chain_length >= 3:
+                        pts = mc_cfg.get("chain_3_hops", 15)
+                        breakdown["merge_chain_3"] = pts
+                    # Check for scrapped IMO in chain
+                    ev = chain.evidence_json or {}
+                    if ev.get("has_scrapped_imo"):
+                        breakdown["scrapped_imo_in_chain"] = mc_cfg.get(
+                            "scrapped_imo_in_chain", 35
+                        )
+                    break  # one chain match is enough
+        except Exception:
+            pass  # Graceful skip if merge_chains table doesn't exist yet
 
     # ── Phase 2+3: Multiplier composition (asymmetric) ─────────────────────
     # Multipliers amplify ONLY risk signals (positive); legitimacy deductions
