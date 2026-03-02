@@ -149,21 +149,40 @@ def fetch_digitraffic_ais(
                 if existing:
                     continue
 
+                sog_val = float(sog) / 10.0 if sog is not None else None
+                cog_val = float(cog) / 10.0 if cog is not None else None
+                heading_val = float(heading) if heading is not None and heading != 511 else None
+
                 point = AISPoint(
                     vessel_id=vessel.vessel_id,
                     timestamp_utc=timestamp,
                     lat=lat,
                     lon=lon,
-                    sog=float(sog) / 10.0 if sog is not None else None,
-                    cog=float(cog) / 10.0 if cog is not None else None,
-                    heading=float(heading)
-                    if heading is not None and heading != 511
-                    else None,
+                    sog=sog_val,
+                    cog=cog_val,
+                    heading=heading_val,
                     ais_class="A",
                     source="digitraffic",
                 )
                 db.add(point)
                 points += 1
+
+                # Dual-write to AIS observations for cross-receiver detection
+                try:
+                    from app.models.ais_observation import AISObservation
+                    obs = AISObservation(
+                        mmsi=mmsi,
+                        timestamp_utc=timestamp,
+                        lat=lat,
+                        lon=lon,
+                        sog=sog_val,
+                        cog=cog_val,
+                        heading=heading_val,
+                        source="digitraffic",
+                    )
+                    db.add(obs)
+                except Exception:
+                    pass  # Non-blocking
             except Exception:
                 errors += 1
 

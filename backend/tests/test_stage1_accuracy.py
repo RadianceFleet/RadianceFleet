@@ -96,54 +96,54 @@ class TestFeedOutageDetection:
         assert result["gaps_marked"] == 0
 
     @patch("app.modules.feed_outage_detector.settings")
-    def test_five_vessels_triggers_fallback(self, mock_settings):
-        """5+ unrelated vessels in same corridor + 2h window = outage (fallback)."""
+    def test_eight_vessels_triggers_fallback(self, mock_settings):
+        """8+ unrelated vessels in same corridor + 2h window = outage (fallback min=8)."""
         mock_settings.FEED_OUTAGE_DETECTION_ENABLED = True
         db = MagicMock()
         base_time = datetime(2025, 6, 15, 10, 30)
         gaps = [
             _gap(vessel_id=i, corridor_id=10, gap_start=base_time + timedelta(minutes=i * 5))
-            for i in range(1, 7)  # 6 unique vessels
+            for i in range(1, 10)  # 9 unique vessels
         ]
         db.query.return_value.filter.return_value.all.return_value = gaps
-        # No baseline → fallback threshold of 5
+        # Use patched threshold to test detection logic (min is now 8)
         from app.modules.feed_outage_detector import detect_feed_outages
-        with patch("app.modules.feed_outage_detector._get_threshold", return_value=5):
+        with patch("app.modules.feed_outage_detector._get_threshold", return_value=8):
             result = detect_feed_outages(db)
         assert result["outages_detected"] == 1
-        assert result["gaps_marked"] == 6
+        assert result["gaps_marked"] == 9
         # All gaps should be marked
         for g in gaps:
             assert g.is_feed_outage is True
 
     @patch("app.modules.feed_outage_detector.settings")
     def test_adaptive_threshold_with_baseline(self, mock_settings):
-        """When P95 baseline exists, threshold = 3 × P95."""
+        """When P95 baseline exists, threshold = max(3 × P95, 8)."""
         mock_settings.FEED_OUTAGE_DETECTION_ENABLED = True
         from app.modules.feed_outage_detector import _get_threshold
         db = MagicMock()
         baseline = MagicMock()
-        baseline.p95_threshold = 2.0  # 3 × 2 = 6
+        baseline.p95_threshold = 5.0  # 3 × 5 = 15 (above min of 8)
         db.query.return_value.filter.return_value.first.return_value = baseline
         threshold = _get_threshold(db, corridor_id=10, reference_time=datetime(2025, 6, 15))
-        assert threshold == 6
+        assert threshold == 15
 
     @patch("app.modules.feed_outage_detector.settings")
-    def test_threshold_floor_at_3(self, mock_settings):
-        """Even with very low baseline, threshold never goes below 3."""
+    def test_threshold_floor_at_8(self, mock_settings):
+        """Even with very low baseline, threshold never goes below 8."""
         mock_settings.FEED_OUTAGE_DETECTION_ENABLED = True
         from app.modules.feed_outage_detector import _get_threshold
         db = MagicMock()
         baseline = MagicMock()
-        baseline.p95_threshold = 0.5  # 3 × 0.5 = 1.5, floored to 3
+        baseline.p95_threshold = 0.5  # 3 × 0.5 = 1.5, floored to 8
         db.query.return_value.filter.return_value.first.return_value = baseline
         threshold = _get_threshold(db, corridor_id=10, reference_time=datetime(2025, 6, 15))
-        assert threshold == 3
+        assert threshold == 8
 
-    def test_no_corridor_uses_fallback(self):
+    def test_no_corridor_uses_minimum(self):
         from app.modules.feed_outage_detector import _get_threshold
         threshold = _get_threshold(MagicMock(), corridor_id=None, reference_time=datetime(2025, 6, 15))
-        assert threshold == 5
+        assert threshold == 8  # _MIN_VESSELS_FOR_OUTAGE
 
     @patch("app.modules.feed_outage_detector.settings")
     def test_gaps_in_different_corridors_separate(self, mock_settings):

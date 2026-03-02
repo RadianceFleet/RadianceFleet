@@ -499,6 +499,12 @@ def run_spoofing_detection(
                 dt_s = (points[j].timestamp_utc - points[i].timestamp_utc).total_seconds()
                 if dt_s <= 0 or dt_s > _DUAL_MAX_DELTA_MIN * 60:
                     continue
+                # Skip cross-source pairs within 120s — timing skew creates false alerts
+                pi_source = getattr(points[i], "source", None)
+                pj_source = getattr(points[j], "source", None)
+                if (pi_source and pj_source and pi_source != pj_source
+                        and dt_s < 120):
+                    continue
                 dist_nm = _haversine_nm(points[i].lat, points[i].lon, points[j].lat, points[j].lon)
                 implied_speed = dist_nm / (dt_s / 3600)
                 if implied_speed > 30:

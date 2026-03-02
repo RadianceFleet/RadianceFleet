@@ -349,6 +349,17 @@ def discover_dark_vessels(
     else:
         result["steps"]["sar_corridor_sweep"] = {"status": "skipped", "detail": "--skip-fetch"}
 
+    # Step 2b: Vessel metadata enrichment (GFW supplementary for year_built/DWT)
+    # Type 5 data (IMO, callsign, vessel_type) is already applied during ingest.
+    if not skip_fetch:
+        try:
+            from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+            _run_step("vessel_enrichment", enrich_vessels_from_gfw, db)
+        except ImportError:
+            result["steps"]["vessel_enrichment"] = {"status": "skipped", "detail": "module not available"}
+    else:
+        result["steps"]["vessel_enrichment"] = {"status": "skipped", "detail": "--skip-fetch"}
+
     # Step 3: Gap detection (HARD)
     try:
         from app.modules.gap_detector import run_gap_detection
@@ -370,6 +381,13 @@ def discover_dark_vessels(
             _run_step("coverage_quality_tagging", tag_coverage_quality, db)
         except ImportError:
             result["steps"]["coverage_quality_tagging"] = {"status": "skipped", "detail": "module not available"}
+
+    # Step 3d: Compute corridor gap baselines (needed by feed outage + STS P95)
+    try:
+        from app.modules.gap_rate_baseline import compute_gap_rate_baseline
+        _run_step("gap_rate_baselines", compute_gap_rate_baseline, db)
+    except ImportError:
+        result["steps"]["gap_rate_baselines"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 4: Spoofing detection (SOFT)
     from app.modules.gap_detector import run_spoofing_detection
@@ -447,8 +465,8 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["draught_detection"] = {"status": "skipped", "detail": "module not available"}
 
-    # Step 6b: Feed outage detection (SOFT, feature-gated)
-    # Runs AFTER anomaly detection (Steps 4-6c) so gaps with co-occurring
+    # Step 6e: Feed outage detection (SOFT, feature-gated)
+    # Runs AFTER anomaly detection (Steps 4-6d) so gaps with co-occurring
     # STS/spoofing signals are NOT marked as feed outage (see E2).
     if settings.FEED_OUTAGE_DETECTION_ENABLED:
         try:
@@ -656,13 +674,13 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["route_templates"] = {"status": "skipped", "detail": "module not available"}
 
-    # Step 11z: UNCONDITIONAL second scoring + classification pass.
+    # Step 11z: Incremental second scoring pass.
     # Fingerprint, voyage predictor, fleet analysis, and ownership graph can all
     # create new SpoofingAnomaly/FleetAlert records after Step 7's first scoring pass.
-    # Re-scoring ensures ALL post-Step-10 signals are captured in risk scores.
+    # Score only NEW gaps (risk_score == 0) — do NOT reset existing scores.
     try:
-        from app.modules.risk_scoring import rescore_all_alerts as _rescore_second
-        _run_step("scoring_second_pass", _rescore_second, db)
+        from app.modules.risk_scoring import score_all_alerts as _score_incremental
+        _run_step("scoring_second_pass", _score_incremental, db)
     except Exception:
         pass  # Non-fatal — first pass scores are still valid
     try:

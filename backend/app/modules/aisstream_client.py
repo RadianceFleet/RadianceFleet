@@ -404,14 +404,18 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
         )
         destination_val = vessel_static.get("destination") or pt.get("destination") or None
 
+        sog_val = float(pt["sog"]) if pt.get("sog") is not None else None
+        cog_val = float(pt["cog"]) if pt.get("cog") is not None else None
+        heading_val = float(pt["heading"]) if pt.get("heading") is not None and pt["heading"] != 511 else None
+
         point = AISPoint(
             vessel_id=vessel.vessel_id,
             timestamp_utc=ts,
             lat=float(pt["lat"]),
             lon=float(pt["lon"]),
-            sog=float(pt["sog"]) if pt.get("sog") is not None else None,
-            cog=float(pt["cog"]) if pt.get("cog") is not None else None,
-            heading=float(pt["heading"]) if pt.get("heading") is not None and pt["heading"] != 511 else None,
+            sog=sog_val,
+            cog=cog_val,
+            heading=heading_val,
             nav_status=pt.get("nav_status"),
             ais_class=pt.get("ais_class", "A"),
             source="aisstream",
@@ -420,6 +424,24 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
         )
         db.add(point)
         stored += 1
+
+        # Dual-write to AIS observations for cross-receiver detection
+        try:
+            from app.models.ais_observation import AISObservation
+            obs = AISObservation(
+                mmsi=mmsi,
+                timestamp_utc=ts,
+                lat=float(pt["lat"]),
+                lon=float(pt["lon"]),
+                sog=sog_val,
+                cog=cog_val,
+                heading=heading_val,
+                draught=draught_val,
+                source="aisstream",
+            )
+            db.add(obs)
+        except Exception:
+            pass  # Non-blocking — observation write is best-effort
 
     db.commit()
     return {"points_stored": stored, "vessels_updated": vessels_updated}

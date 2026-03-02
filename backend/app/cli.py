@@ -193,6 +193,18 @@ def update(
             console.print("[bold]Collecting multi-source AIS...[/bold]")
             _collect_multi_source_ais(db, stream_time)
 
+        # Phase 2b: Enrich vessel metadata (GFW supplementary — year_built, DWT)
+        if not offline:
+            try:
+                from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+                with console.status("[bold]Enriching vessel metadata..."):
+                    enrich_result = enrich_vessels_from_gfw(db)
+                    enriched = enrich_result.get("enriched", 0)
+                    if enriched > 0:
+                        console.print(f"  Enriched {enriched} vessels from GFW")
+            except Exception as e:
+                console.print(f"[yellow]Vessel enrichment: {e}[/yellow]")
+
         # Phase 3: Detection (always runs)
         with console.status("[bold]Analyzing vessel behavior..."):
             try:
@@ -490,6 +502,92 @@ def rescore():
             )
         except ImportError:
             pass
+    finally:
+        db.close()
+
+
+@app.command("review-merges")
+def review_merges(
+    min_score: int = typer.Option(65, "--min-score", help="Minimum confidence score to show"),
+    cleanup: bool = typer.Option(False, "--cleanup", help="Remove stale candidates (merged/deleted vessels)"),
+):
+    """Review pending merge candidates for analyst triage.
+
+    Shows candidates scoring 65-84 that need manual review (auto-merge threshold is 85).
+    Use --cleanup to remove stale candidates where vessels have been merged elsewhere.
+    """
+    from app.database import SessionLocal
+    from app.models.merge_candidate import MergeCandidate
+    from app.models.base import MergeCandidateStatusEnum
+    from app.models.vessel import Vessel
+
+    db = SessionLocal()
+    try:
+        if cleanup:
+            # Remove candidates where either vessel has been merged or deleted
+            stale = 0
+            candidates = db.query(MergeCandidate).filter(
+                MergeCandidate.status == MergeCandidateStatusEnum.PENDING,
+            ).all()
+            for c in candidates:
+                vessel_a = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_a_id).first()
+                vessel_b = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_b_id).first()
+                if (not vessel_a or not vessel_b
+                        or vessel_a.merged_into_vessel_id is not None
+                        or vessel_b.merged_into_vessel_id is not None):
+                    c.status = MergeCandidateStatusEnum.REJECTED
+                    stale += 1
+            if stale:
+                db.commit()
+            console.print(f"Cleaned up {stale} stale merge candidates")
+            return
+
+        # Show candidates in the review range
+        candidates = (
+            db.query(MergeCandidate)
+            .filter(
+                MergeCandidate.status == MergeCandidateStatusEnum.PENDING,
+                MergeCandidate.confidence_score >= min_score,
+            )
+            .order_by(MergeCandidate.confidence_score.desc())
+            .all()
+        )
+
+        if not candidates:
+            console.print(f"No pending merge candidates with score >= {min_score}")
+            return
+
+        table = Table(title=f"Merge Candidates (score >= {min_score})")
+        table.add_column("ID", style="dim")
+        table.add_column("Score", justify="right")
+        table.add_column("Vessel A (MMSI)")
+        table.add_column("Vessel B (MMSI)")
+        table.add_column("Top Reasons")
+
+        for c in candidates:
+            vessel_a = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_a_id).first()
+            vessel_b = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_b_id).first()
+            mmsi_a = vessel_a.mmsi if vessel_a else "?"
+            mmsi_b = vessel_b.mmsi if vessel_b else "?"
+
+            # Extract top reasons from evidence
+            reasons = ""
+            evidence = getattr(c, "scoring_reasons_json", None) or {}
+            if isinstance(evidence, dict):
+                top = sorted(evidence.items(), key=lambda x: x[1].get("points", 0) if isinstance(x[1], dict) else 0, reverse=True)[:3]
+                reasons = ", ".join(f"{k}(+{v.get('points', '?')})" for k, v in top if isinstance(v, dict))
+
+            score_style = "green" if c.confidence_score >= 85 else "yellow" if c.confidence_score >= 75 else "dim"
+            table.add_row(
+                str(c.candidate_id),
+                f"[{score_style}]{c.confidence_score}[/{score_style}]",
+                mmsi_a,
+                mmsi_b,
+                reasons,
+            )
+
+        console.print(table)
+        console.print(f"\n{len(candidates)} candidates. Use [cyan]radiancefleet check-vessels --auto[/cyan] for auto-merge (>= 85).")
     finally:
         db.close()
 

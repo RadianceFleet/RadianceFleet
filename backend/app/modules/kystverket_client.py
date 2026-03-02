@@ -96,16 +96,20 @@ def stream_kystverket(
                             if not mmsi or is_non_vessel_mmsi(mmsi):
                                 continue
 
-                            # Type 5 messages carry destination/draught but no position
+                            # Type 5 messages carry static/voyage data but no position
                             msg_type = decoded.get("msg_type")
                             if msg_type == 5:
                                 dest = (decoded.get("destination") or "").strip()[:20] or None
                                 dr = decoded.get("draught")
-                                if dest or dr:
-                                    static_cache[mmsi] = {
-                                        "destination": dest,
-                                        "draught": float(dr) / 10.0 if dr is not None else None,
-                                    }
+                                raw_imo = decoded.get("imo")
+                                static_cache[mmsi] = {
+                                    "destination": dest,
+                                    "draught": float(dr) / 10.0 if dr is not None else None,
+                                    "imo": str(raw_imo) if raw_imo and int(raw_imo) > 0 else None,
+                                    "callsign": (decoded.get("callsign") or "").strip() or None,
+                                    "vessel_name": (decoded.get("shipname") or "").strip() or None,
+                                    "vessel_type": _ais_ship_type_to_string(decoded.get("ship_type", 0)),
+                                }
                                 continue
 
                             lat = decoded.get("lat")
@@ -137,6 +141,7 @@ def stream_kystverket(
                                     "source": "kystverket",
                                     "destination": sd.get("destination"),
                                     "draught": sd.get("draught"),
+                                    "static_data": sd if sd else None,
                                 }
                             )
 
@@ -228,6 +233,17 @@ def _ingest_point(db: Session, pt: dict) -> None:
     if existing:
         return
 
+    # Apply Type 5 static data to vessel (fill-if-empty)
+    static = pt.get("static_data") or {}
+    if static.get("imo") and not vessel.imo:
+        vessel.imo = static["imo"]
+    if static.get("callsign") and not vessel.callsign:
+        vessel.callsign = static["callsign"]
+    if static.get("vessel_name") and not vessel.name:
+        vessel.name = static["vessel_name"]
+    if static.get("vessel_type") and not vessel.vessel_type:
+        vessel.vessel_type = static["vessel_type"]
+
     point = AISPoint(
         vessel_id=vessel.vessel_id,
         timestamp_utc=pt["timestamp_utc"],
@@ -242,3 +258,68 @@ def _ingest_point(db: Session, pt: dict) -> None:
         draught=pt.get("draught"),
     )
     db.add(point)
+
+    # Dual-write to AIS observations for cross-receiver detection
+    try:
+        from app.models.ais_observation import AISObservation
+        obs = AISObservation(
+            mmsi=pt["mmsi"],
+            timestamp_utc=pt["timestamp_utc"],
+            lat=pt["lat"],
+            lon=pt["lon"],
+            sog=pt["sog"],
+            cog=pt["cog"],
+            heading=pt["heading"],
+            draught=pt.get("draught"),
+            source="kystverket",
+        )
+        db.add(obs)
+    except Exception:
+        pass  # Non-blocking
+
+
+def _ais_ship_type_to_string(ship_type: int) -> str | None:
+    """Convert AIS ship type code (ITU-R M.1371) to human-readable string.
+
+    Returns None for unknown/unavailable codes (0, 99, or out of range).
+    """
+    if not ship_type or ship_type == 0:
+        return None
+    # Major categories (first digit = X0-X9 range)
+    _CATEGORIES = {
+        2: "WIG",           # Wing-In-Ground
+        3: "Vessel",        # Fishing, towing, dredging, diving, military, sailing, pleasure
+        4: "HSC",           # High Speed Craft
+        5: "Special",       # Pilot, SAR, tug, port tender, anti-pollution, law enforcement
+        6: "Passenger",
+        7: "Cargo",
+        8: "Tanker",
+        9: "Other",
+    }
+    # Specific subtypes of interest for shadow fleet detection
+    _SUBTYPES = {
+        30: "Fishing",
+        31: "Towing",
+        32: "Towing (large)",
+        33: "Dredging",
+        34: "Diving",
+        35: "Military",
+        36: "Sailing",
+        37: "Pleasure craft",
+        60: "Passenger",
+        70: "Cargo",
+        71: "Cargo (DG Cat A)",
+        72: "Cargo (DG Cat B)",
+        73: "Cargo (DG Cat C)",
+        74: "Cargo (DG Cat D)",
+        80: "Tanker",
+        81: "Tanker (DG Cat A)",
+        82: "Tanker (DG Cat B)",
+        83: "Tanker (DG Cat C)",
+        84: "Tanker (DG Cat D)",
+        89: "Tanker (other)",
+    }
+    if ship_type in _SUBTYPES:
+        return _SUBTYPES[ship_type]
+    category = ship_type // 10
+    return _CATEGORIES.get(category)

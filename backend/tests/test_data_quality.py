@@ -282,9 +282,10 @@ class TestFeedOutageSourceAware:
         db = MagicMock()
 
         # Create mock gaps from a single source (digitraffic), all in the same corridor/window
+        # Need 9 vessels to exceed _MIN_VESSELS_FOR_OUTAGE (8)
         now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
         gaps = []
-        for i in range(6):
+        for i in range(9):
             gap = MagicMock()
             gap.vessel_id = i + 1
             gap.gap_start_utc = now
@@ -302,7 +303,7 @@ class TestFeedOutageSourceAware:
 
         with patch("app.modules.feed_outage_detector.settings") as mock_settings, \
              patch("app.modules.feed_outage_detector._has_evasion_signals", return_value=False), \
-             patch("app.modules.feed_outage_detector._get_threshold", return_value=5):
+             patch("app.modules.feed_outage_detector._get_threshold", return_value=8):
             mock_settings.FEED_OUTAGE_DETECTION_ENABLED = True
             result = detect_feed_outages(db)
 

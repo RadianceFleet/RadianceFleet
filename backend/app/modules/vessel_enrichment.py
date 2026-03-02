@@ -29,7 +29,7 @@ def _is_likely_tanker(vessel) -> bool:
 def enrich_vessels_from_gfw(
     db: Session,
     token: str | None = None,
-    limit: int = 50,
+    limit: int = 200,
 ) -> dict:
     """Batch-enrich vessels missing critical metadata via GFW vessel search.
 

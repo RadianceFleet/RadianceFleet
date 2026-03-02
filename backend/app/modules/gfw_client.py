@@ -33,6 +33,16 @@ AIS_MATCH_RADIUS_NM = 2.0
 AIS_MATCH_WINDOW_H = 3
 
 
+def _safe_float(val) -> float | None:
+    """Coerce GFW API values to float — API may return strings for numeric fields."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
 def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
@@ -158,8 +168,8 @@ def get_vessel_events(
                     "type": ev.get("type"),
                     "start": ev.get("start"),
                     "end": ev.get("end"),
-                    "lat": pos.get("lat"),
-                    "lon": pos.get("lon"),
+                    "lat": _safe_float(pos.get("lat")),
+                    "lon": _safe_float(pos.get("lon")),
                     "vessel_id": vessel_id,
                     "regions": ev.get("regions", {}),
                     "distances": ev.get("distances", {}),
@@ -169,13 +179,13 @@ def get_vessel_events(
                 if gap_info:
                     off_pos = gap_info.get("offPosition") or {}
                     on_pos = gap_info.get("onPosition") or {}
-                    event_dict["gap_off_lat"] = off_pos.get("lat")
-                    event_dict["gap_off_lon"] = off_pos.get("lon")
-                    event_dict["gap_on_lat"] = on_pos.get("lat")
-                    event_dict["gap_on_lon"] = on_pos.get("lon")
-                    event_dict["duration_hours"] = gap_info.get("durationHours")
-                    event_dict["distance_km"] = gap_info.get("distanceKm")
-                    event_dict["implied_speed_knots"] = gap_info.get("impliedSpeedKnots")
+                    event_dict["gap_off_lat"] = _safe_float(off_pos.get("lat"))
+                    event_dict["gap_off_lon"] = _safe_float(off_pos.get("lon"))
+                    event_dict["gap_on_lat"] = _safe_float(on_pos.get("lat"))
+                    event_dict["gap_on_lon"] = _safe_float(on_pos.get("lon"))
+                    event_dict["duration_hours"] = _safe_float(gap_info.get("durationHours"))
+                    event_dict["distance_km"] = _safe_float(gap_info.get("distanceKm"))
+                    event_dict["implied_speed_knots"] = _safe_float(gap_info.get("impliedSpeedKnots"))
                 # Also extract vessel MMSI (ssvid) from the response
                 vessel_info = ev.get("vessel") or {}
                 event_dict["ssvid"] = vessel_info.get("ssvid")

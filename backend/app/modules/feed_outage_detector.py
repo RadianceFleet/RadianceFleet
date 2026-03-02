@@ -35,10 +35,10 @@ logger = logging.getLogger(__name__)
 _WINDOW_HOURS = 2
 # Multiplier applied to P95 baseline for adaptive threshold
 _P95_MULTIPLIER = 3.0
-# Fallback: if no baseline, this many unrelated vessels = outage
-_FALLBACK_VESSEL_COUNT = 5
+# Fallback: if no baseline, use this fraction of corridor vessels as threshold
+_FALLBACK_VESSEL_RATIO = 0.15  # 15% of corridor vessels
 # Minimum vessels required for outage classification (E7)
-_MIN_VESSELS_FOR_OUTAGE = 5
+_MIN_VESSELS_FOR_OUTAGE = 8
 # Window for checking evasion signals around a gap (E2)
 _EVASION_CHECK_HOURS = 6
 
@@ -67,6 +67,30 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
         logger.debug("Feed outage detection: disabled — skipping.")
         return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0,
                 "evasion_excluded": 0, "decoy_rejected": 0}
+
+    # First-run guard: if no baselines exist and no corridor has been seen,
+    # skip feed outage detection entirely — we'd be using raw fallback thresholds
+    # with no historical context, which causes massive over-classification.
+    try:
+        from app.models.corridor_gap_baseline import CorridorGapBaseline
+        has_baselines = db.query(CorridorGapBaseline).first() is not None
+    except Exception:
+        has_baselines = False
+
+    if not has_baselines:
+        # Check if any corridors have gap data (i.e. this isn't the very first run)
+        has_corridor_gaps = (
+            db.query(AISGapEvent)
+            .filter(AISGapEvent.corridor_id.isnot(None), AISGapEvent.risk_score > 0)
+            .first()
+        ) is not None
+        if not has_corridor_gaps:
+            logger.warning(
+                "Feed outage detection: skipping — no baselines and no prior scored corridor gaps. "
+                "Run compute_gap_rate_baseline() first."
+            )
+            return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0,
+                    "evasion_excluded": 0, "decoy_rejected": 0, "skipped_reason": "no_baselines"}
 
     # Fetch unscored gaps (risk_score == 0 means not yet scored)
     gaps = (
@@ -332,11 +356,11 @@ def tag_coverage_quality(db: Session) -> dict:
 def _get_threshold(db: Session, corridor_id: int | None, reference_time: datetime) -> int:
     """Get the adaptive feed outage threshold for a corridor.
 
-    Uses 3× P95 baseline if available, otherwise falls back to
-    _FALLBACK_VESSEL_COUNT.
+    Uses 3× P95 baseline if available, otherwise falls back to a proportional
+    threshold based on the number of unique vessels in the corridor.
     """
     if corridor_id is None:
-        return _FALLBACK_VESSEL_COUNT
+        return _MIN_VESSELS_FOR_OUTAGE
 
     try:
         from app.models.corridor_gap_baseline import CorridorGapBaseline
@@ -353,9 +377,28 @@ def _get_threshold(db: Session, corridor_id: int | None, reference_time: datetim
 
         if baseline is not None and baseline.p95_threshold is not None:
             adaptive = int(baseline.p95_threshold * _P95_MULTIPLIER)
-            # Never go below 3 vessels (even with very low baselines)
-            return max(adaptive, 3)
+            # Never go below _MIN_VESSELS_FOR_OUTAGE
+            return max(adaptive, _MIN_VESSELS_FOR_OUTAGE)
     except Exception:
         logger.debug("Could not query corridor gap baseline — using fallback.", exc_info=True)
 
-    return _FALLBACK_VESSEL_COUNT
+    # Proportional fallback: count unique vessels in this corridor and use
+    # _FALLBACK_VESSEL_RATIO of them (minimum _MIN_VESSELS_FOR_OUTAGE).
+    try:
+        from app.models.gap_event import AISGapEvent as _GE
+        corridor_vessel_count = (
+            db.query(_GE.vessel_id)
+            .filter(_GE.corridor_id == corridor_id)
+            .distinct()
+            .count()
+        )
+        if corridor_vessel_count > 0:
+            proportional = max(
+                int(corridor_vessel_count * _FALLBACK_VESSEL_RATIO),
+                _MIN_VESSELS_FOR_OUTAGE,
+            )
+            return proportional
+    except Exception:
+        logger.debug("Could not count corridor vessels — using minimum.", exc_info=True)
+
+    return _MIN_VESSELS_FOR_OUTAGE

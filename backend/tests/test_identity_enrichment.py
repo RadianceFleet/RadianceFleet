@@ -695,8 +695,11 @@ class TestKystverketEnrichment:
 
         _ingest_point(db, pt)
         # Check db.add was called with an AISPoint that has destination/draught
-        add_call = db.add.call_args
-        point_obj = add_call[0][0]
+        # (first db.add call is the AISPoint, second is the AISObservation dual-write)
+        from app.models.ais_point import AISPoint
+        point_calls = [c for c in db.add.call_args_list if isinstance(c[0][0], AISPoint)]
+        assert len(point_calls) >= 1
+        point_obj = point_calls[0][0][0]
         assert point_obj.destination == "MURMANSK"
         assert point_obj.draught == 12.5
 
@@ -726,8 +729,10 @@ class TestKystverketEnrichment:
         }
 
         _ingest_point(db, pt)
-        add_call = db.add.call_args
-        point_obj = add_call[0][0]
+        from app.models.ais_point import AISPoint
+        point_calls = [c for c in db.add.call_args_list if isinstance(c[0][0], AISPoint)]
+        assert len(point_calls) >= 1
+        point_obj = point_calls[0][0][0]
         assert point_obj.destination is None
         assert point_obj.draught is None
 

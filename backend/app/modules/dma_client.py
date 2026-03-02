@@ -262,6 +262,12 @@ def fetch_and_import_dma(
                     if row.get("vessel_name") and not vessel.name:
                         vessel.name = row.get("vessel_name")
                         updated = True
+                    if row.get("callsign") and not vessel.callsign:
+                        vessel.callsign = row["callsign"]
+                        updated = True
+                    if row.get("vessel_type") and not vessel.vessel_type:
+                        vessel.vessel_type = row["vessel_type"]
+                        updated = True
                     if updated:
                         stats["vessels_updated"] += 1
 
@@ -292,6 +298,24 @@ def fetch_and_import_dma(
                 )
                 db.add(point)
                 day_points += 1
+
+                # Dual-write to AIS observations for cross-receiver detection
+                try:
+                    from app.models.ais_observation import AISObservation
+                    obs = AISObservation(
+                        mmsi=mmsi,
+                        timestamp_utc=ts,
+                        lat=lat,
+                        lon=lon,
+                        sog=sog,
+                        cog=cog,
+                        heading=heading,
+                        draught=draught,
+                        source="dma",
+                    )
+                    db.add(obs)
+                except Exception:
+                    pass  # Non-blocking
 
                 # Batch commit every 5000 points
                 if day_points % 5000 == 0:

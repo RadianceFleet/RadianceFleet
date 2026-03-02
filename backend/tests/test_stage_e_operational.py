@@ -303,10 +303,10 @@ class TestE7FeedOutageAntiDecoy:
         # Default should be 0.3
         assert sig.parameters["max_outage_ratio"].default == 0.3
 
-    def test_min_vessels_constant_is_5(self):
-        """_MIN_VESSELS_FOR_OUTAGE constant is 5."""
+    def test_min_vessels_constant_is_8(self):
+        """_MIN_VESSELS_FOR_OUTAGE constant is 8 (raised from 5 for proportional threshold)."""
         from app.modules.feed_outage_detector import _MIN_VESSELS_FOR_OUTAGE
-        assert _MIN_VESSELS_FOR_OUTAGE == 5
+        assert _MIN_VESSELS_FOR_OUTAGE == 8
 
     def test_get_high_risk_vessel_ids_function_exists(self):
         """_get_high_risk_vessel_ids helper exists."""

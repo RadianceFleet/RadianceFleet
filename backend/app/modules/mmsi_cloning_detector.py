@@ -119,6 +119,14 @@ def _find_impossible_jumps(points: list[AISPoint], vessel: Vessel) -> list[dict]
         if time_delta <= 0 or time_delta > _WINDOW_SECONDS:
             continue
 
+        # Skip cross-source point pairs within 120s — timing skew between
+        # receivers creates false "impossible speed" alerts
+        p1_source = getattr(p1, "source", None)
+        p2_source = getattr(p2, "source", None)
+        if (p1_source and p2_source and p1_source != p2_source
+                and time_delta < 120):
+            continue
+
         distance = haversine_nm(p1.lat, p1.lon, p2.lat, p2.lon)
         speed = distance / (time_delta / 3600)
 
