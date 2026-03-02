@@ -11,6 +11,8 @@ Commands:
   evaluate-detector  — sample anomalies for holdout review
   confirm-detector   — re-enable scoring after drift review
   backfill           — import historical AIS data for a date range
+  collect            — run periodic AIS data collection
+  collection-status  — show collection history and statistics
 """
 from __future__ import annotations
 
@@ -684,50 +686,120 @@ def search_vessel(
 
 @app.command("backfill")
 def backfill(
-    start: str = typer.Option(..., "--start", help="Start date (ISO format, e.g. 2025-12-01)"),
-    end: str = typer.Option(..., "--end", help="End date (ISO format, e.g. 2025-12-31)"),
-    source: str = typer.Option("noaa", "--source", help="Data source (noaa)"),
+    start: str = typer.Option(None, "--start", help="Start date (ISO format, e.g. 2025-12-01)"),
+    end: str = typer.Option(None, "--end", help="End date (ISO format, e.g. 2025-12-31)"),
+    source: str = typer.Option("noaa", "--source", help="Data source (noaa, dma, barentswatch, gfw, gfw-gaps, gfw-encounters, gfw-port-visits)"),
     detect: bool = typer.Option(True, "--detect/--no-detect", help="Run detection after import"),
     corridor_filter: bool = typer.Option(True, "--corridor-filter/--no-corridor-filter", help="Only import within corridor bounding boxes"),
+    days: int = typer.Option(0, "--days", help="Alternative to --start/--end: import last N days"),
 ):
     """Import historical AIS data for a date range."""
     from app.database import SessionLocal
 
     # Validate source
-    if source != "noaa":
+    valid_sources = {"noaa", "dma", "barentswatch", "gfw", "gfw-gaps", "gfw-encounters", "gfw-port-visits"}
+    if source not in valid_sources:
         console.print(f"[red]Unknown source: {source}[/red]")
-        console.print("[dim]Supported sources: noaa[/dim]")
+        console.print(f"[dim]Supported sources: {', '.join(sorted(valid_sources))}[/dim]")
         raise typer.Exit(1)
 
-    # Parse and validate dates
-    try:
-        start_date = date.fromisoformat(start)
-        end_date = date.fromisoformat(end)
-    except ValueError as e:
-        console.print(f"[red]Invalid date format: {e}[/red]")
+    # Handle --days as alternative to --start/--end
+    if days > 0:
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days)
+    elif start and end:
+        try:
+            start_date = date.fromisoformat(start)
+            end_date = date.fromisoformat(end)
+        except ValueError as e:
+            console.print(f"[red]Invalid date format: {e}[/red]")
+            raise typer.Exit(1)
+    else:
+        console.print("[red]Provide --start/--end or --days[/red]")
         raise typer.Exit(1)
 
     if start_date > end_date:
         console.print("[red]--start must be before or equal to --end[/red]")
         raise typer.Exit(1)
 
+    # BarentsWatch: enforce 14-day max
+    if source == "barentswatch" and (end_date - start_date).days > 14:
+        console.print("[yellow]BarentsWatch max history is 14 days. Clamping start date.[/yellow]")
+        start_date = end_date - timedelta(days=14)
+
     db = SessionLocal()
     try:
-        # Import historical data
-        console.print(f"[bold]Importing {source} data from {start} to {end}...[/bold]")
-        from app.modules.noaa_client import fetch_and_import_noaa
-        stats = fetch_and_import_noaa(
-            db,
-            start_date=start_date,
-            end_date=end_date,
-            corridor_filter=corridor_filter,
-        )
-        console.print(
-            f"  Downloaded {stats['dates_downloaded']}/{stats['dates_attempted']} days, "
-            f"{stats['total_accepted']:,} positions imported"
-        )
-        if stats["dates_failed"]:
-            console.print(f"  [yellow]{len(stats['dates_failed'])} days failed[/yellow]")
+        console.print(f"[bold]Importing {source} data from {start_date} to {end_date}...[/bold]")
+
+        if source == "noaa":
+            from app.modules.noaa_client import fetch_and_import_noaa
+            stats = fetch_and_import_noaa(
+                db,
+                start_date=start_date,
+                end_date=end_date,
+                corridor_filter=corridor_filter,
+            )
+            console.print(
+                f"  Downloaded {stats['dates_downloaded']}/{stats['dates_attempted']} days, "
+                f"{stats['total_accepted']:,} positions imported"
+            )
+            if stats["dates_failed"]:
+                console.print(f"  [yellow]{len(stats['dates_failed'])} days failed[/yellow]")
+
+        elif source == "dma":
+            from app.modules.dma_client import fetch_and_import_dma
+            stats = fetch_and_import_dma(db, start_date, end_date)
+            console.print(
+                f"  {stats['days_processed']} days processed, "
+                f"{stats['points_imported']:,} points imported, "
+                f"{stats['vessels_created']} vessels created"
+            )
+
+        elif source == "barentswatch":
+            from app.modules.barentswatch_client import fetch_barentswatch_tracks
+            stats = fetch_barentswatch_tracks(
+                db, mmsis=[], start_date=start_date, end_date=end_date,
+            )
+            console.print(
+                f"  {stats['points_imported']:,} points imported, "
+                f"{stats['vessels_seen']} vessels seen"
+            )
+
+        elif source == "gfw":
+            from app.modules.gfw_client import import_sar_detections_to_db
+            stats = import_sar_detections_to_db(
+                db,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+            console.print(f"  GFW SAR: {stats}")
+
+        elif source == "gfw-gaps":
+            from app.modules.gfw_client import import_gfw_gap_events
+            stats = import_gfw_gap_events(
+                db,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+            console.print(f"  GFW gaps: {stats}")
+
+        elif source == "gfw-encounters":
+            from app.modules.gfw_client import import_gfw_encounters
+            stats = import_gfw_encounters(
+                db,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+            console.print(f"  GFW encounters: {stats}")
+
+        elif source == "gfw-port-visits":
+            from app.modules.gfw_client import import_gfw_port_visits
+            stats = import_gfw_port_visits(
+                db,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+            console.print(f"  GFW port visits: {stats}")
 
         # Run detection if requested
         if detect:
@@ -749,6 +821,88 @@ def backfill(
     except Exception as e:
         console.print(f"[red]Backfill failed: {e}[/red]")
         raise typer.Exit(1)
+    finally:
+        db.close()
+
+
+@app.command("collect")
+def collect(
+    duration: str = typer.Option("1h", "--duration", help="Collection duration (30s, 5m, 1h, 7d)"),
+    sources: str = typer.Option("auto", "--sources", help="Comma-separated sources or 'auto'"),
+):
+    """Run periodic AIS data collection from all enabled sources."""
+    from app.database import SessionLocal
+    from app.modules.collection_scheduler import CollectionScheduler
+
+    duration_s = _parse_duration(duration)
+    source_list: list[str] | None = None
+    if sources != "auto":
+        source_list = [s.strip() for s in sources.split(",") if s.strip()]
+
+    console.print(f"[bold]Starting AIS collection (duration={duration}, sources={sources})...[/bold]")
+
+    scheduler = CollectionScheduler(
+        db_factory=SessionLocal,
+        sources=source_list,
+    )
+
+    try:
+        scheduler.start(duration_seconds=duration_s)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted — stopping collection...[/yellow]")
+        scheduler.stop()
+
+    console.print("[green]Collection complete.[/green]")
+
+
+@app.command("collection-status")
+def collection_status(
+    days: int = typer.Option(7, "--days", help="Number of days to show"),
+):
+    """Show collection history and statistics."""
+    from datetime import datetime, timezone
+    from app.database import SessionLocal
+    from app.models.collection_run import CollectionRun
+
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        runs = (
+            db.query(CollectionRun)
+            .filter(CollectionRun.started_at >= cutoff)
+            .order_by(CollectionRun.started_at.desc())
+            .limit(50)
+            .all()
+        )
+
+        if not runs:
+            console.print(f"[yellow]No collection runs in the last {days} days[/yellow]")
+            return
+
+        table = Table(title=f"Collection Runs (last {days} days)")
+        table.add_column("Source", style="cyan")
+        table.add_column("Started")
+        table.add_column("Status")
+        table.add_column("Points", justify="right")
+        table.add_column("Vessels", justify="right")
+        table.add_column("Errors", justify="right")
+
+        for run in runs:
+            status_style = {
+                "completed": "green",
+                "running": "yellow",
+                "failed": "red",
+            }.get(run.status, "white")
+            table.add_row(
+                run.source,
+                str(run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "?"),
+                f"[{status_style}]{run.status}[/{status_style}]",
+                str(run.points_imported or 0),
+                str(run.vessels_seen or 0),
+                str(run.errors or 0),
+            )
+
+        console.print(table)
     finally:
         db.close()
 
@@ -968,7 +1122,7 @@ def _print_candidates_table(con: Console, db, candidates) -> None:
 def _update_fetch_watchlists(db) -> None:
     """Fetch and import watchlists."""
     from app.modules.data_fetcher import fetch_all, _find_latest
-    from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions
+    from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions, load_fleetleaks, load_gur_list
     from app.config import settings
 
     fetch_all()
@@ -981,6 +1135,14 @@ def _update_fetch_watchlists(db) -> None:
     os_file = _find_latest(data_dir, "opensanctions_vessels_")
     if os_file:
         load_opensanctions(db, str(os_file))
+
+    fl_file = _find_latest(data_dir, "fleetleaks_")
+    if fl_file:
+        load_fleetleaks(db, str(fl_file))
+
+    gur_file = _find_latest(data_dir, "gur_shadow_")
+    if gur_file:
+        load_gur_list(db, str(gur_file))
 
 
 def _update_stream_ais(db, stream_time: str) -> None:
@@ -1000,10 +1162,12 @@ def _update_stream_ais(db, stream_time: str) -> None:
 
 
 def _parse_duration(s: str) -> int:
-    """Parse duration string (30s, 5m, 1h) to seconds."""
+    """Parse duration string (30s, 5m, 1h, 7d) to seconds."""
     s = s.strip().lower()
     if s == "0":
         return 0
+    if s.endswith("d"):
+        return int(s[:-1]) * 86400
     if s.endswith("s"):
         return int(s[:-1])
     if s.endswith("m"):

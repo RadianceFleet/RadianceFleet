@@ -240,6 +240,8 @@ def _map_static_data(msg: dict) -> dict | None:
             "length": length,
             "width": width,
             "callsign": static.get("CallSign", "").strip() or None,
+            "destination": (static.get("Destination") or "").strip()[:20] or None,
+            "draught": float(static.get("Draught")) if static.get("Draught") else None,
         }
     except Exception as exc:
         logger.debug("Failed to map static data: %s", exc)
@@ -335,6 +337,20 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
                 vessel.name = sdata["vessel_name"]
                 changed = True
 
+            # Store destination/draught on latest AIS point for this vessel
+            if sdata.get("destination") or sdata.get("draught"):
+                latest_point = (
+                    db.query(AISPoint)
+                    .filter(AISPoint.vessel_id == vessel.vessel_id)
+                    .order_by(AISPoint.timestamp_utc.desc())
+                    .first()
+                )
+                if latest_point:
+                    if sdata.get("destination") and not latest_point.destination:
+                        latest_point.destination = sdata["destination"]
+                    if sdata.get("draught") and not latest_point.draught:
+                        latest_point.draught = sdata["draught"]
+
             if changed:
                 vessels_updated += 1
 
@@ -379,6 +395,15 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
         if existing:
             continue
 
+        # Apply static data fields if available for this vessel
+        vessel_static = static_updates.get(mmsi, {})
+        draught_val = (
+            vessel_static.get("draught")
+            if vessel_static.get("draught") is not None
+            else (float(pt["draught"]) if pt.get("draught") is not None else None)
+        )
+        destination_val = vessel_static.get("destination") or pt.get("destination") or None
+
         point = AISPoint(
             vessel_id=vessel.vessel_id,
             timestamp_utc=ts,
@@ -390,6 +415,8 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
             nav_status=pt.get("nav_status"),
             ais_class=pt.get("ais_class", "A"),
             source="aisstream",
+            destination=destination_val,
+            draught=draught_val,
         )
         db.add(point)
         stored += 1

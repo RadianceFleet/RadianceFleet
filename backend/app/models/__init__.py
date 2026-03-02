@@ -32,6 +32,7 @@ from app.models.merge_chain import MergeChain
 from app.models.vessel_fingerprint import VesselFingerprint
 from app.models.convoy_event import ConvoyEvent
 from app.models.route_template import RouteTemplate
+from app.models.collection_run import CollectionRun
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 
 __all__ = [
@@ -72,4 +73,5 @@ __all__ = [
     "VesselFingerprint",
     "ConvoyEvent",
     "RouteTemplate",
+    "CollectionRun",
 ]

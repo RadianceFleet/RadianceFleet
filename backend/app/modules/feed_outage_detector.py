@@ -89,6 +89,7 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
     gaps_marked = 0
     evasion_excluded = 0
     decoy_rejected = 0
+    source_outages_detected = 0
 
     # Pre-load high-risk vessel IDs from previous pipeline run (E7)
     high_risk_vessel_ids = _get_high_risk_vessel_ids(db)
@@ -121,6 +122,20 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
                 )
                 continue
 
+            # Source-aware grouping: if >80% of gaps come from one AIS source
+            # and that source had no recent collection activity, classify as
+            # source_outage rather than generic feed_outage.
+            dominant_source = _detect_dominant_source(cluster.gaps)
+
+            if dominant_source is not None:
+                source_outages_detected += 1
+                logger.info(
+                    "Source outage detected: corridor=%s window=%s source=%s "
+                    "(%d gaps)",
+                    cluster.corridor_id, cluster.window_start,
+                    dominant_source, len(cluster.gaps),
+                )
+
             outages_detected += 1
             for gap in cluster.gaps:
                 # E2: Exclude gaps with evasion signals (SpoofingAnomaly or STS ±6h)
@@ -128,19 +143,23 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
                     evasion_excluded += 1
                     continue
                 gap.is_feed_outage = True
+                if dominant_source is not None:
+                    gap.coverage_quality = f"SOURCE_OUTAGE:{dominant_source}"
                 gaps_marked += 1
 
     if gaps_marked > 0:
         db.commit()
 
     logger.info(
-        "Feed outage detection: checked %d gaps, found %d outages, marked %d gaps, "
-        "evasion-excluded %d, decoy-rejected %d clusters.",
-        len(gaps), outages_detected, gaps_marked, evasion_excluded, decoy_rejected,
+        "Feed outage detection: checked %d gaps, found %d outages (%d source-specific), "
+        "marked %d gaps, evasion-excluded %d, decoy-rejected %d clusters.",
+        len(gaps), outages_detected, source_outages_detected, gaps_marked,
+        evasion_excluded, decoy_rejected,
     )
     return {
         "gaps_checked": len(gaps),
         "outages_detected": outages_detected,
+        "source_outages_detected": source_outages_detected,
         "gaps_marked": gaps_marked,
         "evasion_excluded": evasion_excluded,
         "decoy_rejected": decoy_rejected,
@@ -211,6 +230,34 @@ def _get_high_risk_vessel_ids(db: Session) -> set[int]:
     except Exception:
         pass
     return high_risk
+
+
+def _detect_dominant_source(gaps: list) -> str | None:
+    """Check if >80% of gaps in a cluster originate from a single AIS source.
+
+    Looks at the ``source`` field on the gap event (set when provenance is known).
+    Returns the dominant source name if one contributes >80% of gaps, else None.
+    """
+    if not gaps:
+        return None
+
+    source_counts: dict[str, int] = defaultdict(int)
+    total_with_source = 0
+
+    for gap in gaps:
+        src = getattr(gap, "source", None)
+        if src:
+            source_counts[src] += 1
+            total_with_source += 1
+
+    if total_with_source == 0:
+        return None
+
+    for source, count in source_counts.items():
+        if count / len(gaps) > 0.8:
+            return source
+
+    return None
 
 
 def _cluster_gaps(gaps: list[AISGapEvent]) -> list[_GapCluster]:

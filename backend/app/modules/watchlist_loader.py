@@ -244,17 +244,28 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
     with open(csv_path, newline="", encoding="utf-8-sig") as fh:
         reader = _ofac_csv_reader(fh)
         for row in reader:
-            sdn_type = (row.get("SDN_TYPE") or "").strip()
-            if sdn_type != "Vessel":
+            sdn_type = (row.get("SDN_TYPE") or "").strip().lower()
+            if sdn_type not in ("vessel",):
                 skipped += 1
                 continue
 
             name = (row.get("SDN_NAME") or row.get("name") or "").strip() or None
-            mmsi = (row.get("VESSEL_ID") or "").strip() or None
-            imo = (row.get("ent_num") or row.get("ALT_NUM") or "").strip() or None
-            remarks = (row.get("REMARKS") or row.get("remarks") or "").strip() or None
+            remarks_text = (row.get("REMARKS") or row.get("remarks") or "").strip()
+            flag = (row.get("Vess_flag") or "").strip() or None
 
-            result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name)
+            # Parse IMO from REMARKS (e.g. "IMO 9187629")
+            imo = None
+            imo_match = re.search(r'IMO\s*(\d{7})', remarks_text)
+            if imo_match:
+                imo = imo_match.group(1)
+
+            # Parse MMSI from REMARKS (e.g. "MMSI 572469210")
+            mmsi = None
+            mmsi_match = re.search(r'MMSI\s*(\d{9})', remarks_text)
+            if mmsi_match:
+                mmsi = mmsi_match.group(1)
+
+            result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
             if result is None:
                 logger.warning(
                     "OFAC SDN: no vessel match for name=%r mmsi=%r imo=%r",
@@ -268,7 +279,7 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
                 db,
                 vessel=vessel,
                 watchlist_source="OFAC_SDN",
-                reason=remarks,
+                reason=remarks_text or None,
                 date_listed=None,
                 source_url=None,
                 match_confidence=confidence,
@@ -337,7 +348,7 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
             _upsert_watchlist(
                 db,
                 vessel=vessel,
-                watchlist_source="KSE_INSTITUTE",
+                watchlist_source="KSE_SHADOW",
                 reason="KSE shadow fleet list",
                 date_listed=None,
                 source_url=None,

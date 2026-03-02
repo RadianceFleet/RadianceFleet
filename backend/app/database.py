@@ -17,6 +17,7 @@ if "sqlite" in settings.DATABASE_URL:
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -116,6 +117,27 @@ def _run_migrations() -> None:
                     f"CREATE INDEX {idx_name} ON {tbl} ({col})"
                 ))
                 conn.commit()
+
+    # AIS point dedup: remove duplicates and create unique constraint
+    existing_uq = {
+        c["name"]
+        for c in inspector.get_unique_constraints("ais_points")
+    }
+    if "uq_ais_point_vessel_ts_source" not in existing_uq:
+        with engine.connect() as conn:
+            # Delete duplicate rows, keeping the one with the highest ais_point_id
+            conn.execute(text(
+                "DELETE FROM ais_points WHERE ais_point_id NOT IN ("
+                "  SELECT MAX(ais_point_id) FROM ais_points"
+                "  GROUP BY vessel_id, timestamp_utc, source"
+                ")"
+            ))
+            conn.commit()
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_ais_point_vessel_ts_source "
+                "ON ais_points (vessel_id, timestamp_utc, source)"
+            ))
+            conn.commit()
 
     # Postgres-only: add new enum values to native ENUM type.
     # ALTER TYPE ... ADD VALUE cannot run inside a transaction on Postgres.

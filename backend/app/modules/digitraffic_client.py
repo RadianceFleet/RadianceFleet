@@ -51,6 +51,7 @@ def fetch_digitraffic_ais(
     points = 0
     vessels: set[str] = set()
     errors = 0
+    downsampled = 0
 
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
@@ -122,6 +123,20 @@ def fetch_digitraffic_ais(
                             errors += 1
                             continue
 
+                # Downsample: skip if we have a recent digitraffic point (< 30 min)
+                last_point = (
+                    db.query(AISPoint.timestamp_utc)
+                    .filter(
+                        AISPoint.vessel_id == vessel.vessel_id,
+                        AISPoint.source == "digitraffic",
+                    )
+                    .order_by(AISPoint.timestamp_utc.desc())
+                    .first()
+                )
+                if last_point and (timestamp - last_point[0]).total_seconds() < 1800:
+                    downsampled += 1
+                    continue
+
                 # Dedup
                 existing = (
                     db.query(AISPoint)
@@ -158,8 +173,16 @@ def fetch_digitraffic_ais(
         logger.error("Digitraffic fetch failed: %s", e)
         errors += 1
 
-    logger.info("Digitraffic: %d points, %d vessels, %d errors", points, len(vessels), errors)
-    return {"points_ingested": points, "vessels_seen": len(vessels), "errors": errors}
+    logger.info(
+        "Digitraffic: %d points, %d vessels, %d downsampled, %d errors",
+        points, len(vessels), downsampled, errors,
+    )
+    return {
+        "points_ingested": points,
+        "vessels_seen": len(vessels),
+        "downsampled": downsampled,
+        "errors": errors,
+    }
 
 
 def fetch_digitraffic_port_calls(db: Session, mmsi: str | None = None) -> dict:

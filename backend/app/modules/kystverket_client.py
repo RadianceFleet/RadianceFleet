@@ -73,6 +73,7 @@ def stream_kystverket(
         buffer = b""
         batch: list[dict] = []
         batch_size = 50
+        static_cache: dict[str, dict] = {}  # mmsi -> {destination, draught} from Type 5
 
         while datetime.now(timezone.utc).timestamp() < deadline:
             try:
@@ -92,18 +93,34 @@ def stream_kystverket(
                         for msg in msgs:
                             decoded = msg.asdict()
                             mmsi = str(decoded.get("mmsi", ""))
+                            if not mmsi or is_non_vessel_mmsi(mmsi):
+                                continue
+
+                            # Type 5 messages carry destination/draught but no position
+                            msg_type = decoded.get("msg_type")
+                            if msg_type == 5:
+                                dest = (decoded.get("destination") or "").strip()[:20] or None
+                                dr = decoded.get("draught")
+                                if dest or dr:
+                                    static_cache[mmsi] = {
+                                        "destination": dest,
+                                        "draught": float(dr) / 10.0 if dr is not None else None,
+                                    }
+                                continue
+
                             lat = decoded.get("lat")
                             lon = decoded.get("lon")
                             sog = decoded.get("speed")
                             cog = decoded.get("course")
                             heading = decoded.get("heading")
 
-                            if not mmsi or lat is None or lon is None:
+                            if lat is None or lon is None:
                                 continue
                             if lat == 91.0 or lon == 181.0:  # default/unavailable
                                 continue
-                            if is_non_vessel_mmsi(mmsi):
-                                continue
+
+                            # Merge static data (destination/draught) if available
+                            sd = static_cache.get(mmsi, {})
 
                             vessels_seen.add(mmsi)
                             batch.append(
@@ -118,6 +135,8 @@ def stream_kystverket(
                                     else None,
                                     "timestamp_utc": datetime.now(timezone.utc),
                                     "source": "kystverket",
+                                    "destination": sd.get("destination"),
+                                    "draught": sd.get("draught"),
                                 }
                             )
 
@@ -219,5 +238,7 @@ def _ingest_point(db: Session, pt: dict) -> None:
         heading=pt["heading"],
         ais_class="A",
         source="kystverket",
+        destination=pt.get("destination"),
+        draught=pt.get("draught"),
     )
     db.add(point)

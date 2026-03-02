@@ -125,6 +125,12 @@ def normalize_ais_dataframe(df: pl.DataFrame) -> pl.DataFrame:
         "time": "timestamp",
         "datetime": "timestamp",
         "basedatetime": "timestamp",
+        # DMA (Danish Maritime Authority) column aliases
+        "Name": "vessel_name",
+        "Ship type": "vessel_type",
+        "Navigational status": "nav_status",
+        "# Timestamp": "timestamp",
+        "Type of mobile": "vessel_type",
         # MarineTraffic / VesselFinder uppercase aliases (4.3)
         "SPEED": "sog",
         "LAT": "lat",

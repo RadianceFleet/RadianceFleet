@@ -236,6 +236,11 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
     if new_callsign:
         vessel.callsign = new_callsign
 
+    # IMO: fill-if-empty (IMO is permanent — never overwrite existing)
+    new_imo = row.get("imo")
+    if new_imo and not vessel.imo:
+        vessel.imo = str(new_imo).strip()
+
     # Backfill flag from MMSI if still missing
     if not vessel.flag:
         from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
@@ -340,6 +345,10 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
     draught_raw = row.get("draught")
     draught_val = float(draught_raw) if draught_raw is not None else None
 
+    # Parse destination (may be absent)
+    destination_raw = row.get("destination")
+    destination_val = str(destination_raw).strip()[:20] if destination_raw else None
+
     # Dual-write: raw observation for cross-receiver comparison (no dedup)
     try:
         from app.models.ais_observation import AISObservation
@@ -397,6 +406,11 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
                 near_dup.heading = heading_val
                 near_dup.nav_status = row.get("nav_status")
                 near_dup.ais_class = row.get("ais_class", near_dup.ais_class)
+                # Preserve existing destination/draught (fill-if-empty)
+                if draught_val is not None:
+                    near_dup.draught = draught_val
+                if destination_val:
+                    near_dup.destination = destination_val
                 old_source = near_dup.source
                 near_dup.source = new_source
                 logger.debug("Replaced AIS point (vessel=%s, ts=%s): %s > %s",
@@ -439,6 +453,7 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
         sog_delta=sog_delta,
         cog_delta=cog_delta,
         draught=draught_val,
+        destination=destination_val,
     )
     db.add(point)
 

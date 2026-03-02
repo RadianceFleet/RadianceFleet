@@ -119,6 +119,8 @@ class TestDigitrafficAISSuccess:
         db = MagicMock()
         # Return None for vessel queries (new vessels)
         db.query.return_value.filter.return_value.first.return_value = None
+        # Return None for downsample order_by().first() query (no previous point)
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
         from app.modules.digitraffic_client import fetch_digitraffic_ais
 

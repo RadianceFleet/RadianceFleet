@@ -57,6 +57,18 @@ class Settings(BaseSettings):
     KYSTVERKET_ENABLED: bool = False
     KYSTVERKET_HOST: str = "153.44.253.27"
     KYSTVERKET_PORT: int = 5631
+    # DMA (Danish Maritime Authority) historical AIS
+    DMA_ENABLED: bool = False
+    # BarentsWatch (Norwegian EEZ) AIS REST API
+    BARENTSWATCH_ENABLED: bool = False
+    BARENTSWATCH_CLIENT_ID: str = ""
+    BARENTSWATCH_CLIENT_SECRET: str = ""
+    BARENTSWATCH_TOKEN_URL: str = "https://id.barentswatch.no/connect/token"
+    BARENTSWATCH_API_URL: str = "https://live.ais.barentswatch.no/api"
+    # Collection scheduler intervals
+    COLLECT_DIGITRAFFIC_INTERVAL: int = 1800  # 30 min
+    COLLECT_AISSTREAM_INTERVAL: int = 300  # 5 min
+    COLLECT_RETENTION_DAYS: int = 90
     # Digitraffic (Finland) Marine API
     DIGITRAFFIC_ENABLED: bool = False
     # CREA Russia Fossil Tracker
