@@ -684,6 +684,30 @@ def import_gfw_gap_events(
         stats["last_vessel_id"] = vessel.vessel_id
 
     db.commit()
+
+    # Record coverage window
+    try:
+        from app.modules.coverage_tracker import record_coverage_window
+        import datetime as _dt_mod
+        _utcnow = _dt_mod.datetime.now(_dt_mod.timezone.utc)
+        total_vessels = len(vessels)
+        record_coverage_window(
+            db, "gfw",
+            datetime.strptime(start_date, "%Y-%m-%d").date(),
+            datetime.strptime(end_date, "%Y-%m-%d").date(),
+            status="partial" if stats["partial"] else "completed",
+            points_imported=stats["imported"],
+            vessels_queried=stats["vessels_queried"],
+            vessels_total=total_vessels,
+            errors=len(stats["errors"]),
+            started_at=_utcnow,
+            finished_at=_utcnow,
+            notes=f"last_vessel_id={stats['last_vessel_id']}" if stats["last_vessel_id"] else None,
+        )
+        db.commit()
+    except Exception as cov_exc:
+        logger.warning("GFW coverage recording failed: %s", cov_exc)
+
     logger.info("GFW gap import: %s", {k: v for k, v in stats.items() if k != "errors"})
     return stats
 

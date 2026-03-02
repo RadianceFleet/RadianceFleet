@@ -261,9 +261,12 @@ def fetch_and_import_noaa(
         "total_rows": 0,
     }
 
+    from datetime import datetime as _dt, timezone as _tz
+
     current = start_date
     while current <= end_date:
         stats["dates_attempted"] += 1
+        day_started_at = _dt.now(_tz.utc)
         try:
             filepath = download_noaa_file(current, output_dir=output_dir)
             stats["dates_downloaded"] += 1
@@ -272,9 +275,41 @@ def fetch_and_import_noaa(
                 result = import_noaa_file(filepath, db, corridor_filter=corridor_filter)
                 stats["total_rows"] += result["total_rows"]
                 stats["total_accepted"] += result["accepted"]
+
+                # Record coverage window — completed
+                try:
+                    from app.modules.coverage_tracker import record_coverage_window
+                    record_coverage_window(
+                        db, "noaa", current, current,
+                        status="completed",
+                        points_imported=result["accepted"],
+                        vessels_queried=0,
+                        errors=result.get("rejected", 0),
+                        started_at=day_started_at,
+                        finished_at=_dt.now(_tz.utc),
+                    )
+                    db.commit()
+                except Exception as cov_exc:
+                    logger.warning("NOAA coverage recording failed for %s: %s", current, cov_exc)
         except Exception as exc:
             logger.warning("NOAA date %s failed: %s", current, exc)
             stats["dates_failed"].append({"date": current.isoformat(), "error": str(exc)})
+            # Record coverage window — failed
+            try:
+                from app.modules.coverage_tracker import record_coverage_window
+                record_coverage_window(
+                    db, "noaa", current, current,
+                    status="failed",
+                    points_imported=0,
+                    vessels_queried=0,
+                    errors=1,
+                    started_at=day_started_at,
+                    finished_at=_dt.now(_tz.utc),
+                    notes=str(exc)[:500],
+                )
+                db.commit()
+            except Exception:
+                pass
 
         current += timedelta(days=1)
 

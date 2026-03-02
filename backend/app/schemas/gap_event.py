@@ -13,6 +13,11 @@ class AISPointSummary(BaseModel):
     lon: float
     sog: Optional[float] = None
     cog: Optional[float] = None
+    heading: Optional[float] = None
+    source: Optional[str] = None
+    draught: Optional[float] = None
+    destination: Optional[str] = None
+    nav_status: Optional[int] = None
 
 
 class MovementEnvelopeRead(BaseModel):

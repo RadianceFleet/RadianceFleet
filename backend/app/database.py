@@ -86,6 +86,8 @@ def _run_migrations() -> None:
         ("vessel_owners", "ownership_pct", "REAL"),
         # Stage B — destination field on AIS points
         ("ais_points", "destination", "VARCHAR(20)"),
+        # Historical pipeline — wall-clock time when a point was loaded
+        ("ais_points", "ingested_at", "DATETIME"),
     ]
 
     _col_cache: dict[str, set[str]] = {}

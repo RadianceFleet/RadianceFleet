@@ -193,9 +193,21 @@ class CollectionScheduler:
         except Exception:
             pass
 
+    # Sources that store historical/archive data — never pruned
+    ARCHIVE_SOURCES = {"noaa", "dma", "gfw", "barentswatch_historical"}
+
     def _prune_old_points(self, source_name: str):
-        """Delete AIS points older than retention period."""
-        retention_days = getattr(settings, "COLLECT_RETENTION_DAYS", 90)
+        """Delete AIS points older than retention period.
+
+        Archive sources (NOAA, DMA, GFW, BarentsWatch historical) are never pruned.
+        Realtime sources use RETENTION_DAYS_REALTIME (default 90 days).
+        """
+        if source_name in self.ARCHIVE_SOURCES:
+            return
+
+        retention_days = getattr(settings, "RETENTION_DAYS_REALTIME", None)
+        if retention_days is None or not isinstance(retention_days, (int, float)):
+            retention_days = getattr(settings, "COLLECT_RETENTION_DAYS", 90)
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
         db = self._db_factory()
@@ -203,13 +215,16 @@ class CollectionScheduler:
             from app.models.ais_point import AISPoint
             deleted = (
                 db.query(AISPoint)
-                .filter(AISPoint.timestamp_utc < cutoff)
+                .filter(
+                    AISPoint.timestamp_utc < cutoff,
+                    ~AISPoint.source.in_(self.ARCHIVE_SOURCES),
+                )
                 .delete(synchronize_session=False)
             )
             db.commit()
             if deleted:
                 logger.info(
-                    "Retention pruning (%s): deleted %d points older than %d days",
+                    "Retention pruning (%s): deleted %d realtime points older than %d days",
                     source_name, deleted, retention_days,
                 )
         except Exception as e:

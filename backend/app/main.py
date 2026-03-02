@@ -34,7 +34,24 @@ async def lifespan(app: FastAPI):
     for section in required_sections:
         if section not in config:
             logger.warning("Missing config section '%s' in risk_scoring.yaml — scoring may use defaults", section)
+
+    # Start history backfill scheduler if enabled
+    history_scheduler = None
+    if settings.HISTORY_BACKFILL_ENABLED:
+        try:
+            from app.database import SessionLocal
+            from app.modules.history_scheduler import HistoryScheduler
+
+            history_scheduler = HistoryScheduler(db_factory=SessionLocal)
+            history_scheduler.start()
+            logger.info("History backfill scheduler started")
+        except Exception as e:
+            logger.warning("Failed to start history scheduler: %s", e)
+
     yield
+
+    if history_scheduler is not None:
+        history_scheduler.stop()
 
 
 app = FastAPI(

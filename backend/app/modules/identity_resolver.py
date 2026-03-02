@@ -1518,12 +1518,18 @@ def detect_zombie_imos(db: Session) -> list[dict]:
 
 def get_vessel_timeline(
     db: Session, vessel_id: int, limit: int = 100, offset: int = 0,
+    start_dt: Optional[datetime] = None, end_dt: Optional[datetime] = None,
 ) -> list[dict]:
     """Aggregate events from multiple tables into a chronological timeline."""
     events: list[dict] = []
 
     # 1. VesselHistory (identity changes, merges)
-    for h in db.query(VesselHistory).filter(VesselHistory.vessel_id == vessel_id).all():
+    q1 = db.query(VesselHistory).filter(VesselHistory.vessel_id == vessel_id)
+    if start_dt is not None:
+        q1 = q1.filter(VesselHistory.observed_at >= start_dt)
+    if end_dt is not None:
+        q1 = q1.filter(VesselHistory.observed_at <= end_dt)
+    for h in q1.all():
         events.append({
             "event_type": "identity_change",
             "timestamp": h.observed_at.isoformat() if h.observed_at else None,
@@ -1533,7 +1539,12 @@ def get_vessel_timeline(
         })
 
     # 2. AISGapEvent
-    for g in db.query(AISGapEvent).filter(AISGapEvent.vessel_id == vessel_id).all():
+    q2 = db.query(AISGapEvent).filter(AISGapEvent.vessel_id == vessel_id)
+    if start_dt is not None:
+        q2 = q2.filter(AISGapEvent.gap_start_utc >= start_dt)
+    if end_dt is not None:
+        q2 = q2.filter(AISGapEvent.gap_start_utc <= end_dt)
+    for g in q2.all():
         events.append({
             "event_type": "ais_gap",
             "timestamp": g.gap_start_utc.isoformat() if g.gap_start_utc else None,
@@ -1543,7 +1554,12 @@ def get_vessel_timeline(
         })
 
     # 3. SpoofingAnomaly
-    for s in db.query(SpoofingAnomaly).filter(SpoofingAnomaly.vessel_id == vessel_id).all():
+    q3 = db.query(SpoofingAnomaly).filter(SpoofingAnomaly.vessel_id == vessel_id)
+    if start_dt is not None:
+        q3 = q3.filter(SpoofingAnomaly.start_time_utc >= start_dt)
+    if end_dt is not None:
+        q3 = q3.filter(SpoofingAnomaly.start_time_utc <= end_dt)
+    for s in q3.all():
         events.append({
             "event_type": "spoofing",
             "timestamp": s.start_time_utc.isoformat() if s.start_time_utc else None,
@@ -1553,7 +1569,12 @@ def get_vessel_timeline(
         })
 
     # 4. LoiteringEvent
-    for l in db.query(LoiteringEvent).filter(LoiteringEvent.vessel_id == vessel_id).all():
+    q4 = db.query(LoiteringEvent).filter(LoiteringEvent.vessel_id == vessel_id)
+    if start_dt is not None:
+        q4 = q4.filter(LoiteringEvent.start_time_utc >= start_dt)
+    if end_dt is not None:
+        q4 = q4.filter(LoiteringEvent.start_time_utc <= end_dt)
+    for l in q4.all():
         events.append({
             "event_type": "loitering",
             "timestamp": l.start_time_utc.isoformat() if l.start_time_utc else None,
@@ -1563,17 +1584,17 @@ def get_vessel_timeline(
         })
 
     # 5. StsTransferEvent (as vessel_1 or vessel_2)
-    sts_events = (
-        db.query(StsTransferEvent)
-        .filter(
-            or_(
-                StsTransferEvent.vessel_1_id == vessel_id,
-                StsTransferEvent.vessel_2_id == vessel_id,
-            )
+    q5 = db.query(StsTransferEvent).filter(
+        or_(
+            StsTransferEvent.vessel_1_id == vessel_id,
+            StsTransferEvent.vessel_2_id == vessel_id,
         )
-        .all()
     )
-    for sts in sts_events:
+    if start_dt is not None:
+        q5 = q5.filter(StsTransferEvent.start_time_utc >= start_dt)
+    if end_dt is not None:
+        q5 = q5.filter(StsTransferEvent.start_time_utc <= end_dt)
+    for sts in q5.all():
         partner_id = sts.vessel_2_id if sts.vessel_1_id == vessel_id else sts.vessel_1_id
         events.append({
             "event_type": "sts_transfer",
@@ -1588,7 +1609,12 @@ def get_vessel_timeline(
         })
 
     # 6. PortCall
-    for pc in db.query(PortCall).filter(PortCall.vessel_id == vessel_id).all():
+    q6 = db.query(PortCall).filter(PortCall.vessel_id == vessel_id)
+    if start_dt is not None:
+        q6 = q6.filter(PortCall.arrival_utc >= start_dt)
+    if end_dt is not None:
+        q6 = q6.filter(PortCall.arrival_utc <= end_dt)
+    for pc in q6.all():
         events.append({
             "event_type": "port_visit",
             "timestamp": pc.arrival_utc.isoformat() if pc.arrival_utc else None,
@@ -1598,12 +1624,17 @@ def get_vessel_timeline(
         })
 
     # 7. MergeOperation (involving this vessel as canonical or absorbed)
-    for mo in db.query(MergeOperation).filter(
+    q7 = db.query(MergeOperation).filter(
         or_(
             MergeOperation.canonical_vessel_id == vessel_id,
             MergeOperation.absorbed_vessel_id == vessel_id,
         )
-    ).all():
+    )
+    if start_dt is not None:
+        q7 = q7.filter(MergeOperation.executed_at >= start_dt)
+    if end_dt is not None:
+        q7 = q7.filter(MergeOperation.executed_at <= end_dt)
+    for mo in q7.all():
         role = "canonical" if mo.canonical_vessel_id == vessel_id else "absorbed"
         other_id = mo.absorbed_vessel_id if role == "canonical" else mo.canonical_vessel_id
         events.append({

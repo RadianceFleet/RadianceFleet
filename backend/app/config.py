@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     COLLECT_DIGITRAFFIC_INTERVAL: int = 1800  # 30 min
     COLLECT_AISSTREAM_INTERVAL: int = 300  # 5 min
     COLLECT_RETENTION_DAYS: int = 90
+    # Per-source retention: realtime sources pruned after N days, historical/archive never pruned
+    RETENTION_DAYS_REALTIME: int = 90
+    RETENTION_DAYS_HISTORICAL: int | None = None  # None = keep forever
     # Digitraffic (Finland) Marine API
     DIGITRAFFIC_ENABLED: bool = False
     # CREA Russia Fossil Tracker
@@ -165,6 +168,14 @@ class Settings(BaseSettings):
     SPARSE_TRANSMISSION_SCORING_ENABLED: bool = False
     TYPE_CONSISTENCY_DETECTION_ENABLED: bool = False
     TYPE_CONSISTENCY_SCORING_ENABLED: bool = False
+    # Historical data pipeline
+    HISTORY_BACKFILL_ENABLED: bool = False
+    NOAA_BACKFILL_ENABLED: bool = False
+    DMA_BACKFILL_ENABLED: bool = False
+    GFW_GAPS_BACKFILL_ENABLED: bool = False
+    GFW_ENCOUNTERS_BACKFILL_ENABLED: bool = False
+    GFW_PORT_VISITS_BACKFILL_ENABLED: bool = False
+    HISTORY_BACKFILL_INTERVAL_HOURS: int = 168  # 1 week
 
 
 settings = Settings()

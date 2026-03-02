@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, File, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import case, func, or_
+from sqlalchemy import Integer, String, case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -222,26 +222,56 @@ def detect_spoofing(
 
 
 @router.get("/spoofing/{vessel_id}", tags=["detection"])
-def get_spoofing_events(vessel_id: int, db: Session = Depends(get_db)):
+def get_spoofing_events(
+    vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
     from app.models.spoofing_anomaly import SpoofingAnomaly
-    return db.query(SpoofingAnomaly).filter(SpoofingAnomaly.vessel_id == vessel_id).all()
+    _validate_date_range(date_from, date_to)
+    q = db.query(SpoofingAnomaly).filter(SpoofingAnomaly.vessel_id == vessel_id)
+    if date_from:
+        q = q.filter(SpoofingAnomaly.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(SpoofingAnomaly.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+    return q.all()
 
 
 @router.get("/loitering/{vessel_id}", tags=["detection"])
-def get_loitering_events(vessel_id: int, db: Session = Depends(get_db)):
+def get_loitering_events(
+    vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
     from app.models.loitering_event import LoiteringEvent
-    return db.query(LoiteringEvent).filter(LoiteringEvent.vessel_id == vessel_id).all()
+    _validate_date_range(date_from, date_to)
+    q = db.query(LoiteringEvent).filter(LoiteringEvent.vessel_id == vessel_id)
+    if date_from:
+        q = q.filter(LoiteringEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(LoiteringEvent.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+    return q.all()
 
 
 @router.get("/sts-events", tags=["detection"])
 def get_sts_events(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     from app.models.sts_transfer import StsTransferEvent
+    _validate_date_range(date_from, date_to)
     limit = min(limit, settings.MAX_QUERY_LIMIT)
-    q = db.query(StsTransferEvent).order_by(StsTransferEvent.start_time_utc.desc())
+    q = db.query(StsTransferEvent)
+    if date_from:
+        q = q.filter(StsTransferEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(StsTransferEvent.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+    q = q.order_by(StsTransferEvent.start_time_utc.desc())
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": items, "total": total}
@@ -925,6 +955,8 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
 @router.get("/vessels/{vessel_id}/alerts", tags=["vessels"])
 def get_vessel_alerts(
     vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     sort_by: str = Query("gap_start_utc", description="gap_start_utc or risk_score"),
     sort_order: str = Query("desc"),
     db: Session = Depends(get_db),
@@ -932,7 +964,12 @@ def get_vessel_alerts(
     """All gap events for a vessel, sorted."""
     from app.models.gap_event import AISGapEvent
 
+    _validate_date_range(date_from, date_to)
     q = db.query(AISGapEvent).filter(AISGapEvent.vessel_id == vessel_id)
+    if date_from:
+        q = q.filter(AISGapEvent.gap_start_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(AISGapEvent.gap_start_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
     sort_col = AISGapEvent.gap_start_utc if sort_by == "gap_start_utc" else AISGapEvent.risk_score
     q = q.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
     return q.all()
@@ -1472,16 +1509,23 @@ async def import_gfw_detections(
 def list_dark_vessels(
     ais_match_result: Optional[str] = None,
     corridor_id: Optional[int] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     from app.models.stubs import DarkVesselDetection
+    _validate_date_range(date_from, date_to)
     q = db.query(DarkVesselDetection)
     if ais_match_result:
         q = q.filter(DarkVesselDetection.ais_match_result == ais_match_result)
     if corridor_id:
         q = q.filter(DarkVesselDetection.corridor_id == corridor_id)
+    if date_from:
+        q = q.filter(DarkVesselDetection.detection_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(DarkVesselDetection.detection_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": items, "total": total}
@@ -1915,6 +1959,8 @@ def reverse_merge_operation(
 @router.get("/vessels/{vessel_id}/timeline", tags=["vessels"])
 def get_vessel_timeline_endpoint(
     vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -1923,11 +1969,14 @@ def get_vessel_timeline_endpoint(
     from app.models.vessel import Vessel
     from app.modules.identity_resolver import get_vessel_timeline
 
+    _validate_date_range(date_from, date_to)
     vessel = db.query(Vessel).get(vessel_id)
     if not vessel:
         raise HTTPException(status_code=404, detail="Vessel not found")
 
-    events = get_vessel_timeline(db, vessel_id, limit=limit, offset=offset)
+    start_dt = datetime(date_from.year, date_from.month, date_from.day) if date_from else None
+    end_dt = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59) if date_to else None
+    events = get_vessel_timeline(db, vessel_id, limit=limit, offset=offset, start_dt=start_dt, end_dt=end_dt)
     return {"vessel_id": vessel_id, "events": events, "count": len(events)}
 
 
@@ -2081,17 +2130,28 @@ def trigger_mmsi_cloning_detection(request: Request, db: Session = Depends(get_d
 
 
 @router.get("/port-calls/{vessel_id}", tags=["port-calls"])
-def get_port_calls(vessel_id: int, db: Session = Depends(get_db)):
+def get_port_calls(
+    vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
     """List port calls for a vessel."""
     from app.models.port_call import PortCall
     from app.models.port import Port
     from app.models.vessel import Vessel
 
+    _validate_date_range(date_from, date_to)
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
     if not vessel:
         raise HTTPException(status_code=404, detail="Vessel not found")
 
-    port_calls = db.query(PortCall).filter(PortCall.vessel_id == vessel_id).order_by(PortCall.arrival_utc.desc()).all()
+    q = db.query(PortCall).filter(PortCall.vessel_id == vessel_id)
+    if date_from:
+        q = q.filter(PortCall.arrival_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(PortCall.arrival_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+    port_calls = q.order_by(PortCall.arrival_utc.desc()).all()
 
     items = []
     for pc in port_calls:
@@ -2417,18 +2477,18 @@ def get_collection_status(
         from app.models.collection_run import CollectionRun
         runs = (
             db.query(CollectionRun)
-            .filter(CollectionRun.started_utc >= cutoff)
-            .order_by(CollectionRun.started_utc.desc())
+            .filter(CollectionRun.started_at >= cutoff)
+            .order_by(CollectionRun.started_at.desc())
             .limit(50)
             .all()
         )
         collection_runs = [
             {
-                "run_id": r.run_id,
+                "run_id": r.collection_run_id,
                 "source": getattr(r, "source", None),
-                "started_utc": r.started_utc.isoformat() if r.started_utc else None,
-                "finished_utc": r.finished_utc.isoformat() if getattr(r, "finished_utc", None) else None,
-                "points_ingested": getattr(r, "points_ingested", None),
+                "started_utc": r.started_at.isoformat() if r.started_at else None,
+                "finished_utc": r.finished_at.isoformat() if getattr(r, "finished_at", None) else None,
+                "points_imported": getattr(r, "points_imported", None),
                 "status": getattr(r, "status", None),
             }
             for r in runs
@@ -2507,3 +2567,356 @@ def list_fleet_alerts(
         }
     except Exception:
         return {"alerts": [], "total": 0}
+
+
+# ---------------------------------------------------------------------------
+# Step 8: Vessel Track Endpoint
+# ---------------------------------------------------------------------------
+
+@router.get("/vessels/{vessel_id}/track", tags=["vessels"])
+def get_vessel_track(
+    vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    page_size: int = Query(500, ge=1, le=5000),
+    after_cursor: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Paginated AIS track for a vessel with automatic downsampling."""
+    from app.models.ais_point import AISPoint
+    from app.models.vessel import Vessel
+
+    _validate_date_range(date_from, date_to)
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    today = date.today()
+    d_from = date_from or date(2000, 1, 1)
+    d_to = date_to or today
+
+    dt_from = datetime(d_from.year, d_from.month, d_from.day)
+    dt_to = datetime(d_to.year, d_to.month, d_to.day, 23, 59, 59)
+
+    span_days = (d_to - d_from).days
+
+    # Determine downsampling interval
+    if span_days <= 7:
+        ds_applied = False
+        ds_interval = None
+    elif span_days <= 30:
+        ds_applied = True
+        ds_interval = "1h"
+    else:
+        ds_applied = True
+        ds_interval = "6h"
+
+    if ds_applied:
+        # Downsampled: two-step query
+        bucket_fmt = "%Y-%m-%dT%H:00:00" if ds_interval == "1h" else "%Y-%m-%dT"
+        if ds_interval == "6h":
+            # 6-hour buckets: concat date + 6h-bucket
+            bucket_expr = func.strftime("%Y-%m-%dT", AISPoint.timestamp_utc) + func.cast(
+                (func.cast(func.strftime("%H", AISPoint.timestamp_utc), Integer) / 6) * 6,
+                String,
+            )
+        else:
+            bucket_expr = func.strftime(bucket_fmt, AISPoint.timestamp_utc)
+
+        base_q = db.query(AISPoint.ais_point_id).filter(
+            AISPoint.vessel_id == vessel_id,
+            AISPoint.timestamp_utc >= dt_from,
+            AISPoint.timestamp_utc <= dt_to,
+        )
+        if after_cursor:
+            try:
+                cursor_dt = datetime.fromisoformat(after_cursor)
+                base_q = base_q.filter(AISPoint.timestamp_utc > cursor_dt)
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Invalid after_cursor format")
+
+        # Get min ais_point_id per bucket
+        from sqlalchemy import literal_column
+        bucket_subq = (
+            base_q
+            .group_by(bucket_expr)
+            .with_entities(func.min(AISPoint.ais_point_id).label("point_id"))
+            .subquery()
+        )
+        points = (
+            db.query(AISPoint)
+            .filter(AISPoint.ais_point_id.in_(
+                db.query(bucket_subq.c.point_id)
+            ))
+            .order_by(AISPoint.timestamp_utc.asc())
+            .limit(page_size + 1)
+            .all()
+        )
+    else:
+        # No downsampling
+        q = db.query(AISPoint).filter(
+            AISPoint.vessel_id == vessel_id,
+            AISPoint.timestamp_utc >= dt_from,
+            AISPoint.timestamp_utc <= dt_to,
+        )
+        if after_cursor:
+            try:
+                cursor_dt = datetime.fromisoformat(after_cursor)
+                q = q.filter(AISPoint.timestamp_utc > cursor_dt)
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Invalid after_cursor format")
+        points = q.order_by(AISPoint.timestamp_utc.asc()).limit(page_size + 1).all()
+
+    has_more = len(points) > page_size
+    if has_more:
+        points = points[:page_size]
+
+    next_cursor = points[-1].timestamp_utc.isoformat() if has_more and points else None
+
+    point_dicts = [
+        {
+            "timestamp_utc": p.timestamp_utc.isoformat() if p.timestamp_utc else None,
+            "lat": p.lat,
+            "lon": p.lon,
+            "sog": p.sog,
+            "cog": p.cog,
+            "heading": getattr(p, "heading", None),
+            "source": getattr(p, "source", None),
+            "draught": getattr(p, "draught", None),
+            "destination": getattr(p, "destination", None),
+            "nav_status": getattr(p, "nav_status", None),
+        }
+        for p in points
+    ]
+
+    return {
+        "meta": {
+            "vessel_id": vessel_id,
+            "date_from": d_from.isoformat(),
+            "date_to": d_to.isoformat(),
+            "total_points": len(point_dicts),
+            "downsampling_applied": ds_applied,
+            "downsampling_interval": ds_interval,
+            "next_cursor": next_cursor,
+        },
+        "points": point_dicts,
+    }
+
+
+@router.get("/vessels/{vessel_id}/track.geojson", tags=["vessels"])
+def get_vessel_track_geojson(
+    vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """GeoJSON LineString export of vessel track."""
+    from app.models.ais_point import AISPoint
+    from app.models.vessel import Vessel
+    from fastapi.responses import JSONResponse
+
+    _validate_date_range(date_from, date_to)
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    today = date.today()
+    d_from = date_from or date(2000, 1, 1)
+    d_to = date_to or today
+
+    dt_from = datetime(d_from.year, d_from.month, d_from.day)
+    dt_to = datetime(d_to.year, d_to.month, d_to.day, 23, 59, 59)
+    span_days = (d_to - d_from).days
+
+    base_q = db.query(AISPoint).filter(
+        AISPoint.vessel_id == vessel_id,
+        AISPoint.timestamp_utc >= dt_from,
+        AISPoint.timestamp_utc <= dt_to,
+    )
+
+    if span_days <= 7:
+        points = base_q.order_by(AISPoint.timestamp_utc.asc()).all()
+    elif span_days <= 30:
+        bucket_expr = func.strftime("%Y-%m-%dT%H:00:00", AISPoint.timestamp_utc)
+        bucket_subq = (
+            base_q
+            .group_by(bucket_expr)
+            .with_entities(func.min(AISPoint.ais_point_id).label("point_id"))
+            .subquery()
+        )
+        points = (
+            db.query(AISPoint)
+            .filter(AISPoint.ais_point_id.in_(db.query(bucket_subq.c.point_id)))
+            .order_by(AISPoint.timestamp_utc.asc())
+            .all()
+        )
+    else:
+        bucket_expr = func.strftime("%Y-%m-%dT", AISPoint.timestamp_utc) + func.cast(
+            (func.cast(func.strftime("%H", AISPoint.timestamp_utc), Integer) / 6) * 6,
+            String,
+        )
+        bucket_subq = (
+            base_q
+            .group_by(bucket_expr)
+            .with_entities(func.min(AISPoint.ais_point_id).label("point_id"))
+            .subquery()
+        )
+        points = (
+            db.query(AISPoint)
+            .filter(AISPoint.ais_point_id.in_(db.query(bucket_subq.c.point_id)))
+            .order_by(AISPoint.timestamp_utc.asc())
+            .all()
+        )
+
+    coordinates = [[p.lon, p.lat] for p in points]
+    timestamps = [p.timestamp_utc.isoformat() if p.timestamp_utc else None for p in points]
+
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": coordinates,
+                } if len(coordinates) >= 2 else {
+                    "type": "Point",
+                    "coordinates": coordinates[0] if coordinates else [0, 0],
+                },
+                "properties": {
+                    "vessel_id": vessel_id,
+                    "vessel_name": vessel.name,
+                    "mmsi": vessel.mmsi,
+                    "date_from": d_from.isoformat(),
+                    "date_to": d_to.isoformat(),
+                    "point_count": len(coordinates),
+                    "timestamps": timestamps,
+                },
+            }
+        ],
+    }
+
+    return JSONResponse(content=geojson, media_type="application/geo+json")
+
+
+# ---------------------------------------------------------------------------
+# Step 9: Corridor Activity Time-Series
+# ---------------------------------------------------------------------------
+
+@router.get("/corridors/{corridor_id}/activity", tags=["corridors"])
+def get_corridor_activity(
+    corridor_id: int,
+    granularity: str = Query("week", description="day, week, or month"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """Time-series activity for a corridor: gap counts, vessel counts, avg risk."""
+    from app.models.gap_event import AISGapEvent
+    from app.models.corridor import Corridor
+
+    _validate_date_range(date_from, date_to)
+
+    if granularity not in ("day", "week", "month"):
+        raise HTTPException(status_code=422, detail="granularity must be day, week, or month")
+
+    corridor = db.query(Corridor).filter(Corridor.corridor_id == corridor_id).first()
+    if not corridor:
+        raise HTTPException(status_code=404, detail="Corridor not found")
+
+    q = db.query(AISGapEvent).filter(AISGapEvent.corridor_id == corridor_id)
+
+    if date_from:
+        q = q.filter(AISGapEvent.gap_start_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(AISGapEvent.gap_start_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+
+    # SQLite date bucketing
+    if granularity == "day":
+        bucket = func.strftime("%Y-%m-%d", AISGapEvent.gap_start_utc)
+    elif granularity == "week":
+        # ISO week: Monday-based, strftime %W gives week number
+        bucket = func.strftime("%Y-W%W", AISGapEvent.gap_start_utc)
+    else:  # month
+        bucket = func.strftime("%Y-%m", AISGapEvent.gap_start_utc)
+
+    rows = (
+        q.group_by(bucket)
+        .with_entities(
+            bucket.label("period"),
+            func.count(AISGapEvent.gap_event_id).label("gap_count"),
+            func.count(func.distinct(AISGapEvent.vessel_id)).label("distinct_vessels"),
+            func.avg(AISGapEvent.risk_score).label("avg_risk"),
+        )
+        .order_by(bucket)
+        .all()
+    )
+
+    return [
+        {
+            "period_start": row.period,
+            "gap_count": row.gap_count,
+            "distinct_vessels": row.distinct_vessels,
+            "avg_risk_score": round(float(row.avg_risk), 1) if row.avg_risk else 0.0,
+        }
+        for row in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Step 11: Coverage Status Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/data/coverage", tags=["data"])
+def get_data_coverage(db: Session = Depends(get_db)):
+    """Per-source data coverage summary."""
+    try:
+        from app.modules.coverage_tracker import coverage_summary
+        return coverage_summary(db)
+    except ImportError:
+        return {"status": "coverage_tracker not available", "sources": []}
+    except Exception as e:
+        return {"status": f"error: {str(e)}", "sources": []}
+
+
+@router.get("/data/coverage/gaps", tags=["data"])
+def get_coverage_gaps(
+    source: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Find uncovered date ranges for a data source."""
+    try:
+        from app.modules.coverage_tracker import find_coverage_gaps
+        return find_coverage_gaps(db, source=source)
+    except ImportError:
+        return {"status": "coverage_tracker not available", "gaps": []}
+    except Exception as e:
+        return {"status": f"error: {str(e)}", "gaps": []}
+
+
+@router.post("/data/backfill", tags=["data"])
+def trigger_backfill(
+    request: Request,
+    source: str = Query(..., description="Data source name"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """Trigger manual backfill for a data source and date range."""
+    _validate_date_range(date_from, date_to)
+    try:
+        from app.modules.coverage_tracker import trigger_backfill as _do_backfill
+        result = _do_backfill(db, source=source, date_from=date_from, date_to=date_to)
+        _audit_log(db, "backfill_trigger", "data_source", details={
+            "source": source,
+            "date_from": date_from.isoformat() if date_from else None,
+            "date_to": date_to.isoformat() if date_to else None,
+        }, request=request)
+        db.commit()
+        return result
+    except ImportError:
+        return {"status": "coverage_tracker not available"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Backfill failed: {str(e)}")

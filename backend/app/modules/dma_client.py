@@ -147,10 +147,13 @@ def fetch_and_import_dma(
     if vessel_types:
         type_filter = {t.lower() for t in vessel_types}
 
+    from datetime import datetime as _dt, timezone as _tz
+
     current = start_date
     while current <= end_date:
         url = _build_url(current, gzip=True)
         logger.info("DMA: fetching %s", url)
+        day_started_at = _dt.now(_tz.utc)
 
         try:
             with httpx.Client(timeout=120) as client:
@@ -299,9 +302,39 @@ def fetch_and_import_dma(
             stats["days_processed"] += 1
             logger.info("DMA: %s — %d points imported", current, day_points)
 
+            # Record coverage window — completed
+            try:
+                from app.modules.coverage_tracker import record_coverage_window
+                record_coverage_window(
+                    db, "dma", current, current,
+                    status="completed",
+                    points_imported=day_points,
+                    vessels_queried=0,
+                    started_at=day_started_at,
+                    finished_at=_dt.now(_tz.utc),
+                )
+                db.commit()
+            except Exception as cov_exc:
+                logger.warning("DMA coverage recording failed for %s: %s", current, cov_exc)
+
         except Exception as e:
             logger.error("DMA: failed to process %s: %s", current, e)
             stats["errors"] += 1
+            # Record coverage window — failed
+            try:
+                from app.modules.coverage_tracker import record_coverage_window
+                record_coverage_window(
+                    db, "dma", current, current,
+                    status="failed",
+                    points_imported=0,
+                    errors=1,
+                    started_at=day_started_at,
+                    finished_at=_dt.now(_tz.utc),
+                    notes=str(e)[:500],
+                )
+                db.commit()
+            except Exception:
+                pass
 
         current += timedelta(days=1)
 

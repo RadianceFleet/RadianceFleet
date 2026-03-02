@@ -13,6 +13,10 @@ Commands:
   backfill           — import historical AIS data for a date range
   collect            — run periodic AIS data collection
   collection-status  — show collection history and statistics
+  history status     — coverage status for historical sources
+  history gaps       — list uncovered date ranges
+  history backfill   — backfill a specific source and date range
+  history schedule   — run or preview the history scheduler
 """
 from __future__ import annotations
 
@@ -32,6 +36,17 @@ app = typer.Typer(
     rich_markup_mode="rich",
 )
 console = Console()
+
+# ---------------------------------------------------------------------------
+# Sub-apps
+# ---------------------------------------------------------------------------
+
+history_app = typer.Typer(
+    name="history",
+    help="Historical data coverage and backfill management.",
+    no_args_is_help=True,
+)
+app.add_typer(history_app, name="history")
 
 
 # ---------------------------------------------------------------------------
@@ -801,6 +816,17 @@ def backfill(
             )
             console.print(f"  GFW port visits: {stats}")
 
+        # Record coverage window for tracking
+        try:
+            from app.modules.coverage_tracker import record_coverage_window
+            record_coverage_window(
+                db, source, start_date, end_date,
+                status="completed",
+            )
+            db.commit()
+        except (ImportError, AttributeError, TypeError):
+            pass
+
         # Run detection if requested
         if detect:
             lookback_end = end_date
@@ -905,6 +931,237 @@ def collection_status(
         console.print(table)
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# History sub-commands
+# ---------------------------------------------------------------------------
+
+_HISTORY_SOURCES = ["noaa", "dma", "gfw-gaps", "gfw-encounters", "gfw-port-visits"]
+
+
+@history_app.command("status")
+def history_status():
+    """Show coverage status for each historical data source."""
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        table = Table(title="Historical Data Coverage")
+        table.add_column("Source", style="cyan")
+        table.add_column("Earliest")
+        table.add_column("Latest")
+        table.add_column("Windows", justify="right")
+        table.add_column("Points", justify="right")
+        table.add_column("Next Gap")
+
+        try:
+            from app.modules.coverage_tracker import coverage_summary
+
+            all_summaries = coverage_summary(db)
+            for source in _HISTORY_SOURCES:
+                info = all_summaries.get(source, {})
+                next_gap = info.get("next_gap")
+                next_gap_str = str(next_gap) if next_gap else "[green]none[/green]"
+                table.add_row(
+                    source,
+                    str(info.get("earliest", "-")),
+                    str(info.get("latest", "-")),
+                    str(info.get("completed_windows", 0)),
+                    f"{info.get('total_points', 0):,}",
+                    next_gap_str,
+                )
+        except (ImportError, AttributeError):
+            for source in _HISTORY_SOURCES:
+                table.add_row(source, "-", "-", "0", "0", "[dim]tracker unavailable[/dim]")
+
+        console.print(table)
+    finally:
+        db.close()
+
+
+@history_app.command("gaps")
+def history_gaps(
+    source: str = typer.Option("noaa", "--source", help="Data source"),
+    limit: int = typer.Option(20, "--limit", help="Max gaps to show"),
+):
+    """List uncovered date ranges for a source."""
+    if source not in _HISTORY_SOURCES:
+        console.print(f"[red]Unknown source: {source}[/red]")
+        console.print(f"[dim]Valid sources: {', '.join(_HISTORY_SOURCES)}[/dim]")
+        raise typer.Exit(1)
+
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        try:
+            from app.modules.coverage_tracker import find_coverage_gaps
+
+            to_date = date.today() - timedelta(days=1)
+            from_date = to_date - timedelta(days=730)
+            gaps = find_coverage_gaps(db, source, from_date, to_date)
+        except (ImportError, AttributeError):
+            console.print("[yellow]Coverage tracker not available[/yellow]")
+            return
+
+        if not gaps:
+            console.print(f"[green]No coverage gaps found for {source}[/green]")
+            return
+
+        table = Table(title=f"Coverage Gaps — {source}")
+        table.add_column("Start", style="cyan")
+        table.add_column("End", style="cyan")
+        table.add_column("Days", justify="right")
+
+        for gap_start, gap_end in gaps[:limit]:
+            gap_days = (gap_end - gap_start).days + 1
+            table.add_row(str(gap_start), str(gap_end), str(gap_days))
+
+        console.print(table)
+        if len(gaps) > limit:
+            console.print(f"[dim]... and {len(gaps) - limit} more gaps[/dim]")
+    finally:
+        db.close()
+
+
+@history_app.command("backfill")
+def history_backfill(
+    source: str = typer.Option(..., "--source", help="Data source"),
+    start: str = typer.Option(..., "--start", help="Start date (ISO format)"),
+    end: str = typer.Option(..., "--end", help="End date (ISO format)"),
+    detect: bool = typer.Option(False, "--detect/--no-detect", help="Run detection after import"),
+):
+    """Backfill historical data for a specific source and date range."""
+    if source not in _HISTORY_SOURCES:
+        console.print(f"[red]Unknown source: {source}[/red]")
+        console.print(f"[dim]Valid sources: {', '.join(_HISTORY_SOURCES)}[/dim]")
+        raise typer.Exit(1)
+
+    try:
+        start_date = date.fromisoformat(start)
+        end_date = date.fromisoformat(end)
+    except ValueError as e:
+        console.print(f"[red]Invalid date format: {e}[/red]")
+        raise typer.Exit(1)
+
+    if start_date > end_date:
+        console.print("[red]--start must be before or equal to --end[/red]")
+        raise typer.Exit(1)
+
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        console.print(f"[bold]Backfilling {source} from {start_date} to {end_date}...[/bold]")
+
+        from app.modules.history_scheduler import HistoryScheduler
+
+        scheduler = HistoryScheduler(db_factory=SessionLocal)
+        result = scheduler._call_source(db, source, start_date, end_date)
+
+        console.print(f"  Result: {result}")
+
+        if detect:
+            lookback_start = start_date - timedelta(days=90)
+            with console.status("[bold]Analyzing vessel behavior..."):
+                from app.modules.dark_vessel_discovery import discover_dark_vessels
+
+                discover_dark_vessels(
+                    db,
+                    start_date=lookback_start.isoformat(),
+                    end_date=end_date.isoformat(),
+                    skip_fetch=True,
+                )
+
+        db.commit()
+        console.print("[green]Backfill complete![/green]")
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Backfill failed: {e}[/red]")
+        raise typer.Exit(1)
+    finally:
+        db.close()
+
+
+@history_app.command("schedule")
+def history_schedule(
+    dry_run: bool = typer.Option(True, "--dry-run/--execute", help="Show planned actions without executing"),
+):
+    """Run the history scheduler once (or preview planned actions)."""
+    from app.database import SessionLocal
+    from app.modules.history_scheduler import HistoryScheduler
+
+    scheduler = HistoryScheduler(db_factory=SessionLocal)
+    enabled = scheduler._get_enabled_sources()
+
+    if not enabled:
+        console.print("[yellow]No backfill sources enabled.[/yellow]")
+        console.print("[dim]Enable sources via NOAA_BACKFILL_ENABLED, DMA_BACKFILL_ENABLED, etc.[/dim]")
+        return
+
+    console.print(f"[bold]Enabled sources:[/bold] {', '.join(enabled)}")
+
+    if dry_run:
+        db = SessionLocal()
+        try:
+            table = Table(title="Planned Backfill Actions (dry run)")
+            table.add_column("Source", style="cyan")
+            table.add_column("Action")
+            table.add_column("Date Range")
+            table.add_column("Max Days", justify="right")
+
+            from app.modules.history_scheduler import _SOURCE_MAX_DAYS
+
+            for source in enabled:
+                max_days = _SOURCE_MAX_DAYS.get(source, 30)
+                gaps: list = []
+                try:
+                    from app.modules.coverage_tracker import find_coverage_gaps
+
+                    to_date = date.today() - timedelta(days=1)
+                    from_date = to_date - timedelta(days=730)
+                    gaps = find_coverage_gaps(db, source, from_date, to_date)
+                except (ImportError, AttributeError):
+                    pass
+
+                if gaps:
+                    # Show first gap that would be filled
+                    gap_start, gap_end = gaps[0]
+                    clamped_end = min(
+                        gap_end,
+                        gap_start + timedelta(days=max_days - 1),
+                    )
+                    table.add_row(
+                        source,
+                        "Fill gap",
+                        f"{gap_start} to {clamped_end}",
+                        str(max_days),
+                    )
+                else:
+                    end_d = date.today() - timedelta(days=1)
+                    start_d = end_d - timedelta(days=max_days - 1)
+                    table.add_row(
+                        source,
+                        "Fallback window",
+                        f"{start_d} to {end_d}",
+                        str(max_days),
+                    )
+
+            console.print(table)
+        finally:
+            db.close()
+    else:
+        db = SessionLocal()
+        try:
+            with console.status("[bold]Running history backfill..."):
+                results = scheduler.run_now(db)
+            for source, result in results.items():
+                console.print(f"  {source}: {result}")
+            console.print("[green]Schedule run complete.[/green]")
+        finally:
+            db.close()
 
 
 # ---------------------------------------------------------------------------

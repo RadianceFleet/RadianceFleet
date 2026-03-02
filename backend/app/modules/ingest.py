@@ -454,6 +454,7 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
         cog_delta=cog_delta,
         draught=draught_val,
         destination=destination_val,
+        ingested_at=datetime.now(timezone.utc),
     )
     db.add(point)
 
