@@ -197,6 +197,32 @@ def _resolve_vessel(
     return None
 
 
+def _get_or_create_stub_vessel(
+    db: Session,
+    mmsi: str,
+    imo: Optional[str],
+    name: Optional[str],
+    flag: Optional[str],
+) -> Vessel:
+    """Create a minimal vessel stub for a sanctioned vessel not yet seen on AIS.
+
+    Called only when _resolve_vessel() returns None and a valid MMSI is known.
+    Uses db.flush() — caller commits after _upsert_watchlist().
+    """
+    from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+    derived_flag = flag or mmsi_to_flag(mmsi)
+    vessel = Vessel(
+        mmsi=mmsi,
+        imo=imo,
+        name=name,
+        flag=derived_flag,
+        flag_risk_category=flag_to_risk_category(derived_flag),
+    )
+    db.add(vessel)
+    db.flush()   # get vessel_id before _upsert_watchlist()
+    return vessel
+
+
 # Official OFAC SDN CSV column order (headerless format from sdn.csv).
 _OFAC_SDN_FIELDNAMES = [
     "ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
@@ -240,6 +266,7 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
     matched = 0
     unmatched = 0
     skipped = 0
+    stubs_created = 0
 
     with open(csv_path, newline="", encoding="utf-8-sig") as fh:
         reader = _ofac_csv_reader(fh)
@@ -256,14 +283,20 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
 
             result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name)
             if result is None:
-                logger.warning(
-                    "OFAC SDN: no vessel match for name=%r mmsi=%r imo=%r",
-                    name, mmsi, imo,
-                )
-                unmatched += 1
-                continue
+                if mmsi and _is_valid_mmsi(mmsi):
+                    vessel = _get_or_create_stub_vessel(db, mmsi, imo, name, None)
+                    match_type, confidence = "stub_created", 100
+                    stubs_created += 1
+                else:
+                    logger.warning(
+                        "OFAC SDN: no vessel match for name=%r mmsi=%r imo=%r",
+                        name, mmsi, imo,
+                    )
+                    unmatched += 1
+                    continue
+            else:
+                vessel, match_type, confidence = result
 
-            vessel, match_type, confidence = result
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -278,10 +311,10 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
 
     db.commit()
     logger.info(
-        "OFAC SDN load complete: matched=%d unmatched=%d skipped=%d",
-        matched, unmatched, skipped,
+        "OFAC SDN load complete: matched=%d unmatched=%d skipped=%d stubs_created=%d",
+        matched, unmatched, skipped, stubs_created,
     )
-    return {"matched": matched, "unmatched": unmatched, "skipped": skipped}
+    return {"matched": matched, "unmatched": unmatched, "skipped": skipped, "stubs_created": stubs_created}
 
 
 # ── KSE Institute loader ──────────────────────────────────────────────────────
@@ -302,6 +335,7 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
     """
     matched = 0
     unmatched = 0
+    stubs_created = 0
 
     # Column name candidates in priority order.
     _NAME_FIELDS = ["vessel_name", "name", "ship_name", "VESSEL_NAME", "NAME"]
@@ -326,14 +360,20 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
 
             result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
             if result is None:
-                logger.warning(
-                    "KSE: no vessel match for name=%r flag=%r mmsi=%r imo=%r",
-                    name, flag, mmsi, imo,
-                )
-                unmatched += 1
-                continue
+                if mmsi and _is_valid_mmsi(mmsi):
+                    vessel = _get_or_create_stub_vessel(db, mmsi, imo, name, flag)
+                    match_type, confidence = "stub_created", 100
+                    stubs_created += 1
+                else:
+                    logger.warning(
+                        "KSE: no vessel match for name=%r flag=%r mmsi=%r imo=%r",
+                        name, flag, mmsi, imo,
+                    )
+                    unmatched += 1
+                    continue
+            else:
+                vessel, match_type, confidence = result
 
-            vessel, match_type, confidence = result
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -348,9 +388,10 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
 
     db.commit()
     logger.info(
-        "KSE Institute load complete: matched=%d unmatched=%d", matched, unmatched
+        "KSE Institute load complete: matched=%d unmatched=%d stubs_created=%d",
+        matched, unmatched, stubs_created,
     )
-    return {"matched": matched, "unmatched": unmatched}
+    return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}
 
 
 # ── OpenSanctions loader ──────────────────────────────────────────────────────
@@ -427,6 +468,7 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
     """
     matched = 0
     unmatched = 0
+    stubs_created = 0
 
     entities = _load_opensanctions_entities(json_path)
     if entities is None:
@@ -480,14 +522,20 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
         # ── Match vessel ──────────────────────────────────────────────────────
         result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
         if result is None:
-            logger.warning(
-                "OpenSanctions: no vessel match for name=%r mmsi=%r imo=%r dataset=%r",
-                name, mmsi, imo, dataset_id,
-            )
-            unmatched += 1
-            continue
+            if mmsi and _is_valid_mmsi(mmsi):
+                vessel = _get_or_create_stub_vessel(db, mmsi, imo, name, flag)
+                match_type, confidence = "stub_created", 100
+                stubs_created += 1
+            else:
+                logger.warning(
+                    "OpenSanctions: no vessel match for name=%r mmsi=%r imo=%r dataset=%r",
+                    name, mmsi, imo, dataset_id,
+                )
+                unmatched += 1
+                continue
+        else:
+            vessel, match_type, confidence = result
 
-        vessel, match_type, confidence = result
         _upsert_watchlist(
             db,
             vessel=vessel,
@@ -518,9 +566,10 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
         )
 
     logger.info(
-        "OpenSanctions load complete: matched=%d unmatched=%d", matched, unmatched
+        "OpenSanctions load complete: matched=%d unmatched=%d stubs_created=%d",
+        matched, unmatched, stubs_created,
     )
-    return {"matched": matched, "unmatched": unmatched}
+    return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}
 
 
 # ── FleetLeaks loader ────────────────────────────────────────────────────────
@@ -541,6 +590,7 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
     """
     matched = 0
     unmatched = 0
+    stubs_created = 0
 
     try:
         with open(json_path, encoding="utf-8") as fh:
@@ -568,13 +618,19 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
 
         result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
         if result is None:
-            logger.warning(
-                "FleetLeaks: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo
-            )
-            unmatched += 1
-            continue
+            if mmsi and _is_valid_mmsi(mmsi):
+                vessel = _get_or_create_stub_vessel(db, mmsi, imo, name, flag)
+                match_type, confidence = "stub_created", 100
+                stubs_created += 1
+            else:
+                logger.warning(
+                    "FleetLeaks: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo
+                )
+                unmatched += 1
+                continue
+        else:
+            vessel, match_type, confidence = result
 
-        vessel, match_type, confidence = result
         _upsert_watchlist(
             db,
             vessel=vessel,
@@ -586,8 +642,11 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
         matched += 1
 
     db.commit()
-    logger.info("FleetLeaks load: matched=%d unmatched=%d", matched, unmatched)
-    return {"matched": matched, "unmatched": unmatched}
+    logger.info(
+        "FleetLeaks load: matched=%d unmatched=%d stubs_created=%d",
+        matched, unmatched, stubs_created,
+    )
+    return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}
 
 
 # ── Ukraine GUR loader ───────────────────────────────────────────────────────
@@ -609,6 +668,7 @@ def load_gur_list(db: Session, csv_path: str) -> dict:
     """
     matched = 0
     unmatched = 0
+    stubs_created = 0
 
     _NAME_FIELDS = ["name", "vessel_name", "ship_name", "Name", "VESSEL_NAME"]
     _MMSI_FIELDS = ["mmsi", "MMSI"]
@@ -632,13 +692,19 @@ def load_gur_list(db: Session, csv_path: str) -> dict:
 
             result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
             if result is None:
-                logger.warning(
-                    "GUR: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo
-                )
-                unmatched += 1
-                continue
+                if mmsi and _is_valid_mmsi(mmsi):
+                    vessel = _get_or_create_stub_vessel(db, mmsi, imo, name, flag)
+                    match_type, confidence = "stub_created", 100
+                    stubs_created += 1
+                else:
+                    logger.warning(
+                        "GUR: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo
+                    )
+                    unmatched += 1
+                    continue
+            else:
+                vessel, match_type, confidence = result
 
-            vessel, match_type, confidence = result
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -650,5 +716,8 @@ def load_gur_list(db: Session, csv_path: str) -> dict:
             matched += 1
 
     db.commit()
-    logger.info("GUR load: matched=%d unmatched=%d", matched, unmatched)
-    return {"matched": matched, "unmatched": unmatched}
+    logger.info(
+        "GUR load: matched=%d unmatched=%d stubs_created=%d",
+        matched, unmatched, stubs_created,
+    )
+    return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}
