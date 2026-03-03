@@ -966,15 +966,25 @@ def backfill(
         db.close()
 
 
-_VALID_SOURCES = ("gfw", "watchlist", "all")
+_VALID_SOURCES = ("gfw", "watchlist", "equasis", "all")
 
 
 @app.command("enrich-identity")
 def enrich_identity(
-    source: str = typer.Argument("gfw", help="Source: gfw, watchlist, all"),
+    source: str = typer.Argument("gfw", help="Source: gfw, watchlist, equasis, all"),
     limit: int = typer.Option(200, "--limit", help="Max vessels per source"),
 ):
-    """Enrich vessel identity data from external sources."""
+    """Enrich vessel identity data from external sources.
+
+    Sources:
+      gfw      — Global Fishing Watch vessel search API (requires GFW_API_TOKEN)
+      watchlist — Reload OFAC/OpenSanctions/FleetLeaks/GUR/KSE watchlists
+      equasis  — Equasis vessel registry HTML scraper (requires EQUASIS_SCRAPING_ENABLED=true)
+      all      — All sources above
+
+    WARNING: The 'equasis' source requires opt-in via EQUASIS_SCRAPING_ENABLED=true.
+    Equasis ToS prohibits automated access. For production, use Datalastic API instead.
+    """
     if source not in _VALID_SOURCES:
         raise typer.BadParameter(f"source must be one of {_VALID_SOURCES}, got '{source}'")
     from app.database import SessionLocal
@@ -987,6 +997,13 @@ def enrich_identity(
         if source in ("watchlist", "all"):
             _update_fetch_watchlists(db)
             console.print("  Watchlists: loaded (OFAC, OpenSanctions, FleetLeaks, GUR, KSE)")
+        if source in ("equasis", "all"):
+            from app.modules.vessel_enrichment import enrich_vessels_from_equasis
+            result = enrich_vessels_from_equasis(db, limit=limit)
+            if result.get("disabled"):
+                console.print("  [yellow]Equasis: disabled (set EQUASIS_SCRAPING_ENABLED=true to opt in)[/yellow]")
+            else:
+                console.print(f"  Equasis: enriched {result['enriched']} vessels")
     finally:
         db.close()
 

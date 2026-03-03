@@ -16,7 +16,8 @@ def _make_mock_db(vessels):
     return db
 
 
-def _make_vessel(mmsi, imo=None, deadweight=None, year_built=None, flag=None, flag_risk=None, vessel_type=None):
+def _make_vessel(mmsi, imo=None, deadweight=None, year_built=None, flag=None, flag_risk=None,
+                 vessel_type=None, is_heuristic_dwt=False):
     """Create a vessel-like object with real attributes (not MagicMock attributes)."""
     class FakeVessel:
         pass
@@ -28,6 +29,7 @@ def _make_vessel(mmsi, imo=None, deadweight=None, year_built=None, flag=None, fl
     v.flag = flag
     v.flag_risk_category = flag_risk
     v.vessel_type = vessel_type
+    v.is_heuristic_dwt = is_heuristic_dwt
     v.vessel_id = hash(mmsi) % 10000  # Stable fake ID for enriched_ids tracking
     return v
 
@@ -145,3 +147,101 @@ def test_infer_pi_coverage_noop():
     # Must not touch the database at all
     db.query.assert_not_called()
     db.commit.assert_not_called()
+
+
+@patch("app.modules.vessel_enrichment.time.sleep")
+@patch("app.modules.gfw_client.search_vessel")
+def test_enrich_stores_vessel_type_before_dwt(mock_search, mock_sleep):
+    """Regression: vessel_type from GFW is stored BEFORE DWT computation.
+
+    The bug: _is_likely_tanker() was called with no vessel_type set, giving
+    the wrong multiplier (1.0 instead of 1.5 for tankers).
+    Fix: store vessel_type first, then compute DWT.
+    """
+    vessel = _make_vessel("273900001", flag="RU", flag_risk=FlagRiskEnum.HIGH_RISK)
+    assert vessel.vessel_type is None
+    assert vessel.deadweight is None
+
+    db = _make_mock_db([vessel])
+    mock_search.return_value = [{
+        "mmsi": "273900001",
+        "imo": "9111111",
+        "vessel_type": "Crude Oil Tanker",
+        "tonnage_gt": 50000,
+        "flag": "RU",
+        "year_built": 2008,
+    }]
+
+    result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
+
+    assert result["enriched"] == 1
+    assert vessel.vessel_type == "Crude Oil Tanker"
+    # DWT = 50000 × 1.5 (tanker multiplier applied because vessel_type was set first)
+    assert vessel.deadweight == 75000.0  # NOT 50000.0 (bug outcome)
+    assert vessel.is_heuristic_dwt is True
+    db.commit.assert_called_once()
+
+
+@patch("app.modules.vessel_enrichment.time.sleep")
+@patch("app.modules.gfw_client.search_vessel")
+def test_enrich_sets_is_heuristic_dwt_for_gt_derived(mock_search, mock_sleep):
+    """is_heuristic_dwt=True when DWT is derived from GFW GT heuristic."""
+    vessel = _make_vessel("273900002")
+    assert vessel.is_heuristic_dwt is False
+
+    db = _make_mock_db([vessel])
+    mock_search.return_value = [{
+        "mmsi": "273900002",
+        "imo": "9222222",
+        "tonnage_gt": 30000,
+    }]
+
+    result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
+
+    assert result["enriched"] == 1
+    assert vessel.deadweight == 30000.0  # Non-tanker: GT × 1.0
+    assert vessel.is_heuristic_dwt is True
+    db.commit.assert_called_once()
+
+
+@patch("app.modules.vessel_enrichment.time.sleep")
+@patch("app.modules.gfw_client.search_vessel")
+def test_enrich_re_enriches_heuristic_dwt_vessels(mock_search, mock_sleep):
+    """Vessels with is_heuristic_dwt=True are re-enriched with updated GT value."""
+    vessel = _make_vessel("273900003", deadweight=50000.0, is_heuristic_dwt=True)
+
+    db = _make_mock_db([vessel])
+    mock_search.return_value = [{
+        "mmsi": "273900003",
+        "imo": "9333333",
+        "tonnage_gt": 60000,
+    }]
+
+    result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
+
+    assert result["enriched"] == 1
+    assert vessel.deadweight == 60000.0  # Updated from 50000 to 60000
+    assert vessel.is_heuristic_dwt is True
+    db.commit.assert_called_once()
+
+
+@patch("app.modules.vessel_enrichment.time.sleep")
+@patch("app.modules.gfw_client.search_vessel")
+def test_enrich_non_tanker_uses_1x_gt_multiplier(mock_search, mock_sleep):
+    """Non-tanker vessel_type uses GT directly (1.0×), not the 1.5× tanker factor."""
+    vessel = _make_vessel("273900004", flag="PA")
+
+    db = _make_mock_db([vessel])
+    mock_search.return_value = [{
+        "mmsi": "273900004",
+        "vessel_type": "General Cargo",
+        "tonnage_gt": 10000,
+    }]
+
+    result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
+
+    assert result["enriched"] == 1
+    assert vessel.vessel_type == "General Cargo"
+    assert vessel.deadweight == 10000.0  # NOT 15000.0 (which would be 1.5× tanker)
+    assert vessel.is_heuristic_dwt is True
+    db.commit.assert_called_once()

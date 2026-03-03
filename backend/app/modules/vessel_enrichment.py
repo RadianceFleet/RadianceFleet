@@ -274,3 +274,135 @@ def infer_pi_coverage(db: Session) -> dict[str, int]:
     Returns {"lapsed": int, "unchanged": int}.
     """
     return {"lapsed": 0, "unchanged": 0}
+
+
+def enrich_vessels_from_equasis(
+    db: Session,
+    limit: int = 100,
+) -> dict:
+    """Enrich vessel metadata from Equasis (opt-in — requires EQUASIS_SCRAPING_ENABLED=true).
+
+    Prioritizes watchlisted vessels first (they benefit most from enrichment).
+    Selects vessels where DWT is NULL or is_heuristic_dwt=True, AND IMO is known.
+
+    WARNING: Equasis ToS prohibits automated access. This function is disabled by
+    default (EQUASIS_SCRAPING_ENABLED=false). For production use, Datalastic API
+    (https://datalastic.com) is the recommended ToS-compliant alternative.
+
+    Args:
+        db: SQLAlchemy session.
+        limit: Max vessels to enrich per run.
+
+    Returns:
+        {"enriched": int, "failed": int, "skipped": int}
+        or {"enriched": 0, "failed": 0, "skipped": 0, "disabled": True} when opt-in flag is off.
+    """
+    from app.models.vessel import Vessel
+    from app.models.vessel_watchlist import VesselWatchlist
+    from app.utils.vessel_identity import flag_to_risk_category
+    from app.modules.equasis_client import EquasisClient
+    from sqlalchemy import or_
+
+    try:
+        client = EquasisClient()
+    except RuntimeError as exc:
+        logger.warning("Equasis enrichment skipped: %s", exc)
+        return {"enriched": 0, "failed": 0, "skipped": 0, "disabled": True}
+
+    # Watchlisted vessels first (prioritize by watchlist status)
+    watchlisted_ids = {
+        row.vessel_id for row in db.query(VesselWatchlist.vessel_id)
+        .filter(VesselWatchlist.is_active == True).all()  # noqa: E712
+    }
+
+    # Select vessels that need enrichment
+    vessels = (
+        db.query(Vessel)
+        .filter(
+            or_(
+                Vessel.deadweight == None,  # noqa: E711
+                Vessel.is_heuristic_dwt == True,  # noqa: E712
+            ),
+            Vessel.imo != None,  # noqa: E711  — Equasis requires IMO
+        )
+        .all()
+    )
+
+    # Sort: watchlisted first, then by vessel_id
+    vessels.sort(key=lambda v: (0 if v.vessel_id in watchlisted_ids else 1, v.vessel_id))
+    vessels = vessels[:limit]
+
+    stats = {"enriched": 0, "failed": 0, "skipped": 0}
+    _SOURCE = "equasis_enrichment"
+
+    for vessel in vessels:
+        # Try IMO search first; fall back to MMSI
+        data = client.search_by_imo(vessel.imo)
+        if data is None and vessel.mmsi:
+            data = client.search_by_mmsi(vessel.mmsi)
+        if data is None:
+            stats["skipped"] += 1
+            continue
+
+        changed = False
+
+        # DWT — prefer authoritative Equasis value over heuristic
+        if "dwt" in data and data["dwt"]:
+            try:
+                new_dwt = float(data["dwt"].replace(",", ""))
+                old_dwt = vessel.deadweight
+                if old_dwt != new_dwt:
+                    vessel.deadweight = new_dwt
+                    vessel.is_heuristic_dwt = False  # Authoritative source
+                    db.add(VesselHistory(
+                        vessel_id=vessel.vessel_id, field_changed="deadweight",
+                        old_value=str(old_dwt) if old_dwt is not None else "",
+                        new_value=str(new_dwt),
+                        observed_at=datetime.utcnow(), source=_SOURCE,
+                    ))
+                    changed = True
+            except (ValueError, AttributeError):
+                pass
+
+        # vessel_type
+        if "vessel_type" in data and data["vessel_type"] and not vessel.vessel_type:
+            vessel.vessel_type = data["vessel_type"]
+            db.add(VesselHistory(
+                vessel_id=vessel.vessel_id, field_changed="vessel_type",
+                old_value="", new_value=data["vessel_type"],
+                observed_at=datetime.utcnow(), source=_SOURCE,
+            ))
+            changed = True
+
+        # year_built
+        if "year_built" in data and data["year_built"] and vessel.year_built is None:
+            try:
+                vessel.year_built = int(data["year_built"])
+                db.add(VesselHistory(
+                    vessel_id=vessel.vessel_id, field_changed="year_built",
+                    old_value="", new_value=data["year_built"],
+                    observed_at=datetime.utcnow(), source=_SOURCE,
+                ))
+                changed = True
+            except ValueError:
+                pass
+
+        # flag — only update if missing
+        if "flag" in data and data["flag"] and not vessel.flag:
+            vessel.flag = data["flag"]
+            vessel.flag_risk_category = flag_to_risk_category(data["flag"])
+            changed = True
+
+        if changed:
+            stats["enriched"] += 1
+        else:
+            stats["skipped"] += 1
+
+    if stats["enriched"] > 0:
+        db.commit()
+
+    logger.info(
+        "Equasis enrichment complete: enriched=%d failed=%d skipped=%d",
+        stats["enriched"], stats["failed"], stats["skipped"],
+    )
+    return stats
