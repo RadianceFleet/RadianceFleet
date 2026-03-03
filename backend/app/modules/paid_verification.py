@@ -141,6 +141,68 @@ _PROVIDERS: dict[str, VerificationProvider] = {
 }
 
 
+def _apply_verification_result(
+    vessel: Vessel, result: VerificationResult, db: Session
+) -> None:
+    """Write enriched fields from VerificationResult.data back to Vessel + VesselHistory.
+
+    Updates vessel metadata (DWT, vessel_type, year_built) and owner-level fields
+    (ism_manager, pi_club_name) from paid verification results.
+
+    Uses db.flush() only — caller is responsible for db.commit().
+    """
+    from app.models.vessel_history import VesselHistory
+    from app.models.vessel_owner import VesselOwner
+
+    if not result.success or not result.data:
+        return
+
+    # Direct Vessel field updates — tracked in VesselHistory for rollback
+    VESSEL_FIELD_MAP = {
+        "dwt": ("deadweight", float),
+        "vessel_type": ("vessel_type", str),
+        "year_built": ("year_built", int),
+    }
+    for data_key, (field_name, cast) in VESSEL_FIELD_MAP.items():
+        if data_key in result.data:
+            try:
+                old_val = getattr(vessel, field_name)
+                new_val = cast(result.data[data_key])
+                if old_val != new_val:
+                    setattr(vessel, field_name, new_val)
+                    db.add(VesselHistory(
+                        vessel_id=vessel.vessel_id,
+                        field_changed=field_name,
+                        old_value=str(old_val) if old_val is not None else "",
+                        new_value=str(new_val),
+                        source=f"paid_verification:{result.provider}",
+                    ))
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Could not cast field %s from verification data for vessel %s",
+                    field_name, vessel.vessel_id,
+                )
+
+    # ISM/P&I: update most recently created VesselOwner row only.
+    # Never create a new row — owner_name is NOT NULL.
+    # owner_id is the PK: highest = most recently inserted.
+    # NOTE: VesselHistory is NOT recorded for owner fields (only Vessel model fields tracked).
+    # Owner-level changes are captured in VerificationLog.result_json instead.
+    owner = (
+        db.query(VesselOwner)
+        .filter(VesselOwner.vessel_id == vessel.vessel_id)
+        .order_by(VesselOwner.owner_id.desc())
+        .first()
+    )
+    if owner:
+        if result.data.get("ism_manager"):
+            owner.ism_manager = result.data["ism_manager"]
+        if result.data.get("pi_club"):
+            owner.pi_club_name = result.data["pi_club"]
+
+    db.flush()  # matches existing pattern in verify_vessel()
+
+
 def get_monthly_spend(db: Session) -> float:
     """Get total USD spent on paid verifications this calendar month."""
     now = datetime.now(timezone.utc)
@@ -193,13 +255,19 @@ def verify_vessel(
     # Execute verification
     result = provider.verify_vessel(vessel)
 
+    # Apply field write-back for successful verifications
+    if result.success:
+        _apply_verification_result(vessel, result, db)
+
     # Log result
+    import json as _json
     log = VerificationLog(
         vessel_id=vessel_id,
         provider=provider_name,
         response_status="success" if result.success else "error",
         cost_usd=result.cost_usd,
         result_summary=str(result.data)[:500] if result.success else result.error,
+        result_json=_json.dumps(result.data) if result.success and result.data else None,
     )
     db.add(log)
     db.flush()

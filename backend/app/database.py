@@ -90,6 +90,8 @@ def _run_migrations() -> None:
         ("ais_points", "ingested_at", "DATETIME"),
         # Track B1 — heuristic DWT flag (derived from GT, not authoritative)
         ("vessels", "is_heuristic_dwt", "BOOLEAN NOT NULL DEFAULT 0"),
+        # Track B3 — SeaWeb field write-back: full JSON payload on verification log
+        ("verification_logs", "result_json", "TEXT"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
