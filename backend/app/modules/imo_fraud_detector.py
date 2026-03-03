@@ -20,16 +20,9 @@ from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
 from app.models.ais_point import AISPoint
 
+from app.utils.vessel_identity import validate_imo_checksum as _validate_imo_checksum
+
 logger = logging.getLogger(__name__)
-
-
-def _validate_imo_checksum(imo: str) -> bool:
-    """Validate IMO number checksum (7 digits, weighted sum mod 10)."""
-    if not imo or len(imo) != 7 or not imo.isdigit():
-        return False
-    digits = [int(d) for d in imo]
-    weighted_sum = sum(d * w for d, w in zip(digits[:6], [7, 6, 5, 4, 3, 2]))
-    return weighted_sum % 10 == digits[6]
 
 
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

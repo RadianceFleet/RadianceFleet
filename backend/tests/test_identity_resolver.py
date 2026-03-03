@@ -19,8 +19,8 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch, PropertyMock, call
 
+from app.utils.vessel_identity import validate_imo_checksum
 from app.modules.identity_resolver import (
-    validate_imo_checksum,
     resolve_canonical,
     execute_merge,
     reverse_merge,

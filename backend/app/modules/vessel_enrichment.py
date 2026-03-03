@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.vessel_history import VesselHistory
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +59,10 @@ def enrich_vessels_from_gfw(
 
     vessels = (
         db.query(Vessel)
-        .filter(Vessel.deadweight == None, Vessel.mmsi != None)  # noqa: E711
+        .filter(
+            or_(Vessel.deadweight == None, Vessel.imo == None, Vessel.callsign == None),  # noqa: E711
+            Vessel.mmsi != None,  # noqa: E711
+        )
         .limit(limit)
         .all()
     )
@@ -95,6 +101,17 @@ def enrich_vessels_from_gfw(
         if match.get("imo") and not vessel.imo:
             vessel.imo = str(match["imo"])
             changed = True
+            # Provenance for rollback
+            if not db.query(VesselHistory).filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "gfw_enrichment_fill",
+            ).first():
+                db.add(VesselHistory(
+                    vessel_id=vessel.vessel_id, field_changed="imo",
+                    old_value="", new_value=str(match["imo"]),
+                    observed_at=datetime.utcnow(), source="gfw_enrichment_fill",
+                ))
 
         # GFW returns tonnage_gt (Gross Tonnage), not DWT.
         # DWT ≈ 1.5× GT for tankers. For non-tankers, GT is a reasonable proxy.
@@ -116,6 +133,44 @@ def enrich_vessels_from_gfw(
         if year and vessel.year_built is None:
             vessel.year_built = int(year)
             changed = True
+
+        if match.get("callsign") and not vessel.callsign:
+            vessel.callsign = match["callsign"]
+            changed = True
+            if not db.query(VesselHistory).filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "callsign",
+                VesselHistory.source == "gfw_enrichment_fill",
+            ).first():
+                db.add(VesselHistory(
+                    vessel_id=vessel.vessel_id, field_changed="callsign",
+                    old_value="", new_value=match["callsign"],
+                    observed_at=datetime.utcnow(), source="gfw_enrichment_fill",
+                ))
+
+        # Populate VesselHistory from GFW identity_history
+        from sqlalchemy.exc import IntegrityError
+        for hist in match.get("identity_history", []):
+            try:
+                _obs_at = datetime.fromisoformat(hist["date_from"].replace("Z", "+00:00"))
+                _obs_at = _obs_at.replace(tzinfo=None)  # naive UTC
+            except (ValueError, AttributeError):
+                continue
+
+            for field, hist_key in [("imo", "imo"), ("name", "name"), ("callsign", "callsign"), ("flag", "flag")]:
+                hist_val = hist.get(hist_key)
+                if not hist_val or not str(hist_val).strip():
+                    continue
+                sp = db.begin_nested()
+                try:
+                    db.add(VesselHistory(
+                        vessel_id=vessel.vessel_id, field_changed=field,
+                        old_value="", new_value=str(hist_val).strip(),
+                        observed_at=_obs_at, source="gfw_enrichment_history",
+                    ))
+                    sp.commit()
+                except IntegrityError:
+                    sp.rollback()
 
         if changed:
             stats["enriched"] += 1
