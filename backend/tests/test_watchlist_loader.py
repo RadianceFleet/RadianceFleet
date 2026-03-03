@@ -109,19 +109,25 @@ def _write_fleetleaks_json(vessels):
 
 class TestIsValidMMSI:
     def test_valid_9_digit(self):
-        assert _is_valid_mmsi("123456789") is True
+        assert _is_valid_mmsi("273456789") is True  # MID 273 = Russia
 
     def test_valid_with_whitespace(self):
-        assert _is_valid_mmsi("  123456789  ") is True
+        assert _is_valid_mmsi("  273456789  ") is True
+
+    def test_invalid_starts_with_1(self):
+        assert _is_valid_mmsi("123456789") is False  # Coast-station range, not ship
+
+    def test_invalid_all_zeros(self):
+        assert _is_valid_mmsi("000000000") is False  # Null/placeholder MMSI
 
     def test_invalid_8_digits(self):
-        assert _is_valid_mmsi("12345678") is False
+        assert _is_valid_mmsi("27345678") is False
 
     def test_invalid_10_digits(self):
-        assert _is_valid_mmsi("1234567890") is False
+        assert _is_valid_mmsi("2734567890") is False
 
     def test_invalid_letters(self):
-        assert _is_valid_mmsi("12345678a") is False
+        assert _is_valid_mmsi("27345678a") is False
 
     def test_empty_string(self):
         assert _is_valid_mmsi("") is False

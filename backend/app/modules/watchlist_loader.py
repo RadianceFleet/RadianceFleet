@@ -43,14 +43,15 @@ logger = logging.getLogger(__name__)
 from app.config import settings as _settings
 _FUZZY_THRESHOLD: int = _settings.FUZZY_MATCH_THRESHOLD
 
-# Compiled regex for MMSI validation (exactly 9 digits).
-_MMSI_RE = re.compile(r"^\d{9}$")
+# Compiled regex for MMSI validation: 9 digits, first digit 2-7 (ship MID range).
+# Rejects all-zeros, coast-station MMSIs (0xx), and reserved ranges (1xx, 8xx, 9xx).
+_MMSI_RE = re.compile(r"^[2-7]\d{8}$")
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _is_valid_mmsi(value: str) -> bool:
-    """Return True if *value* looks like a 9-digit MMSI string."""
+    """Return True if *value* looks like a valid ship MMSI (9 digits, MID 200–799)."""
     return bool(value and _MMSI_RE.match(value.strip()))
 
 
