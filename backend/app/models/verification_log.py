@@ -25,3 +25,6 @@ class VerificationLog(Base):
     response_status: Mapped[str] = mapped_column(String(20), nullable=False)
     cost_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    result_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # result_json stores json.dumps(result.data) — full untruncated payload for audit trail
+    # result_summary (above) is the human-readable truncated label (both fields coexist)

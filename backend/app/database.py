@@ -83,6 +83,8 @@ def _run_migrations() -> None:
         ("vessel_owners", "ownership_pct", "REAL"),
         # Stage B — destination field on AIS points
         ("ais_points", "destination", "VARCHAR(20)"),
+        # Track B3 — SeaWeb field write-back: full JSON payload on verification log
+        ("verification_logs", "result_json", "TEXT"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
