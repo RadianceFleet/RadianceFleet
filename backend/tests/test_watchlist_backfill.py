@@ -152,15 +152,16 @@ class TestOfacBackfill:
         vessel = _make_vessel(db, mmsi="211456789", name="SHADOW TANKER")
         assert vessel.imo is None
 
+        # OFAC loader reads MMSI and IMO from the REMARKS field via regex patterns
         path = _write_ofac_csv([{
-            "ent_num": VALID_IMO,
+            "ent_num": "1",
             "SDN_NAME": "SHADOW TANKER",
             "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "211456789",
+            "VESSEL_ID": "",
             "Call_Sign": "",
             "Program": "", "Title": "", "Vess_type": "",
             "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "Sanctioned",
+            "Vess_owner": "", "REMARKS": f"MMSI 211456789; IMO {VALID_IMO}; Sanctioned tanker",
         }])
         try:
             result = load_ofac_sdn(db, path)
@@ -187,14 +188,14 @@ class TestOfacBackfill:
         vessel = _make_vessel(db, mmsi="211456789", name="SHADOW TANKER")
 
         path = _write_ofac_csv([{
-            "ent_num": VALID_IMO,
+            "ent_num": "1",
             "SDN_NAME": "SHADOW TANKER",
             "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "211456789",
+            "VESSEL_ID": "",
             "Call_Sign": "UBCD",
             "Program": "", "Title": "", "Vess_type": "",
             "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "Sanctioned",
+            "Vess_owner": "", "REMARKS": f"MMSI 211456789; IMO {VALID_IMO}; Sanctioned tanker",
         }])
         try:
             load_ofac_sdn(db, path)
@@ -326,15 +327,16 @@ class TestOfacBackfill:
         vessel = _make_vessel(db, mmsi="211456789", name="SHADOW TANKER")
         assert vessel.callsign is None
 
+        # MMSI in REMARKS for exact_mmsi match; callsign from Call_Sign column
         path = _write_ofac_csv([{
-            "ent_num": VALID_IMO,
+            "ent_num": "1",
             "SDN_NAME": "SHADOW TANKER",
             "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "211456789",
+            "VESSEL_ID": "",
             "Call_Sign": "UBCD5",
             "Program": "", "Title": "", "Vess_type": "",
             "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "Sanctioned",
+            "Vess_owner": "", "REMARKS": "MMSI 211456789; Sanctioned tanker",
         }])
         try:
             load_ofac_sdn(db, path)

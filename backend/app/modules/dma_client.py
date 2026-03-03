@@ -255,6 +255,16 @@ def fetch_and_import_dma(
                             continue
                 else:
                     # Update vessel metadata if we have better data
+                    # Track identity changes (both old and new must be non-None)
+                    from app.modules.ingest import _track_field_change
+                    _new_name = row.get("vessel_name") or None
+                    _new_callsign = row.get("callsign") or None
+                    if imo and vessel.imo and imo != vessel.imo:
+                        _track_field_change(db, vessel, "imo", vessel.imo, imo, ts, "dma")
+                    if _new_callsign and vessel.callsign and _new_callsign != vessel.callsign:
+                        _track_field_change(db, vessel, "callsign", vessel.callsign, _new_callsign, ts, "dma")
+                    if _new_name and vessel.name and _new_name != vessel.name:
+                        _track_field_change(db, vessel, "name", vessel.name, _new_name, ts, "dma")
                     updated = False
                     if imo and not vessel.imo:
                         vessel.imo = imo
