@@ -205,10 +205,10 @@ class TestOfacStubCreation:
             "ent_num": "",
             "SDN_NAME": "SHADOW TANKER",
             "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "273123456",
+            "VESSEL_ID": "",
             "Call_Sign": "", "Program": "", "Title": "", "Vess_type": "",
             "Tonnage": "", "GRT": "", "Vess_flag": "RU",
-            "Vess_owner": "", "REMARKS": "",
+            "Vess_owner": "", "REMARKS": "MMSI 273123456",  # OFAC loader reads MMSI from REMARKS regex
         }])
         try:
             result = load_ofac_sdn(db, path)
@@ -294,10 +294,10 @@ class TestOfacStubCreation:
             "ent_num": "",
             "SDN_NAME": "RUSSIAN SHADOW",
             "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "273999001",  # MID 273 = RU
+            "VESSEL_ID": "",
             "Call_Sign": "", "Program": "", "Title": "", "Vess_type": "",
             "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "",
+            "Vess_owner": "", "REMARKS": "MMSI 273999001",  # MID 273 = RU; OFAC reads MMSI from REMARKS regex
         }])
         try:
             result = load_ofac_sdn(db, path)
@@ -334,7 +334,7 @@ class TestKseStubCreation:
 
         wl = db.query(VesselWatchlist).filter(
             VesselWatchlist.vessel_id == vessel.vessel_id,
-            VesselWatchlist.watchlist_source == "KSE_INSTITUTE",
+            VesselWatchlist.watchlist_source == "KSE_SHADOW",
         ).first()
         assert wl is not None
         assert wl.match_type == "stub_created"
