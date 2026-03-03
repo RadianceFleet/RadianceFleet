@@ -48,8 +48,8 @@ FEATURE_NAMES = [
 _NUM_FEATURES = len(FEATURE_NAMES)
 
 # ── Thresholds ─────────────────────────────────────────────────────────────────
-_MIN_POINTS = 300
-_MIN_SPAN_HOURS = 24
+_MIN_POINTS = 20
+_MIN_SPAN_HOURS = 2
 _ANCHORED_SOG_THRESHOLD = 0.5
 _WINDOW_HOURS = 6
 _BATCH_CAP = 500

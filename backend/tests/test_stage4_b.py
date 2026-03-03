@@ -417,11 +417,11 @@ class TestComputeFingerprint:
         db.flush.assert_called_once()
 
     def test_insufficient_points(self):
-        """compute_fingerprint returns None with < 300 points."""
+        """compute_fingerprint returns None with < 20 points."""
         from app.modules.vessel_fingerprint import compute_fingerprint
 
         db = MagicMock()
-        points = _make_points(n=100)
+        points = _make_points(n=10)
 
         mock_query = MagicMock()
         mock_filter = MagicMock()
@@ -435,13 +435,13 @@ class TestComputeFingerprint:
         assert result is None
 
     def test_insufficient_time_span(self):
-        """compute_fingerprint returns None if span < 24h."""
+        """compute_fingerprint returns None if span < 2h."""
         from app.modules.vessel_fingerprint import compute_fingerprint
 
         db = MagicMock()
         start = datetime.datetime(2025, 1, 1, 0, 0, 0)
-        # 300 points but only 5h span (1 min intervals)
-        points = _make_points(n=300, start_ts=start, interval_seconds=60)
+        # 20 points but only 19 min span (1 min intervals) — below 2h minimum
+        points = _make_points(n=20, start_ts=start, interval_seconds=60)
 
         mock_query = MagicMock()
         mock_filter = MagicMock()
