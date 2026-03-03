@@ -100,22 +100,6 @@ MID_TO_FLAG: dict[str, str] = {
 }
 
 
-def validate_imo_checksum(imo: str) -> bool:
-    """Validate IMO number using the check digit algorithm.
-
-    IMO numbers are 7 digits (prefixed with "IMO" optionally).
-    Check digit = last digit. Sum of (digit_i * (7-i)) for i=0..5 mod 10 == check digit.
-    Rejects all-zero IMOs as they are not real vessel identifiers.
-    """
-    digits = imo.replace("IMO", "").replace("imo", "").strip()
-    if not digits.isdigit() or len(digits) != 7:
-        return False
-    if digits == "0000000":
-        return False
-    total = sum(int(digits[i]) * (7 - i) for i in range(6))
-    return total % 10 == int(digits[6])
-
-
 def mmsi_to_flag(mmsi: str) -> str | None:
     """Extract flag state ISO code from MMSI Maritime Identification Digits.
 

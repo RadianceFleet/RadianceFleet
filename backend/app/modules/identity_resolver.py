@@ -143,6 +143,10 @@ def detect_merge_candidates(
     # Pre-load anchorage density info for filtering
     corridor_vessels_cache: dict[int, int] = {}
 
+    all_vessel_ids = {v.vessel_id for v, _ in dark_vessels} | {v.vessel_id for v, _ in new_vessels}
+    _history_cache = _build_history_cache(db, all_vessel_ids)
+    _encounter_pairs = _build_encounter_cache(db, all_vessel_ids)
+
     # 3. Cross-match with speed feasibility
     for dark_v, dark_last in dark_vessels:
         for new_v, new_first in new_vessels:
@@ -188,6 +192,8 @@ def detect_merge_candidates(
                 db, dark_v, new_v, dark_last, new_first,
                 distance, time_delta_h, max_travel,
                 corridor_vessels_cache,
+                history_cache=_history_cache,
+                encounter_cache=_encounter_pairs,
             )
 
             if confidence < min_threshold:
@@ -503,16 +509,118 @@ def diagnose_merge_readiness(db: Session) -> dict:
     }
 
 
+
+def _build_history_cache(
+    db: Session, vessel_ids: set[int]
+) -> dict[int, dict[str, list[tuple[str, str, datetime]]]]:
+    """Batch-load VesselHistory. Returns {vessel_id: {field: [(old_val, new_val, observed_at)]}}."""
+    if not vessel_ids:
+        return {}
+    id_list = list(vessel_ids)
+    records = []
+    for i in range(0, len(id_list), 500):
+        batch = id_list[i:i + 500]
+        records.extend(
+            db.query(VesselHistory.vessel_id, VesselHistory.field_changed,
+                     VesselHistory.old_value, VesselHistory.new_value,
+                     VesselHistory.observed_at)
+            .filter(VesselHistory.vessel_id.in_(batch))
+            .all()
+        )
+    cache: dict[int, dict[str, list[tuple[str, str, datetime]]]] = {}
+    for vid, field, old_val, new_val, obs_at in records:
+        bucket = cache.setdefault(vid, {}).setdefault(field, [])
+        bucket.append((
+            (old_val or "").strip().upper(),
+            (new_val or "").strip().upper(),
+            obs_at,
+        ))
+    return cache
+
+
+def _build_encounter_cache(db: Session, vessel_ids: set[int]) -> dict[tuple[int, int], datetime]:
+    """Batch-load GFW encounter pairs. Returns {(min_id, max_id): earliest_start_time_utc}."""
+    from app.models.base import STSDetectionTypeEnum
+    if not vessel_ids:
+        return {}
+    id_list = list(vessel_ids)
+    rows = []
+    for i in range(0, len(id_list), 500):
+        batch = id_list[i:i + 500]
+        rows.extend(
+            db.query(StsTransferEvent.vessel_1_id, StsTransferEvent.vessel_2_id,
+                     StsTransferEvent.start_time_utc)
+            .filter(
+                StsTransferEvent.detection_type == STSDetectionTypeEnum.GFW_ENCOUNTER,
+                or_(
+                    StsTransferEvent.vessel_1_id.in_(batch),
+                    StsTransferEvent.vessel_2_id.in_(batch),
+                ),
+            )
+            .all()
+        )
+    cache: dict[tuple[int, int], datetime] = {}
+    for v1, v2, ts in rows:
+        key = (min(v1, v2), max(v1, v2))
+        if key not in cache or ts < cache[key]:
+            cache[key] = ts
+    return cache
+
+
+def _get_historical_values(cache: dict, vessel_id: int, field_name: str) -> set[str]:
+    """All distinct non-empty values from history (union of old_val and new_val)."""
+    values = set()
+    for old_v, new_v, _ in cache.get(vessel_id, {}).get(field_name, []):
+        if old_v:
+            values.add(old_v)
+        if new_v:
+            values.add(new_v)
+    return values
+
+
+def _get_recent_change_count(cache: dict, vessel_id: int, cutoff: datetime) -> int:
+    """Count distinct fields with REAL transitions after cutoff.
+
+    Only counts rows where both old_val and new_val are populated and different.
+    Excludes snapshot observations (old_value="" from enrichment imports).
+    """
+    vessel_cache = cache.get(vessel_id, {})
+    fields_changed = 0
+    for field in ("name", "flag", "callsign"):
+        entries = vessel_cache.get(field, [])
+        if any(
+            old_v and new_v and old_v != new_v and obs_at and obs_at >= cutoff
+            for old_v, new_v, obs_at in entries
+        ):
+            fields_changed += 1
+    return fields_changed
+
+
 def _score_candidate(
     db: Session,
     dark_v: Vessel, new_v: Vessel,
     dark_last: dict, new_first: dict,
     distance: float, time_delta_h: float, max_travel: float,
     corridor_vessels_cache: dict,
+    history_cache: dict | None = None,
+    encounter_cache: dict | None = None,
 ) -> tuple[int, dict]:
     """Score a merge candidate. Returns (confidence 0-100, reasons dict)."""
+    history_cache = history_cache or {}
+    encounter_cache = encounter_cache or {}
     reasons: dict = {}
     score = 0
+
+    # Encounter anti-merge: if GFW recorded these two vessels meeting,
+    # they are different physical hulls
+    pair_key = (min(dark_v.vessel_id, new_v.vessel_id), max(dark_v.vessel_id, new_v.vessel_id))
+    encounter_ts = encounter_cache.get(pair_key)
+    if encounter_ts and dark_last.get("ts") and encounter_ts > dark_last["ts"]:
+        reasons["encounter_after_gap"] = {
+            "blocked": True,
+            "event_date": str(encounter_ts),
+        }
+        return 0, reasons
 
     # Proximity ratio: 0-20
     prox_ratio = 1.0 - (distance / max_travel) if max_travel > 0 else 0
@@ -540,6 +648,23 @@ def _score_candidate(
                 "new_imo": new_v.imo,
             }
             return 0, reasons
+
+    # Historical IMO cross-reference
+    if "same_imo" not in reasons and "imo_mismatch" not in reasons:
+        if settings.HISTORY_CROSS_REFERENCE_ENABLED:
+            from app.utils.vessel_identity import validate_imo_checksum as _validate_imo_hist
+            dark_imos = _get_historical_values(history_cache, dark_v.vessel_id, "imo")
+            new_imos = _get_historical_values(history_cache, new_v.vessel_id, "imo")
+            if dark_v.imo:
+                dark_imos = dark_imos | {dark_v.imo.upper()}
+            if new_v.imo:
+                new_imos = new_imos | {new_v.imo.upper()}
+            shared = dark_imos & new_imos
+            if shared:
+                imo_val = next(iter(shared))
+                if _validate_imo_hist(imo_val):
+                    score += 20
+                    reasons["historical_shared_imo"] = {"points": 20, "imo": imo_val}
 
     # Same vessel_type (with tanker-category normalization)
     from app.utils.vessel_filter import is_tanker_type
@@ -595,6 +720,28 @@ def _score_candidate(
     if _dark_cs and _new_cs and _dark_cs == _new_cs:
         score += 8
         reasons["same_callsign"] = {"points": 8, "callsign": _dark_cs}
+
+    # Historical callsign cross-reference
+    if "same_callsign" not in reasons and settings.HISTORY_CROSS_REFERENCE_ENABLED:
+        dark_cs = _get_historical_values(history_cache, dark_v.vessel_id, "callsign")
+        new_cs = _get_historical_values(history_cache, new_v.vessel_id, "callsign")
+        if dark_v.callsign:
+            dark_cs = dark_cs | {dark_v.callsign.upper()}
+        if new_v.callsign:
+            new_cs = new_cs | {new_v.callsign.upper()}
+        shared_cs = dark_cs & new_cs
+        if shared_cs:
+            score += 8
+            reasons["historical_shared_callsign"] = {"points": 8, "callsign": next(iter(shared_cs))}
+
+    # Identity change velocity signal
+    if settings.HISTORY_CROSS_REFERENCE_ENABLED:
+        _velocity_cutoff = new_first["ts"] - timedelta(days=90) if new_first.get("ts") else None
+        if _velocity_cutoff:
+            changes = _get_recent_change_count(history_cache, new_v.vessel_id, _velocity_cutoff)
+            if changes >= 2:
+                score += 10
+                reasons["identity_change_velocity"] = {"points": 10, "fields_changed": changes}
 
     # Dark vessel silent (no new AIS after new_vessel appeared)
     new_ais_after = (
@@ -738,7 +885,13 @@ def _score_candidate(
     )
     if density_count > 5:
         # Busy area: require IMO match or DWT+type+year_built
-        has_strong_match = "same_imo" in reasons
+        has_strong_match = any(
+            k in reasons for k in (
+                "same_imo", "historical_shared_imo",
+                "same_callsign", "historical_shared_callsign",
+                "similar_name", "shared_ism_manager",
+            )
+        )
         has_triple_match = (
             "similar_dwt" in reasons
             and "same_vessel_type" in reasons

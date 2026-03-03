@@ -176,6 +176,8 @@ class Settings(BaseSettings):
     GFW_ENCOUNTERS_BACKFILL_ENABLED: bool = False
     GFW_PORT_VISITS_BACKFILL_ENABLED: bool = False
     HISTORY_BACKFILL_INTERVAL_HOURS: int = 168  # 1 week
+    # Merge identity enrichment: VesselHistory cross-referencing
+    HISTORY_CROSS_REFERENCE_ENABLED: bool = True
 
 
 settings = Settings()
