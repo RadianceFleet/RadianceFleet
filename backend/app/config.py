@@ -178,6 +178,12 @@ class Settings(BaseSettings):
     HISTORY_BACKFILL_INTERVAL_HOURS: int = 168  # 1 week
     # Merge identity enrichment: VesselHistory cross-referencing
     HISTORY_CROSS_REFERENCE_ENABLED: bool = True
+    # Watchlist stub scoring
+    WATCHLIST_STUB_SCORING_ENABLED: bool = True
+    # Equasis (metadata enrichment — ToS requires opt-in)
+    EQUASIS_USERNAME: str | None = None
+    EQUASIS_PASSWORD: str | None = None
+    EQUASIS_SCRAPING_ENABLED: bool = False  # Explicit opt-in required — Equasis ToS prohibits automation
 
 
 settings = Settings()

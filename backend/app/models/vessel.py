@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Enum as SAEnum, CheckConstraint, func
+from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Enum as SAEnum, CheckConstraint, func, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, AISClassEnum, FlagRiskEnum, PIStatusEnum
 
@@ -52,6 +52,9 @@ class Vessel(Base):
     # Stage 1-B: multi-signal confidence classification
     dark_fleet_confidence: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     confidence_evidence_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # Watchlist stub scoring — for vessels with no AIS history
+    watchlist_stub_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    watchlist_stub_breakdown: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
     )

@@ -645,6 +645,17 @@ def discover_dark_vessels(
     except ImportError:
         result["steps"]["confidence_classification"] = {"status": "skipped", "detail": "module not available"}
 
+    # Step 7c: Score watchlist-only stubs (vessels never seen on AIS)
+    # Runs after gap scoring and confidence classification.
+    # Phase 1 cleanup removes stale scores; Phase 2 scores current stubs.
+    # Sequencing note: runs before Step 10 (vessel merging). If a stub is merged
+    # in Step 10, its score is cleared on the NEXT run's Phase 1 cleanup.
+    try:
+        from app.modules.risk_scoring import score_watchlist_stubs
+        _run_step("stub_scoring", score_watchlist_stubs, db)
+    except ImportError:
+        result["steps"]["stub_scoring"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 8: Cluster dark detections (SOFT)
     _run_step("dark_clustering", cluster_dark_detections, db)
 

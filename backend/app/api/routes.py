@@ -798,6 +798,11 @@ def search_vessels(
             .filter(VesselWatchlist.vessel_id == v.vessel_id, VesselWatchlist.is_active == True)
             .first()
         ) is not None
+        last_risk = last_gap.risk_score if last_gap else None
+        stub_score = getattr(v, "watchlist_stub_score", None)
+        # Compute effective_score: prefer gap score (even 0), fall back to stub score
+        # IMPORTANT: use is-not-None check, NOT truthiness (last_risk_score=0 is valid)
+        effective = last_risk if last_risk is not None else stub_score
         entry = {
             "vessel_id": v.vessel_id,
             "mmsi": v.mmsi,
@@ -806,8 +811,10 @@ def search_vessels(
             "flag": v.flag,
             "vessel_type": v.vessel_type,
             "deadweight": v.deadweight,
-            "last_risk_score": last_gap.risk_score if last_gap else None,
+            "last_risk_score": last_risk,
             "watchlist_status": on_watchlist,
+            "watchlist_stub_score": stub_score,
+            "effective_score": effective,
         }
         if v.vessel_id in matched_via_alias:
             entry["matched_via_absorbed_mmsi"] = matched_via_alias[v.vessel_id]
@@ -866,6 +873,8 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
             "opencorporates_url": None,
             "data_age_hours": _compute_data_age_hours(vessel, now),
             "data_freshness_warning": _compute_freshness_warning(vessel, now),
+            "watchlist_stub_score": None,
+            "watchlist_stub_breakdown": None,
         }
 
     gaps_7d = db.query(AISGapEvent).filter(
@@ -949,6 +958,8 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         "opencorporates_url": opencorporates_url,
         "data_age_hours": _compute_data_age_hours(vessel, now),
         "data_freshness_warning": _compute_freshness_warning(vessel, now),
+        "watchlist_stub_score": vessel.watchlist_stub_score,
+        "watchlist_stub_breakdown": vessel.watchlist_stub_breakdown,
     }
 
 
@@ -2067,6 +2078,9 @@ def verification_budget(db: Session = Depends(get_db)):
 def get_data_freshness(db: Session = Depends(get_db)):
     """Data freshness monitoring -- reports AIS data staleness."""
     from app.models.vessel import Vessel
+    from app.models.vessel_watchlist import VesselWatchlist
+    from app.models.ais_point import AISPoint
+    from app.models.gap_event import AISGapEvent as _GapEvent
 
     now = datetime.now(timezone.utc)
 
@@ -2087,11 +2101,28 @@ def get_data_freshness(db: Session = Depends(get_db)):
     if latest:
         staleness_minutes = int((now - latest.replace(tzinfo=timezone.utc)).total_seconds() / 60)
 
+    # Count watchlisted vessels that have neither a gap score nor a stub score
+    active_watchlist_ids = (
+        db.query(VesselWatchlist.vessel_id)
+        .filter(VesselWatchlist.is_active == True)  # noqa: E712
+        .distinct()
+    )
+    vessels_with_ais_ids = db.query(AISPoint.vessel_id).distinct()
+    vessels_with_gaps_ids = db.query(_GapEvent.vessel_id).distinct()
+    watchlist_stubs_unscored = db.query(func.count(Vessel.vessel_id)).filter(
+        Vessel.vessel_id.in_(active_watchlist_ids),
+        Vessel.vessel_id.notin_(vessels_with_ais_ids),
+        Vessel.vessel_id.notin_(vessels_with_gaps_ids),
+        Vessel.merged_into_vessel_id.is_(None),
+        Vessel.watchlist_stub_score.is_(None),
+    ).scalar() or 0
+
     return {
         "latest_ais_utc": latest.isoformat() if latest else None,
         "staleness_minutes": staleness_minutes,
         "vessels_updated_last_1h": vessels_1h,
         "vessels_updated_last_24h": vessels_24h,
+        "watchlist_stubs_unscored": watchlist_stubs_unscored,
     }
 
 

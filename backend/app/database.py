@@ -92,6 +92,9 @@ def _run_migrations() -> None:
         ("vessels", "is_heuristic_dwt", "BOOLEAN NOT NULL DEFAULT 0"),
         # Track B3 — SeaWeb field write-back: full JSON payload on verification log
         ("verification_logs", "result_json", "TEXT"),
+        # Watchlist stub scoring — vessels with no AIS history
+        ("vessels", "watchlist_stub_score", "INTEGER"),
+        ("vessels", "watchlist_stub_breakdown", "JSON"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
