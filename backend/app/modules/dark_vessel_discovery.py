@@ -73,6 +73,9 @@ def auto_hunt_dark_vessels(
         if hunt_lat is None or hunt_lon is None:
             continue
 
+        if gap.gap_end_utc is None or gap.gap_start_utc is None:
+            continue
+
         try:
             profile = create_target_profile(
                 gap.vessel_id, db,
@@ -111,7 +114,7 @@ def auto_hunt_dark_vessels(
         from app.models.sts_transfer import StsTransferEvent
         sts_events = db.query(StsTransferEvent).all()
         for sts in sts_events:
-            if sts.mean_lat is None or sts.mean_lon is None or sts.start_time_utc is None:
+            if sts.mean_lat is None or sts.mean_lon is None or sts.start_time_utc is None or sts.end_time_utc is None:
                 continue
             dark_nearby = db.query(DarkVesselDetection).filter(
                 DarkVesselDetection.ais_match_result == "unmatched",
@@ -469,11 +472,66 @@ def discover_dark_vessels(
     # Runs AFTER anomaly detection (Steps 4-6d) so gaps with co-occurring
     # STS/spoofing signals are NOT marked as feed outage (see E2).
     if settings.FEED_OUTAGE_DETECTION_ENABLED:
+        from app.models.gap_event import AISGapEvent
+
+        # Guard: only reset if detector prerequisites are met
+        # (mirrors early-skip at feed_outage_detector.py:80-93)
+        try:
+            from app.models.corridor_gap_baseline import CorridorGapBaseline
+            _has_baselines = db.query(CorridorGapBaseline).first() is not None
+        except Exception:
+            _has_baselines = False
+
+        if not _has_baselines:
+            _has_corridor_gaps = (
+                db.query(AISGapEvent)
+                .filter(AISGapEvent.corridor_id.isnot(None), AISGapEvent.risk_score > 0)
+                .first()
+            ) is not None
+        else:
+            _has_corridor_gaps = True
+
+        _flagged_gap_ids = []
+        if _has_baselines or _has_corridor_gaps:
+            _flagged_gap_ids = [
+                gid for (gid,) in db.query(AISGapEvent.gap_event_id).filter(
+                    AISGapEvent.is_feed_outage == True,
+                    AISGapEvent.risk_score == 0,
+                ).all()
+            ]
+            if _flagged_gap_ids:
+                db.query(AISGapEvent).filter(
+                    AISGapEvent.gap_event_id.in_(_flagged_gap_ids),
+                ).update({AISGapEvent.is_feed_outage: False}, synchronize_session=False)
+                db.commit()
+                logger.info("Feed outage reset: cleared %d stale flags", len(_flagged_gap_ids))
+
         try:
             from app.modules.feed_outage_detector import detect_feed_outages
-            _run_step("feed_outage_detection", detect_feed_outages, db)
+            _fo_result = _run_step("feed_outage_detection", detect_feed_outages, db)
         except ImportError:
+            _fo_result = None
             result["steps"]["feed_outage_detection"] = {"status": "skipped", "detail": "module not available"}
+
+        if _flagged_gap_ids and (
+            _fo_result is None
+            or (isinstance(_fo_result, dict) and _fo_result.get("skipped_reason"))
+        ):
+            # Discard any uncommitted dirty state from failed/skipped detection
+            db.rollback()
+            # Restore original pre-reset flags
+            db.query(AISGapEvent).filter(
+                AISGapEvent.gap_event_id.in_(_flagged_gap_ids),
+            ).update({AISGapEvent.is_feed_outage: True}, synchronize_session=False)
+            # Compensating rollback: clear any newly committed feed_outage marks
+            # from a partially completed detection run
+            db.query(AISGapEvent).filter(
+                AISGapEvent.is_feed_outage == True,
+                AISGapEvent.risk_score == 0,
+                ~AISGapEvent.gap_event_id.in_(_flagged_gap_ids),
+            ).update({AISGapEvent.is_feed_outage: False}, synchronize_session=False)
+            db.commit()
+            logger.warning("Feed outage detection failed — restored %d flags + cleared new marks", len(_flagged_gap_ids))
 
     # Steps 6d-6h: Identity fraud + scrapped + convoy detectors (MOVED before scoring)
     # These detectors create SpoofingAnomaly records that scoring reads.
@@ -601,6 +659,15 @@ def discover_dark_vessels(
         except ImportError:
             result["steps"]["sar_correlation"] = {"status": "skipped", "detail": "module not available"}
 
+    # Step 9c: Behavioral fingerprinting (SOFT, feature-gated)
+    # Runs BEFORE identity resolution so fingerprint distance informs merge scoring.
+    if settings.FINGERPRINT_ENABLED:
+        try:
+            from app.modules.vessel_fingerprint import run_fingerprint_computation
+            _run_step("fingerprint_computation", run_fingerprint_computation, db)
+        except ImportError:
+            result["steps"]["fingerprint_computation"] = {"status": "skipped", "detail": "module not available"}
+
     # Step 10: Identity resolution (SOFT)
     try:
         from app.modules.identity_resolver import detect_merge_candidates
@@ -657,14 +724,6 @@ def discover_dark_vessels(
             _run_step("sanctions_propagation", propagate_sanctions, db)
         except ImportError:
             result["steps"]["ownership_graph"] = {"status": "skipped", "detail": "module not available"}
-
-    # Step 11g: Behavioral fingerprinting (SOFT, feature-gated)
-    if settings.FINGERPRINT_ENABLED:
-        try:
-            from app.modules.vessel_fingerprint import run_fingerprint_computation
-            _run_step("fingerprint_computation", run_fingerprint_computation, db)
-        except ImportError:
-            result["steps"]["fingerprint_computation"] = {"status": "skipped", "detail": "module not available"}
 
     # Step 11h: Voyage prediction (SOFT, feature-gated)
     if settings.VOYAGE_PREDICTION_ENABLED:

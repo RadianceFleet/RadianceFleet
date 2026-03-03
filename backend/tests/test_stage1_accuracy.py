@@ -143,7 +143,7 @@ class TestFeedOutageDetection:
     def test_no_corridor_uses_minimum(self):
         from app.modules.feed_outage_detector import _get_threshold
         threshold = _get_threshold(MagicMock(), corridor_id=None, reference_time=datetime(2025, 6, 15))
-        assert threshold == 8  # _MIN_VESSELS_FOR_OUTAGE
+        assert threshold >= 25  # NULL-corridor proportional minimum
 
     @patch("app.modules.feed_outage_detector.settings")
     def test_gaps_in_different_corridors_separate(self, mock_settings):

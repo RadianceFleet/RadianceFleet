@@ -781,7 +781,7 @@ class TestFeatureFlags:
         s = Settings()
         assert hasattr(s, "FINGERPRINT_ENABLED")
         assert hasattr(s, "FINGERPRINT_SCORING_ENABLED")
-        assert s.FINGERPRINT_ENABLED is False
+        assert s.FINGERPRINT_ENABLED is True
         assert s.FINGERPRINT_SCORING_ENABLED is False
 
     def test_run_fingerprint_disabled(self):

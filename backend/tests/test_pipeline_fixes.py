@@ -1,4 +1,4 @@
-"""Tests for dark fleet pipeline fixes (P1-P8).
+"""Tests for dark fleet pipeline fixes (P1-P9 + Round 2).
 
 Covers:
   P1: Double-scoring bug — Step 11z preserves existing scores
@@ -10,11 +10,15 @@ Covers:
   P6: AIS observation dual-write
   P7: Merge review CLI stale cleanup
   P8: Step label collision fix
+  P9: IMO mismatch hard block in merge scoring
+  Fix 1: Feed outage dead-flag reset + NULL-corridor threshold
+  Fix 2: Merge candidate scoring — behavioral signals + safety guard
+  Fix 3: AISStream diagnostics
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
 
 import pytest
 
@@ -432,3 +436,398 @@ class TestP9ImoMismatchBlock:
         assert '"same_imo"' in source or "'same_imo'" in source
         # +25 for same IMO should still be present
         assert "score += 25" in source
+
+
+# ---------------------------------------------------------------------------
+# Round 2 — shared fixtures and helpers
+# ---------------------------------------------------------------------------
+
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
+from app.models.base import Base
+
+
+@pytest.fixture
+def db():
+    """In-memory SQLite database with all RadianceFleet tables."""
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(bind=engine)
+    _Session = sessionmaker(bind=engine)
+    session = _Session()
+    yield session
+    session.close()
+
+
+# All feature-gated settings used by discover_dark_vessels
+_GATED_SETTINGS = [
+    "COVERAGE_QUALITY_TAGGING_ENABLED", "STALE_AIS_DETECTION_ENABLED",
+    "DESTINATION_DETECTION_ENABLED", "TRACK_NATURALNESS_ENABLED",
+    "STS_CHAIN_DETECTION_ENABLED", "DRAUGHT_DETECTION_ENABLED",
+    "STATELESS_MMSI_DETECTION_ENABLED", "FLAG_HOPPING_DETECTION_ENABLED",
+    "IMO_FRAUD_DETECTION_ENABLED", "SCRAPPED_REGISTRY_DETECTION_ENABLED",
+    "TRACK_REPLAY_DETECTION_ENABLED", "CONVOY_DETECTION_ENABLED",
+    "TYPE_CONSISTENCY_DETECTION_ENABLED", "ROUTE_LAUNDERING_DETECTION_ENABLED",
+    "PI_CYCLING_DETECTION_ENABLED", "SPARSE_TRANSMISSION_DETECTION_ENABLED",
+    "SAR_CORRELATION_ENABLED", "MERGE_CHAIN_DETECTION_ENABLED",
+    "FLEET_ANALYSIS_ENABLED", "ISM_CONTINUITY_DETECTION_ENABLED",
+    "OWNERSHIP_GRAPH_ENABLED", "FINGERPRINT_ENABLED", "VOYAGE_PREDICTION_ENABLED",
+]
+
+
+def _pipeline_settings(**overrides):
+    """Mock settings: all gated steps disabled, then apply overrides."""
+    mock_s = MagicMock()
+    for k in _GATED_SETTINGS:
+        setattr(mock_s, k, False)
+    mock_s.FEED_OUTAGE_DETECTION_ENABLED = False
+    for k, v in overrides.items():
+        setattr(mock_s, k, v)
+    return mock_s
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: Feed outage dead-flag reset + NULL-corridor threshold
+# ---------------------------------------------------------------------------
+
+
+class TestFix1FeedOutageReset:
+    """Tests mock HARD steps (gap_detection, scoring) and the feed outage detector."""
+
+    @patch("app.modules.risk_scoring.rescore_all_alerts", return_value={"scored": 0})
+    @patch("app.modules.gap_detector.run_gap_detection", return_value={"gaps": 0})
+    def test_reset_clears_unscored_flags(self, mock_gap, mock_score, db):
+        """discover_dark_vessels resets is_feed_outage=True/risk_score=0 when baselines exist."""
+        from app.models.gap_event import AISGapEvent
+        from app.models.vessel import Vessel
+        from app.models.corridor import Corridor
+        from app.models.corridor_gap_baseline import CorridorGapBaseline
+        from app.modules.dark_vessel_discovery import discover_dark_vessels
+
+        corridor = Corridor(name="test-corridor-r1", risk_weight=1.0)
+        db.add(corridor)
+        db.flush()
+        baseline = CorridorGapBaseline(
+            corridor_id=corridor.corridor_id,
+            window_start=datetime.utcnow() - timedelta(hours=2),
+            window_end=datetime.utcnow() + timedelta(hours=2), p95_threshold=50.0,
+        )
+        db.add(baseline)
+        db.flush()
+
+        v = Vessel(mmsi="999000001", flag="XX")
+        db.add(v)
+        db.flush()
+        gap = AISGapEvent(
+            vessel_id=v.vessel_id,
+            gap_start_utc=datetime.utcnow() - timedelta(hours=10),
+            gap_end_utc=datetime.utcnow() - timedelta(hours=5),
+            duration_minutes=300, is_feed_outage=True, risk_score=0,
+        )
+        db.add(gap)
+        db.commit()
+        gap_id = gap.gap_event_id
+
+        with patch("app.modules.dark_vessel_discovery.settings",
+                    _pipeline_settings(FEED_OUTAGE_DETECTION_ENABLED=True)), \
+             patch("app.modules.feed_outage_detector.detect_feed_outages",
+                    return_value={"gaps_checked": 10, "gaps_marked": 0, "outages_detected": 0}):
+            discover_dark_vessels(db, start_date="2026-01-01", end_date="2026-03-03", skip_fetch=True)
+
+        refreshed = db.query(AISGapEvent).get(gap_id)
+        assert refreshed.is_feed_outage is False
+
+    @patch("app.modules.risk_scoring.rescore_all_alerts", return_value={"scored": 0})
+    @patch("app.modules.gap_detector.run_gap_detection", return_value={"gaps": 0})
+    def test_reset_preserves_scored_flags(self, mock_gap, mock_score, db):
+        """Gaps with is_feed_outage=True and risk_score>0 are NOT reset."""
+        from app.models.gap_event import AISGapEvent
+        from app.models.vessel import Vessel
+        from app.models.corridor import Corridor
+        from app.models.corridor_gap_baseline import CorridorGapBaseline
+        from app.modules.dark_vessel_discovery import discover_dark_vessels
+
+        corridor = Corridor(name="test-corridor-r2", risk_weight=1.0)
+        db.add(corridor)
+        db.flush()
+        baseline = CorridorGapBaseline(
+            corridor_id=corridor.corridor_id,
+            window_start=datetime.utcnow() - timedelta(hours=2),
+            window_end=datetime.utcnow() + timedelta(hours=2), p95_threshold=50.0,
+        )
+        db.add(baseline)
+        db.flush()
+
+        v = Vessel(mmsi="999000002", flag="XX")
+        db.add(v)
+        db.flush()
+        gap = AISGapEvent(
+            vessel_id=v.vessel_id,
+            gap_start_utc=datetime.utcnow() - timedelta(hours=10),
+            gap_end_utc=datetime.utcnow() - timedelta(hours=5),
+            duration_minutes=300, is_feed_outage=True, risk_score=45,
+        )
+        db.add(gap)
+        db.commit()
+        gap_id = gap.gap_event_id
+
+        with patch("app.modules.dark_vessel_discovery.settings",
+                    _pipeline_settings(FEED_OUTAGE_DETECTION_ENABLED=True)), \
+             patch("app.modules.feed_outage_detector.detect_feed_outages",
+                    return_value={"gaps_checked": 10, "gaps_marked": 0, "outages_detected": 0}):
+            discover_dark_vessels(db, start_date="2026-01-01", end_date="2026-03-03", skip_fetch=True)
+
+        refreshed = db.query(AISGapEvent).get(gap_id)
+        assert refreshed.is_feed_outage is True
+
+    @patch("app.modules.risk_scoring.rescore_all_alerts", return_value={"scored": 0})
+    @patch("app.modules.gap_detector.run_gap_detection", return_value={"gaps": 0})
+    def test_flags_restored_on_detection_failure(self, mock_gap, mock_score, db):
+        """discover_dark_vessels restores flags + clears new marks when detection fails."""
+        from app.models.gap_event import AISGapEvent
+        from app.models.vessel import Vessel
+        from app.models.corridor import Corridor
+        from app.models.corridor_gap_baseline import CorridorGapBaseline
+        from app.modules.dark_vessel_discovery import discover_dark_vessels
+
+        corridor = Corridor(name="test-corridor-r3", risk_weight=1.0)
+        db.add(corridor)
+        db.flush()
+        baseline = CorridorGapBaseline(
+            corridor_id=corridor.corridor_id,
+            window_start=datetime.utcnow() - timedelta(hours=2),
+            window_end=datetime.utcnow() + timedelta(hours=2), p95_threshold=50.0,
+        )
+        db.add(baseline)
+        db.flush()
+
+        v = Vessel(mmsi="999000004", flag="XX")
+        db.add(v)
+        db.flush()
+        gap = AISGapEvent(
+            vessel_id=v.vessel_id,
+            gap_start_utc=datetime.utcnow() - timedelta(hours=10),
+            gap_end_utc=datetime.utcnow() - timedelta(hours=5),
+            duration_minutes=300, is_feed_outage=True, risk_score=0,
+        )
+        db.add(gap)
+        db.commit()
+        gap_id = gap.gap_event_id
+
+        with patch("app.modules.dark_vessel_discovery.settings",
+                    _pipeline_settings(FEED_OUTAGE_DETECTION_ENABLED=True)), \
+             patch("app.modules.feed_outage_detector.detect_feed_outages",
+                    side_effect=RuntimeError("Simulated failure")):
+            discover_dark_vessels(db, start_date="2026-01-01", end_date="2026-03-03", skip_fetch=True)
+
+        refreshed = db.query(AISGapEvent).get(gap_id)
+        assert refreshed.is_feed_outage is True  # Restored
+
+    def test_null_corridor_threshold_proportional(self, db):
+        """_get_threshold with NULL corridor returns proportional threshold."""
+        from app.modules.feed_outage_detector import _get_threshold
+        from app.models.gap_event import AISGapEvent
+        from app.models.vessel import Vessel
+
+        now = datetime.utcnow()
+        for i in range(200):
+            v = Vessel(mmsi=f"9990{i:05d}", flag="XX")
+            db.add(v)
+            db.flush()
+            g = AISGapEvent(
+                vessel_id=v.vessel_id,
+                gap_start_utc=now - timedelta(days=3),
+                gap_end_utc=now - timedelta(days=2, hours=14),
+                duration_minutes=300, corridor_id=None,
+            )
+            db.add(g)
+        db.flush()
+
+        threshold = _get_threshold(db, corridor_id=None, reference_time=now)
+        assert threshold == 30  # 200 × 0.15 = 30 > min 25
+
+    def test_null_corridor_threshold_minimum_25(self, db):
+        """NULL corridor threshold floor is 25."""
+        from app.modules.feed_outage_detector import _get_threshold
+        assert _get_threshold(db, corridor_id=None, reference_time=datetime.utcnow()) >= 25
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: Merge candidate scoring — behavioral signals + safety guard
+# ---------------------------------------------------------------------------
+
+
+class TestFix2MergeScoring:
+    def test_fingerprint_enabled(self):
+        from app.config import Settings
+        assert Settings().FINGERPRINT_ENABLED is True
+
+    def test_auto_merge_threshold_75(self):
+        from app.config import Settings
+        assert Settings().MERGE_AUTO_CONFIDENCE_THRESHOLD == 75
+
+    def test_tanker_category_matching(self, db):
+        """_score_candidate awards +10 for tanker-category variants."""
+        from app.models.vessel import Vessel
+        from app.modules.identity_resolver import _score_candidate
+
+        v1 = Vessel(mmsi="999100001", flag="XX", vessel_type="Oil Tanker")
+        v2 = Vessel(mmsi="999100002", flag="XX", vessel_type="Crude Oil Tanker")
+        db.add_all([v1, v2])
+        db.flush()
+
+        now = datetime.utcnow()
+        with patch("app.modules.identity_resolver.settings") as mock_s:
+            mock_s.FINGERPRINT_ENABLED = False
+            score, reasons = _score_candidate(
+                db, v1, v2,
+                {"lat": 60.0, "lon": 25.0, "ts": now - timedelta(hours=12)},
+                {"lat": 60.1, "lon": 25.1, "ts": now},
+                distance=5.0, time_delta_h=12.0, max_travel=180.0,
+                corridor_vessels_cache={},
+            )
+        assert reasons.get("same_vessel_type", {}).get("points") == 10
+
+    def test_dwt_inferred_tanker_awards_5(self, db):
+        """Vessels with NULL vessel_type but high DWT get +5."""
+        from app.models.vessel import Vessel
+        from app.modules.identity_resolver import _score_candidate
+
+        v1 = Vessel(mmsi="999100003", flag="XX", vessel_type=None, deadweight=120000)
+        v2 = Vessel(mmsi="999100004", flag="XX", vessel_type=None, deadweight=100000)
+        db.add_all([v1, v2])
+        db.flush()
+
+        now = datetime.utcnow()
+        with patch("app.modules.identity_resolver.settings") as mock_s:
+            mock_s.FINGERPRINT_ENABLED = False
+            score, reasons = _score_candidate(
+                db, v1, v2,
+                {"lat": 60.0, "lon": 25.0, "ts": now - timedelta(hours=12)},
+                {"lat": 60.1, "lon": 25.1, "ts": now},
+                distance=5.0, time_delta_h=12.0, max_travel=180.0,
+                corridor_vessels_cache={},
+            )
+        assert reasons["same_vessel_type"]["points"] == 5
+        assert reasons["same_vessel_type"]["note"] == "dwt_inferred_tanker"
+
+    def test_safety_guard_75_84_no_identity_is_pending(self, db):
+        """Candidates at 75-84 without strong identity are PENDING; execute_merge not called."""
+        from app.models.vessel import Vessel
+        from app.models.gap_event import AISGapEvent
+        from app.models.ais_point import AISPoint
+        from app.models.merge_candidate import MergeCandidate, MergeCandidateStatusEnum
+        from app.modules.identity_resolver import detect_merge_candidates
+
+        now = datetime.utcnow()
+        v_dark = Vessel(mmsi="273000001", flag="RU", vessel_type="Tanker")
+        db.add(v_dark)
+        db.flush()
+        gap = AISGapEvent(
+            vessel_id=v_dark.vessel_id,
+            gap_start_utc=now - timedelta(hours=24),
+            gap_end_utc=now - timedelta(hours=6),
+            duration_minutes=1080,
+        )
+        pt_dark = AISPoint(
+            vessel_id=v_dark.vessel_id, timestamp_utc=now - timedelta(hours=6),
+            lat=60.0, lon=25.0, source="test",
+        )
+        db.add_all([gap, pt_dark])
+        db.flush()
+
+        v_new = Vessel(
+            mmsi="613000001", flag="CM", vessel_type="Tanker",
+            mmsi_first_seen_utc=now - timedelta(hours=4),
+        )
+        db.add(v_new)
+        db.flush()
+        pt_new = AISPoint(
+            vessel_id=v_new.vessel_id, timestamp_utc=now - timedelta(hours=4),
+            lat=60.05, lon=25.05, source="test",
+        )
+        db.add(pt_new)
+        db.commit()
+
+        # Force deterministic score of 80 (no strong identity signals)
+        mock_reasons = {
+            "proximity": {"points": 40},
+            "flag_risk": {"points": 20},
+            "same_vessel_type": {"points": 10},
+            "similar_dwt": {"points": 10},
+        }
+        with patch("app.modules.identity_resolver.settings") as mock_s, \
+             patch("app.modules.identity_resolver._score_candidate", return_value=(80, mock_reasons)), \
+             patch("app.modules.identity_resolver.execute_merge") as mock_merge:
+            mock_s.MERGE_AUTO_CONFIDENCE_THRESHOLD = 75
+            mock_s.MERGE_CANDIDATE_MIN_CONFIDENCE = 30
+            mock_s.MERGE_MAX_GAP_DAYS = 30
+            mock_s.MERGE_MAX_SPEED_KN = 25
+            mock_s.FINGERPRINT_ENABLED = False
+            detect_merge_candidates(db)
+
+        candidate = db.query(MergeCandidate).first()
+        assert candidate is not None, "Candidate should be created"
+        assert candidate.confidence_score == 80
+        assert candidate.status == MergeCandidateStatusEnum.PENDING
+        mock_merge.assert_not_called()
+
+    def test_fingerprint_before_identity_resolution(self):
+        """Fingerprint computation precedes identity resolution in pipeline source."""
+        import inspect
+        from app.modules.dark_vessel_discovery import discover_dark_vessels
+        source = inspect.getsource(discover_dark_vessels)
+        fp_pos = source.find("fingerprint_computation")
+        id_pos = source.find("identity_resolution")
+        assert 0 < fp_pos < id_pos
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: AISStream diagnostics
+# ---------------------------------------------------------------------------
+
+
+class TestFix3AISStreamDiagnostics:
+    def test_cli_warns_zero_messages(self):
+        """Prints 'check API key' when 0 messages received."""
+        mock_console = MagicMock()
+        mock_db = MagicMock()
+        mock_stats = {"points_stored": 0, "messages_received": 0, "position_reports": 0,
+                       "filtered_reports": 0, "batch_errors": 0}
+
+        async def _mock_stream(**kw):
+            return mock_stats
+
+        with patch("app.modules.aisstream_client.stream_ais", _mock_stream), \
+             patch("app.modules.aisstream_client.get_corridor_bounding_boxes", return_value=[]), \
+             patch("app.cli.console", mock_console):
+            from app.cli import _update_stream_ais
+            _update_stream_ais(mock_db, "10s")
+
+        printed = [str(c) for c in mock_console.print.call_args_list]
+        assert any("check API key" in t for t in printed)
+
+    def test_cli_warns_all_filtered(self):
+        """Prints 'all filtered out' when msgs > 0 but pts == 0."""
+        mock_console = MagicMock()
+        mock_db = MagicMock()
+        mock_stats = {"points_stored": 0, "messages_received": 500, "position_reports": 500,
+                       "filtered_reports": 500, "batch_errors": 0}
+
+        async def _mock_stream(**kw):
+            return mock_stats
+
+        with patch("app.modules.aisstream_client.stream_ais", _mock_stream), \
+             patch("app.modules.aisstream_client.get_corridor_bounding_boxes", return_value=[]), \
+             patch("app.cli.console", mock_console):
+            from app.cli import _update_stream_ais
+            _update_stream_ais(mock_db, "10s")
+
+        printed = [str(c) for c in mock_console.print.call_args_list]
+        assert any("filtered out" in t for t in printed)

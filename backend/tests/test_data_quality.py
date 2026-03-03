@@ -13,7 +13,7 @@ class TestDigitraficDownsample:
         """Rapid polls skip if <30min since last point for same vessel."""
         from app.modules.digitraffic_client import fetch_digitraffic_ais
 
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         ts_epoch_ms = int(now.timestamp() * 1000)
 
         mock_response = MagicMock()
@@ -55,7 +55,7 @@ class TestDigitraficDownsample:
         """31-min gap => point stored."""
         from app.modules.digitraffic_client import fetch_digitraffic_ais
 
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         ts_epoch_ms = int(now.timestamp() * 1000)
 
         mock_response = MagicMock()
@@ -95,7 +95,7 @@ class TestDigitraficDownsample:
         """No previous point => point is stored (not downsampled)."""
         from app.modules.digitraffic_client import fetch_digitraffic_ais
 
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         ts_epoch_ms = int(now.timestamp() * 1000)
 
         mock_response = MagicMock()
@@ -133,7 +133,7 @@ class TestDigitraficDownsample:
         """Downsampled count is tracked in result stats."""
         from app.modules.digitraffic_client import fetch_digitraffic_ais
 
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         ts_epoch_ms = int(now.timestamp() * 1000)
 
         mock_response = MagicMock()

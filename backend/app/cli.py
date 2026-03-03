@@ -243,6 +243,7 @@ def check_vessels(
     diagnose: bool = typer.Option(False, "--diagnose", help="Show merge readiness diagnostic and exit"),
 ):
     """Review and fix vessel identity issues."""
+    from app.config import settings
     from app.database import SessionLocal
     from app.modules.identity_resolver import detect_merge_candidates, execute_merge
     from app.models.merge_candidate import MergeCandidate
@@ -572,12 +573,12 @@ def review_merges(
 
             # Extract top reasons from evidence
             reasons = ""
-            evidence = getattr(c, "scoring_reasons_json", None) or {}
+            evidence = getattr(c, "match_reasons_json", None) or {}
             if isinstance(evidence, dict):
                 top = sorted(evidence.items(), key=lambda x: x[1].get("points", 0) if isinstance(x[1], dict) else 0, reverse=True)[:3]
                 reasons = ", ".join(f"{k}(+{v.get('points', '?')})" for k, v in top if isinstance(v, dict))
 
-            score_style = "green" if c.confidence_score >= 85 else "yellow" if c.confidence_score >= 75 else "dim"
+            score_style = "green" if c.confidence_score >= settings.MERGE_AUTO_CONFIDENCE_THRESHOLD else "yellow" if c.confidence_score >= 75 else "dim"
             table.add_row(
                 str(c.candidate_id),
                 f"[{score_style}]{c.confidence_score}[/{score_style}]",
@@ -587,7 +588,7 @@ def review_merges(
             )
 
         console.print(table)
-        console.print(f"\n{len(candidates)} candidates. Use [cyan]radiancefleet check-vessels --auto[/cyan] for auto-merge (>= 85).")
+        console.print(f"\n{len(candidates)} candidates. Use [cyan]radiancefleet check-vessels --auto[/cyan] for auto-merge (>= {settings.MERGE_AUTO_CONFIDENCE_THRESHOLD}).")
     finally:
         db.close()
 
@@ -1528,12 +1529,22 @@ def _update_stream_ais(db, stream_time: str) -> None:
 
     boxes = get_corridor_bounding_boxes(db)
     duration_s = _parse_duration(stream_time)
-    asyncio.run(stream_ais(
+    stats = asyncio.run(stream_ais(
         api_key=settings.AISSTREAM_API_KEY,
         bounding_boxes=boxes,
         duration_seconds=duration_s,
         batch_interval=settings.AISSTREAM_BATCH_INTERVAL,
     ))
+    pts = stats.get("points_stored", 0)
+    msgs = stats.get("messages_received", 0)
+    filtered = stats.get("filtered_reports", 0)
+    console.print(f"  AISStream: {pts} points stored, {msgs} messages, {filtered} filtered")
+    if pts == 0 and msgs > 0:
+        console.print(f"[yellow]  Warning: {msgs} messages received but 0 stored — all filtered out[/yellow]")
+    elif msgs == 0:
+        console.print("[yellow]  Warning: 0 messages received — check API key and bounding boxes[/yellow]")
+    if stats.get("batch_errors", 0) > 0:
+        console.print(f"[yellow]  {stats['batch_errors']} batch write errors[/yellow]")
 
 
 def _parse_duration(s: str) -> int:

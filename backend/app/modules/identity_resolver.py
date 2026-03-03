@@ -237,7 +237,16 @@ def detect_merge_candidates(
                 match_reasons_json=reasons,
             )
 
-            if confidence >= auto_threshold:
+            can_auto_merge = confidence >= auto_threshold
+            if can_auto_merge and confidence < 85:
+                # Safety guard: 75-84 range requires at least one strong identity signal
+                has_strong_id = any(
+                    k in reasons for k in ("same_imo", "same_callsign", "similar_name", "shared_ism_manager")
+                )
+                if not has_strong_id:
+                    can_auto_merge = False
+
+            if can_auto_merge:
                 candidate.status = MergeCandidateStatusEnum.AUTO_MERGED
                 candidate.resolved_at = now
                 candidate.resolved_by = "auto"
@@ -245,23 +254,22 @@ def detect_merge_candidates(
                 candidate.status = MergeCandidateStatusEnum.PENDING
 
             db.add(candidate)
-            db.flush()  # get candidate_id
+            db.flush()
             stats["candidates_created"] += 1
 
-            if confidence >= auto_threshold:
-                # Auto-merge: lower vessel_id is canonical
+            if can_auto_merge:
                 canonical_id = min(dark_v.vessel_id, new_v.vessel_id)
                 absorbed_id = max(dark_v.vessel_id, new_v.vessel_id)
-                result = execute_merge(
+                merge_result = execute_merge(
                     db, canonical_id, absorbed_id,
                     reason=f"Auto-merge: confidence {confidence}",
                     merged_by="auto",
                     candidate_id=candidate.candidate_id,
                 )
-                if result.get("success"):
+                if merge_result.get("success"):
                     stats["auto_merged"] += 1
 
-    db.commit()
+            db.commit()
     logger.info("Merge candidate detection: %s", stats)
     return stats
 
@@ -548,10 +556,23 @@ def _score_candidate(
             }
             return 0, reasons
 
-    # Same vessel_type
-    if dark_v.vessel_type and new_v.vessel_type and dark_v.vessel_type == new_v.vessel_type:
-        score += 10
-        reasons["same_vessel_type"] = {"points": 10}
+    # Same vessel_type (with tanker-category normalization)
+    from app.utils.vessel_filter import is_tanker_type
+    _dark_tanker_by_type = bool(dark_v.vessel_type and "tanker" in dark_v.vessel_type.lower())
+    _new_tanker_by_type = bool(new_v.vessel_type and "tanker" in new_v.vessel_type.lower())
+    if dark_v.vessel_type and new_v.vessel_type:
+        if dark_v.vessel_type == new_v.vessel_type:
+            score += 10
+            reasons["same_vessel_type"] = {"points": 10}
+        elif _dark_tanker_by_type and _new_tanker_by_type:
+            # Both are tanker-type variants (e.g. "Oil Tanker" vs "Crude Oil Tanker")
+            score += 10
+            reasons["same_vessel_type"] = {"points": 10, "note": "both_tanker_category"}
+    elif not dark_v.vessel_type and not new_v.vessel_type:
+        # Both missing type — fall back to DWT-based tanker inference
+        if is_tanker_type(dark_v) and is_tanker_type(new_v):
+            score += 5
+            reasons["same_vessel_type"] = {"points": 5, "note": "dwt_inferred_tanker"}
 
     # Similar DWT (within ±20%)
     if dark_v.deadweight and new_v.deadweight:

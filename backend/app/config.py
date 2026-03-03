@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     # Vessel identity merging
     MERGE_MAX_SPEED_KN: float = 16.0
     MERGE_MAX_GAP_DAYS: int = 30
-    MERGE_AUTO_CONFIDENCE_THRESHOLD: int = 85
+    MERGE_AUTO_CONFIDENCE_THRESHOLD: int = 75
     MERGE_CANDIDATE_MIN_CONFIDENCE: int = 50
     # Paid verification providers (Phase D17-19)
     SKYLIGHT_API_KEY: str = ""
@@ -142,7 +142,7 @@ class Settings(BaseSettings):
     MERGE_CHAIN_DETECTION_ENABLED: bool = False
     MERGE_CHAIN_SCORING_ENABLED: bool = False
     # Stage 4-B: Behavioral fingerprinting
-    FINGERPRINT_ENABLED: bool = False
+    FINGERPRINT_ENABLED: bool = True
     FINGERPRINT_SCORING_ENABLED: bool = False
     # Stage 4-C: Satellite-AIS correlation
     SAR_CORRELATION_ENABLED: bool = False

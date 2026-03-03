@@ -499,6 +499,7 @@ async def stream_ais(
         "static_vessels": set(),
         "vessels_updated": 0,
         "batches": 0,
+        "filtered_reports": 0,
         "batch_errors": 0,
         "errors": 0,
         "duration_seconds": duration_seconds,
@@ -548,6 +549,8 @@ async def stream_ais(
                             stats["position_reports"] += 1
                             stats["vessels_seen"].add(pt["mmsi"])
                             point_buffer.append(pt)
+                        else:
+                            stats["filtered_reports"] += 1
                     elif msg_type == "ShipStaticData":
                         sd = _map_static_data(msg)
                         if sd:
@@ -657,9 +660,10 @@ async def stream_ais(
     stats["actual_duration_s"] = round(time.monotonic() - start_time, 1)
 
     logger.info(
-        "aisstream.io session complete: %d msgs, %d points stored, %d vessels",
+        "aisstream.io session complete: %d msgs, %d points stored, %d vessels, %d filtered",
         stats["messages_received"],
         stats["points_stored"],
         stats["vessels_seen"],
+        stats["filtered_reports"],
     )
     return stats

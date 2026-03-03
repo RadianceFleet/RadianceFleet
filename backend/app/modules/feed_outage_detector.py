@@ -360,7 +360,15 @@ def _get_threshold(db: Session, corridor_id: int | None, reference_time: datetim
     threshold based on the number of unique vessels in the corridor.
     """
     if corridor_id is None:
-        return _MIN_VESSELS_FOR_OUTAGE
+        from app.models.gap_event import AISGapEvent as _GE
+        cutoff_7d = reference_time - timedelta(days=7)
+        null_vessel_count = (
+            db.query(_GE.vessel_id)
+            .filter(_GE.corridor_id == None, _GE.gap_start_utc >= cutoff_7d)
+            .distinct()
+            .count()
+        )
+        return max(int(null_vessel_count * _FALLBACK_VESSEL_RATIO), 25)
 
     try:
         from app.models.corridor_gap_baseline import CorridorGapBaseline
