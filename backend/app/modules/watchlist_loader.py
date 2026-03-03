@@ -27,7 +27,7 @@ import csv
 import json
 import logging
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from rapidfuzz import fuzz
@@ -275,6 +275,36 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
                 continue
 
             vessel, match_type, confidence = result
+            # Backfill identity data from watchlist onto vessel (exact matches only)
+            if match_type in ("exact_mmsi", "exact_imo"):
+                from app.utils.vessel_identity import validate_imo_checksum
+                from app.models.vessel_history import VesselHistory
+                _src = "watchlist_backfill:ofac"
+                if imo and not vessel.imo and validate_imo_checksum(imo):
+                    vessel.imo = imo
+                    if not db.query(VesselHistory).filter(
+                        VesselHistory.vessel_id == vessel.vessel_id,
+                        VesselHistory.field_changed == "imo",
+                        VesselHistory.source == _src,
+                    ).first():
+                        db.add(VesselHistory(
+                            vessel_id=vessel.vessel_id, field_changed="imo",
+                            old_value="", new_value=imo,
+                            observed_at=datetime.utcnow(), source=_src,
+                        ))
+                callsign_raw = (row.get("Call_Sign") or "").strip()
+                if callsign_raw and not vessel.callsign:
+                    vessel.callsign = callsign_raw
+                    if not db.query(VesselHistory).filter(
+                        VesselHistory.vessel_id == vessel.vessel_id,
+                        VesselHistory.field_changed == "callsign",
+                        VesselHistory.source == _src,
+                    ).first():
+                        db.add(VesselHistory(
+                            vessel_id=vessel.vessel_id, field_changed="callsign",
+                            old_value="", new_value=callsign_raw,
+                            observed_at=datetime.utcnow(), source=_src,
+                        ))
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -345,6 +375,23 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
                 continue
 
             vessel, match_type, confidence = result
+            # Backfill IMO from watchlist onto vessel (exact matches only)
+            if match_type in ("exact_mmsi", "exact_imo"):
+                from app.utils.vessel_identity import validate_imo_checksum
+                from app.models.vessel_history import VesselHistory
+                _src = "watchlist_backfill:kse"
+                if imo and not vessel.imo and validate_imo_checksum(imo):
+                    vessel.imo = imo
+                    if not db.query(VesselHistory).filter(
+                        VesselHistory.vessel_id == vessel.vessel_id,
+                        VesselHistory.field_changed == "imo",
+                        VesselHistory.source == _src,
+                    ).first():
+                        db.add(VesselHistory(
+                            vessel_id=vessel.vessel_id, field_changed="imo",
+                            old_value="", new_value=imo,
+                            observed_at=datetime.utcnow(), source=_src,
+                        ))
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -499,6 +546,23 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
             continue
 
         vessel, match_type, confidence = result
+        # Backfill IMO from watchlist onto vessel (exact matches only)
+        if match_type in ("exact_mmsi", "exact_imo"):
+            from app.utils.vessel_identity import validate_imo_checksum
+            from app.models.vessel_history import VesselHistory
+            _src = "watchlist_backfill:opensanctions"
+            if imo and not vessel.imo and validate_imo_checksum(imo):
+                vessel.imo = imo
+                if not db.query(VesselHistory).filter(
+                    VesselHistory.vessel_id == vessel.vessel_id,
+                    VesselHistory.field_changed == "imo",
+                    VesselHistory.source == _src,
+                ).first():
+                    db.add(VesselHistory(
+                        vessel_id=vessel.vessel_id, field_changed="imo",
+                        old_value="", new_value=imo,
+                        observed_at=datetime.utcnow(), source=_src,
+                    ))
         _upsert_watchlist(
             db,
             vessel=vessel,
@@ -586,6 +650,23 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
             continue
 
         vessel, match_type, confidence = result
+        # Backfill IMO from watchlist onto vessel (exact matches only)
+        if match_type in ("exact_mmsi", "exact_imo"):
+            from app.utils.vessel_identity import validate_imo_checksum
+            from app.models.vessel_history import VesselHistory
+            _src = "watchlist_backfill:fleetleaks"
+            if imo and not vessel.imo and validate_imo_checksum(imo):
+                vessel.imo = imo
+                if not db.query(VesselHistory).filter(
+                    VesselHistory.vessel_id == vessel.vessel_id,
+                    VesselHistory.field_changed == "imo",
+                    VesselHistory.source == _src,
+                ).first():
+                    db.add(VesselHistory(
+                        vessel_id=vessel.vessel_id, field_changed="imo",
+                        old_value="", new_value=imo,
+                        observed_at=datetime.utcnow(), source=_src,
+                    ))
         _upsert_watchlist(
             db,
             vessel=vessel,
@@ -650,6 +731,23 @@ def load_gur_list(db: Session, csv_path: str) -> dict:
                 continue
 
             vessel, match_type, confidence = result
+            # Backfill IMO from watchlist onto vessel (exact matches only)
+            if match_type in ("exact_mmsi", "exact_imo"):
+                from app.utils.vessel_identity import validate_imo_checksum
+                from app.models.vessel_history import VesselHistory
+                _src = "watchlist_backfill:gur"
+                if imo and not vessel.imo and validate_imo_checksum(imo):
+                    vessel.imo = imo
+                    if not db.query(VesselHistory).filter(
+                        VesselHistory.vessel_id == vessel.vessel_id,
+                        VesselHistory.field_changed == "imo",
+                        VesselHistory.source == _src,
+                    ).first():
+                        db.add(VesselHistory(
+                            vessel_id=vessel.vessel_id, field_changed="imo",
+                            old_value="", new_value=imo,
+                            observed_at=datetime.utcnow(), source=_src,
+                        ))
             _upsert_watchlist(
                 db,
                 vessel=vessel,
