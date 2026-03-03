@@ -77,26 +77,50 @@ def search_vessel(
 
     results = []
     for entry in entries:
-        # GFW returns nested identity info under registryInfo/combinedSourcesInfo
         combined = entry.get("combinedSourcesInfo", [{}])
+        self_reported = entry.get("selfReportedInfo", [])
+
+        # GFW v3 nests vessel ID in selfReportedInfo[0].id
+        gfw_id = self_reported[0].get("id") if self_reported else entry.get("id")
+
+        # Build identity history from selfReportedInfo (has timestamps for dedup)
+        identity_history = []
+        for sr in self_reported:
+            if not sr.get("transmissionDateFrom"):
+                continue
+            identity_history.append({
+                "ssvid": sr.get("ssvid"),
+                "name": sr.get("shipname"),
+                "flag": sr.get("flag"),
+                "callsign": sr.get("callsign"),
+                "imo": sr.get("imo"),
+                "date_from": sr.get("transmissionDateFrom"),
+                "date_to": sr.get("transmissionDateTo"),
+                "source": "gfw_self_reported",
+            })
+
+        # Top-level identity from combined[0].shipsData[0] (backward compat)
         info = combined[0] if combined else {}
         ship_name_list = info.get("shipsData", [{}])
         ship = ship_name_list[0] if ship_name_list else {}
 
-        # GFW v3 nests vessel ID in selfReportedInfo[0].id, not top-level entry.id
-        self_reported = entry.get("selfReportedInfo", [])
-        gfw_id = self_reported[0].get("id") if self_reported else entry.get("id")
+        # Fill gaps from selfReportedInfo[0] (callsign only exists there)
+        sr_primary = self_reported[0] if self_reported else {}
+        callsign = sr_primary.get("callsign")
+        primary_imo = ship.get("imo") or sr_primary.get("imo")
 
         results.append({
             "gfw_id": gfw_id,
             "name": ship.get("shipname"),
             "mmsi": entry.get("ssvid"),
-            "imo": ship.get("imo"),
+            "imo": primary_imo,
             "flag": ship.get("flag"),
+            "callsign": callsign,
             "vessel_type": ship.get("vesselType") or ship.get("geartype"),
             "length_m": ship.get("lengthM"),
             "tonnage_gt": ship.get("tonnageGt"),
             "year_built": ship.get("builtYear"),
+            "identity_history": identity_history,
         })
     return results
 

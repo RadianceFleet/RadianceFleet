@@ -950,6 +950,31 @@ def backfill(
         db.close()
 
 
+_VALID_SOURCES = ("gfw", "watchlist", "all")
+
+
+@app.command("enrich-identity")
+def enrich_identity(
+    source: str = typer.Argument("gfw", help="Source: gfw, watchlist, all"),
+    limit: int = typer.Option(200, "--limit", help="Max vessels per source"),
+):
+    """Enrich vessel identity data from external sources."""
+    if source not in _VALID_SOURCES:
+        raise typer.BadParameter(f"source must be one of {_VALID_SOURCES}, got '{source}'")
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        if source in ("gfw", "all"):
+            from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+            result = enrich_vessels_from_gfw(db, limit=limit)
+            console.print(f"  GFW: enriched {result['enriched']} vessels")
+        if source in ("watchlist", "all"):
+            _update_fetch_watchlists(db)
+            console.print("  Watchlists: loaded (OFAC, OpenSanctions, FleetLeaks, GUR, KSE)")
+    finally:
+        db.close()
+
+
 @app.command("collect")
 def collect(
     duration: str = typer.Option("1h", "--duration", help="Collection duration (30s, 5m, 1h, 7d)"),
@@ -1498,7 +1523,7 @@ def _print_candidates_table(con: Console, db, candidates) -> None:
 def _update_fetch_watchlists(db) -> None:
     """Fetch and import watchlists."""
     from app.modules.data_fetcher import fetch_all, _find_latest
-    from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions, load_fleetleaks, load_gur_list
+    from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions, load_fleetleaks, load_gur_list, load_kse_list
     from app.config import settings
 
     fetch_all()
@@ -1519,6 +1544,10 @@ def _update_fetch_watchlists(db) -> None:
     gur_file = _find_latest(data_dir, "gur_shadow_")
     if gur_file:
         load_gur_list(db, str(gur_file))
+
+    kse_file = _find_latest(data_dir, "kse_")
+    if kse_file:
+        load_kse_list(db, str(kse_file))
 
 
 def _update_stream_ais(db, stream_time: str) -> None:
