@@ -83,6 +83,8 @@ def _run_migrations() -> None:
         ("vessel_owners", "ownership_pct", "REAL"),
         # Stage B — destination field on AIS points
         ("ais_points", "destination", "VARCHAR(20)"),
+        # Track B1 — heuristic DWT flag (derived from GT, not authoritative)
+        ("vessels", "is_heuristic_dwt", "BOOLEAN NOT NULL DEFAULT 0"),
     ]
 
     _col_cache: dict[str, set[str]] = {}

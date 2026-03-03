@@ -54,9 +54,19 @@ def enrich_vessels_from_gfw(
     if not token:
         raise ValueError("GFW_API_TOKEN not configured")
 
+    from sqlalchemy import or_
+
     vessels = (
         db.query(Vessel)
-        .filter(Vessel.deadweight == None, Vessel.mmsi != None)  # noqa: E711
+        .filter(
+            or_(
+                Vessel.deadweight == None,  # noqa: E711
+                Vessel.is_heuristic_dwt == True,  # noqa: E712  # Re-enrich if only heuristic DWT
+                Vessel.imo == None,  # noqa: E711
+                Vessel.callsign == None,  # noqa: E711
+            ),
+            Vessel.mmsi != None,  # noqa: E711
+        )
         .limit(limit)
         .all()
     )
@@ -96,14 +106,18 @@ def enrich_vessels_from_gfw(
             vessel.imo = str(match["imo"])
             changed = True
 
+        # Store vessel_type BEFORE DWT computation so _is_likely_tanker() sees
+        # the correct type when GFW is the first source for vessel_type.
+        if match.get("vessel_type") and not vessel.vessel_type:
+            vessel.vessel_type = match["vessel_type"]
+            changed = True
+
         # GFW returns tonnage_gt (Gross Tonnage), not DWT.
         # DWT ≈ 1.5× GT for tankers. For non-tankers, GT is a reasonable proxy.
-        if match.get("tonnage_gt") and vessel.deadweight is None:
+        if match.get("tonnage_gt") and (vessel.deadweight is None or getattr(vessel, "is_heuristic_dwt", False)):
             gt = float(match["tonnage_gt"])
-            if _is_likely_tanker(vessel):
-                vessel.deadweight = gt * 1.5
-            else:
-                vessel.deadweight = gt
+            vessel.deadweight = gt * 1.5 if _is_likely_tanker(vessel) else gt
+            vessel.is_heuristic_dwt = True  # Mark as derived from GT heuristic
             changed = True
 
         if match.get("flag") and not vessel.flag:
