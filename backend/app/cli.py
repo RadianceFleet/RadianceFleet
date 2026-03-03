@@ -1305,6 +1305,26 @@ def _collect_multi_source_ais(db, stream_time: str) -> None:
         except Exception as e:
             console.print(f"[yellow]AISHub: {e}[/yellow]")
 
+    # DMA (Danish Maritime Authority — Danish Straits daily CSVs)
+    if getattr(settings, 'DMA_ENABLED', False):
+        try:
+            from app.modules.dma_client import fetch_and_import_dma
+            from datetime import date as _date, timedelta as _td
+            yesterday = _date.today() - _td(days=1)
+            dma_result = fetch_and_import_dma(db, start_date=yesterday, end_date=yesterday)
+            console.print(f"  DMA: {dma_result['points_imported']} points")
+        except Exception as e:
+            console.print(f"[yellow]DMA: {e}[/yellow]")
+
+    # BarentsWatch (Norwegian EEZ REST API)
+    if getattr(settings, 'BARENTSWATCH_ENABLED', False):
+        try:
+            from app.modules.barentswatch_client import fetch_barentswatch_tracks
+            bw_result = fetch_barentswatch_tracks(db)
+            console.print(f"  BarentsWatch: {bw_result.get('points_imported', 0)} points")
+        except Exception as e:
+            console.print(f"[yellow]BarentsWatch: {e}[/yellow]")
+
 
 def _is_interactive() -> bool:
     """Check if stdin is a terminal (mockable for testing)."""

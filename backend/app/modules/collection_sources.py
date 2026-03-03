@@ -50,6 +50,14 @@ def _collect_aisstream(db: Session, duration_seconds: int = 300) -> dict:
     return stream_aisstream(db, duration_seconds=duration_seconds)
 
 
+def _collect_dma(db: Session, duration_seconds: int = 300) -> dict:
+    """Collect from DMA (Danish Maritime Authority daily CSV archives)."""
+    from datetime import date, timedelta
+    from app.modules.dma_client import fetch_and_import_dma
+    yesterday = date.today() - timedelta(days=1)
+    return fetch_and_import_dma(db, start_date=yesterday, end_date=yesterday)
+
+
 # Registry of all known sources
 _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
     "digitraffic": lambda: SourceInfo(
@@ -79,6 +87,13 @@ _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
         interval_seconds=getattr(settings, "COLLECT_AISSTREAM_INTERVAL", 300),
         enabled=bool(getattr(settings, "AISSTREAM_API_KEY", None)),
         collector=_collect_aisstream,
+    ),
+    "dma": lambda: SourceInfo(
+        name="dma",
+        description="Danish Maritime Authority (Danish Straits daily CSV)",
+        interval_seconds=86400,
+        enabled=getattr(settings, "DMA_ENABLED", False),
+        collector=_collect_dma,
     ),
 }
 

@@ -137,7 +137,7 @@ def stream_kystverket(
                                     "heading": float(heading)
                                     if heading is not None and heading != 511
                                     else None,
-                                    "timestamp_utc": datetime.now(timezone.utc),
+                                    "timestamp_utc": datetime.utcnow(),
                                     "source": "kystverket",
                                     "destination": sd.get("destination"),
                                     "draught": sd.get("draught"),

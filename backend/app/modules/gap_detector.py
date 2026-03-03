@@ -780,10 +780,13 @@ def run_spoofing_detection(
     ).all()
     linked_count = 0
     for anomaly in unlinked:
+        if anomaly.start_time_utc is None:
+            continue
+        anomaly_end = anomaly.end_time_utc or anomaly.start_time_utc
         # Find gap events for this vessel that overlap temporally with the anomaly
         matching_gap = db.query(AISGapEvent).filter(
             AISGapEvent.vessel_id == anomaly.vessel_id,
-            AISGapEvent.gap_start_utc <= anomaly.end_time_utc + timedelta(hours=2),
+            AISGapEvent.gap_start_utc <= anomaly_end + timedelta(hours=2),
             AISGapEvent.gap_end_utc >= anomaly.start_time_utc - timedelta(hours=2),
         ).order_by(
             # Prefer the gap whose start is closest to the anomaly start

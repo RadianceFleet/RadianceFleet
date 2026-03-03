@@ -509,7 +509,7 @@ class TestStage1Integration:
 
     def test_config_has_feature_flags(self):
         from app.config import Settings
-        s = Settings()
+        s = Settings(_env_file=None)
         assert hasattr(s, "FEED_OUTAGE_DETECTION_ENABLED")
         assert hasattr(s, "COVERAGE_QUALITY_TAGGING_ENABLED")
         assert s.FEED_OUTAGE_DETECTION_ENABLED is True  # E6: stable detectors enabled by default

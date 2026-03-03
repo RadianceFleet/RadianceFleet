@@ -450,14 +450,14 @@ class TestIntegrationFeatureFlags:
     def test_detection_flag_exists(self):
         """Settings has DESTINATION_DETECTION_ENABLED."""
         from app.config import Settings
-        s = Settings(DATABASE_URL="sqlite:///test.db")
+        s = Settings(DATABASE_URL="sqlite:///test.db", _env_file=None)
         assert hasattr(s, "DESTINATION_DETECTION_ENABLED")
         assert s.DESTINATION_DETECTION_ENABLED is False
 
     def test_scoring_flag_exists(self):
         """Settings has DESTINATION_SCORING_ENABLED."""
         from app.config import Settings
-        s = Settings(DATABASE_URL="sqlite:///test.db")
+        s = Settings(DATABASE_URL="sqlite:///test.db", _env_file=None)
         assert hasattr(s, "DESTINATION_SCORING_ENABLED")
         assert s.DESTINATION_SCORING_ENABLED is False
 

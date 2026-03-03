@@ -44,6 +44,11 @@ def detect_cross_receiver_anomalies(
     query = db.query(AISObservation).order_by(
         AISObservation.mmsi, AISObservation.timestamp_utc
     )
+    query = query.filter(
+        AISObservation.timestamp_utc.isnot(None),
+        AISObservation.lat.isnot(None),
+        AISObservation.lon.isnot(None),
+    )
     if date_from:
         query = query.filter(
             AISObservation.timestamp_utc >= datetime.combine(date_from, datetime.min.time())
@@ -84,6 +89,8 @@ def detect_cross_receiver_anomalies(
                 if o1.source == o2.source:
                     continue
 
+                if o1.timestamp_utc is None or o2.timestamp_utc is None:
+                    continue
                 time_diff = abs((o1.timestamp_utc - o2.timestamp_utc).total_seconds())
                 if time_diff > window.total_seconds():
                     continue

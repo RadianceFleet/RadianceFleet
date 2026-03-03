@@ -273,7 +273,7 @@ class TestE6DefaultDetectorFlags:
         """All stable detectors default to True."""
         from app.config import Settings
 
-        defaults = Settings()
+        defaults = Settings(_env_file=None)
         for flag in self._SHOULD_BE_ENABLED:
             assert getattr(defaults, flag) is True, f"{flag} should default to True"
 
@@ -281,7 +281,7 @@ class TestE6DefaultDetectorFlags:
         """Experimental/unstable detectors remain disabled."""
         from app.config import Settings
 
-        defaults = Settings()
+        defaults = Settings(_env_file=None)
         for flag in self._SHOULD_REMAIN_DISABLED:
             assert getattr(defaults, flag) is False, f"{flag} should remain False"
 

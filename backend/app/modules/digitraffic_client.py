@@ -87,15 +87,15 @@ def fetch_digitraffic_ais(
                 heading = props.get("heading")
                 ts = props.get("timestampExternal") or props.get("timestamp")
 
-                timestamp = datetime.now(timezone.utc)
+                timestamp = datetime.utcnow()
                 if ts:
                     try:
                         if isinstance(ts, (int, float)):
-                            timestamp = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+                            timestamp = datetime.utcfromtimestamp(ts / 1000)
                         else:
                             timestamp = datetime.fromisoformat(
                                 str(ts).replace("Z", "+00:00")
-                            )
+                            ).replace(tzinfo=None)
                     except Exception:
                         pass
 

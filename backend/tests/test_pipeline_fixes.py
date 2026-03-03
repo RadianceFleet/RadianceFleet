@@ -391,3 +391,44 @@ class TestPipelineStepOrdering:
         baselines_pos = source.find('"gap_rate_baselines"')
         assert gap_detection_pos < baselines_pos, \
             "Gap detection must run before baseline computation"
+
+
+# ---------------------------------------------------------------------------
+# P9: IMO mismatch hard block in merge scoring
+# ---------------------------------------------------------------------------
+
+
+class TestP9ImoMismatchBlock:
+    """P9: Different valid IMOs should block merge candidate entirely."""
+
+    def test_imo_mismatch_returns_zero(self):
+        """Two vessels with different IMOs score 0 (blocked)."""
+        import inspect
+        from app.modules.identity_resolver import _score_candidate
+
+        source = inspect.getsource(_score_candidate)
+        assert "imo_mismatch" in source
+        assert '"blocked": True' in source or '"blocked":True' in source \
+            or "blocked" in source
+
+    def test_imo_mismatch_early_return(self):
+        """IMO mismatch triggers early return before other scoring."""
+        import inspect
+        from app.modules.identity_resolver import _score_candidate
+
+        source = inspect.getsource(_score_candidate)
+        # The imo_mismatch block should return 0 before vessel_type scoring
+        imo_mismatch_pos = source.find("imo_mismatch")
+        same_type_pos = source.find("same_vessel_type")
+        assert imo_mismatch_pos < same_type_pos, \
+            "IMO mismatch should short-circuit before type scoring"
+
+    def test_same_imo_still_scores_25(self):
+        """Matching valid IMO still gives +25 points."""
+        import inspect
+        from app.modules.identity_resolver import _score_candidate
+
+        source = inspect.getsource(_score_candidate)
+        assert '"same_imo"' in source or "'same_imo'" in source
+        # +25 for same IMO should still be present
+        assert "score += 25" in source

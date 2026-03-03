@@ -41,6 +41,7 @@ class TestCollectionSources:
             assert "kystverket" in sources
             assert "barentswatch" in sources
             assert "aisstream" in sources
+            assert "dma" in sources
 
     def test_collect_from_source_dispatch(self):
         """collect_from_source calls the correct collector."""
@@ -73,6 +74,7 @@ class TestCollectionSources:
             mock_settings.DIGITRAFFIC_ENABLED = False
             mock_settings.KYSTVERKET_ENABLED = False
             mock_settings.BARENTSWATCH_ENABLED = False
+            mock_settings.DMA_ENABLED = False
             mock_settings.AISSTREAM_API_KEY = None
             mock_settings.COLLECT_DIGITRAFFIC_INTERVAL = 1800
             mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
@@ -140,3 +142,50 @@ class TestCollectionSources:
             from app.modules.collection_sources import _collect_barentswatch
             result = _collect_barentswatch(db)
             assert result["points_imported"] == 15
+
+    def test_dma_in_registry(self):
+        """DMA source appears when DMA_ENABLED=True."""
+        with patch("app.modules.collection_sources.settings") as mock_settings:
+            mock_settings.DMA_ENABLED = True
+            mock_settings.DIGITRAFFIC_ENABLED = False
+            mock_settings.KYSTVERKET_ENABLED = False
+            mock_settings.BARENTSWATCH_ENABLED = False
+            mock_settings.AISSTREAM_API_KEY = None
+            mock_settings.COLLECT_DIGITRAFFIC_INTERVAL = 1800
+            mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
+
+            from app.modules.collection_sources import get_available_sources
+            sources = get_available_sources()
+            assert "dma" in sources
+
+    def test_dma_not_in_registry_when_disabled(self):
+        """DMA source excluded when DMA_ENABLED=False."""
+        with patch("app.modules.collection_sources.settings") as mock_settings:
+            mock_settings.DMA_ENABLED = False
+            mock_settings.DIGITRAFFIC_ENABLED = False
+            mock_settings.KYSTVERKET_ENABLED = False
+            mock_settings.BARENTSWATCH_ENABLED = False
+            mock_settings.AISSTREAM_API_KEY = None
+            mock_settings.COLLECT_DIGITRAFFIC_INTERVAL = 1800
+            mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
+
+            from app.modules.collection_sources import get_available_sources
+            sources = get_available_sources()
+            assert "dma" not in sources
+
+    def test_collect_dma_dispatch(self):
+        """collect_from_source calls DMA collector."""
+        db = MagicMock(spec=Session)
+
+        with patch("app.modules.collection_sources.settings") as mock_settings:
+            mock_settings.DMA_ENABLED = True
+            mock_settings.COLLECT_DIGITRAFFIC_INTERVAL = 1800
+            mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
+
+            with patch("app.modules.collection_sources._collect_dma") as mock_collect:
+                mock_collect.return_value = {"points_imported": 42, "vessels_seen": 10, "errors": 0}
+
+                from app.modules.collection_sources import collect_from_source
+                result = collect_from_source("dma", db)
+                assert mock_collect.called
+                assert result["points_imported"] == 42

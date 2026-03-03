@@ -475,6 +475,9 @@ def _write_ais_observation(
     Non-blocking: logs warning on failure and increments error counter.
     """
     global _ais_observation_errors
+    if ts is None:
+        logger.warning("Skipping AIS observation for MMSI %s: timestamp is None", str(row.get("mmsi", "unknown")))
+        return
     mmsi = str(row["mmsi"]).strip().zfill(9)
     try:
         from app.models.ais_observation import AISObservation

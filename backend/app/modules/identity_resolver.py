@@ -532,11 +532,21 @@ def _score_candidate(
     score += time_pts
     reasons["time_tightness"] = {"points": time_pts, "hours": round(time_delta_h, 1)}
 
-    # Same IMO (validated)
-    if dark_v.imo and new_v.imo and dark_v.imo == new_v.imo:
-        if validate_imo_checksum(dark_v.imo):
-            score += 25
-            reasons["same_imo"] = {"points": 25, "imo": dark_v.imo}
+    # Same IMO (validated) — or different IMO (hard block)
+    if dark_v.imo and new_v.imo:
+        if dark_v.imo == new_v.imo:
+            if validate_imo_checksum(dark_v.imo):
+                score += 25
+                reasons["same_imo"] = {"points": 25, "imo": dark_v.imo}
+        else:
+            # Different valid IMOs = definitively different physical ships.
+            # IMO is a hull-lifetime identifier — mismatch is conclusive.
+            reasons["imo_mismatch"] = {
+                "blocked": True,
+                "dark_imo": dark_v.imo,
+                "new_imo": new_v.imo,
+            }
+            return 0, reasons
 
     # Same vessel_type
     if dark_v.vessel_type and new_v.vessel_type and dark_v.vessel_type == new_v.vessel_type:

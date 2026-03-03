@@ -232,15 +232,15 @@ def _ingest_barentswatch_feature(
         draught = props.get("draught")
 
         ts_raw = props.get("timestamp") or props.get("msgtime")
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.utcnow()
         if ts_raw:
             try:
                 if isinstance(ts_raw, (int, float)):
-                    timestamp = datetime.fromtimestamp(ts_raw / 1000, tz=timezone.utc)
+                    timestamp = datetime.utcfromtimestamp(ts_raw / 1000)
                 else:
                     timestamp = datetime.fromisoformat(
                         str(ts_raw).replace("Z", "+00:00")
-                    )
+                    ).replace(tzinfo=None)
             except Exception:
                 pass
 

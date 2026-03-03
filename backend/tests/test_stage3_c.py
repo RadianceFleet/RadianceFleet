@@ -491,7 +491,7 @@ class TestIntegration:
 
     def test_feature_flags_default_false(self):
         from app.config import Settings
-        s = Settings()
+        s = Settings(_env_file=None)
         assert s.SCRAPPED_REGISTRY_DETECTION_ENABLED is False
         assert s.SCRAPPED_REGISTRY_SCORING_ENABLED is False
         assert s.TRACK_REPLAY_DETECTION_ENABLED is False

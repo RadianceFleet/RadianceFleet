@@ -420,7 +420,7 @@ class TestConfigIntegration:
         """Feature flags default to False."""
         from app.config import Settings
 
-        s = Settings()
+        s = Settings(_env_file=None)
         assert s.STS_CHAIN_DETECTION_ENABLED is False
         assert s.STS_CHAIN_SCORING_ENABLED is False
 
@@ -460,7 +460,7 @@ class TestScoringIntegration:
         mock_settings.STS_CHAIN_SCORING_ENABLED = False
         # This test verifies the flag exists and defaults to False
         from app.config import Settings
-        s = Settings()
+        s = Settings(_env_file=None)
         assert s.STS_CHAIN_SCORING_ENABLED is False
 
 
