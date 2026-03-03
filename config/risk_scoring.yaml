@@ -379,3 +379,11 @@ voyage:
   laden_from_russian_terminal_sts: 15
   weather_speed_correction_wind: -8
   weather_speed_correction_storm: -15
+
+# WATCHLIST STUB SCORING — static scoring for vessels with no AIS history
+watchlist_stub_scoring:
+  high_risk_flag: 15
+  missing_dwt_stub: 8       # Pressure to enrich
+  missing_type_stub: 5
+  no_ais_history: 10        # Never seen on AIS = suspicious
+  unverified_ownership: 8   # No verified owner

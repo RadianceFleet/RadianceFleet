@@ -438,6 +438,22 @@ def rescore():
         db.close()
 
 
+@app.command("score-stubs")
+def score_stubs(
+    limit: int = typer.Option(0, help="Max stubs to score (0=all)"),
+) -> None:
+    """Score watchlist stubs (vessels with no AIS history) for risk assessment."""
+    from app.database import SessionLocal
+    from app.modules.risk_scoring import score_watchlist_stubs
+
+    db = SessionLocal()
+    try:
+        result = score_watchlist_stubs(db)
+        typer.echo(f"Stub scoring complete: scored={result['scored']} cleared={result['cleared']}")
+    finally:
+        db.close()
+
+
 @app.command("evaluate-detector")
 def evaluate_detector(
     name: str = typer.Argument(..., help="Detector name (e.g. gap_detector, spoofing_detector)"),

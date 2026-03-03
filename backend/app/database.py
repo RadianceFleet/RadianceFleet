@@ -83,6 +83,9 @@ def _run_migrations() -> None:
         ("vessel_owners", "ownership_pct", "REAL"),
         # Stage B — destination field on AIS points
         ("ais_points", "destination", "VARCHAR(20)"),
+        # Watchlist stub scoring — vessels with no AIS history
+        ("vessels", "watchlist_stub_score", "INTEGER"),
+        ("vessels", "watchlist_stub_breakdown", "JSON"),
     ]
 
     _col_cache: dict[str, set[str]] = {}

@@ -38,6 +38,8 @@ class VesselSearchResult(BaseModel):
     deadweight: Optional[float] = None
     last_risk_score: Optional[int] = None
     watchlist_status: bool = False
+    watchlist_stub_score: Optional[int] = None
+    effective_score: Optional[int] = None   # last_risk_score if not None, else watchlist_stub_score
 
     model_config = {"from_attributes": True}
 
@@ -63,6 +65,8 @@ class VesselDetailRead(BaseModel):
     watchlist_entries: list[WatchlistEntryRead] = []
     total_gaps_7d: int = 0
     total_gaps_30d: int = 0
+    watchlist_stub_score: Optional[int] = None
+    watchlist_stub_breakdown: Optional[dict] = None
 
     model_config = {"from_attributes": True}
 

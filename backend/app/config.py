@@ -152,6 +152,12 @@ class Settings(BaseSettings):
     SPARSE_TRANSMISSION_SCORING_ENABLED: bool = False
     TYPE_CONSISTENCY_DETECTION_ENABLED: bool = False
     TYPE_CONSISTENCY_SCORING_ENABLED: bool = False
+    # Watchlist stub scoring
+    WATCHLIST_STUB_SCORING_ENABLED: bool = True
+    # Equasis (metadata enrichment — ToS requires opt-in)
+    EQUASIS_USERNAME: str | None = None
+    EQUASIS_PASSWORD: str | None = None
+    EQUASIS_SCRAPING_ENABLED: bool = False  # Explicit opt-in required — Equasis ToS prohibits automation
 
 
 settings = Settings()
