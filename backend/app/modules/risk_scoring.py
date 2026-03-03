@@ -1391,7 +1391,7 @@ def compute_gap_score(
         # imo_fabricated: IMO fails checksum
         _imo = vessel.imo if isinstance(vessel.imo, str) else None
         if _imo:
-            from app.modules.identity_resolver import validate_imo_checksum
+            from app.utils.vessel_identity import validate_imo_checksum
             if not validate_imo_checksum(_imo):
                 breakdown["imo_fabricated"] = merge_cfg.get("imo_fabricated", 40)
 

@@ -214,7 +214,7 @@ def test_all_merge_pair_imos_checksum_valid():
     # Import the real validator
     import sys
     sys.path.insert(0, "/home/dyn/devel/RadianceFleet/backend")
-    from app.modules.identity_resolver import validate_imo_checksum
+    from app.utils.vessel_identity import validate_imo_checksum
 
     for imo in _MERGE_PAIR_IMOS:
         assert validate_imo_checksum(imo), f"IMO {imo} fails checksum validation"

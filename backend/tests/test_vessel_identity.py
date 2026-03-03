@@ -5,6 +5,7 @@ from app.utils.vessel_identity import (
     mmsi_to_flag,
     flag_to_risk_category,
     is_suspicious_mid,
+    validate_imo_checksum,
     RUSSIAN_ORIGIN_FLAGS,
     MID_TO_FLAG,
 )
@@ -149,3 +150,42 @@ class TestSuspiciousMid:
         assert is_suspicious_mid("") is False
         assert is_suspicious_mid("12") is False
         assert is_suspicious_mid(None) is False
+
+
+class TestValidateImoChecksum:
+    """Test canonical IMO checksum validation."""
+
+    def test_valid_imo(self):
+        """IMO 9074729 is a known valid IMO (check digit 9)."""
+        assert validate_imo_checksum("9074729") is True
+
+    def test_invalid_checksum(self):
+        """IMO with wrong check digit fails."""
+        assert validate_imo_checksum("9074720") is False
+
+    def test_imo_prefix_stripped(self):
+        """'IMO' prefix is stripped before validation."""
+        assert validate_imo_checksum("IMO9074729") is True
+        assert validate_imo_checksum("imo9074729") is True
+        assert validate_imo_checksum("IMO 9074729") is True
+
+    def test_none_input(self):
+        """None input returns False."""
+        assert validate_imo_checksum(None) is False
+
+    def test_empty_string(self):
+        """Empty string returns False."""
+        assert validate_imo_checksum("") is False
+
+    def test_all_zeros_rejected(self):
+        """'0000000' is rejected even though checksum technically passes."""
+        assert validate_imo_checksum("0000000") is False
+
+    def test_non_digit(self):
+        """Non-digit strings fail."""
+        assert validate_imo_checksum("ABCDEFG") is False
+
+    def test_wrong_length(self):
+        """Strings that are not 7 digits (after prefix strip) fail."""
+        assert validate_imo_checksum("123456") is False
+        assert validate_imo_checksum("12345678") is False

@@ -36,6 +36,7 @@ from app.utils.vessel_identity import (
     RUSSIAN_ORIGIN_FLAGS,
     is_suspicious_mid,
     mmsi_to_flag,
+    validate_imo_checksum,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,22 +99,6 @@ def had_russian_port_call(db: Session, vessel_id: int, before: datetime, days: i
                 continue
     return False
 
-
-# ---------------------------------------------------------------------------
-# IMO checksum validation
-# ---------------------------------------------------------------------------
-
-def validate_imo_checksum(imo: str) -> bool:
-    """Validate IMO number using the check digit algorithm.
-
-    IMO numbers are 7 digits (prefixed with "IMO" optionally).
-    Check digit = last digit. Sum of (digit_i * (7-i)) for i=0..5 mod 10 == check digit.
-    """
-    digits = imo.replace("IMO", "").replace("imo", "").strip()
-    if not digits.isdigit() or len(digits) != 7:
-        return False
-    total = sum(int(digits[i]) * (7 - i) for i in range(6))
-    return total % 10 == int(digits[6])
 
 
 # ---------------------------------------------------------------------------

@@ -155,3 +155,23 @@ def flag_to_risk_category(flag: str | None) -> FlagRiskEnum:
     if upper in LOW_RISK_FLAGS:
         return FlagRiskEnum.LOW_RISK
     return FlagRiskEnum.MEDIUM_RISK
+
+
+def validate_imo_checksum(imo: str | None) -> bool:
+    """Validate IMO number using the check digit algorithm.
+
+    IMO numbers are 7 digits (optionally prefixed with "IMO").
+    Check digit = last digit.
+    Sum of (digit_i * (7-i)) for i=0..5 mod 10 == check digit.
+
+    Handles None input, "IMO" prefix stripping, and rejects "0000000".
+    """
+    if not imo:
+        return False
+    digits = str(imo).replace("IMO", "").replace("imo", "").strip()
+    if not digits.isdigit() or len(digits) != 7:
+        return False
+    if digits == "0000000":
+        return False
+    total = sum(int(digits[i]) * (7 - i) for i in range(6))
+    return total % 10 == int(digits[6])
