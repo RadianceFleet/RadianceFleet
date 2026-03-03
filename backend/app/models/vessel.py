@@ -22,6 +22,7 @@ class Vessel(Base):
     flag: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     vessel_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     deadweight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    is_heuristic_dwt: Mapped[bool] = mapped_column(Boolean, default=False)
     year_built: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     ais_class: Mapped[Optional[str]] = mapped_column(
         SAEnum(AISClassEnum), nullable=True, default=AISClassEnum.UNKNOWN

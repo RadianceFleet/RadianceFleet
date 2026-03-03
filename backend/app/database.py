@@ -88,6 +88,8 @@ def _run_migrations() -> None:
         ("ais_points", "destination", "VARCHAR(20)"),
         # Historical pipeline — wall-clock time when a point was loaded
         ("ais_points", "ingested_at", "DATETIME"),
+        # Track B1 — heuristic DWT flag (derived from GT, not authoritative)
+        ("vessels", "is_heuristic_dwt", "BOOLEAN NOT NULL DEFAULT 0"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
