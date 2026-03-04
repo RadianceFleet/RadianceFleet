@@ -695,6 +695,28 @@ def import_gfw_gap_events(
             db.add(gap_event)
             db.flush()
 
+            # Create AIS anchor points for merger visibility
+            from app.models.ais_point import AISPoint
+            for anchor_lat, anchor_lon, anchor_ts in [
+                (off_lat, off_lon, gap_start),
+                (on_lat, on_lon, gap_end),
+            ]:
+                if anchor_lat is None or anchor_lon is None:
+                    continue
+                exists_anchor = db.query(AISPoint).filter(
+                    AISPoint.vessel_id == vessel.vessel_id,
+                    AISPoint.timestamp_utc == anchor_ts,
+                    AISPoint.source == "gfw_gap_anchor",
+                ).first()
+                if not exists_anchor:
+                    db.add(AISPoint(
+                        vessel_id=vessel.vessel_id,
+                        lat=anchor_lat,
+                        lon=anchor_lon,
+                        timestamp_utc=anchor_ts,
+                        source="gfw_gap_anchor",
+                    ))
+
             # Corridor correlation using off-position
             if off_lat is not None and off_lon is not None:
                 try:
