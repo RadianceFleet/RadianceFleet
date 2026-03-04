@@ -716,6 +716,7 @@ def import_gfw_gap_events(
                         timestamp_utc=anchor_ts,
                         source="gfw_gap_anchor",
                     ))
+                    db.flush()
 
             # Corridor correlation using off-position
             if off_lat is not None and off_lon is not None:
