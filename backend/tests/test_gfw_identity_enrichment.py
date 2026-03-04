@@ -476,3 +476,223 @@ class TestEnrichIdentityCLI:
         result = runner.invoke(app, ["enrich-identity", "invalid_source"])
         assert result.exit_code != 0
         assert "source must be one of" in result.output or "BadParameter" in str(result.exception) or result.exit_code != 0
+
+
+# ===========================================================================
+# 1d: populate_gfw_identity_history Tests
+# ===========================================================================
+
+
+class TestPopulateGFWIdentityHistory:
+    """Tests for populate_gfw_identity_history() in vessel_enrichment.py."""
+
+    @patch("app.modules.vessel_enrichment.time.sleep")
+    @patch("app.modules.gfw_client.search_vessel")
+    def test_writes_history_for_vessel_without_history(self, mock_search, mock_sleep, db):
+        """Vessel with MMSI but no history rows gets VesselHistory rows written."""
+        vessel = _make_vessel(db, "273111111")
+        db.commit()
+
+        mock_search.return_value = [{
+            "mmsi": "273111111",
+            "identity_history": [
+                {
+                    "name": "OLD NAME",
+                    "flag": "PA",
+                    "imo": "1111111",
+                    "callsign": "ABCD",
+                    "date_from": "2022-01-01T00:00:00Z",
+                    "date_to": "2023-01-01T00:00:00Z",
+                }
+            ],
+        }]
+
+        from app.modules.vessel_enrichment import populate_gfw_identity_history
+        result = populate_gfw_identity_history(db, limit=10, token="test-token")
+
+        history_rows = db.query(VesselHistory).filter(
+            VesselHistory.vessel_id == vessel.vessel_id,
+            VesselHistory.source == "gfw_enrichment_history",
+        ).all()
+        assert len(history_rows) == 4  # imo, name, callsign, flag
+        assert result["written"] == 4
+
+    @patch("app.modules.vessel_enrichment.time.sleep")
+    @patch("app.modules.gfw_client.search_vessel")
+    def test_skips_vessel_with_existing_history(self, mock_search, mock_sleep, db):
+        """Vessel already having gfw_enrichment_history rows is in skipped count."""
+        vessel = _make_vessel(db, "273222222")
+        # Pre-insert a history row with source='gfw_enrichment_history'
+        db.add(VesselHistory(
+            vessel_id=vessel.vessel_id,
+            field_changed="name",
+            old_value="",
+            new_value="PRIOR",
+            observed_at=datetime(2022, 1, 1),
+            source="gfw_enrichment_history",
+        ))
+        db.commit()
+
+        from app.modules.vessel_enrichment import populate_gfw_identity_history
+        result = populate_gfw_identity_history(db, limit=10, token="test-token")
+
+        # search_vessel should NOT be called for this vessel (NOT EXISTS skips it)
+        mock_search.assert_not_called()
+        assert result["skipped"] == 1
+        assert result["processed"] == 0
+
+    @patch("app.modules.vessel_enrichment.time.sleep")
+    @patch("app.modules.gfw_client.search_vessel")
+    def test_no_metadata_updates(self, mock_search, mock_sleep, db):
+        """Only history rows are written — vessel.imo/deadweight/flag stay unchanged."""
+        vessel = _make_vessel(db, "273333333", imo=None, flag=None)
+        db.commit()
+
+        mock_search.return_value = [{
+            "mmsi": "273333333",
+            "imo": "9999999",
+            "flag": "LR",
+            "tonnage_gt": 50000,
+            "identity_history": [
+                {
+                    "name": "HISTORY VESSEL",
+                    "flag": "LR",
+                    "date_from": "2021-06-01T00:00:00Z",
+                }
+            ],
+        }]
+
+        from app.modules.vessel_enrichment import populate_gfw_identity_history
+        populate_gfw_identity_history(db, limit=10, token="test-token")
+
+        # Metadata fields must NOT be updated
+        db.refresh(vessel)
+        assert vessel.imo is None
+        assert vessel.flag is None
+        assert vessel.deadweight is None
+
+    @patch("app.modules.vessel_enrichment.time.sleep")
+    @patch("app.modules.gfw_client.search_vessel")
+    def test_returns_processed_written_skipped_counts(self, mock_search, mock_sleep, db):
+        """Return dict has keys processed, written, skipped with correct values."""
+        vessel = _make_vessel(db, "273444444")
+        db.commit()
+
+        mock_search.return_value = [{
+            "mmsi": "273444444",
+            "identity_history": [
+                {
+                    "name": "NAME ONE",
+                    "date_from": "2020-01-01T00:00:00Z",
+                }
+            ],
+        }]
+
+        from app.modules.vessel_enrichment import populate_gfw_identity_history
+        result = populate_gfw_identity_history(db, limit=10, token="test-token")
+
+        assert "processed" in result
+        assert "written" in result
+        assert "skipped" in result
+        assert result["processed"] == 1
+        assert result["written"] == 1  # only "name" has a value
+        assert result["skipped"] == 0
+
+    @patch("app.modules.vessel_enrichment.time.sleep")
+    @patch("app.modules.gfw_client.search_vessel")
+    def test_error_handling_continues_to_next_vessel(self, mock_search, mock_sleep, db):
+        """If search_vessel raises on first vessel, processing continues to second."""
+        vessel1 = _make_vessel(db, "273555551")
+        vessel2 = _make_vessel(db, "273555552")
+        db.commit()
+
+        call_count = 0
+
+        def side_effect(mmsi, token=None):
+            nonlocal call_count
+            call_count += 1
+            if mmsi == "273555551":
+                raise RuntimeError("API error")
+            return [{
+                "mmsi": "273555552",
+                "identity_history": [
+                    {"name": "SECOND VESSEL", "date_from": "2021-01-01T00:00:00Z"}
+                ],
+            }]
+
+        mock_search.side_effect = side_effect
+
+        from app.modules.vessel_enrichment import populate_gfw_identity_history
+        result = populate_gfw_identity_history(db, limit=10, token="test-token")
+
+        # Both vessels were attempted
+        assert call_count == 2
+        # processed = 2 (both tried), written = 1 (only vessel2 succeeded)
+        assert result["processed"] == 2
+
+        # vessel2 should have history rows
+        rows = db.query(VesselHistory).filter(
+            VesselHistory.vessel_id == vessel2.vessel_id,
+            VesselHistory.source == "gfw_enrichment_history",
+        ).all()
+        assert len(rows) == 1
+
+    @patch("app.modules.vessel_enrichment.time.sleep")
+    @patch("app.modules.gfw_client.search_vessel")
+    def test_idempotent_rerun(self, mock_search, mock_sleep, db):
+        """Running twice does not double-insert history rows."""
+        vessel = _make_vessel(db, "273666666")
+        db.commit()
+
+        mock_search.return_value = [{
+            "mmsi": "273666666",
+            "identity_history": [
+                {"name": "SAME NAME", "date_from": "2022-06-01T00:00:00Z"}
+            ],
+        }]
+
+        from app.modules.vessel_enrichment import populate_gfw_identity_history
+
+        # First run — writes history
+        result1 = populate_gfw_identity_history(db, limit=10, token="test-token")
+        count1 = db.query(VesselHistory).filter(
+            VesselHistory.vessel_id == vessel.vessel_id,
+            VesselHistory.source == "gfw_enrichment_history",
+        ).count()
+        assert count1 == 1
+        assert result1["written"] == 1
+
+        # Second run — vessel now has history so NOT EXISTS skips it
+        result2 = populate_gfw_identity_history(db, limit=10, token="test-token")
+        count2 = db.query(VesselHistory).filter(
+            VesselHistory.vessel_id == vessel.vessel_id,
+            VesselHistory.source == "gfw_enrichment_history",
+        ).count()
+        assert count2 == 1  # no new rows
+        assert result2["skipped"] == 1
+        assert result2["processed"] == 0
+
+    def test_cli_identity_only_flag(self):
+        """enrich-identity gfw --identity-only calls populate_gfw_identity_history, not enrich_vessels_from_gfw."""
+        from typer.testing import CliRunner
+        from app.cli import app
+
+        runner = CliRunner()
+        mock_db = MagicMock()
+
+        with patch("app.database.SessionLocal", return_value=mock_db):
+            with patch(
+                "app.modules.vessel_enrichment.populate_gfw_identity_history",
+                return_value={"processed": 3, "written": 10, "skipped": 1},
+            ) as mock_hist:
+                with patch(
+                    "app.modules.vessel_enrichment.enrich_vessels_from_gfw",
+                    return_value={"enriched": 99},
+                ) as mock_enrich:
+                    result = runner.invoke(app, ["enrich-identity", "gfw", "--identity-only"])
+
+        assert result.exit_code == 0, result.output
+        mock_hist.assert_called_once_with(mock_db, limit=200)
+        mock_enrich.assert_not_called()
+        assert "10" in result.output  # written count
+        assert "3" in result.output   # processed count

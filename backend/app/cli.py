@@ -973,6 +973,8 @@ _VALID_SOURCES = ("gfw", "watchlist", "equasis", "all")
 def enrich_identity(
     source: str = typer.Argument("gfw", help="Source: gfw, watchlist, equasis, all"),
     limit: int = typer.Option(200, "--limit", help="Max vessels per source"),
+    watchlist_only: bool = typer.Option(False, "--watchlist-only", help="Equasis: restrict to watchlisted vessels only"),
+    identity_only: bool = typer.Option(False, "--identity-only", help="Only write GFW identity history, skip metadata updates"),
 ):
     """Enrich vessel identity data from external sources.
 
@@ -991,19 +993,25 @@ def enrich_identity(
     db = SessionLocal()
     try:
         if source in ("gfw", "all"):
-            from app.modules.vessel_enrichment import enrich_vessels_from_gfw
-            result = enrich_vessels_from_gfw(db, limit=limit)
-            console.print(f"  GFW: enriched {result['enriched']} vessels")
+            if identity_only:
+                from app.modules.vessel_enrichment import populate_gfw_identity_history
+                result = populate_gfw_identity_history(db, limit=limit)
+                console.print(f"  GFW: wrote {result['written']} history rows for {result['processed']} vessels")
+            else:
+                from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+                result = enrich_vessels_from_gfw(db, limit=limit)
+                console.print(f"  GFW: enriched {result['enriched']} vessels")
         if source in ("watchlist", "all"):
             _update_fetch_watchlists(db)
             console.print("  Watchlists: loaded (OFAC, OpenSanctions, FleetLeaks, GUR, KSE)")
         if source in ("equasis", "all"):
             from app.modules.vessel_enrichment import enrich_vessels_from_equasis
-            result = enrich_vessels_from_equasis(db, limit=limit)
+            result = enrich_vessels_from_equasis(db, limit=limit, watchlist_only=watchlist_only)
             if result.get("disabled"):
                 console.print("  [yellow]Equasis: disabled (set EQUASIS_SCRAPING_ENABLED=true to opt in)[/yellow]")
             else:
-                console.print(f"  Equasis: enriched {result['enriched']} vessels")
+                scope = " (watchlist only)" if watchlist_only else ""
+                console.print(f"  Equasis: enriched {result['enriched']} vessels{scope}")
     finally:
         db.close()
 

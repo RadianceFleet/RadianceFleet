@@ -197,6 +197,126 @@ def enrich_vessels_from_gfw(
     return stats
 
 
+def populate_gfw_identity_history(
+    db: Session,
+    limit: int = 200,
+    token: str | None = None,
+) -> dict:
+    """Populate VesselHistory from GFW identity_history for vessels that have no prior history rows.
+
+    Selects vessels with MMSI that have NO existing VesselHistory row with
+    source='gfw_enrichment_history' (NOT EXISTS subquery avoids re-fetching).
+    Only writes identity_history entries — no metadata field updates whatsoever.
+
+    Args:
+        db: SQLAlchemy session.
+        limit: Max vessels to process per run.
+        token: GFW API bearer token (falls back to settings).
+
+    Returns:
+        {"processed": int, "written": int, "skipped": int}
+          processed — number of vessels API was called for
+          written   — total VesselHistory rows inserted
+          skipped   — vessels skipped because NOT EXISTS check found existing history rows
+    """
+    from app.models.vessel import Vessel
+    from app.modules.gfw_client import search_vessel
+    from sqlalchemy import not_, exists
+    from sqlalchemy.exc import IntegrityError
+
+    history_exists = exists().where(
+        VesselHistory.vessel_id == Vessel.vessel_id,
+        VesselHistory.source == "gfw_enrichment_history",
+    )
+    candidates = (
+        db.query(Vessel)
+        .filter(
+            Vessel.mmsi.isnot(None),
+            Vessel.merged_into_vessel_id.is_(None),
+            not_(history_exists),
+        )
+        .order_by(Vessel.vessel_id)
+        .limit(limit)
+        .all()
+    )
+
+    total_vessels = db.query(Vessel).filter(Vessel.mmsi.isnot(None), Vessel.merged_into_vessel_id.is_(None)).count()
+    skipped = total_vessels - db.query(Vessel).filter(
+        Vessel.mmsi.isnot(None),
+        Vessel.merged_into_vessel_id.is_(None),
+        not_(history_exists),
+    ).count()
+    # Cap skipped to what actually falls outside the limit window
+    # More precisely: skipped = vessels that had history (not in candidates list)
+    # We calculate it as (all eligible - candidates before limit) but since we apply limit,
+    # just track actual skipped as those not included due to existing history.
+    # Recalculate: skipped is vessels with mmsi+not merged that DO have history
+    skipped_count = (
+        db.query(Vessel)
+        .filter(
+            Vessel.mmsi.isnot(None),
+            Vessel.merged_into_vessel_id.is_(None),
+            history_exists,
+        )
+        .count()
+    )
+
+    stats: dict = {"processed": 0, "written": 0, "skipped": skipped_count}
+
+    for vessel in candidates:
+        try:
+            results = search_vessel(vessel.mmsi, token=token)
+        except Exception as exc:
+            logger.warning("GFW identity history fetch failed for MMSI %s: %s", vessel.mmsi, exc)
+            stats["processed"] += 1
+            time.sleep(_REQUEST_DELAY_S)
+            continue
+
+        stats["processed"] += 1
+
+        # Find exact MMSI match
+        match = None
+        if results:
+            for r in results:
+                if str(r.get("mmsi")) == vessel.mmsi:
+                    match = r
+                    break
+
+        if match is None:
+            time.sleep(_REQUEST_DELAY_S)
+            continue
+
+        # Write identity_history only — no metadata field updates
+        for hist in match.get("identity_history", []):
+            try:
+                _obs_at = datetime.fromisoformat(hist["date_from"].replace("Z", "+00:00"))
+                _obs_at = _obs_at.replace(tzinfo=None)
+            except (ValueError, AttributeError):
+                continue
+
+            for field, hist_key in [("imo", "imo"), ("name", "name"), ("callsign", "callsign"), ("flag", "flag")]:
+                hist_val = hist.get(hist_key)
+                if not hist_val or not str(hist_val).strip():
+                    continue
+                sp = db.begin_nested()
+                try:
+                    db.add(VesselHistory(
+                        vessel_id=vessel.vessel_id, field_changed=field,
+                        old_value="", new_value=str(hist_val).strip(),
+                        observed_at=_obs_at, source="gfw_enrichment_history",
+                    ))
+                    sp.commit()
+                    stats["written"] += 1
+                except IntegrityError:
+                    sp.rollback()
+
+        time.sleep(_REQUEST_DELAY_S)
+
+    db.commit()
+    logger.info("GFW identity history population: %s", stats)
+    return stats
+
+
 def infer_ais_class(db: Session, vessel) -> str | None:
     """Infer AIS class from transmission intervals.
 
@@ -279,6 +399,7 @@ def infer_pi_coverage(db: Session) -> dict[str, int]:
 def enrich_vessels_from_equasis(
     db: Session,
     limit: int = 100,
+    watchlist_only: bool = False,
 ) -> dict:
     """Enrich vessel metadata from Equasis (opt-in — requires EQUASIS_SCRAPING_ENABLED=true).
 
@@ -292,6 +413,7 @@ def enrich_vessels_from_equasis(
     Args:
         db: SQLAlchemy session.
         limit: Max vessels to enrich per run.
+        watchlist_only: If True, restrict to actively watchlisted vessels only.
 
     Returns:
         {"enriched": int, "failed": int, "skipped": int}
@@ -309,14 +431,14 @@ def enrich_vessels_from_equasis(
         logger.warning("Equasis enrichment skipped: %s", exc)
         return {"enriched": 0, "failed": 0, "skipped": 0, "disabled": True}
 
-    # Watchlisted vessels first (prioritize by watchlist status)
+    # Watchlisted vessel IDs (always loaded for sorting; also used as filter when watchlist_only)
     watchlisted_ids = {
         row.vessel_id for row in db.query(VesselWatchlist.vessel_id)
         .filter(VesselWatchlist.is_active == True).all()  # noqa: E712
     }
 
     # Select vessels that need enrichment
-    vessels = (
+    q = (
         db.query(Vessel)
         .filter(
             or_(
@@ -325,8 +447,10 @@ def enrich_vessels_from_equasis(
             ),
             Vessel.imo != None,  # noqa: E711  — Equasis requires IMO
         )
-        .all()
     )
+    if watchlist_only:
+        q = q.filter(Vessel.vessel_id.in_(watchlisted_ids))
+    vessels = q.all()
 
     # Sort: watchlisted first, then by vessel_id
     vessels.sort(key=lambda v: (0 if v.vessel_id in watchlisted_ids else 1, v.vessel_id))
