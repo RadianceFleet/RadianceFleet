@@ -627,8 +627,9 @@ class TestPopulateGFWIdentityHistory:
 
         # Both vessels were attempted
         assert call_count == 2
-        # processed = 2 (both tried), written = 1 (only vessel2 succeeded)
-        assert result["processed"] == 2
+        # processed = 1 (only vessel2 succeeded), failed = 1 (vessel1 raised)
+        assert result["processed"] == 1
+        assert result["failed"] == 1
 
         # vessel2 should have history rows
         rows = db.query(VesselHistory).filter(

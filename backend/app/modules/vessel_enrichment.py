@@ -214,10 +214,11 @@ def populate_gfw_identity_history(
         token: GFW API bearer token (falls back to settings).
 
     Returns:
-        {"processed": int, "written": int, "skipped": int}
-          processed — number of vessels API was called for
+        {"processed": int, "written": int, "skipped": int, "failed": int}
+          processed — number of vessels API was called for successfully
           written   — total VesselHistory rows inserted
           skipped   — vessels skipped because NOT EXISTS check found existing history rows
+          failed    — vessels where search_vessel raised an exception
     """
     from app.models.vessel import Vessel
     from app.modules.gfw_client import search_vessel
@@ -240,17 +241,6 @@ def populate_gfw_identity_history(
         .all()
     )
 
-    total_vessels = db.query(Vessel).filter(Vessel.mmsi.isnot(None), Vessel.merged_into_vessel_id.is_(None)).count()
-    skipped = total_vessels - db.query(Vessel).filter(
-        Vessel.mmsi.isnot(None),
-        Vessel.merged_into_vessel_id.is_(None),
-        not_(history_exists),
-    ).count()
-    # Cap skipped to what actually falls outside the limit window
-    # More precisely: skipped = vessels that had history (not in candidates list)
-    # We calculate it as (all eligible - candidates before limit) but since we apply limit,
-    # just track actual skipped as those not included due to existing history.
-    # Recalculate: skipped is vessels with mmsi+not merged that DO have history
     skipped_count = (
         db.query(Vessel)
         .filter(
@@ -261,14 +251,14 @@ def populate_gfw_identity_history(
         .count()
     )
 
-    stats: dict = {"processed": 0, "written": 0, "skipped": skipped_count}
+    stats: dict = {"processed": 0, "written": 0, "skipped": skipped_count, "failed": 0}
 
     for vessel in candidates:
         try:
             results = search_vessel(vessel.mmsi, token=token)
         except Exception as exc:
             logger.warning("GFW identity history fetch failed for MMSI %s: %s", vessel.mmsi, exc)
-            stats["processed"] += 1
+            stats["failed"] += 1
             time.sleep(_REQUEST_DELAY_S)
             continue
 
