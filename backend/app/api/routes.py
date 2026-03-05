@@ -29,6 +29,10 @@ import re
 import yaml
 from pathlib import Path
 from unidecode import unidecode as _unidecode
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 _COVERAGE_DATA: dict = {}
 # config/ is at repo root (one level above backend/)
@@ -2565,6 +2569,217 @@ def get_collection_status(
         "merge_readiness": merge_readiness,
         "data_quality_warnings": data_quality_warnings,
     }
+
+
+# ---------------------------------------------------------------------------
+# Admin Auth
+# ---------------------------------------------------------------------------
+
+from app.auth import create_admin_token, verify_admin_password, require_admin
+
+class AdminLoginRequest(BaseModel):
+    password: str
+
+@router.post("/admin/login", tags=["admin"])
+@limiter.limit("5/hour")
+def admin_login(request: Request, body: AdminLoginRequest):
+    """Rate-limited admin login. Returns JWT token valid for 30 minutes."""
+    if not verify_admin_password(body.password):
+        raise HTTPException(status_code=401, detail="Invalid password")
+    return {"token": create_admin_token()}
+
+
+@router.post("/admin/refresh", tags=["admin"])
+def admin_refresh(request: Request, _admin=Depends(require_admin)):
+    """Refresh admin JWT token (called silently by frontend)."""
+    return {"token": create_admin_token()}
+
+
+# ---------------------------------------------------------------------------
+# Tip Submission
+# ---------------------------------------------------------------------------
+
+class TipRequest(BaseModel):
+    mmsi: str
+    imo: Optional[str] = None
+    behavior_type: str
+    detail_text: str
+    source_url: Optional[str] = None
+    submitter_email: Optional[str] = None
+    website: Optional[str] = None  # honeypot — reject if non-empty
+
+@router.post("/tips/vessel", tags=["public"])
+@limiter.limit("3/hour")
+def submit_tip(request: Request, body: TipRequest, db: Session = Depends(get_db)):
+    """Public tip submission. Rate-limited 3/hour per IP."""
+    from app.models.tip_submission import TipSubmission, validate_source_url
+    # Reject honeypot
+    if body.website:
+        raise HTTPException(status_code=422, detail="Invalid submission")
+    # Validate
+    if len(body.detail_text) < 50:
+        raise HTTPException(status_code=422, detail="detail_text must be at least 50 characters")
+    if len(body.detail_text) > 500:
+        raise HTTPException(status_code=422, detail="detail_text must be 500 characters or less")
+    valid_types = {"AIS_MANIPULATION", "DARK_PERIOD", "SUSPICIOUS_STS", "FLAG_CHANGE", "OTHER"}
+    if body.behavior_type not in valid_types:
+        raise HTTPException(status_code=422, detail=f"behavior_type must be one of {valid_types}")
+    try:
+        url = validate_source_url(body.source_url)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    tip = TipSubmission(
+        mmsi=body.mmsi,
+        imo=body.imo,
+        behavior_type=body.behavior_type,
+        detail_text=body.detail_text,
+        source_url=url,
+        submitter_email=body.submitter_email,
+        status="PENDING",
+        submitter_ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    db.add(tip)
+    db.commit()
+    return {"status": "received", "message": "Thank you. Analysts will review your tip."}
+
+
+@router.get("/admin/tips", tags=["admin"])
+def get_tips(
+    request: Request,
+    status: Optional[str] = None,
+    limit: int = Query(50, le=200),
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Admin: list tip submissions, paginated."""
+    from app.models.tip_submission import TipSubmission
+    from sqlalchemy import select
+    q = select(TipSubmission)
+    if status:
+        q = q.where(TipSubmission.status == status.upper())
+    q = q.order_by(TipSubmission.created_at.desc()).offset(offset).limit(limit)
+    tips = db.execute(q).scalars().all()
+    return [
+        {
+            "id": t.id, "mmsi": t.mmsi, "imo": t.imo, "behavior_type": t.behavior_type,
+            "detail_text": t.detail_text, "source_url": t.source_url,
+            "submitter_email": t.submitter_email, "status": t.status,
+            "submitter_ip": t.submitter_ip, "created_at": str(t.created_at),
+            "analyst_note": t.analyst_note,
+        }
+        for t in tips
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Email Subscriptions
+# ---------------------------------------------------------------------------
+
+class SubscribeRequest(BaseModel):
+    email: str
+    mmsi: Optional[str] = None
+    corridor_id: Optional[int] = None
+    alert_type: Optional[str] = None
+
+class ResendRequest(BaseModel):
+    email: str
+
+@router.post("/subscribe", tags=["public"])
+@limiter.limit("5/hour")
+def subscribe(request: Request, body: SubscribeRequest, db: Session = Depends(get_db)):
+    """Public: subscribe to vessel/corridor email alerts (double opt-in)."""
+    from app.models.alert_subscription import AlertSubscription, generate_subscription_token
+    from app.modules.email_notifier import send_confirmation_email
+    if not settings.ADMIN_JWT_SECRET:
+        raise HTTPException(status_code=503, detail="Email subscriptions not configured")
+    # Upsert: find or create subscription
+    from sqlalchemy import select
+    existing = db.execute(
+        select(AlertSubscription).where(
+            AlertSubscription.email == body.email,
+            AlertSubscription.mmsi == body.mmsi,
+            AlertSubscription.corridor_id == body.corridor_id,
+        )
+    ).scalar_one_or_none()
+    if existing and existing.confirmed:
+        return {"status": "already_confirmed"}
+    token = generate_subscription_token(body.email, settings.ADMIN_JWT_SECRET)
+    if existing:
+        existing.token = token
+    else:
+        sub = AlertSubscription(
+            email=body.email,
+            mmsi=body.mmsi,
+            corridor_id=body.corridor_id,
+            alert_type=body.alert_type,
+            token=token,
+            consent_ip=request.client.host if request.client else None,
+            consent_timestamp=datetime.now(timezone.utc),
+        )
+        db.add(sub)
+    db.commit()
+    confirm_url = f"{settings.PUBLIC_URL}/api/v1/subscribe/confirm?token={token}&email={body.email}"
+    send_confirmation_email(body.email, confirm_url)
+    return {"status": "pending_confirmation"}
+
+
+@router.post("/subscribe/resend", tags=["public"])
+@limiter.limit("3/hour")
+def resend_confirmation(request: Request, body: ResendRequest, db: Session = Depends(get_db)):
+    """Resend confirmation email (rate-limited)."""
+    from app.models.alert_subscription import AlertSubscription, generate_subscription_token
+    from app.modules.email_notifier import send_confirmation_email
+    from sqlalchemy import select
+    if not settings.ADMIN_JWT_SECRET:
+        raise HTTPException(status_code=503, detail="Email subscriptions not configured")
+    sub = db.execute(
+        select(AlertSubscription).where(AlertSubscription.email == body.email, AlertSubscription.confirmed == False)
+    ).scalar_one_or_none()
+    if not sub:
+        return {"status": "not_found"}
+    token = generate_subscription_token(body.email, settings.ADMIN_JWT_SECRET)
+    sub.token = token
+    db.commit()
+    confirm_url = f"{settings.PUBLIC_URL}/api/v1/subscribe/confirm?token={token}&email={body.email}"
+    send_confirmation_email(body.email, confirm_url)
+    return {"status": "resent"}
+
+
+@router.get("/unsubscribe", tags=["public"])
+def unsubscribe(token: str = Query(...), email: str = Query(...), db: Session = Depends(get_db)):
+    """One-click unsubscribe via token link."""
+    from app.models.alert_subscription import AlertSubscription, verify_subscription_token
+    from sqlalchemy import select
+    if not settings.ADMIN_JWT_SECRET:
+        raise HTTPException(status_code=503, detail="Not configured")
+    if not verify_subscription_token(token, email, settings.ADMIN_JWT_SECRET):
+        raise HTTPException(status_code=400, detail="Invalid or expired unsubscribe token")
+    subs = db.execute(select(AlertSubscription).where(AlertSubscription.email == email)).scalars().all()
+    for s in subs:
+        db.delete(s)
+    db.commit()
+    return {"status": "unsubscribed", "email": email}
+
+
+@router.get("/subscribe/confirm", tags=["public"])
+def confirm_subscription(token: str = Query(...), email: str = Query(...), db: Session = Depends(get_db)):
+    """Confirm email subscription via token link."""
+    from app.models.alert_subscription import AlertSubscription, verify_subscription_token
+    from sqlalchemy import select
+    if not settings.ADMIN_JWT_SECRET:
+        raise HTTPException(status_code=503, detail="Not configured")
+    if not verify_subscription_token(token, email, settings.ADMIN_JWT_SECRET):
+        raise HTTPException(status_code=400, detail="Invalid or expired confirmation token")
+    sub = db.execute(
+        select(AlertSubscription).where(AlertSubscription.email == email, AlertSubscription.token == token)
+    ).scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    sub.confirmed = True
+    db.commit()
+    return {"status": "confirmed", "email": email}
 
 
 @router.get("/fleet/alerts", tags=["fleet"])

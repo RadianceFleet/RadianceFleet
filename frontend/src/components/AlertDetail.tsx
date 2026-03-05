@@ -83,7 +83,16 @@ export function AlertDetail() {
   return (
     <div style={{ maxWidth: 860 }}>
       <Link to="/alerts" style={{ fontSize: 13 }}>← All alerts</Link>
-      <h2 style={{ margin: '12px 0 4px', fontSize: 18 }}>Alert #{alert.gap_event_id}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '12px 0 4px' }}>
+        <h2 style={{ margin: 0, fontSize: 18 }}>Alert #{alert.gap_event_id}</h2>
+        <button
+          onClick={() => navigator.clipboard.writeText(window.location.href)}
+          style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', background: 'transparent', color: 'var(--text-muted)' }}
+          title="Copy link to clipboard"
+        >
+          Share
+        </button>
+      </div>
       <p style={{ color: 'var(--text-dim)', margin: '0 0 20px', fontSize: 13 }}>
         {alert.vessel_id ? (
           <Link to={`/vessels/${alert.vessel_id}`}>{alert.vessel_name ?? 'Unknown vessel'}</Link>

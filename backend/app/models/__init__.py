@@ -35,6 +35,8 @@ from app.models.route_template import RouteTemplate
 from app.models.collection_run import CollectionRun
 from app.models.data_coverage_window import DataCoverageWindow
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
+from app.models.tip_submission import TipSubmission
+from app.models.alert_subscription import AlertSubscription
 
 __all__ = [
     "Base",
@@ -76,4 +78,6 @@ __all__ = [
     "RouteTemplate",
     "CollectionRun",
     "DataCoverageWindow",
+    "TipSubmission",
+    "AlertSubscription",
 ]

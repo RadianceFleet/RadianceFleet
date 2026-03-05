@@ -27,6 +27,7 @@ from typing import Optional
 from rich.console import Console
 from rich.table import Table
 from datetime import date, timedelta
+from app.config import settings
 
 
 app = typer.Typer(
@@ -228,6 +229,52 @@ def update(
                     console.print(f"  {key}: {val}")
             except (ImportError, AttributeError):
                 console.print("[dim]Merge diagnostic not available[/dim]")
+
+        # Phase 4: Send pending email alert notifications
+        with console.status("[bold]Sending alert notifications..."):
+            try:
+                from datetime import datetime, timezone
+                from app.modules.email_notifier import send_alert_notification
+                from app.models.alert_subscription import AlertSubscription
+                from app.models.vessel import Vessel
+                from app.models.gap_event import AISGapEvent
+                from sqlalchemy import select as sa_select
+                confirmed_subs = db.execute(
+                    sa_select(AlertSubscription).where(AlertSubscription.confirmed == True)
+                ).scalars().all()
+                sent = 0
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=6)
+                for sub in confirmed_subs:
+                    if not sub.mmsi:
+                        continue
+                    if sub.last_notified_at and sub.last_notified_at > cutoff.replace(tzinfo=None):
+                        continue
+                    # Find vessel by MMSI
+                    vessel = db.execute(
+                        sa_select(Vessel).where(Vessel.mmsi == sub.mmsi)
+                    ).scalar_one_or_none()
+                    if not vessel:
+                        continue
+                    # Find recent gap events for this vessel
+                    recent_gap = db.execute(
+                        sa_select(AISGapEvent).where(
+                            AISGapEvent.vessel_id == vessel.vessel_id,
+                            AISGapEvent.gap_start_utc >= cutoff.replace(tzinfo=None),
+                        ).limit(1)
+                    ).scalar_one_or_none()
+                    if recent_gap:
+                        vessel_name = vessel.name or sub.mmsi
+                        alert_url = f"{settings.PUBLIC_URL}/alerts/{recent_gap.gap_event_id}"
+                        unsub_url = f"{settings.PUBLIC_URL}/api/v1/unsubscribe?token={sub.token}&email={sub.email}"
+                        ok = send_alert_notification(sub.email, vessel_name, "AIS Gap", alert_url, unsub_url)
+                        if ok:
+                            sub.last_notified_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                            sent += 1
+                if sent:
+                    db.commit()
+                    console.print(f"[dim]Sent {sent} alert notification(s)[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]Email notifications: {e}[/yellow]")
 
         console.print("[green]Update complete![/green]")
         _print_summary(console)

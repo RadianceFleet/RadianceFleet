@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: '/merge-candidates', label: 'Merges' },
   { to: '/ingest', label: 'Ingest' },
   { to: '/detect', label: 'Detect' },
+  { to: '/donate', label: 'Support' },
 ]
 
 export function AppLayout() {

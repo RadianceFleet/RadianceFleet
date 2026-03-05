@@ -9,6 +9,8 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { VerificationPanel } from '../components/VerificationPanel'
 import { VerificationBadge } from '../components/VerificationBadge'
 import { VesselTimeline } from '../components/VesselTimeline'
+import { TipForm } from '../components/TipForm'
+import { SubscribeForm } from '../components/SubscribeForm'
 
 /* ------------------------------------------------------------------ */
 /*  Shared styles (matching AlertDetail / AlertList conventions)       */
@@ -114,6 +116,13 @@ export function VesselDetailPage() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '12px 0 4px' }}>
         <h2 style={{ margin: 0, fontSize: 18 }}>{name}</h2>
+        <button
+          onClick={() => navigator.clipboard.writeText(window.location.href)}
+          style={{ fontSize: 12, padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer', background: 'transparent', color: 'var(--text-muted)' }}
+          title="Copy link to clipboard"
+        >
+          Share
+        </button>
         {flagRisk !== 'unknown' && (
           <span style={{
             display: 'inline-block',
@@ -520,6 +529,16 @@ export function VesselDetailPage() {
           </>
         )}
       </Card>
+
+      {/* Tip and Subscribe forms */}
+      {vessel && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ marginBottom: 16 }}>
+            <SubscribeForm mmsi={vessel.mmsi} label={`Get alerts for ${vessel.name || vessel.mmsi}`} />
+          </div>
+          <TipForm mmsi={vessel.mmsi} vesselName={vessel.name || vessel.mmsi} />
+        </div>
+      )}
 
       {/* Back link */}
       <Link

@@ -15,6 +15,7 @@ import { IngestionPage } from './pages/IngestionPage'
 import { DetectionPanel } from './pages/DetectionPanel'
 import { DarkVesselsPage } from './pages/DarkVesselsPage'
 import { MergeCandidatesPage } from './pages/MergeCandidatesPage'
+import { DonatePage } from './pages/DonatePage'
 
 export default function App() {
   return (
@@ -36,6 +37,7 @@ export default function App() {
             <Route path="dark-vessels" element={<DarkVesselsPage />} />
             <Route path="merge-candidates" element={<MergeCandidatesPage />} />
             <Route path="detect" element={<DetectionPanel />} />
+            <Route path="donate" element={<DonatePage />} />
           </Route>
         </Routes>
       </ErrorBoundary>

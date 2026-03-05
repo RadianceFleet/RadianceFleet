@@ -184,6 +184,20 @@ class Settings(BaseSettings):
     EQUASIS_USERNAME: str | None = None
     EQUASIS_PASSWORD: str | None = None
     EQUASIS_SCRAPING_ENABLED: bool = False  # Explicit opt-in required — Equasis ToS prohibits automation
+    # ── Public Platform Auth ───────────────────────────────────────────────────
+    # Do NOT set RADIANCEFLEET_API_KEY on the public instance — it blocks all GET requests.
+    # The JWT admin auth (ADMIN_JWT_SECRET) replaces it for write operations only.
+    ADMIN_JWT_SECRET: str | None = None  # Generate: openssl rand -hex 32
+    ADMIN_PASSWORD: str | None = None  # Strong password for POST /admin/login
+    # ── Email Notifications ────────────────────────────────────────────────────
+    RESEND_API_KEY: str | None = None
+    EMAIL_FROM_DOMAIN: str = "radiancefleet.org"
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USER: str | None = None
+    SMTP_PASS: str | None = None
+    # ── Public URL ─────────────────────────────────────────────────────────────
+    PUBLIC_URL: str = "http://localhost:5173"
 
 
 settings = Settings()

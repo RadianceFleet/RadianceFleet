@@ -58,7 +58,9 @@ app = FastAPI(
     title="RadianceFleet",
     description=(
         "Open source maritime anomaly detection for shadow fleet triage. "
-        "This is a triage tool, not a legal determination engine."
+        "Rate limits: 60 req/min (default), 5/hour (admin login), 3/hour (tip submission). "
+        "Terms: Research and journalism use only. Outputs are anomaly indicators for human "
+        "investigation, not legal determinations."
     ),
     version="0.1.0",
     license_info={"name": "Apache-2.0"},
