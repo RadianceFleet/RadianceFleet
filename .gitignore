@@ -58,3 +58,4 @@ backend/alembic/versions/*.py
 PRD.md
 backend/radiancefleet.db
 backend/radiancefleet.db*
+radiancefleet.db
