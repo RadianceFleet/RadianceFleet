@@ -112,7 +112,7 @@ def search_vessel(
         results.append({
             "gfw_id": gfw_id,
             "name": ship.get("shipname"),
-            "mmsi": sr_primary.get("ssvid"),
+            "mmsi": sr_primary.get("ssvid") or entry.get("ssvid"),
             "imo": primary_imo,
             "flag": ship.get("flag"),
             "callsign": callsign,

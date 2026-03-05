@@ -46,8 +46,15 @@ def _collect_barentswatch(db: Session, duration_seconds: int = 300) -> dict:
 
 def _collect_aisstream(db: Session, duration_seconds: int = 300) -> dict:
     """Collect from aisstream.io WebSocket."""
-    from app.modules.aisstream_client import stream_aisstream
-    return stream_aisstream(db, duration_seconds=duration_seconds)
+    import asyncio
+    from app.modules.aisstream_client import stream_ais, get_corridor_bounding_boxes
+    boxes = get_corridor_bounding_boxes(db)
+    return asyncio.run(stream_ais(
+        api_key=settings.AISSTREAM_API_KEY,
+        bounding_boxes=boxes,
+        duration_seconds=duration_seconds,
+        batch_interval=settings.AISSTREAM_BATCH_INTERVAL,
+    ))
 
 
 def _collect_dma(db: Session, duration_seconds: int = 300) -> dict:

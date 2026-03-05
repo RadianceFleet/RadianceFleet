@@ -28,19 +28,54 @@ from app.models.vessel_watchlist import VesselWatchlist
 # ---------------------------------------------------------------------------
 
 def _make_vessel_html(**fields) -> str:
-    """Build minimal Equasis-like HTML with the given label->value pairs."""
+    """Build minimal Equasis-like HTML using the actual Bootstrap grid layout.
+
+    Each field becomes a <div class="row"> with label in first child div (inside <b>)
+    and value in second child div, matching the real Equasis ShipInfo page structure.
+    """
     rows = ""
     for label, value in fields.items():
-        rows += f"<tr><td>{label}:</td><td>{value}</td></tr>\n"
-    return f"<html><body><table>{rows}</table></body></html>"
+        rows += (
+            f'<div class="row">'
+            f'<div class="col-lg-4"><b>{label}</b></div>'
+            f'<div class="col-lg-4">{value}</div>'
+            f"</div>\n"
+        )
+    return f"<html><body>{rows}</body></html>"
+
+
+def _make_flag_html(country: str) -> str:
+    """Build Equasis flag row HTML (4-div row; country in div[3] as '(Country)')."""
+    return (
+        '<html><body>'
+        '<div class="row">'
+        '<div class="col-lg-4"><b>Flag</b></div>'
+        '<div class="col-lg-4"></div>'
+        '<div class="col-sm-6"></div>'
+        f'<div class="col-lg-4">({country})</div>'
+        '</div>'
+        '</body></html>'
+    )
+
+
+def _make_ism_html(company_name: str) -> str:
+    """Build Equasis company table HTML with an ISM Manager row."""
+    return (
+        '<html><body>'
+        '<table><tbody>'
+        f'<tr><td>9991001</td><td>ISM Manager</td><td>{company_name}</td><td>UK</td><td>since 01/01/2020</td></tr>'
+        '</tbody></table>'
+        '</body></html>'
+    )
 
 
 _VALID_VESSEL_HTML = _make_vessel_html(
-    Deadweight="65000",
-    Type="Crude Oil Tanker",
-    **{"Year of Build": "2003"},
-    Flag="Panama",
+    DWT="65000",
+    **{"Type of ship": "Crude Oil Tanker"},
+    **{"Year of build": "2003"},
 )
+
+_LOGIN_SUCCESS_HTML = "<html><body><a>Logout</a></body></html>"
 
 _NO_SHIP_HTML = "<html><body><p>No ship found matching your search.</p></body></html>"
 
@@ -150,10 +185,13 @@ class TestEquasisLogin:
                     return EquasisClient()
 
     def test_login_success(self):
-        """_login() succeeds when POST response URL contains /restricted/."""
+        """_login() succeeds when POST response body contains 'Logout' (authenticated state)."""
         client = self._make_client()
 
-        success_resp = _make_response("https://www.equasis.org/EquasisWeb/restricted/HomePage")
+        success_resp = _make_response(
+            "https://www.equasis.org/EquasisWeb/authen/HomePage?fs=HomePage",
+            text=_LOGIN_SUCCESS_HTML,
+        )
         with patch("requests.Session") as MockSession:
             mock_session_instance = MagicMock()
             mock_session_instance.post.return_value = success_resp
@@ -167,10 +205,14 @@ class TestEquasisLogin:
         assert client._session is mock_session_instance
 
     def test_login_fails_on_wrong_credentials(self):
-        """_login() raises RuntimeError when POST stays on /public/ (bad credentials)."""
+        """_login() raises RuntimeError when POST response lacks 'Logout' (still on login form)."""
         client = self._make_client()
 
-        bad_resp = _make_response("https://www.equasis.org/EquasisWeb/public/Signin?error=true")
+        # Response without 'Logout' = still showing login form = bad credentials
+        bad_resp = _make_response(
+            "https://www.equasis.org/EquasisWeb/authen/HomePage?fs=HomePage",
+            text="<html><body><form><input name='j_email'/></form></body></html>",
+        )
         with patch("requests.Session") as MockSession:
             mock_session_instance = MagicMock()
             mock_session_instance.post.return_value = bad_resp
@@ -238,7 +280,10 @@ class TestEquasisGet:
         #   login POST #2 -> /restricted/ (re-login success)
         #   GET #2 -> valid vessel page
 
-        login_post_resp = _make_response("https://www.equasis.org/EquasisWeb/restricted/HomePage")
+        login_post_resp = _make_response(
+            "https://www.equasis.org/EquasisWeb/authen/HomePage?fs=HomePage",
+            text=_LOGIN_SUCCESS_HTML,
+        )
         get_expired_resp = _make_response(
             "https://www.equasis.org/EquasisWeb/public/HomePage",
         )
@@ -285,7 +330,10 @@ class TestEquasisGet:
         from app.modules.equasis_client import EquasisClient
         from app.config import settings
 
-        login_post_resp = _make_response("https://www.equasis.org/EquasisWeb/restricted/HomePage")
+        login_post_resp = _make_response(
+            "https://www.equasis.org/EquasisWeb/authen/HomePage?fs=HomePage",
+            text=_LOGIN_SUCCESS_HTML,
+        )
         get_401_resp = _make_response(
             "https://www.equasis.org/EquasisWeb/restricted/ShipInfo",
             status_code=401,
@@ -345,7 +393,7 @@ class TestEquasisSearch:
         """search_by_imo() returns a populated dict when HTML has recognisable fields."""
         from app.modules.equasis_client import _parse_vessel_page
 
-        html = _make_vessel_html(Deadweight="65000", Type="Crude Oil Tanker")
+        html = _make_vessel_html(DWT="65000", **{"Type of ship": "Crude Oil Tanker"})
         resp_mock = _make_response(
             "https://www.equasis.org/EquasisWeb/restricted/ShipInfo",
             text=html,
@@ -382,7 +430,7 @@ class TestEquasisSearch:
         """search_by_mmsi() calls _get with P_MMSI param and /restricted/Search path."""
         resp_mock = _make_response(
             "https://www.equasis.org/EquasisWeb/restricted/Search",
-            text=_make_vessel_html(Flag="Marshall Islands"),
+            text=_make_flag_html("Marshall Islands"),
         )
         session_mock = MagicMock()
         session_mock.get.return_value = resp_mock
@@ -420,55 +468,55 @@ class TestParseVesselPage:
     """Tests for the module-level _parse_vessel_page() function."""
 
     def test_parse_deadweight(self):
-        """Deadweight label -> dwt key in result."""
+        """'DWT' label -> dwt key in result."""
         from app.modules.equasis_client import _parse_vessel_page
 
-        html = _make_vessel_html(Deadweight="65000")
+        html = _make_vessel_html(DWT="65000")
         result = _parse_vessel_page(html)
         assert result is not None
         assert result["dwt"] == "65000"
 
     def test_parse_vessel_type(self):
-        """Type label -> vessel_type key in result."""
+        """'Type of ship' label -> vessel_type key in result."""
         from app.modules.equasis_client import _parse_vessel_page
 
-        html = _make_vessel_html(Type="Crude Oil Tanker")
+        html = _make_vessel_html(**{"Type of ship": "Crude Oil Tanker"})
         result = _parse_vessel_page(html)
         assert result is not None
         assert result["vessel_type"] == "Crude Oil Tanker"
 
     def test_parse_year_built(self):
-        """'Year of Build' label -> year_built key in result."""
+        """'Year of build' label -> year_built key in result."""
         from app.modules.equasis_client import _parse_vessel_page
 
-        html = _make_vessel_html(**{"Year of Build": "2003"})
+        html = _make_vessel_html(**{"Year of build": "2003"})
         result = _parse_vessel_page(html)
         assert result is not None
         assert result["year_built"] == "2003"
 
     def test_parse_flag(self):
-        """Flag label -> flag key in result."""
+        """Flag 4-div row with '(Country)' in div[3] -> flag key in result."""
         from app.modules.equasis_client import _parse_vessel_page
 
-        html = _make_vessel_html(Flag="Panama")
+        html = _make_flag_html("Panama")
         result = _parse_vessel_page(html)
         assert result is not None
         assert result["flag"] == "Panama"
 
     def test_parse_ism_company(self):
-        """ISM Company label -> ism_company key in result."""
+        """ISM Manager table row -> ism_company key in result."""
         from app.modules.equasis_client import _parse_vessel_page
 
-        html = _make_vessel_html(**{"ISM Company": "Alpha Ship Management"})
+        html = _make_ism_html("Alpha Ship Management")
         result = _parse_vessel_page(html)
         assert result is not None
         assert result["ism_company"] == "Alpha Ship Management"
 
     def test_parse_gross_tonnage(self):
-        """Gross Tonnage label -> gross_tonnage key in result."""
+        """'Gross tonnage' label -> gross_tonnage key in result."""
         from app.modules.equasis_client import _parse_vessel_page
 
-        html = _make_vessel_html(**{"Gross Tonnage": "45000"})
+        html = _make_vessel_html(**{"Gross tonnage": "45000"})
         result = _parse_vessel_page(html)
         assert result is not None
         assert result["gross_tonnage"] == "45000"
@@ -481,7 +529,7 @@ class TestParseVesselPage:
         assert result is None
 
     def test_parse_empty_returns_none(self):
-        """HTML with no matching table rows returns None."""
+        """HTML with no matching fields returns None."""
         from app.modules.equasis_client import _parse_vessel_page
 
         html = "<html><body><p>Some page with no vessel data.</p></body></html>"
@@ -489,30 +537,28 @@ class TestParseVesselPage:
         assert result is None
 
     def test_parse_multiple_fields(self):
-        """All four core fields parsed correctly from a single HTML blob."""
+        """DWT, vessel_type, year_built all parsed from a single HTML blob."""
         from app.modules.equasis_client import _parse_vessel_page
 
         html = _make_vessel_html(
-            Deadweight="65000",
-            Type="Crude Oil Tanker",
-            **{"Year of Build": "2003"},
-            Flag="Panama",
+            DWT="65000",
+            **{"Type of ship": "Crude Oil Tanker"},
+            **{"Year of build": "2003"},
         )
         result = _parse_vessel_page(html)
         assert result is not None
         assert result["dwt"] == "65000"
         assert result["vessel_type"] == "Crude Oil Tanker"
         assert result["year_built"] == "2003"
-        assert result["flag"] == "Panama"
 
-    def test_parse_alternative_deadweight_label(self):
-        """'Dead Weight' (with space) is also recognised as dwt."""
+    def test_parse_ism_unknown_not_stored(self):
+        """ISM Manager value 'UNKNOWN' is not written to ism_company."""
         from app.modules.equasis_client import _parse_vessel_page
 
-        html = _make_vessel_html(**{"Dead Weight": "80000"})
+        html = _make_ism_html("UNKNOWN")
         result = _parse_vessel_page(html)
-        assert result is not None
-        assert result["dwt"] == "80000"
+        # UNKNOWN ISM should not produce an ism_company key
+        assert result is None or "ism_company" not in (result or {})
 
     def test_parse_no_ship_lowercase_variant(self):
         """HTML with 'no ship' (case-insensitive) also returns None."""

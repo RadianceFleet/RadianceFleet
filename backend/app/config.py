@@ -54,11 +54,11 @@ class Settings(BaseSettings):
     # NOAA historical AIS data
     NOAA_BASE_URL: str = "https://coast.noaa.gov/htdata/CMSP/AISDataHandler"
     # Kystverket (Norway) AIS TCP stream
-    KYSTVERKET_ENABLED: bool = False
+    KYSTVERKET_ENABLED: bool = True
     KYSTVERKET_HOST: str = "153.44.253.27"
     KYSTVERKET_PORT: int = 5631
     # DMA (Danish Maritime Authority) historical AIS
-    DMA_ENABLED: bool = False
+    DMA_ENABLED: bool = True
     # BarentsWatch (Norwegian EEZ) AIS REST API
     BARENTSWATCH_ENABLED: bool = False
     BARENTSWATCH_CLIENT_ID: str = ""
@@ -73,9 +73,9 @@ class Settings(BaseSettings):
     RETENTION_DAYS_REALTIME: int = 90
     RETENTION_DAYS_HISTORICAL: int | None = None  # None = keep forever
     # Digitraffic (Finland) Marine API
-    DIGITRAFFIC_ENABLED: bool = False
+    DIGITRAFFIC_ENABLED: bool = True
     # CREA Russia Fossil Tracker
-    CREA_ENABLED: bool = False
+    CREA_ENABLED: bool = True
     CREA_API_BASE_URL: str = "https://api.russiafossiltracker.com"
     # Vessel identity merging
     MERGE_MAX_SPEED_KN: float = 16.0
@@ -88,11 +88,11 @@ class Settings(BaseSettings):
     SEAWEB_API_KEY: str = ""
     VERIFICATION_MONTHLY_BUDGET_USD: float = 500.0
     # Phase K: Track naturalness
-    TRACK_NATURALNESS_ENABLED: bool = False
-    TRACK_NATURALNESS_SCORING_ENABLED: bool = False
+    TRACK_NATURALNESS_ENABLED: bool = True
+    TRACK_NATURALNESS_SCORING_ENABLED: bool = True
     # Phase L: Draught intelligence
-    DRAUGHT_DETECTION_ENABLED: bool = False
-    DRAUGHT_SCORING_ENABLED: bool = False
+    DRAUGHT_DETECTION_ENABLED: bool = True
+    DRAUGHT_SCORING_ENABLED: bool = True
     # Phase M: Identity fraud
     STATELESS_MMSI_DETECTION_ENABLED: bool = True
     STATELESS_MMSI_SCORING_ENABLED: bool = True
@@ -103,13 +103,13 @@ class Settings(BaseSettings):
     # Stage 1-A: Feed outage detection
     FEED_OUTAGE_DETECTION_ENABLED: bool = True
     # Stage 1-C: Coverage quality tagging (metadata only, never reduces score)
-    COVERAGE_QUALITY_TAGGING_ENABLED: bool = False
+    COVERAGE_QUALITY_TAGGING_ENABLED: bool = True
     # Phase N: Dark STS
-    DARK_STS_DETECTION_ENABLED: bool = False
-    DARK_STS_SCORING_ENABLED: bool = False
+    DARK_STS_DETECTION_ENABLED: bool = True
+    DARK_STS_SCORING_ENABLED: bool = True
     # Phase O: Fleet analysis
-    FLEET_ANALYSIS_ENABLED: bool = False
-    FLEET_SCORING_ENABLED: bool = False
+    FLEET_ANALYSIS_ENABLED: bool = True
+    FLEET_SCORING_ENABLED: bool = True
     # Stage 2-A: P&I validation
     PI_VALIDATION_DETECTION_ENABLED: bool = True
     PI_VALIDATION_SCORING_ENABLED: bool = True
@@ -128,46 +128,46 @@ class Settings(BaseSettings):
     RENAME_VELOCITY_DETECTION_ENABLED: bool = True
     RENAME_VELOCITY_SCORING_ENABLED: bool = True
     # Stage 3-A: Destination manipulation
-    DESTINATION_DETECTION_ENABLED: bool = False
-    DESTINATION_SCORING_ENABLED: bool = False
+    DESTINATION_DETECTION_ENABLED: bool = True
+    DESTINATION_SCORING_ENABLED: bool = True
     # Stage 3-B: STS relay chains
-    STS_CHAIN_DETECTION_ENABLED: bool = False
-    STS_CHAIN_SCORING_ENABLED: bool = False
+    STS_CHAIN_DETECTION_ENABLED: bool = True
+    STS_CHAIN_SCORING_ENABLED: bool = True
     # Stage 3-C: Scrapped registry + track replay
-    SCRAPPED_REGISTRY_DETECTION_ENABLED: bool = False
-    SCRAPPED_REGISTRY_SCORING_ENABLED: bool = False
-    TRACK_REPLAY_DETECTION_ENABLED: bool = False
-    TRACK_REPLAY_SCORING_ENABLED: bool = False
+    SCRAPPED_REGISTRY_DETECTION_ENABLED: bool = True
+    SCRAPPED_REGISTRY_SCORING_ENABLED: bool = True
+    TRACK_REPLAY_DETECTION_ENABLED: bool = True
+    TRACK_REPLAY_SCORING_ENABLED: bool = True
     # Stage 4-A: Extended MMSI chain detection
-    MERGE_CHAIN_DETECTION_ENABLED: bool = False
-    MERGE_CHAIN_SCORING_ENABLED: bool = False
+    MERGE_CHAIN_DETECTION_ENABLED: bool = True
+    MERGE_CHAIN_SCORING_ENABLED: bool = True
     # Stage 4-B: Behavioral fingerprinting
     FINGERPRINT_ENABLED: bool = True
-    FINGERPRINT_SCORING_ENABLED: bool = False
+    FINGERPRINT_SCORING_ENABLED: bool = True
     # Stage 4-C: Satellite-AIS correlation
-    SAR_CORRELATION_ENABLED: bool = False
-    SAR_CORRELATION_SCORING_ENABLED: bool = False
+    SAR_CORRELATION_ENABLED: bool = True
+    SAR_CORRELATION_SCORING_ENABLED: bool = True
     # Stage 5-A: Corporate ownership graph
-    OWNERSHIP_GRAPH_ENABLED: bool = False
-    OWNERSHIP_GRAPH_SCORING_ENABLED: bool = False
+    OWNERSHIP_GRAPH_ENABLED: bool = True
+    OWNERSHIP_GRAPH_SCORING_ENABLED: bool = True
     # Stage 5-B: Convoy + floating storage + Arctic corridor
-    CONVOY_DETECTION_ENABLED: bool = False
-    CONVOY_SCORING_ENABLED: bool = False
+    CONVOY_DETECTION_ENABLED: bool = True
+    CONVOY_SCORING_ENABLED: bool = True
     # Stage 5-C: Voyage prediction + cargo inference + weather correlation
-    VOYAGE_PREDICTION_ENABLED: bool = False
-    VOYAGE_SCORING_ENABLED: bool = False
-    CARGO_INFERENCE_ENABLED: bool = False
-    WEATHER_CORRELATION_ENABLED: bool = False
+    VOYAGE_PREDICTION_ENABLED: bool = True
+    VOYAGE_SCORING_ENABLED: bool = True
+    CARGO_INFERENCE_ENABLED: bool = True
+    WEATHER_CORRELATION_ENABLED: bool = True
     # Stage C: Missing evasion technique detectors
-    ROUTE_LAUNDERING_DETECTION_ENABLED: bool = False
-    ROUTE_LAUNDERING_SCORING_ENABLED: bool = False
+    ROUTE_LAUNDERING_DETECTION_ENABLED: bool = True
+    ROUTE_LAUNDERING_SCORING_ENABLED: bool = True
     ROUTE_LAUNDERING_LOOKBACK_DAYS: int = 180
-    PI_CYCLING_DETECTION_ENABLED: bool = False
-    PI_CYCLING_SCORING_ENABLED: bool = False
-    SPARSE_TRANSMISSION_DETECTION_ENABLED: bool = False
-    SPARSE_TRANSMISSION_SCORING_ENABLED: bool = False
-    TYPE_CONSISTENCY_DETECTION_ENABLED: bool = False
-    TYPE_CONSISTENCY_SCORING_ENABLED: bool = False
+    PI_CYCLING_DETECTION_ENABLED: bool = True
+    PI_CYCLING_SCORING_ENABLED: bool = True
+    SPARSE_TRANSMISSION_DETECTION_ENABLED: bool = True
+    SPARSE_TRANSMISSION_SCORING_ENABLED: bool = True
+    TYPE_CONSISTENCY_DETECTION_ENABLED: bool = True
+    TYPE_CONSISTENCY_SCORING_ENABLED: bool = True
     # Historical data pipeline
     HISTORY_BACKFILL_ENABLED: bool = False
     NOAA_BACKFILL_ENABLED: bool = False

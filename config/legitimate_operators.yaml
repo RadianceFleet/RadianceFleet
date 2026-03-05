@@ -1,0 +1,40 @@
+# Legitimate Operator Whitelist — RadianceFleet False Positive Suppression
+#
+# Vessels in this list are known-legitimate maritime service operators.
+# Their gap events score ZERO regardless of other signals.
+#
+# Sources: National maritime authority vessel registers, AIS databases.
+# Format: MMSI as string or integer (both are accepted).
+#
+# NOTE: This list is a last-resort override for type=None vessels where
+# the AIS vessel type is missing but the vessel identity is confirmed.
+# For vessels with type codes 50-55, the non_commercial_score_cap in
+# risk_scoring.yaml already suppresses false positives automatically.
+#
+# POLICY: Only add vessels here when:
+#   1. AIS vessel_type field is NULL/missing in our DB, AND
+#   2. The vessel is a confirmed maritime authority / coast guard / pilot service, AND
+#   3. The vessel appears in scan results as a false positive
+
+whitelisted_mmsis:
+  # === DANISH MARITIME AUTHORITY ===
+  - 219010207   # S10 CHRISTINA (type=None; DanPilot station tender)
+  - 219022903   # EXPRESS 3 (type=None; DanPilot high-speed ferry)
+
+  # === SPANISH MARITIME RESCUE SERVICE (SASEMAR / Salvamento Marítimo) ===
+  - 224006160   # POLLENTIA CAT (type=None; Balearic SAR)
+  - 224120530   # MY AMINA PRIMERA (type=None; Catalonia SAR)
+  - 224161460   # MAR MENOR FERRY (type=None; Murcia port service)
+
+  # === SWEDISH MARITIME ADMINISTRATION (Sjöfartsverket) ===
+  # Note: Swedish vessels with type=Type 50/51/52 are handled by the
+  # non_commercial_score_cap — only type=None vessels need explicit listing.
+  - 265609960   # R/V SENSOR (type=None; Swedish research vessel — "R/V" prefix confirmed)
+  - 265567200   # PENTA 80 (type=None; Swedish coast guard patrol vessel)
+
+  # === UK MARITIME & COASTGUARD AGENCY (MCA) ===
+  - 232057657   # SEA BREEZES (type=None; GB harbour service vessel)
+
+  # === NORWEGIAN COAST GUARD (Kystvakten) ===
+  # Vessels with known correct AIS type — no entries needed here.
+

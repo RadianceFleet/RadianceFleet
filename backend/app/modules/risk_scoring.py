@@ -96,6 +96,33 @@ def reload_scoring_config() -> dict[str, Any]:
     return load_scoring_config()
 
 
+# ── Legitimate operator whitelist (false positive suppression) ───────────────
+_LEGITIMATE_OPERATORS_CONFIG: dict[str, Any] | None = None
+
+
+def _load_legitimate_operators_config() -> dict[str, Any]:
+    """Lazy-load and cache the legitimate operators whitelist YAML."""
+    global _LEGITIMATE_OPERATORS_CONFIG
+    if _LEGITIMATE_OPERATORS_CONFIG is None:
+        config_path = Path(settings.RISK_SCORING_CONFIG).parent / "legitimate_operators.yaml"
+        if not config_path.exists():
+            logger.warning("legitimate_operators.yaml not found at %s", config_path)
+            _LEGITIMATE_OPERATORS_CONFIG = {}
+        else:
+            with open(config_path) as f:
+                _LEGITIMATE_OPERATORS_CONFIG = yaml.safe_load(f) or {}
+    return _LEGITIMATE_OPERATORS_CONFIG
+
+
+def _is_whitelisted_operator(mmsi: str | int | None) -> bool:
+    """Return True if vessel MMSI is in the legitimate operators whitelist."""
+    if mmsi is None:
+        return False
+    ops = _load_legitimate_operators_config()
+    whitelisted = {str(m) for m in ops.get("whitelisted_mmsis", [])}
+    return str(mmsi) in whitelisted
+
+
 # ── P&I club validation config (Stage 2-A) ─────────────────────────────────
 _PI_CLUBS_CONFIG: dict[str, Any] | None = None
 
@@ -214,12 +241,16 @@ def rescore_all_alerts(db: Session, clear_detections: bool = False) -> dict:
         db.commit()
         logger.info("Cleared detection signals (clear_detections=True)")
 
-    # Reset all scores to 0 first (no intermediate commit — if scoring fails,
-    # the entire transaction rolls back instead of leaving zeroed scores)
-    alerts = db.query(AISGapEvent).all()
-    for a in alerts:
-        a.risk_score = 0
-        a.risk_breakdown_json = None
+    # Reset all scores to 0 via a committed bulk UPDATE before re-scoring.
+    # Using two separate transactions (zero then score) avoids the SQLite WAL
+    # auto-checkpoint hazard: when the zeroing autoflush exceeds ~1000 WAL pages,
+    # SQLite permanently commits the zeros before score_all_alerts can commit
+    # the new scores, leaving the DB in a zeroed state on any scoring error.
+    from sqlalchemy import update as sa_update
+    db.execute(
+        sa_update(AISGapEvent).values(risk_score=0, risk_breakdown_json=None)
+    )
+    db.commit()
     result = score_all_alerts(db)
     result["config_hash"] = config_hash
     result["rescored"] = result.pop("scored")
@@ -475,6 +506,11 @@ def compute_gap_score(
         scoring_date = datetime.now(timezone.utc).replace(tzinfo=None)
     current_year = scoring_date.year
 
+    # Early exit: whitelisted operators (known-legitimate vessels) score zero
+    _vessel_mmsi = getattr(getattr(gap, "vessel", None), "mmsi", None)
+    if _is_whitelisted_operator(_vessel_mmsi):
+        return 0, {"_whitelisted_operator": True, "_final_score": 0}
+
     breakdown: dict[str, Any] = {}
     duration_h = (gap.duration_minutes or 0) / 60
 
@@ -683,14 +719,29 @@ def compute_gap_score(
     # AIS-broadcast type. This prevents type-manipulation evasion (100k DWT vessel
     # broadcasting "fishing" would still be scored fully).
     _NON_COMMERCIAL_TYPES = {"fishing", "pleasure", "sailing", "tug", "pilot", "search_rescue", "passenger"}
+    # AIS numeric type codes: 50=pilot, 51=SAR, 52=tug, 53=port tender,
+    # 54=anti-pollution, 55=law enforcement, 58=medical transport, 59=gov ship
+    # These are stored as "Type 50", "Type 51", etc. in the DB — the keyword
+    # set above does not match them, so we need explicit code mapping.
+    _NON_COMMERCIAL_AIS_CODES = {
+        "type 50", "type 51", "type 52", "type 53",
+        "type 54", "type 55", "type 58", "type 59",
+    }
     _is_non_commercial = False
+    _is_low_risk_flag = False       # Fix 1: gate for data-absence suppression + corridor cap
+    _suppress_data_absence = False  # Fix 2: suppress signals that fire on missing data for EU vessels
+    _vessel_type_raw = ""           # initialized here so Fix 4 can reference it after the vessel block
     if vessel is not None:
         _vessel_dwt = vessel.deadweight if isinstance(getattr(vessel, "deadweight", None), (int, float)) else None
         _vessel_type_raw = str(vessel.vessel_type or "").lower().strip()
         if _vessel_dwt is not None and _vessel_dwt > 5000:
             # DWT override: always commercial, even if AIS says "fishing"
             _is_non_commercial = False
-        elif _vessel_type_raw in _NON_COMMERCIAL_TYPES or any(t in _vessel_type_raw for t in _NON_COMMERCIAL_TYPES):
+        elif (
+            _vessel_type_raw in _NON_COMMERCIAL_TYPES
+            or any(t in _vessel_type_raw for t in _NON_COMMERCIAL_TYPES)
+            or _vessel_type_raw in _NON_COMMERCIAL_AIS_CODES
+        ):
             _is_non_commercial = True
 
     if vessel is not None:
@@ -699,6 +750,12 @@ def compute_gap_score(
             if hasattr(vessel.flag_risk_category, "value")
             else vessel.flag_risk_category
         )
+        # Fix 1: capture flag status for data-absence suppression (Fix 2) and corridor cap (Fix 3)
+        _is_low_risk_flag = (flag_risk == "low_risk")
+        _fp_cfg_suppress = config.get("false_positive_suppression", {})
+        _suppress_data_absence = _is_low_risk_flag and _fp_cfg_suppress.get(
+            "suppress_data_absence_for_low_risk_flag", True
+        )
         flag_cfg = config.get("flag_state", {})
 
         # Flag state risk
@@ -706,6 +763,12 @@ def compute_gap_score(
             pts = flag_cfg.get("white_list_flag", -10)
             if pts != 0:
                 breakdown["flag_white_list"] = pts
+            # Additional false-positive suppression: EU/NATO flag vessels operate under
+            # strict maritime oversight — apply extra discount on top of white_list_flag.
+            fp_cfg = config.get("false_positive_suppression", {})
+            extra_discount = fp_cfg.get("low_risk_flag_extra_discount", -20)
+            if extra_discount != 0:
+                breakdown["flag_low_risk_extra"] = extra_discount
         elif flag_risk == "high_risk":
             breakdown["flag_high_risk"] = flag_cfg.get("high_risk_registry", 15)
 
@@ -891,12 +954,16 @@ def compute_gap_score(
             breakdown["spoofing_erratic_nav_status"] = max(
                 s.risk_score_component for s in erratic_anomalies
             )
+        # Collapse duplicate anomaly records of the same type to their max score.
+        # GFW bulk import can create many SpoofingAnomaly records for the same event
+        # (e.g., one MMSI_REUSE entry per AIS-record comparison). Counting each record
+        # independently multiplies the signal N× — same treatment as erratic_nav_status.
+        _type_max: dict[str, int] = {}
         for s in non_erratic:
-            key = f"spoofing_{s.anomaly_type.value if hasattr(s.anomaly_type, 'value') else s.anomaly_type}"
-            # Avoid duplicate keys by appending anomaly_id if key already exists
-            if key in breakdown:
-                key = f"{key}_{s.anomaly_id}"
-            breakdown[key] = s.risk_score_component
+            t = _type_val(s)
+            _type_max[t] = max(_type_max.get(t, 0), s.risk_score_component)
+        for t, score in _type_max.items():
+            breakdown[f"spoofing_{t}"] = score
 
     # Phase 6.5: Loitering signal integration
     if db is not None:
@@ -1313,7 +1380,9 @@ def compute_gap_score(
             except Exception:
                 mmsi_age_days = 9999
             behavioral_cfg = config.get("behavioral", {})
-            if mmsi_age_days < 30:
+            if mmsi_age_days < 30 and not _suppress_data_absence:
+                # Fix 2a: GFW bulk import sets mmsi_first_seen_utc ≈ import date for all vessels,
+                # making every EU vessel appear "new". Suppress for low-risk flags.
                 breakdown["new_mmsi_first_30d"] = behavioral_cfg.get("new_mmsi_first_30d", 15)
                 from app.utils.vessel_identity import RUSSIAN_ORIGIN_FLAGS
                 if vessel.flag and vessel.flag.upper() in RUSSIAN_ORIGIN_FLAGS:
@@ -1636,7 +1705,10 @@ def compute_gap_score(
                     breakdown["pi_unknown_insurer"] = pi_val_cfg.get("unknown_insurer", 25)
                 # else: legitimate club, no points added
             else:
-                breakdown["pi_no_insurer"] = pi_val_cfg.get("no_insurer", 15)
+                # Fix 2b: pi_club_name absent because we haven't Equasis-queried this vessel yet,
+                # not because it's uninsured. Suppress for low-risk flags.
+                if not _suppress_data_absence:
+                    breakdown["pi_no_insurer"] = pi_val_cfg.get("no_insurer", 15)
         except Exception:
             pass  # Graceful skip if VesselOwner table query fails
 
@@ -1675,12 +1747,15 @@ def compute_gap_score(
                 _days_since = (scoring_date - _dep_naive).days
             else:
                 _days_since = 9999  # no port call found
-            if _days_since >= 365:
-                breakdown["at_sea_no_port_call_365d"] = at_sea_cfg.get("no_port_call_365d", 35)
-            elif _days_since >= 180:
-                breakdown["at_sea_no_port_call_180d"] = at_sea_cfg.get("no_port_call_180d", 25)
-            elif _days_since >= 90:
-                breakdown["at_sea_no_port_call_90d"] = at_sea_cfg.get("no_port_call_90d", 15)
+            # Fix 2c: _days_since=9999 when last_port_call is None (sparse port call data, not
+            # evidence of extended dark ops). Suppress these thresholds for low-risk flags.
+            if not _suppress_data_absence:
+                if _days_since >= 365:
+                    breakdown["at_sea_no_port_call_365d"] = at_sea_cfg.get("no_port_call_365d", 35)
+                elif _days_since >= 180:
+                    breakdown["at_sea_no_port_call_180d"] = at_sea_cfg.get("no_port_call_180d", 25)
+                elif _days_since >= 90:
+                    breakdown["at_sea_no_port_call_90d"] = at_sea_cfg.get("no_port_call_90d", 15)
         except Exception:
             pass  # Graceful skip if port_call table not available
 
@@ -2037,8 +2112,41 @@ def compute_gap_score(
         risk_signals = sum(v for v in breakdown.values() if isinstance(v, (int, float)) and v > 0)
         legitimacy_signals = sum(v for v in breakdown.values() if isinstance(v, (int, float)) and v < 0)
 
+    # Fix 3: cap corridor multiplier at 1.0 for EU/NATO flagged vessels.
+    # The ×1.5 transit corridor multiplier was designed for shadow fleet vessels going dark
+    # in sensitive zones. For EU/NATO flags it over-amplifies legitimate maritime activity.
+    # Example without fix: 168 pts × 1.5 − 45 legitimacy = 207 → cap 200 (CRITICAL).
+    # Example with fix:    168 pts × 1.0 − 45 legitimacy = 123 (HIGH).
+    if _is_low_risk_flag:
+        _fp_cfg = config.get("false_positive_suppression", {})
+        _lr_cap = _fp_cfg.get("low_risk_flag_corridor_mult_cap", 1.0)
+        corridor_mult = min(corridor_mult, _lr_cap)
+        breakdown["_low_risk_flag_corridor_cap"] = corridor_mult
+
     amplified_risk = risk_signals * corridor_mult * vessel_size_mult
     final_score = min(200, max(0, round(amplified_risk + legitimacy_signals)))  # Cap at 200
+
+    # Non-commercial vessel score cap: pilot/SAR/tug/port tender/law enforcement
+    # vessels can score high due to gap frequency but are almost never shadow fleet.
+    # Cap their maximum score to suppress to LOW tier after all legitimacy discounts.
+    if _is_non_commercial:
+        _fp_cfg = config.get("false_positive_suppression", {})
+        _nc_cap = _fp_cfg.get("non_commercial_score_cap", 30)
+        final_score = min(final_score, _nc_cap)
+        breakdown["_non_commercial_cap_applied"] = _nc_cap
+
+    # Fix 4: soft cap for ambiguous AIS type codes (90/96/99) on low-risk flag vessels.
+    # Types 90/96/99 are NOT added to _NON_COMMERCIAL_AIS_CODES because they are ambiguous —
+    # Type 90 ("Other") is used by coast guard AND some shadow fleet vessels with bad type data.
+    # A softer cap (50) gated on _is_low_risk_flag protects legitimate vessels while preserving
+    # detection for RU/KM/PW flag vessels broadcasting Type 90.
+    # Safety: RU + Type 90 → no cap (not low_risk_flag); ZA + Type 90 → cap at 50.
+    _AMBIGUOUS_AIS_TYPE_CODES = {"type 90", "type 96", "type 99"}
+    if _is_low_risk_flag and _vessel_type_raw in _AMBIGUOUS_AIS_TYPE_CODES:
+        _fp_cfg = config.get("false_positive_suppression", {})
+        _amb_cap = _fp_cfg.get("ambiguous_type_low_risk_cap", 50)
+        final_score = min(final_score, _amb_cap)
+        breakdown["_ambiguous_type_low_risk_cap_applied"] = _amb_cap
 
     # Metadata (prefixed with _ so UI does not sum them as signal points)
     breakdown["_corridor_type"] = corridor_type

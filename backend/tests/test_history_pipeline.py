@@ -330,6 +330,28 @@ class TestCoverageTracker:
         assert w.errors == 3
         assert w.notes == "API timeout"
 
+    def test_record_coverage_window_upsert(self, db):
+        """record_coverage_window is idempotent: second call updates, not inserts."""
+        from app.modules.coverage_tracker import record_coverage_window
+        from app.models.data_coverage_window import DataCoverageWindow
+
+        record_coverage_window(
+            db, "noaa", date(2024, 5, 1), date(2024, 5, 1),
+            status="completed", points_imported=100,
+        )
+        db.commit()
+        assert db.query(DataCoverageWindow).count() == 1
+
+        # Second call with same key — should update, not insert
+        record_coverage_window(
+            db, "noaa", date(2024, 5, 1), date(2024, 5, 1),
+            status="completed", points_imported=999,
+        )
+        db.commit()
+        assert db.query(DataCoverageWindow).count() == 1
+        w = db.query(DataCoverageWindow).first()
+        assert w.points_imported == 999
+
     def test_coverage_summary_per_source(self, db):
         from app.modules.coverage_tracker import coverage_summary
         _coverage_window(db, "noaa", date(2024, 1, 1), date(2024, 1, 10), points_imported=1000)

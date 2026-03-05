@@ -387,3 +387,42 @@ watchlist_stub_scoring:
   missing_type_stub: 5
   no_ais_history: 10        # Never seen on AIS = suspicious
   unverified_ownership: 8   # No verified owner
+
+# FALSE POSITIVE SUPPRESSION — reduce noise from legitimate service vessels
+#
+# These settings reduce false positive rates for vessel types that are definitionally
+# not shadow fleet actors and legitimately operate in/out of AIS coverage.
+false_positive_suppression:
+  # Score cap for vessels identified as non-commercial type (pilot, SAR, tug,
+  # port tender, law enforcement, anti-pollution, medical, government).
+  # AIS types 50-55, 58-59. These vessels legitimately transit coverage gaps
+  # in harbour approach areas. Cap prevents them reaching MEDIUM or HIGH.
+  non_commercial_score_cap: 30
+
+  # Extra legitimacy discount for EU/NATO-flagged vessels (SE, DK, NO, GB, DE, etc.)
+  # applied on top of the existing white_list_flag: -10 in flag_state.
+  # Total effective flag discount for low-risk flags: -30.
+  # Rationale: EU flag state vessels operate under strict MCA/IMO port state control —
+  # dramatically lower false positive risk vs. flag-of-convenience vessels.
+  low_risk_flag_extra_discount: -20
+
+  # Fix 2: suppress data-absence signals for low-risk flag vessels.
+  # Signals pi_no_insurer, at_sea_no_port_call_*, and new_mmsi_first_30d all fire when
+  # data is MISSING (not when suspicious behaviour is found). For EU/NATO vessels this
+  # means we haven't enriched the vessel yet, not that it's suspicious. These three signals
+  # together add +65 points to every EU vessel not yet Equasis-queried.
+  # Set to false to restore previous behaviour globally.
+  suppress_data_absence_for_low_risk_flag: true
+
+  # Fix 3: cap the corridor multiplier at 1.0 for EU/NATO flag vessels.
+  # The ×1.5 transit/STS corridor multiplier was designed for shadow fleet dark events;
+  # applying it to legitimate EU maritime traffic causes false CRITICAL scores.
+  # Set to 1.5 to disable the cap.
+  low_risk_flag_corridor_mult_cap: 1.0
+
+  # Fix 4: softer score cap for ambiguous AIS type codes (90/96/99) on low-risk flag vessels.
+  # Types 90/96/99 are implementation-dependent (coast guard, research, navy support) and
+  # NOT added to non_commercial_score_cap because they overlap with shadow fleet vessels
+  # broadcasting bad type data. This softer cap only fires for EU/NATO flag vessels.
+  # Set to 200 to disable.
+  ambiguous_type_low_risk_cap: 50

@@ -67,27 +67,26 @@ def test_start_setup_failure(mock_init, mock_first_run):
 @patch("app.cli._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
 @patch("app.cli._enrich_vessels")
-@patch("app.cli._update_stream_ais")
+@patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli._update_fetch_watchlists")
 @patch("app.cli._import_corridors")
 @patch("app.cli._is_first_run", return_value=True)
 @patch("app.database.SessionLocal")
 @patch("app.database.init_db")
 def test_start_enrichment_called(mock_init, mock_sl, mock_first_run, mock_corridors,
-                                 mock_fetch, mock_stream, mock_enrich, mock_discover,
+                                 mock_fetch, mock_scheduler_cls, mock_enrich, mock_discover,
                                  mock_summary, mock_next):
-    """start (non-demo) calls _enrich_vessels."""
+    """start (non-demo) calls _enrich_vessels and CollectionScheduler."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
     mock_db.query.return_value.count.return_value = 1  # ports already seeded
 
-    with patch("app.config.settings") as mock_settings:
-        mock_settings.AISSTREAM_API_KEY = "test-key"
-        result = runner.invoke(app, ["start"])
+    result = runner.invoke(app, ["start"])
 
     assert result.exit_code == 0
     mock_enrich.assert_called_once_with(mock_db)
     mock_fetch.assert_called_once()
+    mock_scheduler_cls.return_value.start.assert_called_once()
     mock_discover.assert_called_once()
 
 
@@ -99,32 +98,32 @@ def test_start_enrichment_called(mock_init, mock_sl, mock_first_run, mock_corrid
 @patch("app.cli._print_next_steps")
 @patch("app.cli._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_stream_ais")
+@patch("app.cli._enrich_vessels")
+@patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
-def test_update_full_pipeline(mock_sl, mock_fetch, mock_stream, mock_discover, mock_summary, mock_next):
-    """update calls all three phases."""
+def test_update_full_pipeline(mock_sl, mock_fetch, mock_scheduler_cls, mock_enrich,
+                               mock_discover, mock_summary, mock_next):
+    """update calls fetch, CollectionScheduler, enrichment, and detection."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
 
-    with patch("app.config.settings") as mock_settings:
-        mock_settings.AISSTREAM_API_KEY = "test-key"
-        result = runner.invoke(app, ["update"])
+    result = runner.invoke(app, ["update"])
 
     assert result.exit_code == 0
     mock_fetch.assert_called_once_with(mock_db)
-    mock_stream.assert_called_once()
+    mock_scheduler_cls.return_value.start.assert_called_once()
     mock_discover.assert_called_once()
 
 
 @patch("app.cli._print_next_steps")
 @patch("app.cli._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_stream_ais")
+@patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
-def test_update_offline(mock_sl, mock_fetch, mock_stream, mock_discover, mock_summary, mock_next):
-    """update --offline skips fetch and stream, still runs detection."""
+def test_update_offline(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
+    """update --offline skips fetch and collection, still runs detection."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
 
@@ -132,46 +131,42 @@ def test_update_offline(mock_sl, mock_fetch, mock_stream, mock_discover, mock_su
 
     assert result.exit_code == 0
     mock_fetch.assert_not_called()
-    mock_stream.assert_not_called()
+    mock_scheduler_cls.assert_not_called()
     mock_discover.assert_called_once()
 
 
 @patch("app.cli._print_next_steps")
 @patch("app.cli._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_stream_ais")
+@patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
-def test_update_missing_api_key(mock_sl, mock_fetch, mock_stream, mock_discover, mock_summary, mock_next):
-    """update without AISSTREAM_API_KEY skips streaming."""
+def test_update_missing_api_key(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
+    """update without AISSTREAM_API_KEY still runs CollectionScheduler (aisstream skipped internally)."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
 
-    with patch("app.config.settings") as mock_settings:
-        mock_settings.AISSTREAM_API_KEY = ""
-        result = runner.invoke(app, ["update"])
+    result = runner.invoke(app, ["update"])
 
     assert result.exit_code == 0
     mock_fetch.assert_called_once()
-    mock_stream.assert_not_called()
-    assert "skipping" in result.output.lower() or "AISSTREAM" in result.output
+    mock_scheduler_cls.return_value.start.assert_called_once()
+    mock_discover.assert_called_once()
 
 
 @patch("app.cli._print_next_steps")
 @patch("app.cli._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_stream_ais")
+@patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
-def test_update_fetch_failure(mock_sl, mock_fetch, mock_stream, mock_discover, mock_summary, mock_next):
+def test_update_fetch_failure(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
     """update continues to detection even if fetch fails."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
     mock_fetch.side_effect = RuntimeError("network error")
 
-    with patch("app.config.settings") as mock_settings:
-        mock_settings.AISSTREAM_API_KEY = "test-key"
-        result = runner.invoke(app, ["update"])
+    result = runner.invoke(app, ["update"])
 
     assert result.exit_code == 0
     assert "issues" in result.output.lower() or "continuing" in result.output.lower()

@@ -213,14 +213,30 @@ class CollectionScheduler:
         db = self._db_factory()
         try:
             from app.models.ais_point import AISPoint
-            deleted = (
-                db.query(AISPoint)
-                .filter(
-                    AISPoint.timestamp_utc < cutoff,
-                    ~AISPoint.source.in_(self.ARCHIVE_SOURCES),
+            from app.models.gap_event import AISGapEvent
+            from sqlalchemy import or_, select
+            # Exclude points still referenced by gap event FK columns.
+            referenced = db.execute(
+                select(AISGapEvent.start_point_id, AISGapEvent.end_point_id).where(
+                    or_(
+                        AISGapEvent.start_point_id.isnot(None),
+                        AISGapEvent.end_point_id.isnot(None),
+                    )
                 )
-                .delete(synchronize_session=False)
+            ).fetchall()
+            protected_ids: set[int] = set()
+            for row in referenced:
+                if row[0]:
+                    protected_ids.add(row[0])
+                if row[1]:
+                    protected_ids.add(row[1])
+            q = db.query(AISPoint).filter(
+                AISPoint.timestamp_utc < cutoff,
+                ~AISPoint.source.in_(self.ARCHIVE_SOURCES),
             )
+            if protected_ids:
+                q = q.filter(AISPoint.ais_point_id.notin_(protected_ids))
+            deleted = q.delete(synchronize_session=False)
             db.commit()
             if deleted:
                 logger.info(

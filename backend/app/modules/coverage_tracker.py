@@ -85,9 +85,30 @@ def record_coverage_window(
     finished_at: datetime | None = None,
     notes: str | None = None,
 ) -> DataCoverageWindow:
-    """Insert a coverage window record."""
+    """Upsert a coverage window record (idempotent on source+date_from+date_to+status)."""
     if started_at is None:
         started_at = datetime.now(timezone.utc)
+    existing = (
+        db.query(DataCoverageWindow)
+        .filter(
+            DataCoverageWindow.source == source,
+            DataCoverageWindow.date_from == date_from,
+            DataCoverageWindow.date_to == date_to,
+            DataCoverageWindow.status == status,
+        )
+        .first()
+    )
+    if existing is not None:
+        existing.points_imported = points_imported
+        existing.vessels_queried = vessels_queried
+        if vessels_total is not None:
+            existing.vessels_total = vessels_total
+        existing.errors = errors
+        existing.finished_at = finished_at
+        if notes is not None:
+            existing.notes = notes
+        db.flush()
+        return existing
     window = DataCoverageWindow(
         source=source,
         date_from=date_from,

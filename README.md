@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
-![Tests](https://img.shields.io/badge/tests-321%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-2258%20passing-brightgreen)
 
 Open-source maritime anomaly detection for Russian shadow fleet triage.
 
@@ -29,34 +29,49 @@ RadianceFleet helps investigative journalists, OSINT researchers, and NGO analys
 ## Quick Start
 
 > **New to command-line tools?** See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) for a guided walkthrough designed for journalists and analysts.
+>
+> **Want a hosted public instance?** See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#hosted-public-instance-railway--cloudflare-pages) for the Railway + Cloudflare Pages deployment guide (~$12–25/month).
 
 ### Prerequisites
 
 - Python 3.12+
-- Node.js 18+ and npm (for the frontend)
-- Docker and Docker Compose (for PostgreSQL + PostGIS), or SQLite + SpatiaLite for local-only mode
-- [uv](https://docs.astral.sh/uv/) package manager
+- [uv](https://docs.astral.sh/uv/) package manager (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- Node.js 18+ and npm (for the frontend only)
 
-### Two-Command Setup
+No Docker required — RadianceFleet uses SQLite by default, with geometry stored as WKT text and processed via Shapely.
+
+### Setup
 
 ```bash
-# 1. Start PostgreSQL + PostGIS
-docker compose up -d
+git clone https://github.com/your-org/RadianceFleet
+cd RadianceFleet/backend
 
-# 2. Install, initialize, and run everything
-cd backend && uv sync && source .venv/bin/activate
-radiancefleet setup --with-sample-data
+# Install dependencies
+uv sync
+source .venv/bin/activate
+
+# First-time setup: init DB, seed ports, import corridors, collect data, run detection
+radiancefleet start --demo          # demo mode: no API keys needed, loads sample data
+
+# Or with live data (requires API keys in .env):
+cp ../.env.example .env             # edit .env to add GFW_API_TOKEN, AISSTREAM_API_KEY, etc.
+radiancefleet start
 ```
 
-This single command initializes the database, seeds ports, imports corridors, generates sample data (7 vessels), downloads watchlists, and runs the full detection pipeline.
-
 ```bash
-# 3. Start the API server
-radiancefleet serve
+# Start the API server
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
-# 4. (Optional) Start the frontend
+# Start the frontend (separate terminal)
 cd frontend && npm install && npm run dev
 # Open http://localhost:5173
+```
+
+### Daily update
+
+```bash
+# Fetch latest watchlists + AIS data + re-run detection
+radiancefleet update
 ```
 
 For a detailed walkthrough, see [docs/quickstart.md](docs/quickstart.md).
@@ -65,21 +80,22 @@ For a detailed walkthrough, see [docs/quickstart.md](docs/quickstart.md).
 
 ```
 backend/              Python package
-  app/models/         SQLAlchemy + GeoAlchemy2 data models
-  app/modules/        Detection engines (gap, spoofing, loitering, STS, scoring, satellite)
-  app/api/            FastAPI REST endpoints (38+)
+  app/models/         SQLAlchemy data models (30+ tables)
+  app/modules/        Detection engines (48+ modules)
+  app/api/            FastAPI REST endpoints (65+)
   app/schemas/        Pydantic request/response schemas
   app/cli.py          Typer CLI entry point
-  tests/              pytest (321 tests)
+  tests/              pytest (2,258 tests)
 frontend/             React 18 + TypeScript + Vite + React-Leaflet
-config/               corridors.yaml, risk_scoring.yaml
-scripts/              Data generation and seeding utilities
+config/               corridors.yaml, risk_scoring.yaml, coverage.yaml
+railway.toml          Railway deployment config (web + cron services)
 ```
 
 | Layer | Technology |
 |-------|-----------|
-| Backend API | Python 3.12, FastAPI, SQLAlchemy (sync), GeoAlchemy2 |
-| Database | PostgreSQL 16 + PostGIS 3.4 (Docker) / SQLite + SpatiaLite (local) |
+| Backend API | Python 3.12, FastAPI, SQLAlchemy (sync) |
+| Database | SQLite (default, no Docker) or PostgreSQL 16 |
+| Geometry | WKT text + Shapely (no PostGIS required) |
 | Data processing | Polars |
 | CLI | Typer (`radiancefleet` entry point) |
 | Package manager | uv |
@@ -177,13 +193,14 @@ AIS coverage varies significantly by region. See [docs/coverage-limitations.md](
 
 ## Documentation
 
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) -- deployment guide: Railway/Cloudflare, local dev, Docker, nginx
 - [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) -- non-technical guide for journalists and analysts
 - [docs/quickstart.md](docs/quickstart.md) -- developer walkthrough with sample data
 - [docs/API_INTEGRATION.md](docs/API_INTEGRATION.md) -- API integration guide with runnable examples
 - [docs/API.md](docs/API.md) -- complete REST API endpoint reference
 - [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) -- CLI command reference
 - [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) -- data source import guide (with auto-download)
-- [docs/avoiding-overclaiming.md](docs/avoiding-overclaiming.md) -- required reading before publication (NFR7)
+- [docs/avoiding-overclaiming.md](docs/avoiding-overclaiming.md) -- required reading before publication
 - [docs/coverage-limitations.md](docs/coverage-limitations.md) -- AIS coverage gaps and dark zones
 - [docs/risk-scoring-config.md](docs/risk-scoring-config.md) -- customize scoring weights
 - [docs/corridor-config.md](docs/corridor-config.md) -- add or edit monitored corridors

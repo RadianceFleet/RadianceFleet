@@ -75,28 +75,48 @@ MID_TO_FLAG: dict[str, str] = {
     "265": "SE", "266": "SE",
     "230": "FI",
     "232": "GB", "233": "GB", "234": "GB", "235": "GB",
-    "211": "DE",
+    "236": "GI",  # Gibraltar (UK territory)
+    "211": "DE", "218": "DE",
     "226": "FR", "227": "FR", "228": "FR",
     "244": "NL", "245": "NL", "246": "NL",
     "247": "IT",
-    "263": "PT",
-    "224": "ES", "225": "ES",
-    "205": "BE",
+    "263": "PT", "255": "PT",  # Portugal + Madeira
+    "224": "ES", "225": "ES", "221": "ES",
+    "205": "BE", "208": "BE",
     "250": "IE",
+    "253": "LU",  # Luxembourg
+    "261": "PL",  # Poland
+    "269": "CH",  # Switzerland (EU associate)
+    "238": "HR",  # Croatia
+    "204": "PT",  # Portugal (alt block)
+    "251": "IS",  # Iceland (EEA)
+    "275": "LV", "276": "EE", "277": "LT",  # Baltic EU states
+    "264": "RO",  # Romania
+    "209": "CY", "210": "CY", "212": "CY",  # Cyprus
     # Americas
     "303": "US", "338": "US", "366": "US", "367": "US", "368": "US", "369": "US",
     "316": "CA",
+    "319": "KY",  # Cayman Islands (UK territory)
+    "341": "MX",
+    "710": "BR",
+    # Panama extensions
+    "371": "PA", "372": "PA", "373": "PA",
     # Other
     "503": "AU",
     "512": "NZ",
-    "341": "MX",
-    "710": "BR",
     "601": "ZA",
     "416": "IN", "419": "IN",
     "271": "TR", "272": "TR",
     "622": "EG",
     "470": "AE",
     "403": "SA",
+    # Landlocked / anomalous registries (high suspicion)
+    "457": "MN",  # Mongolia (landlocked — any seagoing vessel is suspicious)
+    # Other open/convenience registries
+    "645": "MU",  # Mauritius
+    "659": "NA",  # Namibia
+    "432": "JP",  # Japan (additional block)
+    "477": "HK",  # Hong Kong
 }
 
 

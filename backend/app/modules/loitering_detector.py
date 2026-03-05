@@ -218,12 +218,11 @@ def detect_loitering_for_vessel(
     # ── 3. Identify consecutive low-SOG runs ───────────────────────────────────
     # A "low-SOG" bucket: median_sog < threshold OR NaN (treated as stationary)
     hourly = hourly.with_columns(
-        pl.col("median_sog")
-        .map_elements(
-            lambda v: (v is None or (v == v and v < _SOG_LOITER_THRESHOLD_KN)),
-            return_dtype=pl.Boolean,
-        )
-        .alias("is_low_sog")
+        (
+            pl.col("median_sog").is_null()
+            | pl.col("median_sog").is_nan()
+            | (pl.col("median_sog") < _SOG_LOITER_THRESHOLD_KN)
+        ).alias("is_low_sog")
     )
 
     bucket_rows = hourly.to_dicts()

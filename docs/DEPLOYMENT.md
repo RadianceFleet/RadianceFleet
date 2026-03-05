@@ -1,29 +1,205 @@
 # Deployment Guide
 
-This guide covers three deployment scenarios: local development with SQLite, single-user
-production with Docker Compose and PostgreSQL, and multi-user production behind an nginx
-reverse proxy.
+This guide covers four deployment scenarios:
+
+1. **[Hosted Public Instance (Railway + Cloudflare Pages)](#hosted-public-instance-railway--cloudflare-pages)** — recommended for a publicly accessible, continuously updated instance
+2. **[Local Development (SQLite, no Docker)](#local-development-sqlite-no-docker)** — fastest path for a single analyst on a laptop
+3. **[Single-User Production (Docker Compose + PostgreSQL)](#single-user-production-docker-compose--postgresql)** — dedicated private server
+4. **[Multi-User Production](#multi-user-production)** — shared team server behind nginx
 
 ---
 
-## Prerequisites
+## Hosted Public Instance (Railway + Cloudflare Pages)
 
-| Tool | Minimum version | Notes |
-|---|---|---|
-| Python | 3.11 | 3.12 recommended |
-| uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| Node.js | 18 | For building the frontend |
-| Docker + Docker Compose | 24 / v2 | For PostgreSQL; not required for SQLite dev |
-| Git | any | |
+Deploy RadianceFleet as a public-facing service with live data updated every 4 hours.
+No server admin required — Railway manages the backend and Postgres, Cloudflare Pages serves
+the frontend from global CDN.
+
+**Estimated cost: ~$12–25/month** (Railway web + Postgres + cron, Cloudflare Pages free).
+
+### Architecture
+
+```
+[Cloudflare Pages]  — React frontend, free CDN, global edge
+        |
+        VITE_API_URL ──► [Railway Web Service]  — FastAPI, $5–10/month
+                                 |
+                          [Railway Postgres]     — PostgreSQL 16, $5–10/month
+
+[Railway Cron]  — runs every 4 hours:
+        radiancefleet update --stream-time 1h
+        (watchlists + AIS collection + detection + email notifications)
+```
+
+### Step 1 — Fork and connect to Railway
+
+1. Fork the repository on GitHub.
+2. Create a Railway account at railway.app and start a new project.
+3. Add a **New Service → GitHub Repo** — point it at your fork, source directory `backend`.
+4. Add a **Postgres** plugin addon to the project.
+5. Add a second **New Service → GitHub Repo** for the cron worker (same repo, same source `backend`).
+
+### Step 2 — Configure environment variables
+
+In the Railway **web service** environment tab, set:
+
+```dotenv
+# Database — use the Railway Postgres addon URL
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+
+# Config paths
+CORRIDORS_CONFIG=../config/corridors.yaml
+RISK_SCORING_CONFIG=../config/risk_scoring.yaml
+
+# Admin auth — generates a JWT for the admin login; replaces RADIANCEFLEET_API_KEY
+# Generate with: openssl rand -hex 32
+ADMIN_JWT_SECRET=your_256bit_random_secret_here
+ADMIN_PASSWORD=your_strong_admin_password_here
+
+# IMPORTANT: Do NOT set RADIANCEFLEET_API_KEY — it blocks all public GET requests
+# RADIANCEFLEET_API_KEY=  ← leave unset
+
+# CORS: add your Cloudflare Pages domain
+CORS_ORIGINS=https://your-app.pages.dev,https://your-domain.com
+
+# Public URL (used in email links)
+PUBLIC_URL=https://your-domain.com
+
+# Email notifications (optional — get key at resend.com)
+RESEND_API_KEY=re_your_key_here
+EMAIL_FROM_DOMAIN=your-domain.com
+
+# AIS data sources (set whichever you have access to)
+GFW_API_TOKEN=your_gfw_token
+AISSTREAM_API_KEY=your_aisstream_key
+KYSTVERKET_ENABLED=true
+DIGITRAFFIC_ENABLED=true
+CREA_ENABLED=true
+```
+
+In the Railway **cron service**, set the same environment variables plus:
+```dotenv
+# No additional vars needed — uses same DATABASE_URL via shared Postgres addon
+```
+
+### Step 3 — Configure the start command
+
+In the Railway **web service** settings, set:
+
+```
+Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+```
+
+The `--proxy-headers` flag is required so rate limiting reads real client IPs from
+Railway's `X-Forwarded-For` header rather than collapsing all traffic to a single proxy IP.
+
+In the Railway **cron service** settings, set:
+
+```
+Cron Schedule: 0 */4 * * *
+Start Command: radiancefleet update --stream-time 1h
+```
+
+### Step 4 — First-time database setup
+
+After the web service first deploys, open the Railway shell or run via CLI:
+
+```bash
+radiancefleet start
+```
+
+This initialises the database schema, seeds ports, imports corridor configuration, runs
+an initial AIS collection pass, and executes the full detection pipeline. It is safe to
+run only once; subsequent updates use `radiancefleet update`.
+
+To load sample data without API keys (for testing the deployment):
+
+```bash
+radiancefleet start --demo
+```
+
+### Step 5 — Deploy the frontend to Cloudflare Pages
+
+1. In the Cloudflare Pages dashboard, create a new project connected to your GitHub fork.
+2. Set build configuration:
+   - **Framework preset:** Vite
+   - **Build command:** `npm run build`
+   - **Build output directory:** `dist`
+   - **Root directory:** `frontend`
+3. Set environment variable:
+   ```
+   VITE_API_URL=https://your-app.railway.app
+   ```
+4. Deploy. Cloudflare Pages will build and serve the frontend from global edge nodes.
+
+### Step 6 — Verify the deployment
+
+```bash
+# Backend health (replace with your Railway URL)
+curl https://your-app.railway.app/health
+# Expected: {"status": "ok", "version": "0.1.0"}
+
+# Data freshness (shows last update timestamp)
+curl https://your-app.railway.app/api/v1/health/data-freshness
+
+# Frontend — open in browser
+https://your-app.pages.dev
+```
+
+### Step 7 — Admin login
+
+The admin UI controls write operations (importing data, running detection, corridor
+management). From the frontend:
+
+1. No visible admin controls appear for public users.
+2. To access admin mode, navigate to `/login` or click the admin login button (visible only
+   in the nav bar to logged-in users).
+3. Log in with the `ADMIN_PASSWORD` set in Railway environment variables.
+4. Tokens expire after 30 minutes; re-login as needed.
+
+### Ongoing operations
+
+The Railway cron service runs `radiancefleet update --stream-time 1h` every 4 hours
+automatically. This fetches latest watchlists, collects AIS data from all enabled sources,
+runs detection, and sends email alert notifications to confirmed subscribers.
+
+To trigger a manual update:
+
+```bash
+# Via Railway shell or CLI
+radiancefleet update --stream-time 30m
+```
+
+### Cost breakdown
+
+| Service | Cost |
+|---------|------|
+| Railway web service | ~$5–10/month |
+| Railway Postgres addon | ~$5–10/month |
+| Railway cron service | ~$2–5/month |
+| Cloudflare Pages | Free |
+| **Total** | **~$12–25/month** |
+
+For sustained funding, see the `/donate` page in the app or apply to:
+- **IJ4EU** — EU cross-border journalism fund, up to €50K
+- **NED** — National Endowment for Democracy media freedom grants
 
 ---
 
 ## Local Development (SQLite, no Docker)
 
 This path is the fastest way to run RadianceFleet on a laptop without any external services.
-SQLite is supported for development and light use but is not recommended for production
-because it lacks PostGIS geometry functions; corridor spatial queries will fall back to
-bounding-box approximations.
+SQLite is fully supported — all geometry is stored as WKT text and processed via Shapely in
+Python. No PostGIS or Docker required.
+
+### Prerequisites
+
+| Tool | Minimum version | Notes |
+|---|---|---|
+| Python | 3.12 | |
+| uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| Node.js | 18 | For the frontend only |
+| Git | any | |
 
 ```bash
 git clone https://github.com/your-org/RadianceFleet

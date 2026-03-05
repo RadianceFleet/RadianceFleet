@@ -78,6 +78,12 @@ def _upsert_watchlist(
     match_type: str = "unknown",
 ) -> None:
     """Insert a VesselWatchlist row or re-activate an existing one."""
+    from sqlalchemy.exc import IntegrityError
+    # Flush pending inserts before querying so same-session duplicates are visible.
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
     existing = (
         db.query(VesselWatchlist)
         .filter(
@@ -106,7 +112,17 @@ def _upsert_watchlist(
             match_confidence=match_confidence,
             match_type=match_type,
         )
-        db.add(entry)
+        try:
+            db.add(entry)
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            logger.debug(
+                "Watchlist: skipped duplicate entry for vessel_id=%d source=%s",
+                vessel.vessel_id,
+                watchlist_source,
+            )
+            return
         logger.debug(
             "Watchlist: created entry for vessel_id=%d source=%s",
             vessel.vessel_id,

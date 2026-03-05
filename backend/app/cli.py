@@ -3,16 +3,14 @@
 Commands:
   start              — first-time setup
   update             — daily data refresh + detection
-  check-vessels      — vessel identity merge workflow
+  check-vessels      — vessel identity merge workflow (--list, --min-score, --cleanup)
   open               — launch web dashboard
   status             — system health check
   search             — vessel lookup by MMSI/IMO/name
-  rescore            — re-run scoring without re-running detectors
+  rescore            — re-run scoring + watchlist stub scoring
   evaluate-detector  — sample anomalies for holdout review
   confirm-detector   — re-enable scoring after drift review
-  backfill           — import historical AIS data for a date range
-  collect            — run periodic AIS data collection
-  collection-status  — show collection history and statistics
+  collect            — run periodic AIS data collection (--status to view history)
   history status     — coverage status for historical sources
   history gaps       — list uncovered date ranges
   history backfill   — backfill a specific source and date range
@@ -100,23 +98,16 @@ def start(
                         _update_fetch_watchlists(db)
                     except Exception as e:
                         console.print(f"[yellow]Watchlist download had issues: {e}[/yellow]")
+                        db.rollback()
 
-                # Stream AIS
-                from app.config import settings
-                if settings.AISSTREAM_API_KEY:
-                    console.print("[bold]Collecting ship positions...[/bold]")
-                    try:
-                        _update_stream_ais(db, stream_time)
-                    except Exception as e:
-                        console.print(f"[yellow]AIS streaming had issues: {e}[/yellow]")
-                else:
-                    console.print(
-                        "[yellow]No AISSTREAM_API_KEY — skipping live AIS collection[/yellow]"
-                    )
-
-                # Collect multi-source AIS
-                console.print("[bold]Collecting multi-source AIS...[/bold]")
-                _collect_multi_source_ais(db, stream_time)
+                # Collect AIS from all enabled sources
+                console.print("[bold]Collecting AIS data...[/bold]")
+                try:
+                    from app.modules.collection_scheduler import CollectionScheduler
+                    scheduler = CollectionScheduler(db_factory=SessionLocal)
+                    scheduler.start(duration_seconds=_parse_duration(stream_time))
+                except Exception as e:
+                    console.print(f"[yellow]AIS collection had issues: {e}[/yellow]")
 
                 # Enrich vessel metadata
                 with console.status("[bold]Enriching vessel metadata..."):
@@ -174,37 +165,26 @@ def update(
                 except Exception as e:
                     console.print(f"[yellow]Watchlist update had issues: {e}[/yellow]")
                     console.print("[dim]Continuing with existing data...[/dim]")
+                    db.rollback()
 
-        # Phase 2: Stream AIS
+        # Phase 2: Collect AIS from all enabled sources
         if not offline:
-            from app.config import settings
-            if settings.AISSTREAM_API_KEY:
-                console.print("[bold]Collecting ship positions...[/bold]")
-                try:
-                    _update_stream_ais(db, stream_time)
-                except Exception as e:
-                    console.print(f"[yellow]AIS streaming had issues: {e}[/yellow]")
-                    console.print("[dim]Continuing with existing data...[/dim]")
-            else:
-                console.print(
-                    "[yellow]No AISSTREAM_API_KEY — skipping live AIS collection[/yellow]"
-                )
-
-            # Collect multi-source AIS
-            console.print("[bold]Collecting multi-source AIS...[/bold]")
-            _collect_multi_source_ais(db, stream_time)
-
-        # Phase 2b: Enrich vessel metadata (GFW supplementary — year_built, DWT)
-        if not offline:
+            console.print("[bold]Collecting AIS data...[/bold]")
             try:
-                from app.modules.vessel_enrichment import enrich_vessels_from_gfw
-                with console.status("[bold]Enriching vessel metadata..."):
-                    enrich_result = enrich_vessels_from_gfw(db)
-                    enriched = enrich_result.get("enriched", 0)
-                    if enriched > 0:
-                        console.print(f"  Enriched {enriched} vessels from GFW")
+                from app.modules.collection_scheduler import CollectionScheduler
+                scheduler = CollectionScheduler(db_factory=SessionLocal)
+                scheduler.start(duration_seconds=_parse_duration(stream_time))
             except Exception as e:
-                console.print(f"[yellow]Vessel enrichment: {e}[/yellow]")
+                console.print(f"[yellow]AIS collection had issues: {e}[/yellow]")
+                console.print("[dim]Continuing with existing data...[/dim]")
+
+        # Phase 2b: Enrich vessel metadata
+        if not offline:
+            with console.status("[bold]Enriching vessel metadata..."):
+                try:
+                    _enrich_vessels(db)
+                except Exception as e:
+                    console.print(f"[yellow]Vessel enrichment: {e}[/yellow]")
 
         # Phase 3: Detection (always runs)
         with console.status("[bold]Analyzing vessel behavior..."):
@@ -288,6 +268,8 @@ def check_vessels(
     auto: bool = typer.Option(False, "--auto", help="Only show auto-merge results"),
     list_mode: bool = typer.Option(False, "--list", help="List pending candidates without interactive review"),
     diagnose: bool = typer.Option(False, "--diagnose", help="Show merge readiness diagnostic and exit"),
+    min_score: int = typer.Option(65, "--min-score", help="Minimum confidence score to show (used with --list)"),
+    cleanup: bool = typer.Option(False, "--cleanup", help="Remove stale candidates (merged/deleted vessels)"),
 ):
     """Review and fix vessel identity issues."""
     from app.config import settings
@@ -299,6 +281,25 @@ def check_vessels(
 
     db = SessionLocal()
     try:
+        # --cleanup: reject candidates where either vessel has been merged or deleted
+        if cleanup:
+            stale = 0
+            candidates = db.query(MergeCandidate).filter(
+                MergeCandidate.status == MergeCandidateStatusEnum.PENDING,
+            ).all()
+            for c in candidates:
+                vessel_a = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_a_id).first()
+                vessel_b = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_b_id).first()
+                if (not vessel_a or not vessel_b
+                        or vessel_a.merged_into_vessel_id is not None
+                        or vessel_b.merged_into_vessel_id is not None):
+                    c.status = MergeCandidateStatusEnum.REJECTED
+                    stale += 1
+            if stale:
+                db.commit()
+            console.print(f"Cleaned up {stale} stale merge candidates")
+            return
+
         # --diagnose: print diagnostic and exit immediately
         if diagnose:
             from app.modules.identity_resolver import diagnose_merge_readiness
@@ -328,13 +329,14 @@ def check_vessels(
         if auto:
             return
 
-        # Load pending candidates
-        candidates = (
+        # Load pending candidates (apply min_score filter in list mode)
+        q = (
             db.query(MergeCandidate)
             .filter(MergeCandidate.status == MergeCandidateStatusEnum.PENDING)
-            .order_by(MergeCandidate.confidence_score.desc())
-            .all()
         )
+        if list_mode:
+            q = q.filter(MergeCandidate.confidence_score >= min_score)
+        candidates = q.order_by(MergeCandidate.confidence_score.desc()).all()
 
         if not candidates:
             console.print("[green]No vessel identity issues need review.[/green]")
@@ -550,110 +552,22 @@ def rescore():
             )
         except ImportError:
             pass
-    finally:
-        db.close()
 
-
-@app.command("review-merges")
-def review_merges(
-    min_score: int = typer.Option(65, "--min-score", help="Minimum confidence score to show"),
-    cleanup: bool = typer.Option(False, "--cleanup", help="Remove stale candidates (merged/deleted vessels)"),
-):
-    """Review pending merge candidates for analyst triage.
-
-    Shows candidates scoring 65-84 that need manual review (auto-merge threshold is 85).
-    Use --cleanup to remove stale candidates where vessels have been merged elsewhere.
-    """
-    from app.database import SessionLocal
-    from app.models.merge_candidate import MergeCandidate
-    from app.models.base import MergeCandidateStatusEnum
-    from app.models.vessel import Vessel
-
-    db = SessionLocal()
-    try:
-        if cleanup:
-            # Remove candidates where either vessel has been merged or deleted
-            stale = 0
-            candidates = db.query(MergeCandidate).filter(
-                MergeCandidate.status == MergeCandidateStatusEnum.PENDING,
-            ).all()
-            for c in candidates:
-                vessel_a = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_a_id).first()
-                vessel_b = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_b_id).first()
-                if (not vessel_a or not vessel_b
-                        or vessel_a.merged_into_vessel_id is not None
-                        or vessel_b.merged_into_vessel_id is not None):
-                    c.status = MergeCandidateStatusEnum.REJECTED
-                    stale += 1
-            if stale:
-                db.commit()
-            console.print(f"Cleaned up {stale} stale merge candidates")
-            return
-
-        # Show candidates in the review range
-        candidates = (
-            db.query(MergeCandidate)
-            .filter(
-                MergeCandidate.status == MergeCandidateStatusEnum.PENDING,
-                MergeCandidate.confidence_score >= min_score,
+        # Score watchlist stubs (vessels with no AIS history)
+        try:
+            from app.modules.risk_scoring import score_watchlist_stubs
+            with console.status("[bold]Scoring watchlist stubs..."):
+                stub_result = score_watchlist_stubs(db)
+            console.print(
+                f"  Stub scoring: scored={stub_result.get('scored', 0)} "
+                f"cleared={stub_result.get('cleared', 0)}"
             )
-            .order_by(MergeCandidate.confidence_score.desc())
-            .all()
-        )
-
-        if not candidates:
-            console.print(f"No pending merge candidates with score >= {min_score}")
-            return
-
-        table = Table(title=f"Merge Candidates (score >= {min_score})")
-        table.add_column("ID", style="dim")
-        table.add_column("Score", justify="right")
-        table.add_column("Vessel A (MMSI)")
-        table.add_column("Vessel B (MMSI)")
-        table.add_column("Top Reasons")
-
-        for c in candidates:
-            vessel_a = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_a_id).first()
-            vessel_b = db.query(Vessel).filter(Vessel.vessel_id == c.vessel_b_id).first()
-            mmsi_a = vessel_a.mmsi if vessel_a else "?"
-            mmsi_b = vessel_b.mmsi if vessel_b else "?"
-
-            # Extract top reasons from evidence
-            reasons = ""
-            evidence = getattr(c, "match_reasons_json", None) or {}
-            if isinstance(evidence, dict):
-                top = sorted(evidence.items(), key=lambda x: x[1].get("points", 0) if isinstance(x[1], dict) else 0, reverse=True)[:3]
-                reasons = ", ".join(f"{k}(+{v.get('points', '?')})" for k, v in top if isinstance(v, dict))
-
-            score_style = "green" if c.confidence_score >= settings.MERGE_AUTO_CONFIDENCE_THRESHOLD else "yellow" if c.confidence_score >= 75 else "dim"
-            table.add_row(
-                str(c.candidate_id),
-                f"[{score_style}]{c.confidence_score}[/{score_style}]",
-                mmsi_a,
-                mmsi_b,
-                reasons,
-            )
-
-        console.print(table)
-        console.print(f"\n{len(candidates)} candidates. Use [cyan]radiancefleet check-vessels --auto[/cyan] for auto-merge (>= {settings.MERGE_AUTO_CONFIDENCE_THRESHOLD}).")
+        except (ImportError, AttributeError):
+            pass
     finally:
         db.close()
 
 
-@app.command("score-stubs")
-def score_stubs(
-    limit: int = typer.Option(0, help="Max stubs to score (0=all)"),
-) -> None:
-    """Score watchlist stubs (vessels with no AIS history) for risk assessment."""
-    from app.database import SessionLocal
-    from app.modules.risk_scoring import score_watchlist_stubs
-
-    db = SessionLocal()
-    try:
-        result = score_watchlist_stubs(db)
-        typer.echo(f"Stub scoring complete: scored={result['scored']} cleared={result['cleared']}")
-    finally:
-        db.close()
 
 
 @app.command("evaluate-detector")
@@ -861,26 +775,147 @@ def search_vessel(
         db.close()
 
 
-@app.command("backfill")
-def backfill(
-    start: str = typer.Option(None, "--start", help="Start date (ISO format, e.g. 2025-12-01)"),
-    end: str = typer.Option(None, "--end", help="End date (ISO format, e.g. 2025-12-31)"),
-    source: str = typer.Option("noaa", "--source", help="Data source (noaa, dma, barentswatch, gfw, gfw-gaps, gfw-encounters, gfw-port-visits)"),
-    detect: bool = typer.Option(True, "--detect/--no-detect", help="Run detection after import"),
-    corridor_filter: bool = typer.Option(True, "--corridor-filter/--no-corridor-filter", help="Only import within corridor bounding boxes"),
-    days: int = typer.Option(0, "--days", help="Alternative to --start/--end: import last N days"),
-):
-    """Import historical AIS data for a date range."""
+
+# ---------------------------------------------------------------------------
+# History sub-commands
+# ---------------------------------------------------------------------------
+
+_HISTORY_SOURCES = ["noaa", "dma", "barentswatch", "gfw", "gfw-gaps", "gfw-encounters", "gfw-port-visits"]
+
+
+@history_app.command("status")
+def history_status():
+    """Show coverage status for each historical data source."""
     from app.database import SessionLocal
 
-    # Validate source
-    valid_sources = {"noaa", "dma", "barentswatch", "gfw", "gfw-gaps", "gfw-encounters", "gfw-port-visits"}
-    if source not in valid_sources:
+    db = SessionLocal()
+    try:
+        table = Table(title="Historical Data Coverage")
+        table.add_column("Source", style="cyan")
+        table.add_column("Earliest")
+        table.add_column("Latest")
+        table.add_column("Windows", justify="right")
+        table.add_column("Points", justify="right")
+        table.add_column("Next Gap")
+
+        try:
+            from app.modules.coverage_tracker import coverage_summary
+
+            all_summaries = coverage_summary(db)
+            for source in _HISTORY_SOURCES:
+                info = all_summaries.get(source, {})
+                next_gap = info.get("next_gap")
+                next_gap_str = str(next_gap) if next_gap else "[green]none[/green]"
+                table.add_row(
+                    source,
+                    str(info.get("earliest", "-")),
+                    str(info.get("latest", "-")),
+                    str(info.get("completed_windows", 0)),
+                    f"{info.get('total_points', 0):,}",
+                    next_gap_str,
+                )
+        except (ImportError, AttributeError):
+            for source in _HISTORY_SOURCES:
+                table.add_row(source, "-", "-", "0", "0", "[dim]tracker unavailable[/dim]")
+
+        console.print(table)
+
+        # Recent collection runs (from CollectionScheduler / update)
+        try:
+            from datetime import datetime, timezone
+            from app.models.collection_run import CollectionRun
+            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+            runs = (
+                db.query(CollectionRun)
+                .filter(CollectionRun.started_at >= cutoff)
+                .order_by(CollectionRun.started_at.desc())
+                .limit(20)
+                .all()
+            )
+            if runs:
+                runs_table = Table(title="Recent Collection Runs (last 7 days)")
+                runs_table.add_column("Source", style="cyan")
+                runs_table.add_column("Started")
+                runs_table.add_column("Status")
+                runs_table.add_column("Points", justify="right")
+                runs_table.add_column("Errors", justify="right")
+                for run in runs:
+                    status_style = {"completed": "green", "running": "yellow", "failed": "red"}.get(run.status, "white")
+                    runs_table.add_row(
+                        run.source,
+                        str(run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "?"),
+                        f"[{status_style}]{run.status}[/{status_style}]",
+                        str(run.points_imported or 0),
+                        str(run.errors or 0),
+                    )
+                console.print(runs_table)
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@history_app.command("gaps")
+def history_gaps(
+    source: str = typer.Option("noaa", "--source", help="Data source"),
+    limit: int = typer.Option(20, "--limit", help="Max gaps to show"),
+):
+    """List uncovered date ranges for a source."""
+    if source not in _HISTORY_SOURCES:
         console.print(f"[red]Unknown source: {source}[/red]")
-        console.print(f"[dim]Supported sources: {', '.join(sorted(valid_sources))}[/dim]")
+        console.print(f"[dim]Valid sources: {', '.join(_HISTORY_SOURCES)}[/dim]")
         raise typer.Exit(1)
 
-    # Handle --days as alternative to --start/--end
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        try:
+            from app.modules.coverage_tracker import find_coverage_gaps
+
+            to_date = date.today() - timedelta(days=1)
+            from_date = to_date - timedelta(days=730)
+            gaps = find_coverage_gaps(db, source, from_date, to_date)
+        except (ImportError, AttributeError):
+            console.print("[yellow]Coverage tracker not available[/yellow]")
+            return
+
+        if not gaps:
+            console.print(f"[green]No coverage gaps found for {source}[/green]")
+            return
+
+        table = Table(title=f"Coverage Gaps — {source}")
+        table.add_column("Start", style="cyan")
+        table.add_column("End", style="cyan")
+        table.add_column("Days", justify="right")
+
+        for gap_start, gap_end in gaps[:limit]:
+            gap_days = (gap_end - gap_start).days + 1
+            table.add_row(str(gap_start), str(gap_end), str(gap_days))
+
+        console.print(table)
+        if len(gaps) > limit:
+            console.print(f"[dim]... and {len(gaps) - limit} more gaps[/dim]")
+    finally:
+        db.close()
+
+
+@history_app.command("backfill")
+def history_backfill(
+    source: str = typer.Option(..., "--source", help=f"Data source ({', '.join(_HISTORY_SOURCES)})"),
+    start: str = typer.Option(None, "--start", help="Start date (ISO format)"),
+    end: str = typer.Option(None, "--end", help="End date (ISO format)"),
+    days: int = typer.Option(0, "--days", help="Alternative to --start/--end: import last N days"),
+    detect: bool = typer.Option(True, "--detect/--no-detect", help="Run detection after import"),
+    corridor_filter: bool = typer.Option(True, "--corridor-filter/--no-corridor-filter", help="Only import within corridor bounding boxes (NOAA)"),
+):
+    """Backfill historical data for a specific source and date range."""
+    if source not in _HISTORY_SOURCES:
+        console.print(f"[red]Unknown source: {source}[/red]")
+        console.print(f"[dim]Valid sources: {', '.join(_HISTORY_SOURCES)}[/dim]")
+        raise typer.Exit(1)
+
+    # Resolve date range
     if days > 0:
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
@@ -903,6 +938,8 @@ def backfill(
     if source == "barentswatch" and (end_date - start_date).days > 14:
         console.print("[yellow]BarentsWatch max history is 14 days. Clamping start date.[/yellow]")
         start_date = end_date - timedelta(days=14)
+
+    from app.database import SessionLocal
 
     db = SessionLocal()
     try:
@@ -978,7 +1015,7 @@ def backfill(
             )
             console.print(f"  GFW port visits: {stats}")
 
-        # Record coverage window for tracking
+        # Record coverage window
         try:
             from app.modules.coverage_tracker import record_coverage_window
             record_coverage_window(
@@ -989,296 +1026,10 @@ def backfill(
         except (ImportError, AttributeError, TypeError):
             pass
 
-        # Run detection if requested
-        if detect:
-            lookback_end = end_date
-            lookback_start = start_date - timedelta(days=90)
-            with console.status("[bold]Analyzing vessel behavior..."):
-                from app.modules.dark_vessel_discovery import discover_dark_vessels
-                discover_dark_vessels(
-                    db,
-                    start_date=lookback_start.isoformat(),
-                    end_date=lookback_end.isoformat(),
-                    skip_fetch=True,
-                )
-
-        db.commit()
-        console.print("[green]Backfill complete![/green]")
-    except typer.Exit:
-        raise
-    except Exception as e:
-        console.print(f"[red]Backfill failed: {e}[/red]")
-        raise typer.Exit(1)
-    finally:
-        db.close()
-
-
-_VALID_SOURCES = ("gfw", "watchlist", "equasis", "all")
-
-
-@app.command("enrich-identity")
-def enrich_identity(
-    source: str = typer.Argument("gfw", help="Source: gfw, watchlist, equasis, all"),
-    limit: int = typer.Option(200, "--limit", help="Max vessels per source"),
-    watchlist_only: bool = typer.Option(False, "--watchlist-only", help="Equasis: restrict to watchlisted vessels only"),
-    identity_only: bool = typer.Option(False, "--identity-only", help="Only write GFW identity history, skip metadata updates"),
-):
-    """Enrich vessel identity data from external sources.
-
-    Sources:
-      gfw      — Global Fishing Watch vessel search API (requires GFW_API_TOKEN)
-      watchlist — Reload OFAC/OpenSanctions/FleetLeaks/GUR/KSE watchlists
-      equasis  — Equasis vessel registry HTML scraper (requires EQUASIS_SCRAPING_ENABLED=true)
-      all      — All sources above
-
-    WARNING: The 'equasis' source requires opt-in via EQUASIS_SCRAPING_ENABLED=true.
-    Equasis ToS prohibits automated access. For production, use Datalastic API instead.
-    """
-    if source not in _VALID_SOURCES:
-        raise typer.BadParameter(f"source must be one of {_VALID_SOURCES}, got '{source}'")
-    from app.database import SessionLocal
-    db = SessionLocal()
-    try:
-        if source in ("gfw", "all"):
-            if identity_only:
-                from app.modules.vessel_enrichment import populate_gfw_identity_history
-                result = populate_gfw_identity_history(db, limit=limit)
-                console.print(f"  GFW: wrote {result['written']} history rows for {result['processed']} vessels")
-            else:
-                from app.modules.vessel_enrichment import enrich_vessels_from_gfw
-                result = enrich_vessels_from_gfw(db, limit=limit)
-                console.print(f"  GFW: enriched {result['enriched']} vessels")
-        if source in ("watchlist", "all"):
-            _update_fetch_watchlists(db)
-            console.print("  Watchlists: loaded (OFAC, OpenSanctions, FleetLeaks, GUR, KSE)")
-        if source in ("equasis", "all"):
-            from app.modules.vessel_enrichment import enrich_vessels_from_equasis
-            result = enrich_vessels_from_equasis(db, limit=limit, watchlist_only=watchlist_only)
-            if result.get("disabled"):
-                console.print("  [yellow]Equasis: disabled (set EQUASIS_SCRAPING_ENABLED=true to opt in)[/yellow]")
-            else:
-                scope = " (watchlist only)" if watchlist_only else ""
-                console.print(f"  Equasis: enriched {result['enriched']} vessels{scope}")
-    finally:
-        db.close()
-
-
-@app.command("collect")
-def collect(
-    duration: str = typer.Option("1h", "--duration", help="Collection duration (30s, 5m, 1h, 7d)"),
-    sources: str = typer.Option("auto", "--sources", help="Comma-separated sources or 'auto'"),
-):
-    """Run periodic AIS data collection from all enabled sources."""
-    from app.database import SessionLocal
-    from app.modules.collection_scheduler import CollectionScheduler
-
-    duration_s = _parse_duration(duration)
-    source_list: list[str] | None = None
-    if sources != "auto":
-        source_list = [s.strip() for s in sources.split(",") if s.strip()]
-
-    console.print(f"[bold]Starting AIS collection (duration={duration}, sources={sources})...[/bold]")
-
-    scheduler = CollectionScheduler(
-        db_factory=SessionLocal,
-        sources=source_list,
-    )
-
-    try:
-        scheduler.start(duration_seconds=duration_s)
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Interrupted — stopping collection...[/yellow]")
-        scheduler.stop()
-
-    console.print("[green]Collection complete.[/green]")
-
-
-@app.command("collection-status")
-def collection_status(
-    days: int = typer.Option(7, "--days", help="Number of days to show"),
-):
-    """Show collection history and statistics."""
-    from datetime import datetime, timezone
-    from app.database import SessionLocal
-    from app.models.collection_run import CollectionRun
-
-    db = SessionLocal()
-    try:
-        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        runs = (
-            db.query(CollectionRun)
-            .filter(CollectionRun.started_at >= cutoff)
-            .order_by(CollectionRun.started_at.desc())
-            .limit(50)
-            .all()
-        )
-
-        if not runs:
-            console.print(f"[yellow]No collection runs in the last {days} days[/yellow]")
-            return
-
-        table = Table(title=f"Collection Runs (last {days} days)")
-        table.add_column("Source", style="cyan")
-        table.add_column("Started")
-        table.add_column("Status")
-        table.add_column("Points", justify="right")
-        table.add_column("Vessels", justify="right")
-        table.add_column("Errors", justify="right")
-
-        for run in runs:
-            status_style = {
-                "completed": "green",
-                "running": "yellow",
-                "failed": "red",
-            }.get(run.status, "white")
-            table.add_row(
-                run.source,
-                str(run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "?"),
-                f"[{status_style}]{run.status}[/{status_style}]",
-                str(run.points_imported or 0),
-                str(run.vessels_seen or 0),
-                str(run.errors or 0),
-            )
-
-        console.print(table)
-    finally:
-        db.close()
-
-
-# ---------------------------------------------------------------------------
-# History sub-commands
-# ---------------------------------------------------------------------------
-
-_HISTORY_SOURCES = ["noaa", "dma", "gfw-gaps", "gfw-encounters", "gfw-port-visits"]
-
-
-@history_app.command("status")
-def history_status():
-    """Show coverage status for each historical data source."""
-    from app.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        table = Table(title="Historical Data Coverage")
-        table.add_column("Source", style="cyan")
-        table.add_column("Earliest")
-        table.add_column("Latest")
-        table.add_column("Windows", justify="right")
-        table.add_column("Points", justify="right")
-        table.add_column("Next Gap")
-
-        try:
-            from app.modules.coverage_tracker import coverage_summary
-
-            all_summaries = coverage_summary(db)
-            for source in _HISTORY_SOURCES:
-                info = all_summaries.get(source, {})
-                next_gap = info.get("next_gap")
-                next_gap_str = str(next_gap) if next_gap else "[green]none[/green]"
-                table.add_row(
-                    source,
-                    str(info.get("earliest", "-")),
-                    str(info.get("latest", "-")),
-                    str(info.get("completed_windows", 0)),
-                    f"{info.get('total_points', 0):,}",
-                    next_gap_str,
-                )
-        except (ImportError, AttributeError):
-            for source in _HISTORY_SOURCES:
-                table.add_row(source, "-", "-", "0", "0", "[dim]tracker unavailable[/dim]")
-
-        console.print(table)
-    finally:
-        db.close()
-
-
-@history_app.command("gaps")
-def history_gaps(
-    source: str = typer.Option("noaa", "--source", help="Data source"),
-    limit: int = typer.Option(20, "--limit", help="Max gaps to show"),
-):
-    """List uncovered date ranges for a source."""
-    if source not in _HISTORY_SOURCES:
-        console.print(f"[red]Unknown source: {source}[/red]")
-        console.print(f"[dim]Valid sources: {', '.join(_HISTORY_SOURCES)}[/dim]")
-        raise typer.Exit(1)
-
-    from app.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        try:
-            from app.modules.coverage_tracker import find_coverage_gaps
-
-            to_date = date.today() - timedelta(days=1)
-            from_date = to_date - timedelta(days=730)
-            gaps = find_coverage_gaps(db, source, from_date, to_date)
-        except (ImportError, AttributeError):
-            console.print("[yellow]Coverage tracker not available[/yellow]")
-            return
-
-        if not gaps:
-            console.print(f"[green]No coverage gaps found for {source}[/green]")
-            return
-
-        table = Table(title=f"Coverage Gaps — {source}")
-        table.add_column("Start", style="cyan")
-        table.add_column("End", style="cyan")
-        table.add_column("Days", justify="right")
-
-        for gap_start, gap_end in gaps[:limit]:
-            gap_days = (gap_end - gap_start).days + 1
-            table.add_row(str(gap_start), str(gap_end), str(gap_days))
-
-        console.print(table)
-        if len(gaps) > limit:
-            console.print(f"[dim]... and {len(gaps) - limit} more gaps[/dim]")
-    finally:
-        db.close()
-
-
-@history_app.command("backfill")
-def history_backfill(
-    source: str = typer.Option(..., "--source", help="Data source"),
-    start: str = typer.Option(..., "--start", help="Start date (ISO format)"),
-    end: str = typer.Option(..., "--end", help="End date (ISO format)"),
-    detect: bool = typer.Option(False, "--detect/--no-detect", help="Run detection after import"),
-):
-    """Backfill historical data for a specific source and date range."""
-    if source not in _HISTORY_SOURCES:
-        console.print(f"[red]Unknown source: {source}[/red]")
-        console.print(f"[dim]Valid sources: {', '.join(_HISTORY_SOURCES)}[/dim]")
-        raise typer.Exit(1)
-
-    try:
-        start_date = date.fromisoformat(start)
-        end_date = date.fromisoformat(end)
-    except ValueError as e:
-        console.print(f"[red]Invalid date format: {e}[/red]")
-        raise typer.Exit(1)
-
-    if start_date > end_date:
-        console.print("[red]--start must be before or equal to --end[/red]")
-        raise typer.Exit(1)
-
-    from app.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        console.print(f"[bold]Backfilling {source} from {start_date} to {end_date}...[/bold]")
-
-        from app.modules.history_scheduler import HistoryScheduler
-
-        scheduler = HistoryScheduler(db_factory=SessionLocal)
-        result = scheduler._call_source(db, source, start_date, end_date)
-
-        console.print(f"  Result: {result}")
-
         if detect:
             lookback_start = start_date - timedelta(days=90)
             with console.status("[bold]Analyzing vessel behavior..."):
                 from app.modules.dark_vessel_discovery import discover_dark_vessels
-
                 discover_dark_vessels(
                     db,
                     start_date=lookback_start.isoformat(),
@@ -1381,63 +1132,6 @@ def history_schedule(
 # ---------------------------------------------------------------------------
 
 
-def _collect_multi_source_ais(db, stream_time: str) -> None:
-    """Collect AIS data from enabled secondary sources (Digitraffic, Kystverket, AISHub)."""
-    from app.config import settings
-
-    # Digitraffic (Finnish AIS — Baltic Sea)
-    if settings.DIGITRAFFIC_ENABLED:
-        try:
-            from app.modules.digitraffic_client import fetch_digitraffic_ais
-            result = fetch_digitraffic_ais(db)
-            console.print(f"  Digitraffic: {result['points_ingested']} points")
-        except Exception as e:
-            console.print(f"[yellow]Digitraffic: {e}[/yellow]")
-
-    # Kystverket (Norwegian AIS — Barents/Norwegian Sea)
-    if settings.KYSTVERKET_ENABLED:
-        try:
-            from app.modules.kystverket_client import stream_kystverket
-            result = stream_kystverket(db, duration_seconds=_parse_duration(stream_time))
-            console.print(f"  Kystverket: {result['points_ingested']} points")
-        except Exception as e:
-            console.print(f"[yellow]Kystverket: {e}[/yellow]")
-
-    # AISHub (batch positions — global corridor coverage)
-    if getattr(settings, 'AISHUB_ENABLED', False):
-        try:
-            from app.modules.aishub_client import fetch_area_positions, ingest_aishub_positions
-            from app.modules.aisstream_client import get_corridor_bounding_boxes
-            boxes = get_corridor_bounding_boxes(db)
-            total_stored = 0
-            for box in boxes:
-                bbox_tuple = (box[0][0], box[0][1], box[1][0], box[1][1])
-                positions = fetch_area_positions(bbox_tuple)
-                ah_result = ingest_aishub_positions(positions, db)
-                total_stored += ah_result['stored']
-            console.print(f"  AISHub: {total_stored} positions")
-        except Exception as e:
-            console.print(f"[yellow]AISHub: {e}[/yellow]")
-
-    # DMA (Danish Maritime Authority — Danish Straits daily CSVs)
-    if getattr(settings, 'DMA_ENABLED', False):
-        try:
-            from app.modules.dma_client import fetch_and_import_dma
-            from datetime import date as _date, timedelta as _td
-            yesterday = _date.today() - _td(days=1)
-            dma_result = fetch_and_import_dma(db, start_date=yesterday, end_date=yesterday)
-            console.print(f"  DMA: {dma_result['points_imported']} points")
-        except Exception as e:
-            console.print(f"[yellow]DMA: {e}[/yellow]")
-
-    # BarentsWatch (Norwegian EEZ REST API)
-    if getattr(settings, 'BARENTSWATCH_ENABLED', False):
-        try:
-            from app.modules.barentswatch_client import fetch_barentswatch_tracks
-            bw_result = fetch_barentswatch_tracks(db)
-            console.print(f"  BarentsWatch: {bw_result.get('points_imported', 0)} points")
-        except Exception as e:
-            console.print(f"[yellow]BarentsWatch: {e}[/yellow]")
 
 
 def _is_interactive() -> bool:
@@ -1637,31 +1331,6 @@ def _update_fetch_watchlists(db) -> None:
     if kse_file:
         load_kse_list(db, str(kse_file))
 
-
-def _update_stream_ais(db, stream_time: str) -> None:
-    """Stream AIS data from aisstream.io."""
-    import asyncio
-    from app.config import settings
-    from app.modules.aisstream_client import stream_ais, get_corridor_bounding_boxes
-
-    boxes = get_corridor_bounding_boxes(db)
-    duration_s = _parse_duration(stream_time)
-    stats = asyncio.run(stream_ais(
-        api_key=settings.AISSTREAM_API_KEY,
-        bounding_boxes=boxes,
-        duration_seconds=duration_s,
-        batch_interval=settings.AISSTREAM_BATCH_INTERVAL,
-    ))
-    pts = stats.get("points_stored", 0)
-    msgs = stats.get("messages_received", 0)
-    filtered = stats.get("filtered_reports", 0)
-    console.print(f"  AISStream: {pts} points stored, {msgs} messages, {filtered} filtered")
-    if pts == 0 and msgs > 0:
-        console.print(f"[yellow]  Warning: {msgs} messages received but 0 stored — all filtered out[/yellow]")
-    elif msgs == 0:
-        console.print("[yellow]  Warning: 0 messages received — check API key and bounding boxes[/yellow]")
-    if stats.get("batch_errors", 0) > 0:
-        console.print(f"[yellow]  {stats['batch_errors']} batch write errors[/yellow]")
 
 
 def _parse_duration(s: str) -> int:

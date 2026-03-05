@@ -45,21 +45,27 @@ class EquasisClient:
         self._session: Optional[requests.Session] = None
 
     def _login(self) -> None:
-        """POST /public/Signin and persist session cookie."""
+        """POST /authen/HomePage and persist session cookie.
+
+        allow_redirects=False is intentional: Equasis POST returns the logged-in
+        page directly with a 200 + Set-Cookie. Following redirects (allow_redirects=True)
+        causes the final GET to return an empty body, losing the session.
+        """
         session = requests.Session()
         resp = session.post(
-            f"{self.BASE_URL}/public/Signin",
+            f"{self.BASE_URL}/authen/HomePage",
+            params={"fs": "HomePage"},
             data={
                 "j_email": settings.EQUASIS_USERNAME,
                 "j_password": settings.EQUASIS_PASSWORD,
-                "submit": "Login",
             },
             timeout=15,
-            allow_redirects=True,
+            allow_redirects=False,
         )
         resp.raise_for_status()
-        # Success redirects to /restricted/HomePage; /public/ means bad credentials
-        if "/public/" in resp.url:
+        # Success: response body contains "Logout" (authenticated state)
+        # Failure: no Logout link — still showing the login form
+        if "Logout" not in resp.text:
             raise RuntimeError("Equasis login failed — check EQUASIS_USERNAME and EQUASIS_PASSWORD.")
         self._session = session
         logger.debug("Equasis login successful")
@@ -70,8 +76,8 @@ class EquasisClient:
             self._login()
         time.sleep(_REQUEST_DELAY_S)
         resp = self._session.get(f"{self.BASE_URL}{path}", params=params, timeout=15)
-        # Re-login if session expired (redirect to /public/ or 401)
-        if resp.status_code == 401 or "/public/" in resp.url:
+        # Re-login if session expired (redirect to /authen/ or /public/ or 401)
+        if resp.status_code == 401 or "/authen/" in resp.url or "/public/" in resp.url:
             logger.debug("Equasis session expired, re-logging in")
             self._session = None
             self._login()
@@ -101,47 +107,58 @@ class EquasisClient:
 def _parse_vessel_page(html: str) -> Optional[dict]:
     """Parse Equasis vessel info page HTML. Returns enrichment dict or None.
 
+    Equasis uses a Bootstrap grid layout: each field is a <div class="row"> where
+    the first child div contains a <b>Label</b> and the second child div holds the value.
+    Company/ISM data lives in a separate <tbody> table with columns:
+      [company_id, role, company_name, flag, since_date]
+
     Returns dict with any subset of:
-    {dwt, vessel_type, year_built, flag, ism_company, gross_tonnage}
+      {dwt, vessel_type, year_built, flag, ism_company, gross_tonnage, callsign}
     All values are strings. Returns None if page indicates no data.
     """
     soup = BeautifulSoup(html, "html.parser")
     data: dict = {}
 
-    # Check for "no vessel found" indicators
     if "No ship found" in html or "no ship" in html.lower():
         return None
 
-    # Equasis uses labelled table rows. Common patterns:
-    # <td>Deadweight:</td><td>65000</td>
-    # <td>Type:</td><td>Crude Oil Tanker</td>
-    # <td>Year of Build:</td><td>2003</td>
-    # <td>Flag:</td><td>Panama</td>
-    # <td>ISM Company:</td><td>ABC Ship Management</td>
-    # <td>Gross Tonnage:</td><td>45000</td>
-    #
-    # The actual selectors depend on the current Equasis page structure.
-    # Parse all label-value pairs from the main info tables.
+    # ── Main vessel fields from div.row grid ────────────────────────────────
     label_map = {
-        "deadweight": "dwt",
-        "dead weight": "dwt",
-        "type": "vessel_type",
+        "dwt": "dwt",
+        "gross tonnage": "gross_tonnage",
+        "type of ship": "vessel_type",
         "ship type": "vessel_type",
         "year of build": "year_built",
-        "built": "year_built",
-        "flag": "flag",
-        "flag state": "flag",
-        "ism company": "ism_company",
-        "gross tonnage": "gross_tonnage",
-        "gt": "gross_tonnage",
+        "call sign": "callsign",
     }
-
-    for row in soup.find_all("tr"):
-        cells = row.find_all("td")
-        if len(cells) >= 2:
-            label = cells[0].get_text(strip=True).rstrip(":").lower()
-            value = cells[1].get_text(strip=True)
-            if label in label_map and value:
+    for row in soup.find_all("div", class_="row"):
+        divs = row.find_all("div", recursive=False)
+        if len(divs) < 2:
+            continue
+        b_tag = divs[0].find("b")
+        if not b_tag:
+            continue
+        label = b_tag.get_text(strip=True).lower()
+        if label in label_map:
+            value = divs[1].get_text(strip=True)
+            if value:
                 data[label_map[label]] = value
+        # Flag: 4-div row — label=div[0], value=div[3] "(CountryName)"
+        elif label == "flag" and len(divs) >= 4:
+            flag_text = divs[3].get_text(strip=True).strip("()")
+            if flag_text:
+                data["flag"] = flag_text
+
+    # ── ISM Manager from company table ──────────────────────────────────────
+    # Table rows: [company_id, role, company_name, flag, since_date]
+    for tr in soup.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) >= 3:
+            role = tds[1].get_text(strip=True)
+            if "ISM Manager" in role:
+                name = tds[2].get_text(strip=True)
+                if name and name.upper() not in ("UNKNOWN", "N/A", ""):
+                    data["ism_company"] = name
+                break
 
     return data if data else None
