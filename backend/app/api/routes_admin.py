@@ -82,11 +82,6 @@ def ingestion_status(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/admin/ingestion-status", tags=["admin"])
-def admin_ingestion_status(db: Session = Depends(get_db)):
-    """Admin: return all IngestionStatus records (alias for /ingestion-status)."""
-    return ingestion_status(db)
-
 
 @router.post("/gfw/import", tags=["ingestion"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)

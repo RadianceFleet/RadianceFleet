@@ -117,28 +117,6 @@ class TestRejectMergeCandidate:
         assert candidate.status == MergeCandidateStatusEnum.REJECTED
 
 
-class TestReverseMergeOperation:
-    """POST /api/v1/merge-operations/{id}/reverse."""
-
-    def test_reverse_merge_calls_function(self, api_client, mock_db):
-        with patch(
-            "app.modules.identity_resolver.reverse_merge",
-            return_value={"success": True, "message": "Reversed"},
-        ):
-            resp = api_client.post("/api/v1/merge-operations/1/reverse")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["success"] is True
-
-    def test_reverse_merge_failed_returns_400(self, api_client, mock_db):
-        with patch(
-            "app.modules.identity_resolver.reverse_merge",
-            return_value={"success": False, "error": "Not found"},
-        ):
-            resp = api_client.post("/api/v1/merge-operations/99999/reverse")
-            assert resp.status_code == 400
-
-
 class TestManualMerge:
     """POST /api/v1/vessels/merge — manual merge by analyst."""
 

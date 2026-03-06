@@ -534,11 +534,6 @@ class TestGovPackage:
 # ---------------------------------------------------------------------------
 
 class TestHuntEndpoints:
-    def test_create_hunt_target_404_on_missing_vessel(self, api_client, mock_db):
-        with patch("app.modules.vessel_hunt.create_target_profile", side_effect=ValueError("Vessel not found")):
-            resp = api_client.post("/api/v1/hunt/targets?vessel_id=99999")
-            assert resp.status_code == 404
-
     def test_list_hunt_targets_empty(self, api_client, mock_db):
         mock_db.query.return_value.offset.return_value.limit.return_value.all.return_value = []
         resp = api_client.get("/api/v1/hunt/targets")

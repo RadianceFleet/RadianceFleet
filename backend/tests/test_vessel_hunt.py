@@ -233,11 +233,6 @@ class TestMissionLifecycle:
 
 
 class TestHuntAPI:
-    def test_post_hunt_targets_201(self, api_client):
-        """POST /hunt/targets returns 201 or 404 (vessel not found is ok)."""
-        resp = api_client.post("/api/v1/hunt/targets?vessel_id=1")
-        assert resp.status_code in (201, 404, 422, 500)
-
     def test_get_hunt_missions_404(self, api_client):
         """GET /hunt/missions/999 returns 404."""
         resp = api_client.get("/api/v1/hunt/missions/999")

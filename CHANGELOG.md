@@ -11,6 +11,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 - pytest-timeout added and xdist disabled to prevent test suite freezing
 
+### Removed
+- **API**: Removed 33 unused endpoints with no frontend callers (11 individual detector triggers, 4 hunt write endpoints, 4 fleet/convoy/satellite duplicates, 12 vessel sub-resources, 1 admin alias, 1 merge-chain). CLI commands and underlying modules unaffected.
+
 ## [2.1.0] - 2026-03-01
 
 ### Added

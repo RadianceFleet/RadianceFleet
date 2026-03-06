@@ -2,64 +2,6 @@
 from unittest.mock import MagicMock, patch
 
 
-class TestCrossReceiverDetection:
-    def test_returns_result(self, api_client, mock_db):
-        with patch("app.modules.cross_receiver_detector.detect_cross_receiver_anomalies",
-                    return_value={"anomalies_created": 3, "mmsis_checked": 50}):
-            resp = api_client.post("/api/v1/detect/cross-receiver")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["anomalies_created"] == 3
-            assert data["mmsis_checked"] == 50
-
-    def test_empty_db_returns_zero(self, api_client, mock_db):
-        with patch("app.modules.cross_receiver_detector.detect_cross_receiver_anomalies",
-                    return_value={"anomalies_created": 0, "mmsis_checked": 0}):
-            resp = api_client.post("/api/v1/detect/cross-receiver")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["anomalies_created"] == 0
-
-
-class TestHandshakeDetection:
-    def test_returns_result(self, api_client, mock_db):
-        with patch("app.modules.handshake_detector.detect_handshakes",
-                    return_value={"handshakes_detected": 2, "pairs_checked": 100}):
-            resp = api_client.post("/api/v1/detect/handshake")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["handshakes_detected"] == 2
-            assert data["pairs_checked"] == 100
-
-    def test_empty_db_returns_zero(self, api_client, mock_db):
-        with patch("app.modules.handshake_detector.detect_handshakes",
-                    return_value={"handshakes_detected": 0, "pairs_checked": 0}):
-            resp = api_client.post("/api/v1/detect/handshake")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["handshakes_detected"] == 0
-
-
-class TestMMSICloningDetection:
-    def test_returns_result(self, api_client, mock_db):
-        with patch("app.modules.mmsi_cloning_detector.detect_mmsi_cloning",
-                    return_value=[{"mmsi": "123456789", "clone_count": 2}]):
-            resp = api_client.post("/api/v1/detect/mmsi-cloning")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["clones_detected"] == 1
-            assert len(data["details"]) == 1
-
-    def test_empty_db_returns_zero(self, api_client, mock_db):
-        with patch("app.modules.mmsi_cloning_detector.detect_mmsi_cloning",
-                    return_value=[]):
-            resp = api_client.post("/api/v1/detect/mmsi-cloning")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["clones_detected"] == 0
-            assert data["details"] == []
-
-
 class TestPortCallEndpoint:
     def test_vessel_not_found_returns_404(self, api_client, mock_db):
         mock_db.query.return_value.filter.return_value.first.return_value = None

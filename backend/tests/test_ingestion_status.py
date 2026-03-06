@@ -127,7 +127,3 @@ class TestIngestionStatusAPI:
         data = resp.json()
         assert data["status"] in ("idle", "ok")
 
-    def test_admin_ingestion_status_endpoint(self, client):
-        """Admin alias endpoint works."""
-        resp = client.get("/api/v1/admin/ingestion-status")
-        assert resp.status_code == 200

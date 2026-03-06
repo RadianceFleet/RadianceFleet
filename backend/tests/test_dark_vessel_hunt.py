@@ -12,37 +12,6 @@ Tests the hunt target/mission/candidate lifecycle:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock, patch
-
-
-class TestCreateHuntTarget:
-    """POST /api/v1/hunt/targets — register a vessel for hunting."""
-
-    def test_create_target_404_on_missing_vessel(self, api_client, mock_db):
-        with patch(
-            "app.modules.vessel_hunt.create_target_profile",
-            side_effect=ValueError("Vessel not found"),
-        ):
-            resp = api_client.post("/api/v1/hunt/targets?vessel_id=99999")
-            assert resp.status_code == 404
-
-    def test_create_target_returns_201(self, api_client, mock_db):
-        profile = MagicMock()
-        profile.profile_id = 1
-        profile.vessel_id = 10
-        profile.deadweight_dwt = 50000.0
-
-        with patch(
-            "app.modules.vessel_hunt.create_target_profile",
-            return_value=profile,
-        ):
-            resp = api_client.post("/api/v1/hunt/targets?vessel_id=10")
-            assert resp.status_code == 201
-            data = resp.json()
-            assert data["profile_id"] == 1
-            assert data["vessel_id"] == 10
-            assert data["deadweight_dwt"] == 50000.0
-
 
 class TestListHuntTargets:
     """GET /api/v1/hunt/targets — list all target profiles."""
@@ -63,48 +32,6 @@ class TestGetHuntTarget:
         assert resp.status_code == 404
 
 
-class TestCreateSearchMission:
-    """POST /api/v1/hunt/missions — create search mission with drift ellipse."""
-
-    def test_create_mission_returns_201(self, api_client, mock_db):
-        mission = MagicMock()
-        mission.mission_id = 1
-        mission.vessel_id = 10
-        mission.max_radius_nm = 45.0
-        mission.elapsed_hours = 12.0
-        mission.status = "pending_imagery"
-        mission.search_ellipse_wkt = "POLYGON((...))..."
-
-        with patch(
-            "app.modules.vessel_hunt.create_search_mission",
-            return_value=mission,
-        ):
-            resp = api_client.post(
-                "/api/v1/hunt/missions"
-                "?target_profile_id=1"
-                "&search_start_utc=2026-01-15T12:00:00"
-                "&search_end_utc=2026-01-16T00:00:00"
-            )
-            assert resp.status_code == 201
-            data = resp.json()
-            assert data["mission_id"] == 1
-            assert data["max_radius_nm"] == 45.0
-            assert data["status"] == "pending_imagery"
-
-    def test_create_mission_404_on_missing_profile(self, api_client, mock_db):
-        with patch(
-            "app.modules.vessel_hunt.create_search_mission",
-            side_effect=ValueError("Profile not found"),
-        ):
-            resp = api_client.post(
-                "/api/v1/hunt/missions"
-                "?target_profile_id=99999"
-                "&search_start_utc=2026-01-15T12:00:00"
-                "&search_end_utc=2026-01-16T00:00:00"
-            )
-            assert resp.status_code == 404
-
-
 class TestGetMission:
     """GET /api/v1/hunt/missions/{id} — get mission details."""
 
@@ -112,47 +39,6 @@ class TestGetMission:
         mock_db.query.return_value.filter.return_value.first.return_value = None
         resp = api_client.get("/api/v1/hunt/missions/99999")
         assert resp.status_code == 404
-
-
-class TestFindCandidates:
-    """POST /api/v1/hunt/missions/{id}/find-candidates."""
-
-    def test_find_candidates_returns_list(self, api_client, mock_db):
-        c1 = MagicMock()
-        c1.candidate_id = 1
-        c1.hunt_score = 85.0
-        c1.score_breakdown_json = {"proximity": 40, "size": 25, "heading": 20}
-        c1.detection_lat = 55.5
-        c1.detection_lon = 15.2
-        c1.analyst_review_status = None
-
-        with patch(
-            "app.modules.vessel_hunt.find_hunt_candidates",
-            return_value=[c1],
-        ):
-            resp = api_client.post("/api/v1/hunt/missions/1/find-candidates")
-            assert resp.status_code == 201
-            data = resp.json()
-            assert len(data) == 1
-            assert data[0]["candidate_id"] == 1
-            assert data[0]["hunt_score"] == 85.0
-
-    def test_find_candidates_404_on_missing_mission(self, api_client, mock_db):
-        with patch(
-            "app.modules.vessel_hunt.find_hunt_candidates",
-            side_effect=ValueError("Mission not found"),
-        ):
-            resp = api_client.post("/api/v1/hunt/missions/99999/find-candidates")
-            assert resp.status_code == 404
-
-    def test_find_candidates_empty_result(self, api_client, mock_db):
-        with patch(
-            "app.modules.vessel_hunt.find_hunt_candidates",
-            return_value=[],
-        ):
-            resp = api_client.post("/api/v1/hunt/missions/1/find-candidates")
-            assert resp.status_code == 201
-            assert resp.json() == []
 
 
 class TestListHuntCandidates:
@@ -169,33 +55,6 @@ class TestListHuntCandidates:
         assert isinstance(data["items"], list)
         assert len(data["items"]) == 0
         assert data["total"] == 0
-
-
-class TestConfirmHuntCandidate:
-    """POST /api/v1/hunt/missions/{id}/confirm/{candidate_id}."""
-
-    def test_confirm_candidate_success(self, api_client, mock_db):
-        mission = MagicMock()
-        mission.mission_id = 1
-        mission.status = "confirmed"
-
-        with patch(
-            "app.modules.vessel_hunt.finalize_mission",
-            return_value=mission,
-        ):
-            resp = api_client.post("/api/v1/hunt/missions/1/confirm/5")
-            assert resp.status_code == 200
-            data = resp.json()
-            assert data["mission_id"] == 1
-            assert data["status"] == "confirmed"
-
-    def test_confirm_candidate_404(self, api_client, mock_db):
-        with patch(
-            "app.modules.vessel_hunt.finalize_mission",
-            side_effect=ValueError("Mission not found"),
-        ):
-            resp = api_client.post("/api/v1/hunt/missions/99999/confirm/1")
-            assert resp.status_code == 404
 
 
 class TestHuntModels:
