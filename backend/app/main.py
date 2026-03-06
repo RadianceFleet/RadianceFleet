@@ -14,10 +14,14 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy.exc import IntegrityError
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
+from starlette.responses import FileResponse
+from starlette.staticfiles import StaticFiles
 from app.api.routes import router
 from app.config import settings
+from app.logging_config import setup_logging
 
-logging.basicConfig(level=settings.LOG_LEVEL)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -76,6 +80,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 # API key authentication middleware
@@ -103,6 +108,21 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(router, prefix="/api/v1")
+
+# ── Static files + SPA fallback ──────────────────────────────────────────────
+_static_dir = Path(__file__).resolve().parent.parent / "static"
+if _static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        """Serve index.html for any path not matched by API/health/docs routes."""
+        if full_path.startswith(("api/", "health", "docs", "openapi.json", "redoc")):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        index = _static_dir / "index.html"
+        if index.exists():
+            return FileResponse(str(index))
+        return JSONResponse(status_code=404, content={"detail": "Frontend not built"})
 
 
 # ── Structured error handlers ─────────────────────────────────────────────────
