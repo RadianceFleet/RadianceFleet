@@ -72,6 +72,8 @@ metadata:
   mmsi_change_mapped_same_position: 45
   callsign_change: 20
   flag_change_from_high_risk_to_low_risk_12m: 20
+  no_name_at_all: 20              # completely unnamed vessel with MMSI
+  name_all_caps_numbers: 10       # pattern like "TANKER 001" or "SHIP 22" (C4ADS Unmasked)
 
 # VESSEL CHARACTERISTICS
 vessel_age:
@@ -205,7 +207,7 @@ identity_merge:
 sts_patterns:
   repeat_sts_partnership_3plus: 30   # same two vessels doing STS 3+ times
   flag_corridor_coupling: 20         # high-risk flag vessel in geographically suspicious corridor
-  invalid_metadata_generic_name: 10  # vessel has generic/placeholder name
+  invalid_metadata_generic_name: 15  # vessel has generic/placeholder name (boosted from 10)
   invalid_metadata_impossible_dwt: 15  # DWT value is physically impossible
   voyage_cycle_pattern: 30           # Russian port + STS + repeated gaps pattern
 
@@ -379,6 +381,57 @@ voyage:
   laden_from_russian_terminal_sts: 15
   weather_speed_correction_wind: -8
   weather_speed_correction_storm: -15
+
+# SANCTIONED PORT SCORING (Phase 6.13, OSINT Plan 1b)
+# Sources: OFAC Russia Energy Sector, EU Council Reg 833/2014, CSIS maritime advisories.
+# Vessels visiting Russian energy export terminals under active sanctions.
+sanctioned_port:
+  visit_confirmed: 50       # PortCall record directly linked to sanctioned terminal
+  proximity_10nm: 25        # gap endpoint within 10nm of sanctioned terminal
+  crea_confirmed: 35        # CREA Fossil Tracker voyage arrival/departure at sanctioned terminal
+
+# TEMPORAL RECENCY MULTIPLIER (OSINT Plan 1c)
+# Windward Behavioral Intelligence & Kpler 2024 consensus:
+# Recent anomalies are 2x more predictive of active evasion than events >90d old.
+temporal_decay:
+  enabled: true
+  recent_7d_multiplier: 2.0    # Active evasion window — event in last 7 days
+  recent_30d_multiplier: 1.5   # Recent pattern — event in last 30 days
+  baseline_90d_multiplier: 1.0 # Baseline — event in last 90 days
+  old_90d_plus_multiplier: 0.8 # Historical decay — event older than 90 days
+
+# EEZ BOUNDARY PROXIMITY (OSINT Plan 2b)
+# GFW Science Advances (2022): distance to EEZ boundary is the #1 predictor
+# of intentional AIS disabling (peer-reviewed, 50-80M events analysed).
+#
+# FALSE-POSITIVE GUARD: Both gates below are REQUIRED to prevent 85-90% FP rate.
+# Baltic/North Sea legitimate routes constantly cross EEZ boundaries.
+eez_proximity:
+  enabled: true
+  within_5nm: 25           # Highest-confidence intentional disabling (GFW tier 1)
+  within_5nm_threshold: 5.0
+  within_20nm: 15          # Elevated suspicion (GFW tier 2)
+  within_20nm_threshold: 20.0
+  # Gates: both must be satisfied before signal fires
+  min_gap_duration_hours: 4    # Exclude brief comm outages / normal coverage gaps
+  require_high_risk_flag: true # Only fire for Palau, Sierra Leone, Comoros, etc.
+
+# KSE SHADOW FLEET ARCHETYPE (OSINT Plan 2a)
+# KSE Institute finding: 92% of new shadow crude tankers match 3+ profile dimensions.
+kse_profile:
+  enabled: true
+  profile_match_3: 20    # matches 3/5 shadow fleet archetype dimensions
+  profile_match_4plus: 35  # matches 4-5 dimensions (high-confidence profile match)
+
+# PER-VESSEL BEHAVIORAL BASELINE (OSINT Plan 4a)
+# Windward "Patterns of Life" + ArXiv 2406.09966: per-vessel Z-score achieves
+# 95% F1 score in literature vs 70-80% for fleet-wide absolute thresholds.
+# Compares current gap duration to vessel's own 30-day rolling baseline.
+behavioral_baseline:
+  min_sample_size: 3            # Minimum historical gaps required for meaningful baseline
+  min_std_hours: 0.5            # Skip if std too small (uniform gaps — not anomalous)
+  sigma_2_points: 25            # >2σ deviation from own baseline
+  sigma_3_points: 40            # >3σ deviation from own baseline (strong indicator)
 
 # WATCHLIST STUB SCORING — static scoring for vessels with no AIS history
 watchlist_stub_scoring:

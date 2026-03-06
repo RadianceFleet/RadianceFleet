@@ -520,3 +520,62 @@ def enrich_vessels_from_equasis(
         stats["enriched"], stats["failed"], stats["skipped"],
     )
     return stats
+
+
+# Class-median DWT values (t) for third-level fallback.
+# Used ONLY when both authoritative (Equasis) and GT-derived heuristic DWT are unavailable.
+# Precedence: authoritative DWT > GT-heuristic > class-median.
+# Sources: Clarksons Research, UNCTAD Review of Maritime Transport 2023 medians.
+_VESSEL_TYPE_MEDIAN_DWT: dict[str, int] = {
+    "Crude Oil Tanker": 130_000,
+    "Crude Tanker": 130_000,
+    "Oil Tanker": 80_000,
+    "Product Tanker": 45_000,
+    "Chemical Tanker": 20_000,
+    "Bulk Carrier": 75_000,
+    "Container Ship": 50_000,
+    "LNG Tanker": 85_000,
+    "LPG Tanker": 35_000,
+    "General Cargo": 12_000,
+    "Ro-Ro Cargo": 15_000,
+    "Vehicle Carrier": 18_000,
+}
+
+
+def apply_class_median_dwt(db: Session) -> dict:
+    """Apply class-median DWT as third-level fallback for vessels with no DWT at all.
+
+    Only fills vessels where deadweight IS NULL — does NOT overwrite any existing value,
+    including GT-derived heuristic values. This is the lowest-priority enrichment source.
+
+    Call this after enrich_vessels_from_gfw() and enrich_vessels_from_equasis() so that
+    authoritative and heuristic values are set first.
+
+    Returns: {filled: int, skipped: int}
+    """
+    from app.models.vessel import Vessel
+
+    stats = {"filled": 0, "skipped": 0}
+
+    vessels_without_dwt = db.query(Vessel).filter(
+        Vessel.deadweight.is_(None),
+        Vessel.vessel_type.isnot(None),
+    ).all()
+
+    for vessel in vessels_without_dwt:
+        median = _VESSEL_TYPE_MEDIAN_DWT.get(vessel.vessel_type)
+        if median is None:
+            stats["skipped"] += 1
+            continue
+        vessel.deadweight = float(median)
+        vessel.is_heuristic_dwt = True  # Treat class-median same as GT-heuristic
+        stats["filled"] += 1
+
+    if stats["filled"] > 0:
+        db.commit()
+
+    logger.info(
+        "Class-median DWT fallback: filled=%d skipped=%d",
+        stats["filled"], stats["skipped"],
+    )
+    return stats

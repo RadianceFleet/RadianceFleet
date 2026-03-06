@@ -281,7 +281,7 @@ def test_invalid_metadata_generic_name():
     score, breakdown = compute_gap_score(gap, config)
     assert "invalid_metadata_generic_name" in breakdown, \
         f"Expected invalid_metadata_generic_name, got: {list(breakdown.keys())}"
-    assert breakdown["invalid_metadata_generic_name"] == 10
+    assert breakdown["invalid_metadata_generic_name"] == 15  # boosted from 10 per OSINT plan 3b
 
 
 def test_invalid_metadata_normal_name():
@@ -307,7 +307,7 @@ def test_invalid_metadata_single_letter_name():
 
     score, breakdown = compute_gap_score(gap, config)
     assert "invalid_metadata_generic_name" in breakdown
-    assert breakdown["invalid_metadata_generic_name"] == 10
+    assert breakdown["invalid_metadata_generic_name"] == 15  # boosted from 10 per OSINT plan 3b
 
 
 def test_invalid_metadata_impossible_dwt():

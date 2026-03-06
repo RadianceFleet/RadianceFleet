@@ -117,6 +117,96 @@ MID_TO_FLAG: dict[str, str] = {
     "659": "NA",  # Namibia
     "432": "JP",  # Japan (additional block)
     "477": "HK",  # Hong Kong
+    # ── Caribbean / Central America (300-329 block) ──────────────────────────
+    "312": "BZ",  # Belize
+    "306": "VG",  # British Virgin Islands
+    "329": "KN",  # Saint Kitts and Nevis
+    "305": "AG",  # Antigua and Barbuda
+    "325": "GD",  # Grenada
+    "330": "LC",  # Saint Lucia
+    "341": "MX",  # Mexico (additional coverage)
+    "345": "NI",  # Nicaragua
+    "346": "PA",  # Panama (additional block)
+    "350": "PA",  # Panama (additional block)
+    "359": "JM",  # Jamaica
+    "362": "TT",  # Trinidad and Tobago
+    "378": "DO",  # Dominican Republic
+    "379": "PR",  # Puerto Rico (US territory)
+    # ── Middle East (400-470 block) ──────────────────────────────────────────
+    "401": "IQ",  # Iraq — Basra/Umm Qasr
+    "447": "KW",  # Kuwait
+    "466": "QA",  # Qatar — LNG export hub
+    "432": "JP",  # Japan (Gulf/Middle East liaison vessels)
+    "468": "OM",  # Oman
+    "434": "IR",  # Iran (additional block)
+    "422": "IR",  # Iran (main block)
+    "408": "BH",  # Bahrain
+    "455": "JO",  # Jordan
+    "450": "IL",  # Israel
+    "462": "YE",  # Yemen
+    "407": "SY",  # Syria
+    "440": "KR",  # Korea (additional Middle East flag ops)
+    # ── South / Southeast Asia (500-574 block) ───────────────────────────────
+    "405": "BD",  # Bangladesh
+    "417": "LK",  # Sri Lanka
+    "506": "MM",  # Myanmar
+    "533": "MY",  # Malaysia (additional block)
+    "502": "MV",  # Maldives
+    "508": "NP",  # Nepal (landlocked — suspicious for seagoing)
+    "514": "KH",  # Cambodia
+    "515": "KH",  # Cambodia (additional block)
+    "516": "BN",  # Brunei
+    "567": "TH",  # Thailand
+    "578": "VN",  # Vietnam (additional block)
+    # ── West / Central Africa (600-660 block) ────────────────────────────────
+    "663": "SN",  # Senegal
+    "619": "CI",  # Côte d'Ivoire (Ivory Coast)
+    "627": "GH",  # Ghana
+    "657": "NG",  # Nigeria (additional block)
+    "609": "BJ",  # Benin
+    "610": "BW",  # Botswana (landlocked — suspicious)
+    "611": "BF",  # Burkina Faso (landlocked)
+    "612": "CF",  # Central African Republic (landlocked)
+    "615": "MR",  # Mauritania
+    "616": "ML",  # Mali (landlocked)
+    "618": "GW",  # Guinea-Bissau
+    "621": "DJ",  # Djibouti
+    "625": "ER",  # Eritrea
+    "633": "GW",  # Guinea-Bissau (additional)
+    "641": "ZZ",  # Placeholder for unallocated West Africa
+    "648": "SD",  # Sudan
+    "649": "SO",  # Somalia
+    "654": "SC",  # Seychelles
+    "655": "LY",  # Libya
+    "660": "ET",  # Ethiopia (landlocked)
+    # ── East Africa / Indian Ocean (664-699 block) ───────────────────────────
+    "664": "TZ",  # Tanzania (additional block)
+    "665": "UG",  # Uganda (landlocked)
+    "666": "MZ",  # Mozambique
+    "669": "KE",  # Kenya
+    "670": "ZA",  # South Africa (additional block)
+    "671": "ZM",  # Zambia (landlocked)
+    "672": "ZW",  # Zimbabwe (landlocked)
+    "677": "DZ",  # Algeria
+    "678": "MA",  # Morocco
+    "681": "TN",  # Tunisia
+    "687": "CV",  # Cape Verde
+    # ── Russian internal waterway / far east registries ──────────────────────
+    "461": "RU",  # Russian Far Eastern River Fleet
+    "462": "RU",  # Russia (additional — military auxiliary)
+    "274": "RU",  # Russia (additional Pacific block)
+    # ── Oceania / Pacific ────────────────────────────────────────────────────
+    "520": "PN",  # Pitcairn Island (UK territory)
+    "521": "TO",  # Tonga
+    "522": "WS",  # Samoa
+    "523": "FJ",  # Fiji
+    "529": "TK",  # Tokelau
+    "540": "NC",  # New Caledonia (France)
+    "546": "PF",  # French Polynesia
+    "555": "WF",  # Wallis and Futuna (France)
+    "559": "WS",  # Samoa (additional block)
+    "570": "SB",  # Solomon Islands
+    "576": "VU",  # Vanuatu (additional block)
 }
 
 

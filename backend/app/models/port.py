@@ -17,3 +17,4 @@ class Port(Base):
     is_eu: Mapped[bool] = mapped_column(Boolean, default=False)
     is_russian_oil_terminal: Mapped[bool] = mapped_column(Boolean, default=False)
     is_offshore_terminal: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_sanctioned: Mapped[bool] = mapped_column(Boolean, default=False)
