@@ -13,11 +13,6 @@ function createTestQueryClient() {
   })
 }
 
-interface WrapperProps {
-  children: React.ReactNode
-  initialEntries?: string[]
-}
-
 function createWrapper(initialEntries: string[] = ['/']) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
     const queryClient = createTestQueryClient()
