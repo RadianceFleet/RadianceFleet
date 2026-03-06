@@ -176,4 +176,6 @@ async def general_error_handler(request: Request, exc: Exception):
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "version": "0.1.0"}
+    from app.modules.circuit_breakers import get_circuit_states
+
+    return {"status": "ok", "version": "0.1.0", "circuit_breakers": get_circuit_states()}
