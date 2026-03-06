@@ -10,7 +10,6 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 
 import httpx
-import pybreaker
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 

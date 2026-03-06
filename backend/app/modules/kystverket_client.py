@@ -11,7 +11,6 @@ import logging
 import socket
 from datetime import datetime, timezone
 
-import pybreaker
 from sqlalchemy.orm import Session
 
 from app.config import settings

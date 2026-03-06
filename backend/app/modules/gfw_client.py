@@ -17,6 +17,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 from app.utils.geo import haversine_nm
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,9 @@ def search_vessel(
     from app.utils.http_retry import retry_request
 
     with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-        resp = retry_request(client.get, url, params=params, headers=_headers(token))
+        resp = breakers["gfw"].call(
+            retry_request, client.get, url, params=params, headers=_headers(token)
+        )
 
     data = resp.json()
     entries = data.get("entries", [])
@@ -182,7 +185,9 @@ def get_vessel_events(
     all_events = []
     with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
         while True:
-            resp = retry_request(client.get, url, params=params, headers=_headers(token))
+            resp = breakers["gfw"].call(
+                retry_request, client.get, url, params=params, headers=_headers(token)
+            )
             data = resp.json()
             entries = data.get("entries", [])
             for ev in entries:
@@ -283,7 +288,8 @@ def get_sar_detections(
     detections: list[dict] = []
     try:
         with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-            resp = retry_request(
+            resp = breakers["gfw"].call(
+                retry_request,
                 client.post,
                 url,
                 headers=_headers(token),

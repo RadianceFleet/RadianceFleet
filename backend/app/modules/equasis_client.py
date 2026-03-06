@@ -19,6 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,9 @@ class EquasisClient:
         if self._session is None:
             self._login()
         time.sleep(_REQUEST_DELAY_S)
-        resp = self._session.get(f"{self.BASE_URL}{path}", params=params, timeout=15)
+        resp = breakers["equasis"].call(
+            self._session.get, f"{self.BASE_URL}{path}", params=params, timeout=15
+        )
         # Re-login if session expired (redirect to /authen/ or /public/ or 401)
         if resp.status_code == 401 or "/authen/" in resp.url or "/public/" in resp.url:
             logger.debug("Equasis session expired, re-logging in")

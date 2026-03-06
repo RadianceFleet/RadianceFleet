@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
-import pybreaker
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
