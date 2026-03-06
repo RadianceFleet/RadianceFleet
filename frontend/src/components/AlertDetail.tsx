@@ -1,74 +1,22 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useState, useEffect } from 'react'
-import type { AlertStatus, ExportResponse } from '../types/api'
 import { useAlert, useUpdateAlertStatus, useUpdateAlertNotes } from '../hooks/useAlerts'
-import { apiFetch } from '../lib/api'
 import { AlertMap } from './AlertMap'
 import { ScoreBreakdown } from './ScoreBreakdown'
 import { Spinner } from './ui/Spinner'
 import { ScoreBadge } from './ui/ScoreBadge'
+import { AlertStatusPanel } from './AlertStatusPanel'
+import { AlertExportPanel } from './AlertExportPanel'
+import { sectionHead, labelCell as _labelCell, valueCell, card, btnStyle, tableStyle, theadRow, tbodyRow } from '../styles/tables'
 
-const STATUSES: AlertStatus[] = ['new', 'under_review', 'needs_satellite_check', 'documented', 'dismissed']
-
-const card: React.CSSProperties = { background: 'var(--bg-card)', borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 16 }
-const sectionHead: React.CSSProperties = { margin: '0 0 12px', fontSize: 14, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }
-const labelCell: React.CSSProperties = { color: 'var(--text-dim)', width: 180, fontSize: 13, paddingRight: 12, paddingBottom: 8, verticalAlign: 'top' }
-const valueCell: React.CSSProperties = { fontSize: 13, paddingBottom: 8 }
-const btn: React.CSSProperties = { border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '6px 14px', cursor: 'pointer', fontSize: 13 }
+const labelCell: React.CSSProperties = { ..._labelCell, width: 180 }
 
 export function AlertDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [notes, setNotes] = useState('')
-  const [saved, setSaved] = useState(false)
-  const [exportError, setExportError] = useState<string | null>(null)
-  const [satLoading, setSatLoading] = useState(false)
-  const [satResult, setSatResult] = useState<string | null>(null)
 
   const { data: alert, isLoading, error } = useAlert(id)
   const statusMutation = useUpdateAlertStatus(id ?? '')
   const notesMutation = useUpdateAlertNotes(id ?? '')
-
-  useEffect(() => {
-    if (alert?.analyst_notes) setNotes(alert.analyst_notes)
-  }, [alert?.analyst_notes])
-
-  // Auto-dismiss "Saved" after 3 seconds
-  useEffect(() => {
-    if (!saved) return
-    const timer = setTimeout(() => setSaved(false), 3000)
-    return () => clearTimeout(timer)
-  }, [saved])
-
-  const handleExport = async (fmt: 'md' | 'json') => {
-    setExportError(null)
-    try {
-      const data = await apiFetch<ExportResponse>(`/alerts/${id}/export?format=${fmt}`, { method: 'POST' })
-      const content = data.content ?? JSON.stringify(data, null, 2)
-      const blob = new Blob([content], { type: fmt === 'json' ? 'application/json' : 'text/markdown' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `alert_${id}.${fmt}`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Export failed')
-    }
-  }
-
-  const handleSatelliteCheck = async () => {
-    setSatLoading(true)
-    setSatResult(null)
-    try {
-      await apiFetch(`/alerts/${id}/satellite-check`, { method: 'POST' })
-      setSatResult('Satellite check prepared')
-    } catch (err) {
-      setSatResult(err instanceof Error ? err.message : 'Failed to prepare satellite check')
-    } finally {
-      setSatLoading(false)
-    }
-  }
 
   if (isLoading) return <Spinner text="Loading alert…" />
   if (error || !alert) {
@@ -182,9 +130,9 @@ export function AlertDetail() {
       {alert.spoofing_anomalies && alert.spoofing_anomalies.length > 0 && (
         <section style={card}>
           <h3 style={sectionHead}>Linked Spoofing Anomalies</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={tableStyle}>
             <thead>
-              <tr style={{ background: 'var(--bg-base)' }}>
+              <tr style={theadRow}>
                 <th style={{ ...labelCell, width: 'auto' }}>ID</th>
                 <th style={{ ...labelCell, width: 'auto' }}>Type</th>
                 <th style={{ ...labelCell, width: 'auto' }}>Time</th>
@@ -193,7 +141,7 @@ export function AlertDetail() {
             </thead>
             <tbody>
               {alert.spoofing_anomalies.map(s => (
-                <tr key={s.anomaly_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <tr key={s.anomaly_id} style={tbodyRow}>
                   <td style={valueCell}>#{s.anomaly_id}</td>
                   <td style={valueCell}><span style={{ color: '#9b59b6' }}>{s.anomaly_type.replace(/_/g, ' ')}</span></td>
                   <td style={valueCell}>{s.start_time_utc?.slice(0, 19).replace('T', ' ') ?? '--'} UTC</td>
@@ -209,9 +157,9 @@ export function AlertDetail() {
       {alert.loitering_events && alert.loitering_events.length > 0 && (
         <section style={card}>
           <h3 style={sectionHead}>Linked Loitering Events</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={tableStyle}>
             <thead>
-              <tr style={{ background: 'var(--bg-base)' }}>
+              <tr style={theadRow}>
                 <th style={{ ...labelCell, width: 'auto' }}>ID</th>
                 <th style={{ ...labelCell, width: 'auto' }}>Start Time</th>
                 <th style={{ ...labelCell, width: 'auto' }}>Duration</th>
@@ -221,7 +169,7 @@ export function AlertDetail() {
             </thead>
             <tbody>
               {alert.loitering_events.map(l => (
-                <tr key={l.loiter_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <tr key={l.loiter_id} style={tbodyRow}>
                   <td style={valueCell}>#{l.loiter_id}</td>
                   <td style={valueCell}>{l.start_time_utc?.slice(0, 19).replace('T', ' ') ?? '--'} UTC</td>
                   <td style={valueCell}>{l.duration_hours != null ? `${l.duration_hours.toFixed(1)}h` : '--'}</td>
@@ -242,9 +190,9 @@ export function AlertDetail() {
       {alert.sts_events && alert.sts_events.length > 0 && (
         <section style={card}>
           <h3 style={sectionHead}>Linked STS Transfers</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={tableStyle}>
             <thead>
-              <tr style={{ background: 'var(--bg-base)' }}>
+              <tr style={theadRow}>
                 <th style={{ ...labelCell, width: 'auto' }}>ID</th>
                 <th style={{ ...labelCell, width: 'auto' }}>Partner</th>
                 <th style={{ ...labelCell, width: 'auto' }}>Detection Type</th>
@@ -253,7 +201,7 @@ export function AlertDetail() {
             </thead>
             <tbody>
               {alert.sts_events.map(s => (
-                <tr key={s.sts_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <tr key={s.sts_id} style={tbodyRow}>
                   <td style={valueCell}>#{s.sts_id}</td>
                   <td style={valueCell}>
                     {s.partner_name ?? s.partner_mmsi ?? '--'}
@@ -272,94 +220,22 @@ export function AlertDetail() {
         </section>
       )}
 
-      {/* Error banners */}
-      {statusMutation.error && (
-        <div style={{ background: 'var(--score-critical)', color: 'white', padding: '8px 12px', borderRadius: 'var(--radius)', marginBottom: 12, fontSize: 13 }}>
-          Status update failed: {statusMutation.error instanceof Error ? statusMutation.error.message : 'Unknown error'}
-        </div>
-      )}
-      {notesMutation.error && (
-        <div style={{ background: 'var(--score-critical)', color: 'white', padding: '8px 12px', borderRadius: 'var(--radius)', marginBottom: 12, fontSize: 13 }}>
-          Notes save failed: {notesMutation.error instanceof Error ? notesMutation.error.message : 'Unknown error'}
-        </div>
-      )}
+      {/* Extracted: analyst workflow (status + notes) */}
+      <AlertStatusPanel
+        currentStatus={alert.status}
+        analystNotes={alert.analyst_notes}
+        statusMutation={statusMutation}
+        notesMutation={notesMutation}
+      />
 
+      {/* Extracted: export + satellite check actions */}
       <section style={card}>
-        <h3 style={sectionHead}>Analyst Workflow</h3>
-        <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Status</label><br />
-          <select
-            value={alert.status}
-            onChange={e => statusMutation.mutate({ status: e.target.value })}
-            disabled={statusMutation.isPending}
-            style={{
-              background: 'var(--bg-base)', color: 'var(--text-bright)', border: '1px solid var(--border)',
-              padding: '6px 10px', borderRadius: 'var(--radius)', marginTop: 4, fontSize: 13,
-              opacity: statusMutation.isPending ? 0.6 : 1,
-            }}
-          >
-            {STATUSES.map(s => (
-              <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-          {statusMutation.isPending && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>Saving…</span>}
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 12, color: 'var(--text-dim)' }}>Analyst Notes</label><br />
-          <textarea
-            value={notes}
-            onChange={e => { setNotes(e.target.value); setSaved(false) }}
-            rows={4}
-            style={{
-              width: '100%', background: 'var(--bg-base)', color: 'var(--text-bright)',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 8, marginTop: 4,
-              fontFamily: 'monospace', fontSize: 13, boxSizing: 'border-box', resize: 'vertical',
-            }}
-          />
-          <button
-            onClick={() => notesMutation.mutate(notes)}
-            disabled={notesMutation.isPending}
-            style={{
-              ...btn,
-              background: 'var(--accent-primary)',
-              color: '#fff',
-              border: 'none',
-              marginTop: 6,
-              opacity: notesMutation.isPending ? 0.6 : 1,
-            }}
-          >
-            {notesMutation.isPending ? 'Saving…' : saved ? '✓ Saved' : 'Save Notes'}
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={() => handleExport('md')} style={{ ...btn, background: 'var(--bg-base)', color: 'var(--accent)' }}>
-            Export Markdown
-          </button>
-          <button onClick={() => handleExport('json')} style={{ ...btn, background: 'var(--bg-base)', color: 'var(--accent)' }}>
-            Export JSON
-          </button>
-          <button
-            onClick={handleSatelliteCheck}
-            disabled={satLoading}
-            style={{ ...btn, background: 'var(--bg-base)', color: 'var(--warning)', opacity: satLoading ? 0.6 : 1 }}
-          >
-            {satLoading ? 'Preparing…' : 'Prepare satellite check'}
-          </button>
-        </div>
-        {exportError && (
-          <p style={{ fontSize: 12, color: 'var(--score-critical)', marginTop: 8 }}>{exportError}</p>
-        )}
-        {satResult && (
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>{satResult}</p>
-        )}
-        <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 12 }}>
-          Note: export requires status ≠ "new" (analyst review gate — NFR7)
-        </p>
+        <AlertExportPanel alertId={id!} />
       </section>
 
       <button
         onClick={() => navigate('/alerts')}
-        style={{ ...btn, background: 'var(--bg-base)', color: 'var(--text-dim)', marginTop: 8 }}
+        style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--text-dim)', marginTop: 8 }}
       >
         ← Back to alerts
       </button>

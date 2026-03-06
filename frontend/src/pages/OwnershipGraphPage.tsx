@@ -15,7 +15,7 @@ const headStyle: React.CSSProperties = {
 
 export function OwnershipGraphPage() {
   const { data, isLoading, error } = useFleetClusters(200)
-  const clusters = data?.clusters ?? []
+  const clusters = data?.items ?? []
   const unavailable = error && !isLoading
   const [expandedId, setExpandedId] = useState<number | null>(null)
 

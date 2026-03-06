@@ -297,7 +297,8 @@ def get_vessel_alerts(
         q = q.filter(AISGapEvent.gap_start_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
     sort_col = AISGapEvent.gap_start_utc if sort_by == "gap_start_utc" else AISGapEvent.risk_score
     q = q.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
-    return q.all()
+    results = q.all()
+    return {"items": results, "total": len(results)}
 
 
 @router.get("/vessels/{vessel_id}/history", tags=["vessels"])

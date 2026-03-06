@@ -20,12 +20,12 @@ runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._load_sample_data")
-@patch("app.cli._import_corridors")
-@patch("app.cli._is_first_run", return_value=True)
+@patch("app.cli_helpers._load_sample_data")
+@patch("app.cli_helpers._import_corridors")
+@patch("app.cli_helpers._is_first_run", return_value=True)
 @patch("app.database.SessionLocal")
 @patch("app.database.init_db")
 def test_start_demo(mock_init, mock_sl, mock_first_run, mock_corridors, mock_sample,
@@ -44,7 +44,7 @@ def test_start_demo(mock_init, mock_sl, mock_first_run, mock_corridors, mock_sam
     mock_discover.assert_called_once()
 
 
-@patch("app.cli._is_first_run", return_value=False)
+@patch("app.cli_helpers._is_first_run", return_value=False)
 def test_start_already_configured(mock_first_run):
     """start when already configured suggests update instead."""
     result = runner.invoke(app, ["start"])
@@ -53,7 +53,7 @@ def test_start_already_configured(mock_first_run):
     assert "update" in result.output
 
 
-@patch("app.cli._is_first_run", return_value=True)
+@patch("app.cli_helpers._is_first_run", return_value=True)
 @patch("app.database.init_db")
 def test_start_setup_failure(mock_init, mock_first_run):
     """start handles init_db failure with friendly error."""
@@ -63,14 +63,14 @@ def test_start_setup_failure(mock_init, mock_first_run):
     assert "failed" in result.output.lower()
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._enrich_vessels")
+@patch("app.cli_helpers._enrich_vessels")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
-@patch("app.cli._update_fetch_watchlists")
-@patch("app.cli._import_corridors")
-@patch("app.cli._is_first_run", return_value=True)
+@patch("app.cli_helpers._update_fetch_watchlists")
+@patch("app.cli_helpers._import_corridors")
+@patch("app.cli_helpers._is_first_run", return_value=True)
 @patch("app.database.SessionLocal")
 @patch("app.database.init_db")
 def test_start_enrichment_called(mock_init, mock_sl, mock_first_run, mock_corridors,
@@ -95,12 +95,12 @@ def test_start_enrichment_called(mock_init, mock_sl, mock_first_run, mock_corrid
 # ---------------------------------------------------------------------------
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._enrich_vessels")
+@patch("app.cli_helpers._enrich_vessels")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
 def test_update_full_pipeline(mock_sl, mock_fetch, mock_scheduler_cls, mock_enrich,
                                mock_discover, mock_summary, mock_next):
@@ -116,11 +116,11 @@ def test_update_full_pipeline(mock_sl, mock_fetch, mock_scheduler_cls, mock_enri
     mock_discover.assert_called_once()
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
 def test_update_offline(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
     """update --offline skips fetch and collection, still runs detection."""
@@ -135,11 +135,11 @@ def test_update_offline(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, 
     mock_discover.assert_called_once()
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
 def test_update_missing_api_key(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
     """update without AISSTREAM_API_KEY still runs CollectionScheduler (aisstream skipped internally)."""
@@ -154,11 +154,11 @@ def test_update_missing_api_key(mock_sl, mock_fetch, mock_scheduler_cls, mock_di
     mock_discover.assert_called_once()
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
 def test_update_fetch_failure(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
     """update continues to detection even if fetch fails."""
@@ -283,7 +283,7 @@ def test_check_vessels_interactive_merge(mock_sl, mock_detect, mock_merge, mock_
 
     mock_merge.return_value = {"success": True, "merge_op_id": 1}
 
-    with patch("app.cli._is_interactive", return_value=True):
+    with patch("app.cli_helpers._is_interactive", return_value=True):
         result = runner.invoke(app, ["check-vessels"])
 
     assert mc.status == MergeCandidateStatusEnum.ANALYST_MERGED
@@ -320,7 +320,7 @@ def test_check_vessels_interactive_reject(mock_sl, mock_detect, mock_prompt):
     va.flag = "LR"
     mock_db.query.return_value.get.return_value = va
 
-    with patch("app.cli._is_interactive", return_value=True):
+    with patch("app.cli_helpers._is_interactive", return_value=True):
         result = runner.invoke(app, ["check-vessels"])
 
     assert mc.status == MergeCandidateStatusEnum.REJECTED
@@ -357,7 +357,7 @@ def test_check_vessels_interactive_skip(mock_sl, mock_detect, mock_prompt):
     va.flag = "XX"
     mock_db.query.return_value.get.return_value = va
 
-    with patch("app.cli._is_interactive", return_value=True):
+    with patch("app.cli_helpers._is_interactive", return_value=True):
         result = runner.invoke(app, ["check-vessels"])
 
     assert mc.status == MergeCandidateStatusEnum.PENDING
@@ -405,7 +405,7 @@ def test_check_vessels_interactive_quit(mock_sl, mock_detect, mock_prompt):
     va.flag = "LR"
     mock_db.query.return_value.get.return_value = va
 
-    with patch("app.cli._is_interactive", return_value=True):
+    with patch("app.cli_helpers._is_interactive", return_value=True):
         result = runner.invoke(app, ["check-vessels"])
 
     assert mc1.status == MergeCandidateStatusEnum.PENDING
@@ -446,7 +446,7 @@ def test_check_vessels_merge_failure_preserves_status(mock_sl, mock_detect, mock
 
     mock_merge.return_value = {"success": False, "error": "Already absorbed"}
 
-    with patch("app.cli._is_interactive", return_value=True):
+    with patch("app.cli_helpers._is_interactive", return_value=True):
         result = runner.invoke(app, ["check-vessels"])
 
     assert mc.status == MergeCandidateStatusEnum.PENDING

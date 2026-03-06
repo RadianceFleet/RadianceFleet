@@ -6,40 +6,11 @@ import { ScoreBadge } from './ui/ScoreBadge'
 import { StatusBadge } from './ui/StatusBadge'
 import { Spinner } from './ui/Spinner'
 import { EmptyState } from './ui/EmptyState'
-import { ExportButton } from './ExportButton'
+import { AlertFilterBar } from './AlertFilterBar'
+import { AlertBulkActions } from './AlertBulkActions'
+import { thSortable as thStyle, tdStyle, btnStyle, tableStyle, theadRow, tbodyRow } from '../styles/tables'
 
 const PAGE_SIZE = 50
-
-const inputStyle: React.CSSProperties = {
-  background: 'var(--bg-base)',
-  color: 'var(--text-bright)',
-  border: '1px solid var(--border)',
-  padding: '6px 10px',
-  borderRadius: 'var(--radius)',
-  fontSize: '0.8125rem',
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  textAlign: 'left',
-  fontWeight: 600,
-  color: 'var(--text-muted)',
-  cursor: 'pointer',
-  userSelect: 'none',
-  whiteSpace: 'nowrap',
-}
-
-const tdStyle: React.CSSProperties = { padding: '8px 12px' }
-
-const btnStyle: React.CSSProperties = {
-  padding: '6px 14px',
-  background: 'var(--bg-card)',
-  color: 'var(--text-muted)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius)',
-  cursor: 'pointer',
-  fontSize: '0.8125rem',
-}
 
 type SortField = 'risk_score' | 'gap_start_utc' | 'duration_minutes'
 
@@ -102,59 +73,22 @@ export function AlertListPage() {
     <div>
       <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', color: 'var(--text-muted)' }}>Alert Queue</h2>
 
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <input
-          placeholder="Min score"
-          value={minScore}
-          onChange={e => { setMinScore(e.target.value); setPage(0) }}
-          style={{ ...inputStyle, width: 90 }}
-        />
-        <select
-          value={status}
-          onChange={e => { setStatus(e.target.value); setPage(0) }}
-          style={inputStyle}
-        >
-          <option value="">All statuses</option>
-          <option value="new">New</option>
-          <option value="under_review">Under review</option>
-          <option value="needs_satellite_check">Needs satellite check</option>
-          <option value="documented">Documented</option>
-          <option value="dismissed">Dismissed</option>
-        </select>
-        <input
-          placeholder="Vessel name"
-          value={vesselName}
-          onChange={e => { setVesselName(e.target.value); setPage(0) }}
-          style={{ ...inputStyle, width: 160 }}
-        />
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={e => { setDateFrom(e.target.value); setPage(0) }}
-          style={inputStyle}
-          title="Date from"
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={e => { setDateTo(e.target.value); setPage(0) }}
-          style={inputStyle}
-          title="Date to"
-        />
-        <ExportButton filters={exportFilters} />
-        <button
-          onClick={() => setPatternsOnly(p => !p)}
-          style={{
-            ...btnStyle,
-            background: patternsOnly ? '#9b59b6' : 'var(--bg-card)',
-            color: patternsOnly ? 'white' : 'var(--text-muted)',
-            borderColor: patternsOnly ? '#9b59b6' : 'var(--border)',
-          }}
-        >
-          {patternsOnly ? 'Patterns only' : 'Patterns only'}
-        </button>
-      </div>
+      {/* Extracted: filter bar */}
+      <AlertFilterBar
+        minScore={minScore}
+        onMinScoreChange={v => { setMinScore(v); setPage(0) }}
+        status={status}
+        onStatusChange={v => { setStatus(v); setPage(0) }}
+        vesselName={vesselName}
+        onVesselNameChange={v => { setVesselName(v); setPage(0) }}
+        dateFrom={dateFrom}
+        onDateFromChange={v => { setDateFrom(v); setPage(0) }}
+        dateTo={dateTo}
+        onDateToChange={v => { setDateTo(v); setPage(0) }}
+        patternsOnly={patternsOnly}
+        onPatternsOnlyToggle={() => setPatternsOnly(p => !p)}
+        exportFilters={exportFilters}
+      />
 
       {isLoading && <Spinner text="Loading alerts…" />}
       {error && <p style={{ color: 'var(--score-critical)' }}>Error loading alerts.</p>}
@@ -164,79 +98,19 @@ export function AlertListPage() {
 
       {displayAlerts.length > 0 && (
         <>
-          {/* Bulk action bar */}
-          {selected.size > 0 && (
-            <div style={{
-              position: 'sticky', bottom: 12, zIndex: 10,
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '10px 16px', marginBottom: 8,
-              background: 'var(--bg-card)', border: '1px solid var(--accent-primary)',
-              borderRadius: 'var(--radius-md)', fontSize: 13,
-              boxShadow: '0 -2px 12px rgba(0,0,0,0.25)',
-            }}>
-              <span style={{ color: 'var(--text-body)', fontWeight: 600 }}>{selected.size} selected</span>
-              <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
-              <button
-                onClick={() => {
-                  bulkUpdate.mutate(
-                    { alert_ids: [...selected], status: 'documented' },
-                    {
-                      onSuccess: (data) => {
-                        addToast(`Marked ${data.updated} alert(s) as reviewed`, 'success')
-                        setSelected(new Set())
-                      },
-                      onError: () => addToast('Failed to update alerts', 'error'),
-                    }
-                  )
-                }}
-                disabled={bulkUpdate.isPending}
-                style={{ ...btnStyle, background: '#27ae60', color: '#fff', borderColor: '#27ae60' }}
-              >
-                Mark Reviewed
-              </button>
-              <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={inputStyle}>
-                <option value="under_review">Under review</option>
-                <option value="needs_satellite_check">Needs satellite check</option>
-                <option value="documented">Documented</option>
-                <option value="dismissed">Dismissed</option>
-              </select>
-              <button
-                onClick={() => {
-                  bulkUpdate.mutate(
-                    { alert_ids: [...selected], status: bulkStatus },
-                    {
-                      onSuccess: (data) => {
-                        addToast(`Updated ${data.updated} alert(s) to "${bulkStatus}"`, 'success')
-                        setSelected(new Set())
-                      },
-                      onError: () => addToast('Failed to update alerts', 'error'),
-                    }
-                  )
-                }}
-                disabled={bulkUpdate.isPending}
-                style={{ ...btnStyle, background: 'var(--accent-primary)', color: '#fff', borderColor: 'var(--accent-primary)' }}
-              >
-                {bulkUpdate.isPending ? 'Updating...' : 'Apply'}
-              </button>
-              <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
-              <a
-                href={`/api/v1/alerts/export?ids=${[...selected].join(',')}`}
-                download
-                style={{
-                  ...btnStyle,
-                  textDecoration: 'none',
-                  display: 'inline-block',
-                }}
-              >
-                Export CSV
-              </a>
-              <button onClick={() => setSelected(new Set())} style={btnStyle}>Clear</button>
-            </div>
-          )}
+          {/* Extracted: bulk action bar */}
+          <AlertBulkActions
+            selected={selected}
+            onClearSelection={() => setSelected(new Set())}
+            bulkStatus={bulkStatus}
+            onBulkStatusChange={setBulkStatus}
+            bulkUpdate={bulkUpdate}
+            addToast={addToast}
+          />
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+          <table style={{ ...tableStyle, fontSize: '0.875rem' }}>
             <thead>
-              <tr style={{ background: 'var(--bg-card)' }}>
+              <tr style={theadRow}>
                 <th style={{ ...thStyle, width: 36 }}>
                   <input
                     type="checkbox"
@@ -267,7 +141,7 @@ export function AlertListPage() {
             </thead>
             <tbody>
               {displayAlerts.map(a => (
-                <tr key={a.gap_event_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                <tr key={a.gap_event_id} style={tbodyRow}>
                   <td style={tdStyle}>
                     <input
                       type="checkbox"

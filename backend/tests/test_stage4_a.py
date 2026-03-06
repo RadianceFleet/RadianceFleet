@@ -199,7 +199,7 @@ class TestFeatureFlags:
 class TestDetectMergeChains:
     """Test detect_merge_chains function."""
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_feature_flag_disabled(self, mock_settings):
         """Returns early when feature flag is disabled."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = False
@@ -209,7 +209,7 @@ class TestDetectMergeChains:
         assert result["skipped"] == "feature_disabled"
         assert result["chains_created"] == 0
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_empty_candidates(self, mock_settings):
         """No chains created when no candidates exist."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -219,7 +219,7 @@ class TestDetectMergeChains:
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_chain_3_vessels(self, mock_settings):
         """Creates chain for 3-vessel connected component."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -245,7 +245,7 @@ class TestDetectMergeChains:
         result = detect_merge_chains(db)
         assert result["chains_created"] == 1
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_chain_4_plus_vessels(self, mock_settings):
         """Creates chain for 4-vessel connected component."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -269,7 +269,7 @@ class TestDetectMergeChains:
         result = detect_merge_chains(db)
         assert result["chains_created"] == 1
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_chain_confidence_is_min(self, mock_settings):
         """Chain confidence = min(link scores) -- weakest link principle."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -298,7 +298,7 @@ class TestDetectMergeChains:
         assert len(added_objects) == 1
         assert added_objects[0].confidence == 55
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_confidence_band_high(self, mock_settings):
         """Confidence >= 75 maps to HIGH band."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -321,7 +321,7 @@ class TestDetectMergeChains:
         result = detect_merge_chains(db)
         assert result["chains_by_band"]["HIGH"] == 1
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_confidence_band_medium(self, mock_settings):
         """Confidence 50-74 maps to MEDIUM band."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -344,7 +344,7 @@ class TestDetectMergeChains:
         result = detect_merge_chains(db)
         assert result["chains_by_band"]["MEDIUM"] == 1
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_confidence_band_boundary(self, mock_settings):
         """Confidence == 50 (minimum from query filter) maps to MEDIUM."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -367,7 +367,7 @@ class TestDetectMergeChains:
         result = detect_merge_chains(db)
         assert result["chains_by_band"]["MEDIUM"] == 1
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_no_chains_for_two_vessel_component(self, mock_settings):
         """2-vessel components should NOT produce chains (need >= 3)."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -385,7 +385,7 @@ class TestDetectMergeChains:
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_deduplication(self, mock_settings):
         """Existing chain with same vessel_ids_json should not be recreated."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -416,7 +416,7 @@ class TestDetectMergeChains:
 class TestExtendedMergePass:
     """Test extended_merge_pass function."""
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_feature_flag_disabled(self, mock_settings):
         """Returns early when disabled."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = False
@@ -426,8 +426,8 @@ class TestExtendedMergePass:
         assert result["skipped"] == "feature_disabled"
         assert result["extended"] is True
 
-    @patch("app.modules.identity_resolver.detect_merge_candidates")
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.detect_merge_candidates")
+    @patch("app.modules.merge_candidates.settings")
     def test_calls_detect_with_180_days(self, mock_settings, mock_detect):
         """Calls detect_merge_candidates with max_gap_days=180."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True

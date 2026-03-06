@@ -169,7 +169,7 @@ class TestISMContinuity:
 class TestISMMergeBonus:
     """Tests for ISM/P&I shared bonus in _score_candidate."""
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_shared_ism_adds_10(self, mock_settings):
         """Both vessels share same ISM manager -> +10 to merge score."""
         mock_settings.ISM_CONTINUITY_SCORING_ENABLED = True
@@ -233,7 +233,7 @@ class TestISMMergeBonus:
         assert "shared_ism_manager" in reasons
         assert reasons["shared_ism_manager"]["points"] == 10
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_no_ism_no_bonus(self, mock_settings):
         """Neither vessel has ISM -> no bonus."""
         mock_settings.ISM_CONTINUITY_SCORING_ENABLED = True

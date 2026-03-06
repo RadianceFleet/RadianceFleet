@@ -6,56 +6,52 @@ class Settings(BaseSettings):
         env_file=("../.env", ".env"), env_file_encoding="utf-8"
     )
 
+    # ── Core ────────────────────────────────────────────────────────────────
     DATABASE_URL: str = "sqlite:///radiancefleet.db"
     CORRIDORS_CONFIG: str = "config/corridors.yaml"
     RISK_SCORING_CONFIG: str = "config/risk_scoring.yaml"
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "text"
-    # Gap detection thresholds (hours)
-    GAP_MIN_HOURS: float = 2.0
-    GAP_ALERT_HOURS: float = 6.0
-    # STS proximity (meters)
-    STS_PROXIMITY_METERS: float = 200.0
-    STS_MIN_WINDOWS: int = 8  # 8 × 15 min = 2 hours sustained
-    # Class B noise filter (seconds) — gaps shorter than this are artifacts
-    CLASS_B_NOISE_FILTER_SECONDS: int = 180
-    # Loiter-gap linkage window (hours)
-    LOITER_GAP_LINKAGE_HOURS: int = 48
-    # Watchlist fuzzy match threshold (0-100)
-    FUZZY_MATCH_THRESHOLD: int = 85
-    # Regional AIS coverage config
-    COVERAGE_CONFIG: str = "config/coverage.yaml"
-    # Upload and query limits
-    MAX_UPLOAD_SIZE_MB: int = 500
-    MAX_QUERY_LIMIT: int = 500
-    # Connection pool
+    DATA_DIR: str = "data"
+    PUBLIC_URL: str = "http://localhost:5173"
+
+    # ── Database ────────────────────────────────────────────────────────────
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
-    # API authentication (if unset, all requests pass — backward compatible for local dev)
+    MAX_UPLOAD_SIZE_MB: int = 500
+    MAX_QUERY_LIMIT: int = 500
+
+    # ── API & Auth ──────────────────────────────────────────────────────────
     RADIANCEFLEET_API_KEY: str | None = None
-    # CORS origins (comma-separated string for env var support)
     CORS_ORIGINS: str = "http://localhost:5173"
-    # Data fetcher settings
-    DATA_DIR: str = "data"
-    DATA_FETCH_TIMEOUT: float = 120.0
-    # aisstream.io — real-time AIS WebSocket
+    ADMIN_JWT_SECRET: str | None = None  # Generate: openssl rand -hex 32
+    ADMIN_PASSWORD: str | None = None  # Strong password for POST /admin/login
+    RATE_LIMIT_VIEWER: str = "30/minute"
+    RATE_LIMIT_ADMIN: str = "120/minute"
+    RATE_LIMIT_DEFAULT: str = "60/minute"
+
+    # ── Detection Thresholds ────────────────────────────────────────────────
+    GAP_MIN_HOURS: float = 2.0
+    GAP_ALERT_HOURS: float = 6.0
+    STS_PROXIMITY_METERS: float = 200.0
+    STS_MIN_WINDOWS: int = 8  # 8 × 15 min = 2 hours sustained
+    CLASS_B_NOISE_FILTER_SECONDS: int = 180
+    LOITER_GAP_LINKAGE_HOURS: int = 48
+    FUZZY_MATCH_THRESHOLD: int = 85
+    COVERAGE_CONFIG: str = "config/coverage.yaml"
+
+    # ── AIS Data Sources ────────────────────────────────────────────────────
+    # aisstream.io — real-time WebSocket
     AISSTREAM_API_KEY: str | None = None
     AISSTREAM_WS_URL: str = "wss://stream.aisstream.io/v0/stream"
     AISSTREAM_BATCH_INTERVAL: int = 30
     AISSTREAM_DEFAULT_DURATION: int = 3600
-    # When true, cron/update skips aisstream (dedicated ws-worker handles it)
     AISSTREAM_WORKER_ENABLED: bool = False
-    # Global Fishing Watch API
-    GFW_API_TOKEN: str | None = None
-    GFW_API_BASE_URL: str = "https://gateway.api.globalfishingwatch.org"
-    # Copernicus CDSE — Sentinel-1 SAR catalog
-    COPERNICUS_CLIENT_ID: str | None = None
-    COPERNICUS_CLIENT_SECRET: str | None = None
-    # AISHub — batch AIS positions
+    # Digitraffic (Finland)
+    DIGITRAFFIC_ENABLED: bool = True
+    # AISHub
     AISHUB_USERNAME: str | None = None
     AISHUB_ENABLED: bool = False
-    # NOAA historical AIS data
-    NOAA_BASE_URL: str = "https://coast.noaa.gov/htdata/CMSP/AISDataHandler"
     # Kystverket (Norway) AIS TCP stream
     KYSTVERKET_ENABLED: bool = True
     KYSTVERKET_HOST: str = "153.44.253.27"
@@ -68,102 +64,119 @@ class Settings(BaseSettings):
     BARENTSWATCH_CLIENT_SECRET: str = ""
     BARENTSWATCH_TOKEN_URL: str = "https://id.barentswatch.no/connect/token"
     BARENTSWATCH_API_URL: str = "https://live.ais.barentswatch.no/api"
-    # Collection scheduler intervals
+    # NOAA historical AIS
+    NOAA_BASE_URL: str = "https://coast.noaa.gov/htdata/CMSP/AISDataHandler"
+    # Collection scheduler
     COLLECT_DIGITRAFFIC_INTERVAL: int = 1800  # 30 min
     COLLECT_AISSTREAM_INTERVAL: int = 300  # 5 min
     COLLECT_RETENTION_DAYS: int = 90
-    # AIS observation rolling window (hours) — cross-receiver comparison only needs recent data
+    DATA_FETCH_TIMEOUT: float = 120.0
+
+    # ── AIS Data Retention ──────────────────────────────────────────────────
     AIS_OBSERVATION_RETENTION_HOURS: int = 72
-    # Per-source retention: realtime sources pruned after N days, historical/archive never pruned
     RETENTION_DAYS_REALTIME: int = 90
     RETENTION_DAYS_HISTORICAL: int | None = None  # None = keep forever
-    # Digitraffic (Finland) Marine API
-    DIGITRAFFIC_ENABLED: bool = True
+
+    # ── External APIs ───────────────────────────────────────────────────────
+    # Global Fishing Watch
+    GFW_API_TOKEN: str | None = None
+    GFW_API_BASE_URL: str = "https://gateway.api.globalfishingwatch.org"
+    # Copernicus CDSE — Sentinel-1 SAR catalog
+    COPERNICUS_CLIENT_ID: str | None = None
+    COPERNICUS_CLIENT_SECRET: str | None = None
     # CREA Russia Fossil Tracker
     CREA_ENABLED: bool = True
     CREA_API_BASE_URL: str = "https://api.russiafossiltracker.com"
-    # Vessel identity merging
-    MERGE_MAX_SPEED_KN: float = 16.0
-    MERGE_MAX_GAP_DAYS: int = 30
-    MERGE_AUTO_CONFIDENCE_THRESHOLD: int = 75
-    MERGE_CANDIDATE_MIN_CONFIDENCE: int = 50
-    # Paid verification providers (Phase D17-19)
+    # Equasis (metadata enrichment — ToS requires opt-in)
+    EQUASIS_USERNAME: str | None = None
+    EQUASIS_PASSWORD: str | None = None
+    EQUASIS_SCRAPING_ENABLED: bool = False
+    # Paid verification providers
     SKYLIGHT_API_KEY: str = ""
     SPIRE_API_KEY: str = ""
     SEAWEB_API_KEY: str = ""
     VERIFICATION_MONTHLY_BUDGET_USD: float = 500.0
-    # Phase K: Track naturalness
+
+    # ── Vessel Identity Merging ─────────────────────────────────────────────
+    MERGE_MAX_SPEED_KN: float = 16.0
+    MERGE_MAX_GAP_DAYS: int = 30
+    MERGE_AUTO_CONFIDENCE_THRESHOLD: int = 75
+    MERGE_CANDIDATE_MIN_CONFIDENCE: int = 50
+    HISTORY_CROSS_REFERENCE_ENABLED: bool = True
+
+    # ── Detection Feature Flags ─────────────────────────────────────────────
+    # Track naturalness
     TRACK_NATURALNESS_ENABLED: bool = True
     TRACK_NATURALNESS_SCORING_ENABLED: bool = True
-    # Phase L: Draught intelligence
+    # Draught intelligence
     DRAUGHT_DETECTION_ENABLED: bool = True
     DRAUGHT_SCORING_ENABLED: bool = True
-    # Phase M: Identity fraud
+    # Identity fraud
     STATELESS_MMSI_DETECTION_ENABLED: bool = True
     STATELESS_MMSI_SCORING_ENABLED: bool = True
     FLAG_HOPPING_DETECTION_ENABLED: bool = True
     FLAG_HOPPING_SCORING_ENABLED: bool = True
     IMO_FRAUD_DETECTION_ENABLED: bool = True
     IMO_FRAUD_SCORING_ENABLED: bool = True
-    # Stage 1-A: Feed outage detection
+    # Feed outage detection
     FEED_OUTAGE_DETECTION_ENABLED: bool = True
-    # Stage 1-C: Coverage quality tagging (metadata only, never reduces score)
+    # Coverage quality tagging
     COVERAGE_QUALITY_TAGGING_ENABLED: bool = True
-    # Phase N: Dark STS
+    # Dark STS
     DARK_STS_DETECTION_ENABLED: bool = True
     DARK_STS_SCORING_ENABLED: bool = True
-    # Phase O: Fleet analysis
+    # Fleet analysis
     FLEET_ANALYSIS_ENABLED: bool = True
     FLEET_SCORING_ENABLED: bool = True
-    # Stage 2-A: P&I validation
+    # P&I validation
     PI_VALIDATION_DETECTION_ENABLED: bool = True
     PI_VALIDATION_SCORING_ENABLED: bool = True
-    # Stage 2-B: Fraudulent registry
+    # Fraudulent registry
     FRAUDULENT_REGISTRY_DETECTION_ENABLED: bool = True
     FRAUDULENT_REGISTRY_SCORING_ENABLED: bool = True
-    # Stage 2-C: Stale AIS data detection
+    # Stale AIS data
     STALE_AIS_DETECTION_ENABLED: bool = True
     STALE_AIS_SCORING_ENABLED: bool = True
-    # Stage 2-D: At-sea extended operations
+    # At-sea extended operations
     AT_SEA_OPERATIONS_SCORING_ENABLED: bool = True
-    # Stage 2-E: ISM/P&I continuity
+    # ISM/P&I continuity
     ISM_CONTINUITY_DETECTION_ENABLED: bool = True
     ISM_CONTINUITY_SCORING_ENABLED: bool = True
-    # Stage 2-F: Rename velocity
+    # Rename velocity
     RENAME_VELOCITY_DETECTION_ENABLED: bool = True
     RENAME_VELOCITY_SCORING_ENABLED: bool = True
-    # Stage 3-A: Destination manipulation
+    # Destination manipulation
     DESTINATION_DETECTION_ENABLED: bool = True
     DESTINATION_SCORING_ENABLED: bool = True
-    # Stage 3-B: STS relay chains
+    # STS relay chains
     STS_CHAIN_DETECTION_ENABLED: bool = True
     STS_CHAIN_SCORING_ENABLED: bool = True
-    # Stage 3-C: Scrapped registry + track replay
+    # Scrapped registry + track replay
     SCRAPPED_REGISTRY_DETECTION_ENABLED: bool = True
     SCRAPPED_REGISTRY_SCORING_ENABLED: bool = True
     TRACK_REPLAY_DETECTION_ENABLED: bool = True
     TRACK_REPLAY_SCORING_ENABLED: bool = True
-    # Stage 4-A: Extended MMSI chain detection
+    # MMSI chain detection
     MERGE_CHAIN_DETECTION_ENABLED: bool = True
     MERGE_CHAIN_SCORING_ENABLED: bool = True
-    # Stage 4-B: Behavioral fingerprinting
+    # Behavioral fingerprinting
     FINGERPRINT_ENABLED: bool = True
     FINGERPRINT_SCORING_ENABLED: bool = True
-    # Stage 4-C: Satellite-AIS correlation
+    # Satellite-AIS correlation
     SAR_CORRELATION_ENABLED: bool = True
     SAR_CORRELATION_SCORING_ENABLED: bool = True
-    # Stage 5-A: Corporate ownership graph
+    # Corporate ownership graph
     OWNERSHIP_GRAPH_ENABLED: bool = True
     OWNERSHIP_GRAPH_SCORING_ENABLED: bool = True
-    # Stage 5-B: Convoy + floating storage + Arctic corridor
+    # Convoy + floating storage + Arctic corridor
     CONVOY_DETECTION_ENABLED: bool = True
     CONVOY_SCORING_ENABLED: bool = True
-    # Stage 5-C: Voyage prediction + cargo inference + weather correlation
+    # Voyage prediction + cargo inference + weather
     VOYAGE_PREDICTION_ENABLED: bool = True
     VOYAGE_SCORING_ENABLED: bool = True
     CARGO_INFERENCE_ENABLED: bool = True
     WEATHER_CORRELATION_ENABLED: bool = True
-    # Stage C: Missing evasion technique detectors
+    # Missing evasion technique detectors
     ROUTE_LAUNDERING_DETECTION_ENABLED: bool = True
     ROUTE_LAUNDERING_SCORING_ENABLED: bool = True
     ROUTE_LAUNDERING_LOOKBACK_DAYS: int = 180
@@ -173,7 +186,10 @@ class Settings(BaseSettings):
     SPARSE_TRANSMISSION_SCORING_ENABLED: bool = True
     TYPE_CONSISTENCY_DETECTION_ENABLED: bool = True
     TYPE_CONSISTENCY_SCORING_ENABLED: bool = True
-    # Historical data pipeline
+    # Watchlist stub scoring
+    WATCHLIST_STUB_SCORING_ENABLED: bool = True
+
+    # ── Historical Data Pipeline ────────────────────────────────────────────
     HISTORY_BACKFILL_ENABLED: bool = False
     NOAA_BACKFILL_ENABLED: bool = False
     DMA_BACKFILL_ENABLED: bool = False
@@ -181,36 +197,19 @@ class Settings(BaseSettings):
     GFW_ENCOUNTERS_BACKFILL_ENABLED: bool = False
     GFW_PORT_VISITS_BACKFILL_ENABLED: bool = False
     HISTORY_BACKFILL_INTERVAL_HOURS: int = 168  # 1 week
-    # Merge identity enrichment: VesselHistory cross-referencing
-    HISTORY_CROSS_REFERENCE_ENABLED: bool = True
-    # Watchlist stub scoring
-    WATCHLIST_STUB_SCORING_ENABLED: bool = True
-    # Equasis (metadata enrichment — ToS requires opt-in)
-    EQUASIS_USERNAME: str | None = None
-    EQUASIS_PASSWORD: str | None = None
-    EQUASIS_SCRAPING_ENABLED: bool = False  # Explicit opt-in required — Equasis ToS prohibits automation
-    # ── Rate Limiting ──────────────────────────────────────────────────────────
-    RATE_LIMIT_VIEWER: str = "30/minute"
-    RATE_LIMIT_ADMIN: str = "120/minute"
-    RATE_LIMIT_DEFAULT: str = "60/minute"
-    # ── Public Platform Auth ───────────────────────────────────────────────────
-    # Do NOT set RADIANCEFLEET_API_KEY on the public instance — it blocks all GET requests.
-    # The JWT admin auth (ADMIN_JWT_SECRET) replaces it for write operations only.
-    ADMIN_JWT_SECRET: str | None = None  # Generate: openssl rand -hex 32
-    ADMIN_PASSWORD: str | None = None  # Strong password for POST /admin/login
-    # ── Email Notifications ────────────────────────────────────────────────────
+
+    # ── Email Notifications ─────────────────────────────────────────────────
     RESEND_API_KEY: str | None = None
     EMAIL_FROM_DOMAIN: str = "radiancefleet.org"
     SMTP_HOST: str | None = None
     SMTP_PORT: int = 587
     SMTP_USER: str | None = None
     SMTP_PASS: str | None = None
-    # ── Sentry Error Tracking ──────────────────────────────────────────────────
+
+    # ── Sentry Error Tracking ───────────────────────────────────────────────
     SENTRY_DSN: str | None = None
     SENTRY_TRACES_SAMPLE_RATE: float = 0.1
     SENTRY_ENVIRONMENT: str = "production"
-    # ── Public URL ─────────────────────────────────────────────────────────────
-    PUBLIC_URL: str = "http://localhost:5173"
 
 
 settings = Settings()

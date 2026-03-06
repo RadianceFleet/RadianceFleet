@@ -14,6 +14,9 @@ from app.modules.gap_detector import _haversine_nm
 
 # ── Helper factory ────────────────────────────────────────────────────────────
 
+from tests.conftest import make_mock_point
+
+
 def _make_point(
     lat,
     lon,
@@ -23,16 +26,12 @@ def _make_point(
     ais_point_id=1,
     cog=0.0,
 ):
-    """Create a mock AISPoint with the given attributes."""
-    p = MagicMock()
-    p.lat = lat
-    p.lon = lon
-    p.sog = sog
-    p.nav_status = nav_status
-    p.timestamp_utc = timestamp or datetime(2026, 1, 15, 12, 0)
-    p.ais_point_id = ais_point_id
-    p.cog = cog
-    return p
+    """Create a mock AISPoint using shared factory."""
+    return make_mock_point(
+        lat=lat, lon=lon, ts=timestamp or datetime(2026, 1, 15, 12, 0),
+        sog=sog, cog=cog, nav_status=nav_status,
+        ais_point_id=ais_point_id,
+    )
 
 
 # ── Anchor spoof logic tests ──────────────────────────────────────────────────

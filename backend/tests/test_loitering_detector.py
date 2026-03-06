@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.conftest import make_mock_vessel
+
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -20,13 +22,11 @@ def _make_ais_point(vessel_id, ts, lat, lon, sog=0.1):
 
 
 def _make_vessel(vessel_id=1, mmsi="123456789"):
-    v = MagicMock()
-    v.vessel_id = vessel_id
-    v.mmsi = mmsi
-    v.vessel_laid_up_30d = False
-    v.vessel_laid_up_60d = False
-    v.vessel_laid_up_in_sts_zone = False
-    return v
+    return make_mock_vessel(
+        vessel_id=vessel_id, mmsi=mmsi,
+        vessel_laid_up_30d=False, vessel_laid_up_60d=False,
+        vessel_laid_up_in_sts_zone=False,
+    )
 
 
 def _make_corridor(corridor_id=1, name="Test STS", corridor_type="sts_zone", geometry_wkt=None):

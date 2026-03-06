@@ -39,7 +39,7 @@ export function useFleetAlerts(limit = 50) {
 export function useFleetClusters(limit = 50) {
   return useQuery({
     queryKey: ['fleet-clusters', limit],
-    queryFn: () => apiFetch<{ clusters: OwnerCluster[]; total: number }>(`/fleet/clusters?limit=${limit}`),
+    queryFn: () => apiFetch<{ items: OwnerCluster[]; total: number }>(`/fleet/clusters?limit=${limit}`),
     retry: false,
   })
 }

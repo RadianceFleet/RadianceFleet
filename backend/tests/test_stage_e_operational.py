@@ -93,32 +93,32 @@ class TestE3EvaluateDetectorTypes:
 
     def test_destination_detector_type_exists(self):
         """'destination' is in the evaluate-detector type map."""
-        source = inspect.getsource(importlib.import_module("app.cli"))
+        source = inspect.getsource(importlib.import_module("app.cli_vessels"))
         assert '"destination"' in source
 
     def test_sts_chain_detector_type_exists(self):
         """'sts_chain' is in the evaluate-detector type map."""
-        source = inspect.getsource(importlib.import_module("app.cli"))
+        source = inspect.getsource(importlib.import_module("app.cli_vessels"))
         assert '"sts_chain"' in source
 
     def test_scrapped_registry_detector_type_exists(self):
         """'scrapped_registry' is in the evaluate-detector type map."""
-        source = inspect.getsource(importlib.import_module("app.cli"))
+        source = inspect.getsource(importlib.import_module("app.cli_vessels"))
         assert '"scrapped_registry"' in source
 
     def test_fleet_analyzer_detector_type_exists(self):
         """'fleet_analyzer' is in the evaluate-detector type map."""
-        source = inspect.getsource(importlib.import_module("app.cli"))
+        source = inspect.getsource(importlib.import_module("app.cli_vessels"))
         assert '"fleet_analyzer"' in source
 
     def test_convoy_detector_type_exists(self):
         """'convoy' is in the evaluate-detector type map."""
-        source = inspect.getsource(importlib.import_module("app.cli"))
+        source = inspect.getsource(importlib.import_module("app.cli_vessels"))
         assert '"convoy"' in source
 
     def test_ownership_graph_detector_type_exists(self):
         """'ownership_graph' is in the evaluate-detector type map."""
-        source = inspect.getsource(importlib.import_module("app.cli"))
+        source = inspect.getsource(importlib.import_module("app.cli_vessels"))
         assert '"ownership_graph"' in source
 
 

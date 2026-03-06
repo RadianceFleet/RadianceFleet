@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
+import { buildQueryParams } from '../utils/queryParams'
 import type { AlertSummary, AlertDetail, AlertMapPoint } from '../types/api'
 
 export interface AlertFilters {
@@ -22,18 +23,19 @@ export interface AlertListResponse {
 }
 
 export function useAlerts(filters: AlertFilters) {
-  const params = new URLSearchParams()
-  if (filters.min_score) params.set('min_score', filters.min_score)
-  if (filters.status) params.set('status', filters.status)
-  if (filters.vessel_name) params.set('vessel_name', filters.vessel_name)
-  if (filters.date_from) params.set('date_from', filters.date_from)
-  if (filters.date_to) params.set('date_to', filters.date_to)
-  if (filters.corridor_id) params.set('corridor_id', filters.corridor_id)
-  if (filters.vessel_id) params.set('vessel_id', filters.vessel_id)
-  if (filters.sort_by) params.set('sort_by', filters.sort_by)
-  if (filters.sort_order) params.set('sort_order', filters.sort_order)
-  params.set('skip', String(filters.skip ?? 0))
-  params.set('limit', String(filters.limit ?? 50))
+  const params = buildQueryParams({
+    min_score: filters.min_score,
+    status: filters.status,
+    vessel_name: filters.vessel_name,
+    date_from: filters.date_from,
+    date_to: filters.date_to,
+    corridor_id: filters.corridor_id,
+    vessel_id: filters.vessel_id,
+    sort_by: filters.sort_by,
+    sort_order: filters.sort_order,
+    skip: filters.skip ?? 0,
+    limit: filters.limit ?? 50,
+  })
   return useQuery({
     queryKey: ['alerts', filters],
     queryFn: () => apiFetch<AlertListResponse>(`/alerts?${params}`),

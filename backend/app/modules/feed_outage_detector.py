@@ -214,7 +214,7 @@ def _has_evasion_signals(db: Session, gap: AISGapEvent) -> bool:
         if spoof_count > 0:
             return True
     except Exception:
-        pass
+        logger.warning("SpoofingAnomaly query failed for vessel %s", gap.vessel_id, exc_info=True)
 
     try:
         from app.models.sts_transfer import StsTransferEvent
@@ -231,7 +231,7 @@ def _has_evasion_signals(db: Session, gap: AISGapEvent) -> bool:
         if sts_count > 0:
             return True
     except Exception:
-        pass
+        logger.warning("StsTransferEvent query failed for vessel %s", gap.vessel_id, exc_info=True)
 
     return False
 

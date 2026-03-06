@@ -304,5 +304,6 @@ def _ingest_barentswatch_feature(
         db.add(point)
         stats["points_imported"] += 1
 
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to process BarentsWatch feature: %s", exc)
         stats["errors"] += 1

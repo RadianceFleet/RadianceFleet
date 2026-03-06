@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
+import { buildQueryParams } from '../utils/queryParams'
 import type { VesselSummary, VesselDetail, VesselHistoryEntry, VesselAlias, TimelineEvent, MergeCandidateSummary } from '../types/api'
 
 export interface VesselSearchFilters {
@@ -14,15 +15,16 @@ export interface VesselSearchFilters {
 }
 
 export function useVesselSearch(filters: VesselSearchFilters) {
-  const params = new URLSearchParams()
-  if (filters.search) params.set('search', filters.search)
-  if (filters.flag) params.set('flag', filters.flag)
-  if (filters.vessel_type) params.set('vessel_type', filters.vessel_type)
-  if (filters.min_dwt) params.set('min_dwt', filters.min_dwt)
-  if (filters.max_dwt) params.set('max_dwt', filters.max_dwt)
-  if (filters.min_year_built) params.set('min_year_built', filters.min_year_built)
-  if (filters.watchlist_only) params.set('watchlist_only', 'true')
-  params.set('limit', String(filters.limit ?? 20))
+  const params = buildQueryParams({
+    search: filters.search,
+    flag: filters.flag,
+    vessel_type: filters.vessel_type,
+    min_dwt: filters.min_dwt,
+    max_dwt: filters.max_dwt,
+    min_year_built: filters.min_year_built,
+    watchlist_only: filters.watchlist_only || undefined,
+    limit: filters.limit ?? 20,
+  })
   return useQuery({
     queryKey: ['vessels', filters],
     queryFn: () => apiFetch<{ items: VesselSummary[]; total: number }>(`/vessels?${params}`),
@@ -63,8 +65,7 @@ export function useVesselTimeline(id: string | undefined) {
 }
 
 export function useMergeCandidates(status?: string) {
-  const params = new URLSearchParams()
-  if (status) params.set('status', status)
+  const params = buildQueryParams({ status })
   return useQuery({
     queryKey: ['merge-candidates', status],
     queryFn: () => apiFetch<{ items: MergeCandidateSummary[]; total: number }>(`/merge-candidates?${params}`),

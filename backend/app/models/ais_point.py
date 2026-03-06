@@ -32,7 +32,7 @@ class AISPoint(Base):
     )
     sog_delta: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     cog_delta: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    source: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     raw_payload_ref: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     draught: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     destination: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

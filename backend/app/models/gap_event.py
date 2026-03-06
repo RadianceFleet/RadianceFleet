@@ -46,7 +46,7 @@ class AISGapEvent(Base):
     # Set at creation time (= vessel_id) and preserved through merges.
     # Used by scoring to count per-identity gap frequency, preventing
     # inflation when merged vessels accumulate gaps from multiple identities.
-    original_vessel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    original_vessel_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     # Feed outage: True if this gap was caused by a data feed failure,
     # not by the vessel going dark. Scored gaps with is_feed_outage=True are skipped.
     is_feed_outage: Mapped[bool] = mapped_column(Boolean, default=False)
