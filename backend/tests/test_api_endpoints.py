@@ -38,7 +38,9 @@ class TestSpoofingDetection:
     def test_get_spoofing_events_empty(self, api_client, mock_db):
         resp = api_client.get("/api/v1/spoofing/1")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestLoiteringDetection:
@@ -51,7 +53,9 @@ class TestLoiteringDetection:
     def test_get_loitering_events_empty(self, api_client, mock_db):
         resp = api_client.get("/api/v1/loitering/1")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestStsDetection:

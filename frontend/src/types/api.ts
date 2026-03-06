@@ -206,6 +206,16 @@ export interface VesselHistoryEntry {
   source: string | null
 }
 
+export interface PortCallItem {
+  port_call_id: number
+  vessel_id: number
+  port_id: number | null
+  port_name: string | null
+  arrival_utc: string | null
+  departure_utc: string | null
+  source: string | null
+}
+
 // ---------------------------------------------------------------------------
 // Corridor types
 // ---------------------------------------------------------------------------

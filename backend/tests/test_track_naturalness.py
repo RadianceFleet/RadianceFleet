@@ -10,6 +10,7 @@ import pytest
 from app.models.ais_point import AISPoint
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.base import SpoofingTypeEnum
+from tests.conftest import make_mock_point
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -21,15 +22,11 @@ def _make_point(
     lon: float,
     sog: float = 10.0,
 ):
-    """Create a mock AISPoint-like namedtuple."""
-    p = MagicMock()
-    p.vessel_id = vessel_id
-    p.timestamp_utc = ts
-    p.lat = lat
-    p.lon = lon
-    p.sog = sog
-    p.ais_point_id = id(p)  # unique
-    return p
+    """Create a mock AISPoint-like object using shared factory."""
+    return make_mock_point(
+        vessel_id=vessel_id, lat=lat, lon=lon, ts=ts,
+        sog=sog, ais_point_id=id(object()),
+    )
 
 
 def _straight_line_track(vessel_id: int, n: int = 30, sog: float = 12.0):

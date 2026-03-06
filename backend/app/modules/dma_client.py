@@ -329,8 +329,8 @@ def fetch_and_import_dma(
                         source="dma",
                     )
                     db.add(obs)
-                except Exception:
-                    pass  # Non-blocking
+                except Exception as exc:
+                    logger.debug("AIS observation dual-write failed: %s", exc)
 
                 # Batch commit every 5000 points
                 if day_points % 5000 == 0:

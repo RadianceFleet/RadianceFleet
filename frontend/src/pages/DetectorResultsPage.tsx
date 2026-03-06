@@ -81,7 +81,7 @@ export function DetectorResultsPage() {
   const stsList = vessel.sts_events_60d ?? []
   const gapItems = gaps.data?.items ?? []
   const flagHistoryItems = flagHistory.data ?? []
-  const portCallItems = portCalls.data?.port_calls ?? []
+  const portCallItems = portCalls.data?.items ?? []
 
   return (
     <div style={{ maxWidth: 1100 }}>
@@ -149,7 +149,7 @@ export function DetectorResultsPage() {
               </tr>
             </thead>
             <tbody>
-              {gapItems.map((a: any) => (
+              {gapItems.map((a) => (
                 <tr key={a.gap_event_id} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={cellStyle}>
                     <Link to={`/alerts/${a.gap_event_id}`}>#{a.gap_event_id}</Link>
@@ -247,7 +247,7 @@ export function DetectorResultsPage() {
               </tr>
             </thead>
             <tbody>
-              {flagHistoryItems.map((h: any, i: number) => (
+              {flagHistoryItems.map((h, i) => (
                 <tr key={h.vessel_history_id ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={cellStyle}>{formatTimestamp(h.observed_at)}</td>
                   <td style={cellStyle}>{h.field_changed}</td>
@@ -281,9 +281,9 @@ export function DetectorResultsPage() {
               </tr>
             </thead>
             <tbody>
-              {portCallItems.map((p: any, i: number) => (
+              {portCallItems.map((p, i) => (
                 <tr key={p.port_call_id ?? i} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={cellStyle}>{p.port_name ?? p.raw_port_name ?? '-'}</td>
+                  <td style={cellStyle}>{p.port_name ?? '-'}</td>
                   <td style={cellStyle}>{formatTimestamp(p.arrival_utc)}</td>
                   <td style={cellStyle}>{formatTimestamp(p.departure_utc)}</td>
                   <td style={cellStyle}>{p.source ?? '-'}</td>

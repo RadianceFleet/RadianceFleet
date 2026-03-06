@@ -561,7 +561,7 @@ class TestExistingEndpointDateFilters:
             params={"date_from": "2024-06-01", "date_to": "2024-06-30"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()) == 1
+        assert len(resp.json()["items"]) == 1
 
     def test_loitering_date_filter(self, real_api_client, real_api_db):
         v = _vessel(real_api_db, mmsi="300000004")
@@ -585,7 +585,7 @@ class TestExistingEndpointDateFilters:
             params={"date_from": "2024-06-01", "date_to": "2024-06-30"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()) == 1
+        assert len(resp.json()["items"]) == 1
 
     def test_port_calls_date_filter(self, real_api_client, real_api_db):
         v = _vessel(real_api_db, mmsi="300000005")

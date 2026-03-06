@@ -14,46 +14,12 @@ from app.modules.draught_detector import (
     _is_valid_draught,
     _parse_port_coords,
 )
-
-
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-def _mock_vessel(vessel_id=1, mmsi="123456789", deadweight=100000.0, name="TEST"):
-    v = MagicMock()
-    v.vessel_id = vessel_id
-    v.mmsi = mmsi
-    v.deadweight = deadweight
-    v.name = name
-    return v
-
-
-def _mock_point(vessel_id, lat, lon, ts, draught=None):
-    p = MagicMock()
-    p.vessel_id = vessel_id
-    p.lat = lat
-    p.lon = lon
-    p.timestamp_utc = ts
-    p.draught = draught
-    return p
-
-
-def _mock_port(port_id=1, name="Test Port", geometry="POINT(55.0 25.0)",
-               is_offshore_terminal=False):
-    p = MagicMock()
-    p.port_id = port_id
-    p.name = name
-    p.geometry = geometry
-    p.is_offshore_terminal = is_offshore_terminal
-    return p
-
-
-def _mock_gap(gap_event_id=1, vessel_id=1, gap_start=None, gap_end=None):
-    g = MagicMock()
-    g.gap_event_id = gap_event_id
-    g.vessel_id = vessel_id
-    g.gap_start_utc = gap_start or datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
-    g.gap_end_utc = gap_end or datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
-    return g
+from tests.conftest import (
+    make_mock_vessel as _mock_vessel,
+    make_mock_point as _mock_point,
+    make_mock_port as _mock_port,
+    make_mock_gap as _mock_gap,
+)
 
 
 def _setup_db_mock(vessels=None, ports=None, points_by_vessel=None,

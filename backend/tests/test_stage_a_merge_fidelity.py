@@ -47,8 +47,8 @@ def test_callsign_matching_in_score_candidate():
 
 # ── A3: Extended merge pass pre-filter ───────────────────────────────────────
 
-@patch("app.modules.identity_resolver.detect_merge_candidates")
-@patch("app.modules.identity_resolver.settings")
+@patch("app.modules.merge_candidates.detect_merge_candidates")
+@patch("app.modules.merge_candidates.settings")
 def test_extended_pass_requires_identity_anchor(mock_settings, mock_detect):
     """Extended pass passes require_identity_anchor=True."""
     mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True

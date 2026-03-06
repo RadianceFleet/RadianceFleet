@@ -18,10 +18,10 @@ runner = CliRunner()
 # ---------------------------------------------------------------------------
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.database.SessionLocal")
 def test_update_calls_scheduler_when_online(
@@ -40,10 +40,10 @@ def test_update_calls_scheduler_when_online(
     mock_instance.start.assert_called_once()
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.database.SessionLocal")
 def test_update_scheduler_failure_does_not_block_detection(
@@ -63,10 +63,10 @@ def test_update_scheduler_failure_does_not_block_detection(
     mock_discover.assert_called_once()
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.database.SessionLocal")
 def test_update_passes_stream_time_to_scheduler(
@@ -84,8 +84,8 @@ def test_update_passes_stream_time_to_scheduler(
     mock_instance.start.assert_called_once_with(duration_seconds=300)
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
 @patch("app.database.SessionLocal")
 def test_update_offline_skips_multi_source(mock_sl, mock_discover, mock_summary, mock_next):
@@ -102,10 +102,10 @@ def test_update_offline_skips_multi_source(mock_sl, mock_discover, mock_summary,
     mock_kyst.assert_not_called()
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.database.SessionLocal")
 def test_update_runs_detection_after_collection(
@@ -232,12 +232,12 @@ def test_help_shows_core_commands():
 # ---------------------------------------------------------------------------
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._load_sample_data")
-@patch("app.cli._import_corridors")
-@patch("app.cli._is_first_run", return_value=True)
+@patch("app.cli_helpers._load_sample_data")
+@patch("app.cli_helpers._import_corridors")
+@patch("app.cli_helpers._is_first_run", return_value=True)
 @patch("app.database.SessionLocal")
 @patch("app.database.init_db")
 def test_start_demo_skips_collection(
@@ -261,10 +261,10 @@ def test_start_demo_skips_collection(
 # ---------------------------------------------------------------------------
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.modules.identity_resolver.diagnose_merge_readiness")
 @patch("app.database.SessionLocal")
@@ -283,10 +283,10 @@ def test_update_check_identity_prints_diagnostic(
     mock_diag.assert_called_once_with(mock_db)
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.database.SessionLocal")
 def test_update_check_identity_graceful_without_agent_c(
@@ -305,10 +305,10 @@ def test_update_check_identity_graceful_without_agent_c(
     assert "not available" in result.output
 
 
-@patch("app.cli._print_next_steps")
-@patch("app.cli._print_summary")
+@patch("app.cli_helpers._print_next_steps")
+@patch("app.cli_helpers._print_summary")
 @patch("app.modules.dark_vessel_discovery.discover_dark_vessels")
-@patch("app.cli._update_fetch_watchlists")
+@patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.database.SessionLocal")
 def test_update_without_check_identity_no_merge_output(

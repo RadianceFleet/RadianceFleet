@@ -414,10 +414,10 @@ class TestIntegration:
 
     def test_pi_clubs_config_loader(self):
         """_load_pi_clubs_config should return parsed YAML data when file exists."""
-        import app.modules.risk_scoring as rs
-        rs._PI_CLUBS_CONFIG = None  # Force reload
+        import app.modules.scoring_config as sc
+        sc._PI_CLUBS_CONFIG = None  # Force reload
         config_path = _CONFIG_DIR / "legitimate_pi_clubs.yaml"
-        with patch("app.modules.risk_scoring.settings") as mock_s:
+        with patch("app.modules.scoring_config.settings") as mock_s:
             mock_s.RISK_SCORING_CONFIG = str(config_path.parent / "risk_scoring.yaml")
             data = _load_pi_clubs_config()
         assert "legitimate_clubs" in data
@@ -425,10 +425,10 @@ class TestIntegration:
 
     def test_fraudulent_registries_config_loader(self):
         """_load_fraudulent_registries_config should return parsed YAML data when file exists."""
-        import app.modules.risk_scoring as rs
-        rs._FRAUDULENT_REGISTRIES_CONFIG = None  # Force reload
+        import app.modules.scoring_config as sc
+        sc._FRAUDULENT_REGISTRIES_CONFIG = None  # Force reload
         config_path = _CONFIG_DIR / "fraudulent_registries.yaml"
-        with patch("app.modules.risk_scoring.settings") as mock_s:
+        with patch("app.modules.scoring_config.settings") as mock_s:
             mock_s.RISK_SCORING_CONFIG = str(config_path.parent / "risk_scoring.yaml")
             data = _load_fraudulent_registries_config()
         assert "tier_0_fraudulent" in data

@@ -536,7 +536,7 @@ class TestFeatureFlagGating:
         times = _default_times()
 
         from unittest.mock import patch
-        with patch("app.modules.identity_resolver.settings") as mock_settings:
+        with patch("app.modules.merge_candidates.settings") as mock_settings:
             mock_settings.HISTORY_CROSS_REFERENCE_ENABLED = False
             mock_settings.ISM_CONTINUITY_SCORING_ENABLED = False
             mock_settings.FINGERPRINT_ENABLED = False

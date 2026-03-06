@@ -29,134 +29,26 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.gap_event import AISGapEvent
+from app.modules.scoring_config import *  # noqa: F401,F403
+from app.modules.scoring_stubs import *  # noqa: F401,F403
+from app.modules.scoring_config import (
+    _EXPECTED_SECTIONS,
+    _LEGITIMATE_OPERATORS_CONFIG,
+    _PI_CLUBS_CONFIG,
+    _FRAUDULENT_REGISTRIES_CONFIG,
+    _SCORING_CONFIG,
+    _WATCHLIST_DEFAULTS,
+    _WATCHLIST_KEY_MAP,
+    _is_whitelisted_operator,
+    _load_fraudulent_registries_config,
+    _load_legitimate_operators_config,
+    _load_pi_clubs_config,
+    load_scoring_config,
+    reload_scoring_config,
+)
+from app.modules.scoring_stubs import score_watchlist_stubs
 
 logger = logging.getLogger(__name__)
-
-_SCORING_CONFIG: dict[str, Any] | None = None
-
-_EXPECTED_SECTIONS = [
-    "gap_duration", "gap_frequency", "speed_anomaly", "movement_envelope",
-    "spoofing", "metadata", "vessel_age", "flag_state", "vessel_size_multiplier",
-    "watchlist", "dark_zone", "sts", "behavioral", "legitimacy", "corridor",
-    "score_bands", "ais_class", "dark_vessel", "pi_insurance", "psc_detention",
-    "sts_patterns",
-    "track_naturalness", "draught", "identity_fraud", "dark_sts", "fleet",
-    "pi_validation", "fraudulent_registry",
-    "stale_ais", "at_sea_operations",
-    "ism_continuity", "rename_velocity",
-    "destination", "sts_chains", "scrapped_registry", "track_replay",
-    "merge_chains",
-    "ownership_graph", "convoy", "voyage",
-    "route_laundering", "pi_cycling", "sparse_transmission", "vessel_type_consistency",
-    "watchlist_stub_scoring",
-]
-
-# Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)
-_WATCHLIST_KEY_MAP = {
-    "OFAC_SDN": "vessel_on_ofac_sdn_list",
-    "EU_COUNCIL": "vessel_on_eu_sanctions_list",
-    "KSE_SHADOW": "vessel_on_kse_shadow_fleet_list",
-}
-_WATCHLIST_DEFAULTS = {
-    "OFAC_SDN": 50, "EU_COUNCIL": 50, "KSE_SHADOW": 30,
-}
-
-
-def load_scoring_config() -> dict[str, Any]:
-    global _SCORING_CONFIG
-    if _SCORING_CONFIG is None:
-        config_path = Path(settings.RISK_SCORING_CONFIG)
-        if not config_path.exists():
-            logger.warning("risk_scoring.yaml not found at %s — using empty config", config_path)
-            _SCORING_CONFIG = {}
-        else:
-            with open(config_path) as f:
-                _SCORING_CONFIG = yaml.safe_load(f) or {}
-        missing = [s for s in _EXPECTED_SECTIONS if s not in _SCORING_CONFIG]
-        if missing:
-            logger.warning("risk_scoring.yaml missing sections: %s", ", ".join(missing))
-        # Validate numeric values in scoring ranges
-        for section_name in _EXPECTED_SECTIONS:
-            section = _SCORING_CONFIG.get(section_name, {})
-            if isinstance(section, dict):
-                for key, val in section.items():
-                    if isinstance(val, (int, float)):
-                        if section_name in ("corridor", "vessel_size_multiplier"):
-                            if not (0 <= val <= 10):
-                                logger.warning("risk_scoring.yaml %s.%s=%s outside [0,10]", section_name, key, val)
-                        elif not (-50 <= val <= 200):
-                            logger.warning("risk_scoring.yaml %s.%s=%s outside [-50,200]", section_name, key, val)
-    return _SCORING_CONFIG
-
-
-def reload_scoring_config() -> dict[str, Any]:
-    """Force-reload scoring config from disk (e.g. after YAML edits)."""
-    global _SCORING_CONFIG
-    _SCORING_CONFIG = None
-    return load_scoring_config()
-
-
-# ── Legitimate operator whitelist (false positive suppression) ───────────────
-_LEGITIMATE_OPERATORS_CONFIG: dict[str, Any] | None = None
-
-
-def _load_legitimate_operators_config() -> dict[str, Any]:
-    """Lazy-load and cache the legitimate operators whitelist YAML."""
-    global _LEGITIMATE_OPERATORS_CONFIG
-    if _LEGITIMATE_OPERATORS_CONFIG is None:
-        config_path = Path(settings.RISK_SCORING_CONFIG).parent / "legitimate_operators.yaml"
-        if not config_path.exists():
-            logger.warning("legitimate_operators.yaml not found at %s", config_path)
-            _LEGITIMATE_OPERATORS_CONFIG = {}
-        else:
-            with open(config_path) as f:
-                _LEGITIMATE_OPERATORS_CONFIG = yaml.safe_load(f) or {}
-    return _LEGITIMATE_OPERATORS_CONFIG
-
-
-def _is_whitelisted_operator(mmsi: str | int | None) -> bool:
-    """Return True if vessel MMSI is in the legitimate operators whitelist."""
-    if mmsi is None:
-        return False
-    ops = _load_legitimate_operators_config()
-    whitelisted = {str(m) for m in ops.get("whitelisted_mmsis", [])}
-    return str(mmsi) in whitelisted
-
-
-# ── P&I club validation config (Stage 2-A) ─────────────────────────────────
-_PI_CLUBS_CONFIG: dict[str, Any] | None = None
-
-
-def _load_pi_clubs_config() -> dict[str, Any]:
-    """Lazy-load and cache the legitimate P&I clubs YAML."""
-    global _PI_CLUBS_CONFIG
-    if _PI_CLUBS_CONFIG is None:
-        config_path = Path(settings.RISK_SCORING_CONFIG).parent / "legitimate_pi_clubs.yaml"
-        if not config_path.exists():
-            logger.warning("legitimate_pi_clubs.yaml not found at %s", config_path)
-            _PI_CLUBS_CONFIG = {}
-        else:
-            with open(config_path) as f:
-                _PI_CLUBS_CONFIG = yaml.safe_load(f) or {}
-    return _PI_CLUBS_CONFIG
-
-
-# ── Fraudulent registry config (Stage 2-B) ─────────────────────────────────
-_FRAUDULENT_REGISTRIES_CONFIG: dict[str, Any] | None = None
-
-
-def _load_fraudulent_registries_config() -> dict[str, Any]:
-    """Lazy-load and cache the fraudulent registries YAML."""
-    global _FRAUDULENT_REGISTRIES_CONFIG
-    if _FRAUDULENT_REGISTRIES_CONFIG is None:
-        config_path = Path(settings.RISK_SCORING_CONFIG).parent / "fraudulent_registries.yaml"
-        if not config_path.exists():
-            logger.warning("fraudulent_registries.yaml not found at %s", config_path)
-            _FRAUDULENT_REGISTRIES_CONFIG = {}
-        else:
-            with open(config_path) as f:
-                _FRAUDULENT_REGISTRIES_CONFIG = yaml.safe_load(f) or {}
-    return _FRAUDULENT_REGISTRIES_CONFIG
 
 
 def _gap_frequency_filter(alert: AISGapEvent):
@@ -2483,134 +2375,3 @@ def compute_gap_score(
     breakdown["_pillar_voyage"] = _p_voyage
 
     return final_score, breakdown
-
-
-def score_watchlist_stubs(db: Session, config: dict | None = None) -> dict:
-    """Score watchlist-only stubs that have never appeared on AIS.
-
-    Runs alongside score_all_alerts() in the pipeline. Vessels are selected
-    that have active watchlist entries but NO AIS observations AND no gap events.
-    Returns {scored: int, cleared: int}.
-
-    NOTE: Sequencing caveat: this runs before vessel merging (Step 10). If a stub
-    is merged in Step 10 of the same run, its watchlist_stub_score is only cleared
-    on the NEXT run's Phase 1 cleanup. This is acceptable: a merged vessel's score
-    is superseded by its absorbing vessel's last_risk_score via merged_into_vessel_id,
-    and the API absorbed branch already returns watchlist_stub_score=None.
-    """
-    if not settings.WATCHLIST_STUB_SCORING_ENABLED:
-        return {"scored": 0, "cleared": 0}
-
-    config = config or load_scoring_config()
-    stub_cfg = config.get("watchlist_stub_scoring", {})
-    watchlist_cfg = config.get("watchlist", {})
-    current_year = datetime.utcnow().year
-
-    from app.models.ais_point import AISPoint
-    from app.models.vessel_watchlist import VesselWatchlist
-    from app.models.vessel import Vessel
-    from app.models.vessel_owner import VesselOwner
-
-    # Use AISPoint and AISGapEvent existence checks, not risk_score value
-    # (risk_score defaults to 0 for unscored gaps — cannot use > 0 as proxy)
-    vessels_with_ais = db.query(AISPoint.vessel_id).distinct()
-    vessels_with_gaps = db.query(AISGapEvent.vessel_id).distinct()
-    active_watchlist_ids = (
-        db.query(VesselWatchlist.vessel_id)
-        .filter(VesselWatchlist.is_active == True).distinct()  # noqa: E712
-    )
-
-    # Phase 1: Clear stale scores for vessels that no longer qualify as stubs
-    stale = (
-        db.query(Vessel)
-        .filter(Vessel.watchlist_stub_score.isnot(None))
-        .filter(
-            ~Vessel.vessel_id.in_(active_watchlist_ids)
-            | Vessel.vessel_id.in_(vessels_with_ais)
-            | Vessel.vessel_id.in_(vessels_with_gaps)
-            | Vessel.merged_into_vessel_id.isnot(None)
-        )
-        .all()
-    )
-    for v in stale:
-        v.watchlist_stub_score = None
-        v.watchlist_stub_breakdown = None
-    cleared = len(stale)
-
-    # Phase 2: Score current stubs
-    stub_vessels = (
-        db.query(Vessel)
-        .join(VesselWatchlist, VesselWatchlist.vessel_id == Vessel.vessel_id)
-        .filter(VesselWatchlist.is_active == True)  # noqa: E712
-        .filter(Vessel.vessel_id.notin_(vessels_with_ais))
-        .filter(Vessel.vessel_id.notin_(vessels_with_gaps))
-        .filter(Vessel.merged_into_vessel_id.is_(None))
-        .all()
-    )
-    stub_ids = [v.vessel_id for v in stub_vessels]
-
-    # Batch-load watchlist entries (avoid N+1 queries)
-    watchlist_by_vessel: dict[int, list] = {}
-    for w in db.query(VesselWatchlist).filter(
-        VesselWatchlist.vessel_id.in_(stub_ids),
-        VesselWatchlist.is_active == True,  # noqa: E712
-    ).all():
-        watchlist_by_vessel.setdefault(w.vessel_id, []).append(w)
-
-    verified_owner_ids: set[int] = {
-        row.vessel_id for row in db.query(VesselOwner.vessel_id).filter(
-            VesselOwner.vessel_id.in_(stub_ids),
-            VesselOwner.verified_at.isnot(None),
-        ).all()
-    } if stub_ids else set()
-
-    for vessel in stub_vessels:
-        breakdown: dict[str, int] = {}
-
-        # Watchlist source signals
-        for w in watchlist_by_vessel.get(vessel.vessel_id, []):
-            yaml_key = _WATCHLIST_KEY_MAP.get(w.watchlist_source)
-            if yaml_key:
-                breakdown[f"watchlist_{w.watchlist_source}"] = watchlist_cfg.get(
-                    yaml_key, _WATCHLIST_DEFAULTS.get(w.watchlist_source, 20)
-                )
-            else:
-                breakdown[f"watchlist_{w.watchlist_source}"] = watchlist_cfg.get(
-                    w.watchlist_source, 20
-                )
-
-        # Flag risk
-        flag_risk = str(getattr(vessel, "flag_risk_category", "") or "").lower()
-        if hasattr(getattr(vessel, "flag_risk_category", None), "value"):
-            flag_risk = str(vessel.flag_risk_category.value).lower()
-        if "high_risk" in flag_risk:
-            breakdown["high_risk_flag"] = stub_cfg.get("high_risk_flag", 15)
-
-        # Vessel age
-        age_result = _vessel_age_points(vessel, config, current_year)
-        if age_result:
-            breakdown[age_result[0]] = age_result[1]
-
-        # Missing metadata penalties
-        if vessel.deadweight is None:
-            breakdown["missing_dwt_stub"] = stub_cfg.get("missing_dwt_stub", 8)
-        if vessel.vessel_type is None:
-            breakdown["missing_type_stub"] = stub_cfg.get("missing_type_stub", 5)
-
-        # No AIS history: always true for stubs selected by this query
-        breakdown["no_ais_history"] = stub_cfg.get("no_ais_history", 10)
-
-        # Unverified ownership
-        if vessel.vessel_id not in verified_owner_ids:
-            breakdown["unverified_ownership"] = stub_cfg.get("unverified_ownership", 8)
-
-        # Apply vessel size multiplier
-        size_mult, _ = _vessel_size_multiplier(vessel, config)
-        risk_total = sum(v for v in breakdown.values() if v > 0)
-        vessel.watchlist_stub_score = min(200, round(risk_total * size_mult))
-        vessel.watchlist_stub_breakdown = breakdown
-
-    if stub_vessels:
-        db.commit()
-
-    return {"scored": len(stub_vessels), "cleared": cleared}

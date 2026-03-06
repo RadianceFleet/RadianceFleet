@@ -683,7 +683,7 @@ class TestFix2MergeScoring:
         db.flush()
 
         now = datetime.utcnow()
-        with patch("app.modules.identity_resolver.settings") as mock_s:
+        with patch("app.modules.merge_candidates.settings") as mock_s:
             mock_s.FINGERPRINT_ENABLED = False
             score, reasons = _score_candidate(
                 db, v1, v2,
@@ -705,7 +705,7 @@ class TestFix2MergeScoring:
         db.flush()
 
         now = datetime.utcnow()
-        with patch("app.modules.identity_resolver.settings") as mock_s:
+        with patch("app.modules.merge_candidates.settings") as mock_s:
             mock_s.FINGERPRINT_ENABLED = False
             score, reasons = _score_candidate(
                 db, v1, v2,
@@ -762,9 +762,9 @@ class TestFix2MergeScoring:
             "same_vessel_type": {"points": 10},
             "similar_dwt": {"points": 10},
         }
-        with patch("app.modules.identity_resolver.settings") as mock_s, \
-             patch("app.modules.identity_resolver._score_candidate", return_value=(80, mock_reasons)), \
-             patch("app.modules.identity_resolver.execute_merge") as mock_merge:
+        with patch("app.modules.merge_candidates.settings") as mock_s, \
+             patch("app.modules.merge_candidates._score_candidate", return_value=(80, mock_reasons)), \
+             patch("app.modules.merge_execution.execute_merge") as mock_merge:
             mock_s.MERGE_AUTO_CONFIDENCE_THRESHOLD = 75
             mock_s.MERGE_CANDIDATE_MIN_CONFIDENCE = 30
             mock_s.MERGE_MAX_GAP_DAYS = 30

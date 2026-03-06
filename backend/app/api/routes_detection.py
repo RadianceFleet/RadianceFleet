@@ -59,7 +59,8 @@ def get_spoofing_events(
         q = q.filter(SpoofingAnomaly.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
     if date_to:
         q = q.filter(SpoofingAnomaly.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
-    return q.all()
+    results = q.all()
+    return {"items": results, "total": len(results)}
 
 
 @router.get("/loitering/{vessel_id}", tags=["detection"])
@@ -76,7 +77,8 @@ def get_loitering_events(
         q = q.filter(LoiteringEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
     if date_to:
         q = q.filter(LoiteringEvent.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
-    return q.all()
+    results = q.all()
+    return {"items": results, "total": len(results)}
 
 
 @router.get("/sts-events", tags=["detection"])
@@ -145,7 +147,7 @@ def list_fleet_clusters(
             .all()
         )
         return {
-            "clusters": [
+            "items": [
                 {
                     "cluster_id": c.cluster_id,
                     "canonical_name": c.canonical_name,
@@ -159,7 +161,7 @@ def list_fleet_clusters(
         }
     except Exception as e:
         logger.debug("Owner clusters fetch failed: %s", e)
-        return {"clusters": [], "total": 0}
+        return {"items": [], "total": 0}
 
 
 @router.get("/fleet/clusters/{cluster_id}", tags=["fleet"])

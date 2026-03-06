@@ -187,8 +187,8 @@ def fetch_digitraffic_ais(
                         source="digitraffic",
                     )
                     db.add(obs)
-                except Exception:
-                    pass  # Non-blocking
+                except Exception as exc:
+                    logger.debug("AIS observation dual-write failed: %s", exc)
             except Exception:
                 errors += 1
 

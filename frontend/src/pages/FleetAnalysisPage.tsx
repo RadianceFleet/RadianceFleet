@@ -33,7 +33,7 @@ export function FleetAnalysisPage() {
   const { data: clusterDetail, isLoading: detailLoading } = useFleetClusterDetail(selectedClusterId)
 
   const alerts = alertsData?.alerts ?? []
-  const clusters = clustersData?.clusters ?? []
+  const clusters = clustersData?.items ?? []
   const alertsUnavailable = alertsError && !alertsLoading
   const clustersUnavailable = clustersError && !clustersLoading
 

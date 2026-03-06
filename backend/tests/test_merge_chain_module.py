@@ -106,7 +106,7 @@ class TestSerializeMergeChain:
 # ---------------------------------------------------------------------------
 
 class TestDetectMergeChainsModule:
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_delegates_to_identity_resolver(self, mock_settings):
         """merge_chain.detect_merge_chains delegates to identity_resolver."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = False
@@ -115,7 +115,7 @@ class TestDetectMergeChainsModule:
         result = detect_merge_chains(db)
         assert result["skipped"] == "feature_disabled"
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_single_merge_chain_of_2_no_chain_created(self, mock_settings):
         """Single merge = 2 vessels = no chain (requires >= 3)."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -126,7 +126,7 @@ class TestDetectMergeChainsModule:
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_transitive_merges_single_chain(self, mock_settings):
         """A->B, B->C creates a single chain of 3."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -146,7 +146,7 @@ class TestDetectMergeChainsModule:
         result = detect_merge_chains(db)
         assert result["chains_created"] == 1
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_disconnected_merges_separate_chains(self, mock_settings):
         """Two disconnected 3-vessel groups = two chains."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -172,7 +172,7 @@ class TestDetectMergeChainsModule:
         result = detect_merge_chains(db)
         assert result["chains_created"] == 2
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_empty_merges_no_chains(self, mock_settings):
         """No merge candidates = no chains."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
@@ -182,7 +182,7 @@ class TestDetectMergeChainsModule:
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
-    @patch("app.modules.identity_resolver.settings")
+    @patch("app.modules.merge_candidates.settings")
     def test_confidence_is_minimum_across_links(self, mock_settings):
         """Chain confidence = min of all link confidence scores."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True

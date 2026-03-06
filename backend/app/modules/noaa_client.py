@@ -226,7 +226,8 @@ def import_noaa_file(
                 stats["duplicates"] += 1
             else:
                 stats["accepted"] += 1
-        except Exception:
+        except Exception as exc:
+            logger.debug("Failed to process NOAA row: %s", exc)
             stats["rejected"] += 1
             continue
 

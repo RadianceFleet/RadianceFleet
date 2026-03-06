@@ -141,7 +141,9 @@ class TestSpoofingDetectionEndpoint:
         mock_db.query.return_value.filter.return_value.all.return_value = []
         resp = api_client.get("/api/v1/spoofing/1")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestLoiteringDetectionEndpoint:
@@ -164,7 +166,9 @@ class TestLoiteringDetectionEndpoint:
         mock_db.query.return_value.filter.return_value.all.return_value = []
         resp = api_client.get("/api/v1/loitering/1")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestStsDetectionEndpoint:
