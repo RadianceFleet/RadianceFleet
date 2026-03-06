@@ -6,8 +6,19 @@ fuzzy name (fallback). Sets psc_detained_last_12m on matching Vessel records.
 
 Coverage limitations:
   - Paris MOU: bans only (~136 vessels), not full detentions (~1,200/year)
-  - Indian Ocean, Mediterranean, Riyadh, Vina del Mar MOUs: not available
   - THETIS has no public bulk API for European PSC data
+
+Additional MOU research (2026-03):
+  - Mediterranean MOU (MedMOU): uses THETIS-Med (EMSA). Bulk download strictly
+    forbidden per their terms. No public API. 13 member states, ~6,000 inspections/year.
+  - Indian Ocean MOU (IOMOU): public search form at iomou.org/php/InspData.php
+    but no bulk download or structured API. ~5,800 inspections/year.
+  - Riyadh MOU: annual PDF reports only. No public inspection database or API.
+  - Vina del Mar Agreement (Latin America): no public data API. 14 member states,
+    annual reports only.
+
+If any of these MOUs publish structured data in the future, add a loader
+following the load_psc_ftm() or load_emsa_bans() patterns above.
 """
 from __future__ import annotations
 
