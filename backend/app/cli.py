@@ -776,6 +776,38 @@ def search_vessel(
 
 
 
+@app.command("watchlist-update")
+def watchlist_update(
+    force: bool = typer.Option(False, "--force", help="Ignore interval checks, update all sources"),
+    source: Optional[str] = typer.Option(None, "--source", help="Update a specific source only (OFAC_SDN, OPENSANCTIONS, KSE_SHADOW)"),
+):
+    """Run watchlist auto-update (OFAC daily, OpenSanctions daily, KSE weekly)."""
+    from app.database import init_db, SessionLocal
+    from app.modules.watchlist_scheduler import run_watchlist_update
+
+    init_db()
+    db = SessionLocal()
+    try:
+        sources = [source] if source else None
+        results = run_watchlist_update(db, force=force, sources=sources)
+
+        for r in results:
+            status = r.get("status", "unknown")
+            name = r.get("source", "?")
+            if status == "success":
+                console.print(
+                    f"[green]{name}:[/green] +{r.get('added', 0)} added, "
+                    f"-{r.get('removed', 0)} removed, "
+                    f"{r.get('unchanged', 0)} unchanged"
+                )
+            elif status == "skipped":
+                console.print(f"[dim]{name}: skipped (within interval)[/dim]")
+            else:
+                console.print(f"[red]{name}: {r.get('error', 'unknown error')}[/red]")
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # History sub-commands
 # ---------------------------------------------------------------------------
