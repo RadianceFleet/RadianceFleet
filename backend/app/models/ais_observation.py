@@ -38,12 +38,18 @@ class AISObservation(Base):
     )
 
     @staticmethod
-    def purge_old(db: Session, hours: int = 72) -> int:
+    def purge_old(db: Session, hours: int | None = None) -> int:
         """Delete observations older than `hours`. Returns count deleted.
+
+        If hours is None, reads AIS_OBSERVATION_RETENTION_HOURS from settings
+        (default 72).
 
         Note: Does NOT commit the transaction. The caller is responsible
         for calling db.commit() when ready.
         """
+        if hours is None:
+            from app.config import settings
+            hours = settings.AIS_OBSERVATION_RETENTION_HOURS
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         count = db.query(AISObservation).filter(
             AISObservation.received_utc < cutoff

@@ -199,6 +199,17 @@ def update(
             except Exception as e:
                 console.print(f"[yellow]Detection had issues: {e}[/yellow]")
 
+        # Phase 3b: Purge stale AIS observations (rolling window)
+        try:
+            from app.models.ais_observation import AISObservation
+            deleted = AISObservation.purge_old(db)
+            if deleted:
+                db.commit()
+                console.print(f"[dim]Purged {deleted} stale AIS observation(s)[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]Observation purge: {e}[/yellow]")
+            db.rollback()
+
         # Optional identity diagnostic
         if check_identity:
             try:
