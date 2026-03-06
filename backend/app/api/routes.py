@@ -389,6 +389,7 @@ def export_alerts_csv(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     min_score: Optional[int] = None,
+    ids: Optional[str] = Query(None, description="Comma-separated alert IDs to export"),
     db: Session = Depends(get_db),
 ):
     """Bulk export alerts as publication-ready CSV."""
@@ -398,6 +399,10 @@ def export_alerts_csv(
     _validate_date_range(date_from, date_to)
 
     q = db.query(AISGapEvent)
+    if ids:
+        id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+        if id_list:
+            q = q.filter(AISGapEvent.gap_event_id.in_(id_list))
     if status:
         q = q.filter(AISGapEvent.status == status)
     if date_from:

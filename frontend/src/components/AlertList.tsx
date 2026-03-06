@@ -167,12 +167,33 @@ export function AlertListPage() {
           {/* Bulk action bar */}
           {selected.size > 0 && (
             <div style={{
+              position: 'sticky', bottom: 12, zIndex: 10,
               display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 12px', marginBottom: 8,
+              padding: '10px 16px', marginBottom: 8,
               background: 'var(--bg-card)', border: '1px solid var(--accent-primary)',
               borderRadius: 'var(--radius-md)', fontSize: 13,
+              boxShadow: '0 -2px 12px rgba(0,0,0,0.25)',
             }}>
-              <span style={{ color: 'var(--text-body)' }}>{selected.size} selected</span>
+              <span style={{ color: 'var(--text-body)', fontWeight: 600 }}>{selected.size} selected</span>
+              <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+              <button
+                onClick={() => {
+                  bulkUpdate.mutate(
+                    { alert_ids: [...selected], status: 'documented' },
+                    {
+                      onSuccess: (data) => {
+                        addToast(`Marked ${data.updated} alert(s) as reviewed`, 'success')
+                        setSelected(new Set())
+                      },
+                      onError: () => addToast('Failed to update alerts', 'error'),
+                    }
+                  )
+                }}
+                disabled={bulkUpdate.isPending}
+                style={{ ...btnStyle, background: '#27ae60', color: '#fff', borderColor: '#27ae60' }}
+              >
+                Mark Reviewed
+              </button>
               <select value={bulkStatus} onChange={e => setBulkStatus(e.target.value)} style={inputStyle}>
                 <option value="under_review">Under review</option>
                 <option value="needs_satellite_check">Needs satellite check</option>
@@ -197,6 +218,18 @@ export function AlertListPage() {
               >
                 {bulkUpdate.isPending ? 'Updating...' : 'Apply'}
               </button>
+              <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
+              <a
+                href={`/api/v1/alerts/export?ids=${[...selected].join(',')}`}
+                download
+                style={{
+                  ...btnStyle,
+                  textDecoration: 'none',
+                  display: 'inline-block',
+                }}
+              >
+                Export CSV
+              </a>
               <button onClick={() => setSelected(new Set())} style={btnStyle}>Clear</button>
             </div>
           )}
