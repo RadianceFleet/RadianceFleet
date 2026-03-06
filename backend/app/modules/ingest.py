@@ -186,6 +186,15 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
         from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
         csv_flag = row.get("flag") or row.get("country")
         flag = csv_flag or mmsi_to_flag(mmsi)
+        # Parse AIS cargo type from numeric ship_type code (5B)
+        _cargo_type_val = None
+        _ship_type_raw = row.get("ship_type") or row.get("vessel_type_code") or row.get("cargo_type")
+        if _ship_type_raw is not None:
+            try:
+                from app.modules.cargo_inference import parse_ais_cargo_type
+                _cargo_type_val = parse_ais_cargo_type(int(_ship_type_raw))
+            except (TypeError, ValueError):
+                pass
         vessel = Vessel(
             mmsi=mmsi,
             imo=row.get("imo"),
@@ -197,6 +206,7 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
             ais_class=row.get("ais_class", "unknown"),
             callsign=row.get("callsign"),
             mmsi_first_seen_utc=ts,
+            ais_cargo_type=_cargo_type_val,
         )
         try:
             db.add(vessel)
@@ -243,6 +253,17 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
     new_imo = row.get("imo")
     if new_imo and not vessel.imo:
         vessel.imo = str(new_imo).strip()
+
+    # Parse AIS cargo type from ship_type code (5B)
+    ship_type_raw = row.get("ship_type") or row.get("vessel_type_code") or row.get("cargo_type")
+    if ship_type_raw is not None:
+        try:
+            from app.modules.cargo_inference import parse_ais_cargo_type
+            parsed_cargo = parse_ais_cargo_type(int(ship_type_raw))
+            if parsed_cargo and not vessel.ais_cargo_type:
+                vessel.ais_cargo_type = parsed_cargo
+        except (TypeError, ValueError):
+            pass  # Non-numeric ship_type string, skip
 
     # Backfill flag from MMSI if still missing
     if not vessel.flag:

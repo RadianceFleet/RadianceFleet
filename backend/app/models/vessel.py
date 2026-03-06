@@ -52,6 +52,8 @@ class Vessel(Base):
     # Stage 1-B: multi-signal confidence classification
     dark_fleet_confidence: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     confidence_evidence_json: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # AIS cargo type parsed from AIS Message Type 5 ship_type field
+    ais_cargo_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     # Watchlist stub scoring — for vessels with no AIS history
     watchlist_stub_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     watchlist_stub_breakdown: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

@@ -99,6 +99,8 @@ def _run_migrations() -> None:
         ("ports", "is_sanctioned", "BOOLEAN DEFAULT 0"),
         # 5C — AIS source timestamp priority
         ("ais_points", "source_timestamp_utc", "DATETIME"),
+        # 5B — AIS cargo type from ship_type field
+        ("vessels", "ais_cargo_type", "VARCHAR(50)"),
     ]
 
     _col_cache: dict[str, set[str]] = {}

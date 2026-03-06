@@ -14,6 +14,98 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# AIS ship_type code -> cargo type label (ITU-R M.1371-5, Table 50)
+# First digit: vessel category, second digit: DG/HP/MP cargo category
+AIS_SHIP_TYPE_CARGO: dict[int, str] = {
+    70: "cargo_general",
+    71: "cargo_dg_a",
+    72: "cargo_dg_b",
+    73: "cargo_dg_c",
+    74: "cargo_dg_d",
+    75: "cargo_reserved_5",
+    76: "cargo_reserved_6",
+    77: "cargo_reserved_7",
+    78: "cargo_reserved_8",
+    79: "cargo_no_additional",
+    80: "tanker_general",
+    81: "tanker_dg_a",
+    82: "tanker_dg_b",
+    83: "tanker_dg_c",
+    84: "tanker_dg_d",
+    85: "tanker_reserved_5",
+    86: "tanker_reserved_6",
+    87: "tanker_reserved_7",
+    88: "tanker_reserved_8",
+    89: "tanker_no_additional",
+}
+
+# Categories for mismatch detection
+_TANKER_CARGO_TYPES = {v for k, v in AIS_SHIP_TYPE_CARGO.items() if k >= 80}
+_CARGO_CARGO_TYPES = {v for k, v in AIS_SHIP_TYPE_CARGO.items() if 70 <= k < 80}
+
+
+def parse_ais_cargo_type(ship_type_code: int | None) -> str | None:
+    """Parse AIS ship_type code into a cargo type label.
+
+    Only codes 70-89 (cargo and tanker) are relevant for cargo inference.
+    Returns None for unknown/irrelevant codes.
+    """
+    if ship_type_code is None:
+        return None
+    try:
+        code = int(ship_type_code)
+    except (TypeError, ValueError):
+        return None
+    return AIS_SHIP_TYPE_CARGO.get(code)
+
+
+def score_cargo_type_mismatch(
+    ais_cargo_type: str | None,
+    cargo_state: str | None,
+    port_types: list[str] | None = None,
+) -> dict:
+    """Score mismatch between declared AIS cargo type and observed behavior.
+
+    Args:
+        ais_cargo_type: Parsed cargo type from AIS (e.g. "tanker_general").
+        cargo_state: Inferred state from draught ("laden" / "ballast" / None).
+        port_types: List of recent port type strings (e.g. ["oil_terminal", "dry_bulk"]).
+
+    Returns:
+        Dict with score, reason, and mismatch details. Empty dict if no mismatch.
+    """
+    if not ais_cargo_type:
+        return {}
+
+    result: dict = {}
+    is_tanker = ais_cargo_type in _TANKER_CARGO_TYPES
+    is_cargo = ais_cargo_type in _CARGO_CARGO_TYPES
+
+    # Tanker declared but never laden (always light draught) -> suspicious
+    if is_tanker and cargo_state == "ballast":
+        result = {
+            "mismatch": "tanker_always_ballast",
+            "ais_cargo_type": ais_cargo_type,
+            "observed_state": cargo_state,
+            "score": 10,
+            "reason": "Tanker type declared but vessel consistently in ballast — possible cargo concealment",
+        }
+
+    # Cargo vessel visiting oil terminals -> type mismatch
+    if is_cargo and port_types:
+        oil_visits = [p for p in port_types if "oil" in p.lower() or "tanker" in p.lower()]
+        if oil_visits:
+            result = {
+                "mismatch": "cargo_at_oil_terminal",
+                "ais_cargo_type": ais_cargo_type,
+                "oil_terminal_visits": len(oil_visits),
+                "score": 10,
+                "reason": "Cargo-type vessel visiting oil terminals — possible type misrepresentation",
+            }
+
+    return result
+
+
 # Max expected draught by vessel type (meters).
 # Laden threshold is 60% of max.
 _MAX_DRAUGHT_BY_TYPE: dict[str, float] = {
