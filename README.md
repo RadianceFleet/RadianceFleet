@@ -1,5 +1,6 @@
 # RadianceFleet
 
+![CI](https://github.com/radiancefleet/RadianceFleet/actions/workflows/ci.yml/badge.svg)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![Tests](https://img.shields.io/badge/tests-2258%20passing-brightgreen)
