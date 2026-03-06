@@ -2394,18 +2394,20 @@ def compute_gap_score(
         _dc_min_pts = _dc_cfg.get("min_points", 50)
         _dc_min_days = _dc_cfg.get("min_days", 14)
         _first_seen = getattr(vessel, "mmsi_first_seen_utc", None)
-        _tracking_days = (
-            (scoring_date - _first_seen).days
-            if _first_seen is not None
-            else 0
-        )
+        _tracking_days: int = 0
+        if isinstance(_first_seen, datetime):
+            _tracking_days = (scoring_date - _first_seen).days
         _is_incomplete = _tracking_days < _dc_min_days
+        _pt_count = 0
         if _is_incomplete:
             from sqlalchemy import func as sa_func
             from app.models.ais_point import AISPoint
-            _pt_count = db.query(sa_func.count(AISPoint.ais_point_id)).filter(
-                AISPoint.vessel_id == vessel.vessel_id
-            ).scalar() or 0
+            try:
+                _pt_count = int(db.query(sa_func.count(AISPoint.ais_point_id)).filter(
+                    AISPoint.vessel_id == vessel.vessel_id
+                ).scalar() or 0)
+            except (TypeError, ValueError):
+                _pt_count = 0
             _is_incomplete = _pt_count < _dc_min_pts
         if _is_incomplete:
             _has_hc = any(k in _HIGH_CONFIDENCE_KEYS for k in breakdown)
