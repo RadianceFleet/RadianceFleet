@@ -9,9 +9,7 @@ import yaml
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from sqlalchemy.exc import IntegrityError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
@@ -23,6 +21,27 @@ from app.logging_config import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
+
+# ── Sentry Error Tracking (optional dep — no-op if sentry-sdk not installed) ──
+if settings.SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+        sentry_sdk.init(
+            dsn=settings.SENTRY_DSN,
+            traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+            environment=settings.SENTRY_ENVIRONMENT,
+            send_default_pii=False,
+            integrations=[FastApiIntegration(), SqlalchemyIntegration()],
+        )
+        logger.info("Sentry error tracking enabled (env=%s)", settings.SENTRY_ENVIRONMENT)
+    except ImportError:
+        logger.warning(
+            "SENTRY_DSN is set but sentry-sdk is not installed. "
+            "Install with: uv pip install 'radiancefleet[monitoring]'"
+        )
 
 
 @asynccontextmanager
@@ -62,7 +81,7 @@ app = FastAPI(
     title="RadianceFleet",
     description=(
         "Open source maritime anomaly detection for shadow fleet triage. "
-        "Rate limits: 60 req/min (default), 5/hour (admin login), 3/hour (tip submission). "
+        "Rate limits: configurable per-IP (default 60/min, admin 120/min, viewer 30/min). "
         "Terms: Research and journalism use only. Outputs are anomaly indicators for human "
         "investigation, not legal determinations."
     ),
@@ -102,10 +121,22 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(APIKeyMiddleware)
 
-# Rate limiting — 60/min reads, 10/min detection/mutation endpoints
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+# Rate limiting — configurable per-IP limits (single shared instance from _helpers)
+from app.api._helpers import limiter  # noqa: E402
+
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    retry_after = getattr(exc, "retry_after", 60)
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Rate limit exceeded", "retry_after": retry_after},
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
 
 app.include_router(router, prefix="/api/v1")
 

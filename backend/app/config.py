@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     COLLECT_DIGITRAFFIC_INTERVAL: int = 1800  # 30 min
     COLLECT_AISSTREAM_INTERVAL: int = 300  # 5 min
     COLLECT_RETENTION_DAYS: int = 90
+    # AIS observation rolling window (hours) — cross-receiver comparison only needs recent data
+    AIS_OBSERVATION_RETENTION_HOURS: int = 72
     # Per-source retention: realtime sources pruned after N days, historical/archive never pruned
     RETENTION_DAYS_REALTIME: int = 90
     RETENTION_DAYS_HISTORICAL: int | None = None  # None = keep forever
@@ -185,6 +187,10 @@ class Settings(BaseSettings):
     EQUASIS_USERNAME: str | None = None
     EQUASIS_PASSWORD: str | None = None
     EQUASIS_SCRAPING_ENABLED: bool = False  # Explicit opt-in required — Equasis ToS prohibits automation
+    # ── Rate Limiting ──────────────────────────────────────────────────────────
+    RATE_LIMIT_VIEWER: str = "30/minute"
+    RATE_LIMIT_ADMIN: str = "120/minute"
+    RATE_LIMIT_DEFAULT: str = "60/minute"
     # ── Public Platform Auth ───────────────────────────────────────────────────
     # Do NOT set RADIANCEFLEET_API_KEY on the public instance — it blocks all GET requests.
     # The JWT admin auth (ADMIN_JWT_SECRET) replaces it for write operations only.
@@ -197,6 +203,10 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str | None = None
     SMTP_PASS: str | None = None
+    # ── Sentry Error Tracking ──────────────────────────────────────────────────
+    SENTRY_DSN: str | None = None
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1
+    SENTRY_ENVIRONMENT: str = "production"
     # ── Public URL ─────────────────────────────────────────────────────────────
     PUBLIC_URL: str = "http://localhost:5173"
 
