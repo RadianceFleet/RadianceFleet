@@ -89,6 +89,7 @@ from app.config import settings as _settings
 _MIN_CONSECUTIVE_WINDOWS: int = _settings.STS_MIN_WINDOWS
 _PROXIMITY_METERS: float = _settings.STS_PROXIMITY_METERS
 _SOG_STATIONARY: float = 1.0       # knots — Phase A "not moving"
+_SOG_STATIONARY_STRICT: float = 0.5  # knots — Phase A anchorage exclusion zone threshold
 _SOG_STATIONARY_B: float = 0.5     # knots — Phase B "anchor-like"
 _SOG_APPROACHING_MIN: float = 0.5  # knots
 _SOG_APPROACHING_MAX: float = 3.0  # knots
@@ -282,6 +283,40 @@ def _any_sts_zone_corridor(
     return None
 
 
+# ── Anchorage exclusion zones (Med STS FP reduction) ─────────────────────
+
+_ANCHORAGE_EXCLUSION_TAG = "anchorage_exclusion"
+_MIN_CONSECUTIVE_WINDOWS_STRICT: int = 12  # 3 hours — stricter threshold in anchorage zones
+
+
+def _build_anchorage_exclusion_bboxes(
+    corridors: list[Corridor],
+) -> list[tuple[float, float, float, float]]:
+    """Return bboxes for corridors tagged as anchorage exclusion zones."""
+    result = []
+    for c in corridors:
+        tags = getattr(c, "tags", None) or []
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",")]
+        if _ANCHORAGE_EXCLUSION_TAG in tags:
+            bbox = _parse_wkt_bbox(c.geometry)
+            if bbox is not None:
+                result.append(bbox)
+    return result
+
+
+def _in_any_anchorage_exclusion(
+    lat: float,
+    lon: float,
+    exclusion_bboxes: list[tuple[float, float, float, float]],
+) -> bool:
+    """Return True if the position falls within any anchorage exclusion zone."""
+    for bbox in exclusion_bboxes:
+        if _in_bbox(lat, lon, bbox, tolerance=0.0):
+            return True
+    return False
+
+
 # ── Bucketing helpers ─────────────────────────────────────────────────────────
 
 def _bucket_key(ts: datetime) -> int:
@@ -379,6 +414,9 @@ def _phase_a(
 
     Returns the count of new StsTransferEvents inserted.
     """
+    # Build anchorage exclusion zone bboxes for stricter FP filtering
+    exclusion_bboxes = _build_anchorage_exclusion_bboxes(corridors)
+
     # vessel_id -> sorted list of AISPoints
     vessel_points: dict[int, list[AISPoint]] = defaultdict(list)
     for pt in points:
@@ -405,9 +443,9 @@ def _phase_a(
 
     # pair -> list of consecutive window passing timestamps
     # pair = (min_vessel_id, max_vessel_id) for canonical ordering
-    # Value: list of (bucket_key, dist_m, mean_lat, mean_lon)
+    # Value: list of (bucket_key, dist_m, mean_lat, mean_lon, max_sog)
     pair_windows: dict[
-        tuple[int, int], list[tuple[int, float, float, float]]
+        tuple[int, int], list[tuple[int, float, float, float, float]]
     ] = defaultdict(list)
 
     for bk in sorted(bucket_grid.keys()):
@@ -443,7 +481,8 @@ def _phase_a(
                     pair_key = (min(vid_a, vid_b), max(vid_a, vid_b))
                     mean_lat = (pt_a.lat + pt_b.lat) / 2.0
                     mean_lon = (pt_a.lon + pt_b.lon) / 2.0
-                    pair_windows[pair_key].append((bk, dist_m, mean_lat, mean_lon))
+                    max_sog = max(sog_a, sog_b)
+                    pair_windows[pair_key].append((bk, dist_m, mean_lat, mean_lon, max_sog))
 
     # Evaluate each pair's window list for consecutive runs.
     created = 0
@@ -479,6 +518,18 @@ def _phase_a(
                     mean_dist = sum(w[1] for w in run) / len(run)
                     mean_lat = sum(w[2] for w in run) / len(run)
                     mean_lon = sum(w[3] for w in run) / len(run)
+
+                    # Anchorage exclusion zone: stricter thresholds
+                    if exclusion_bboxes and _in_any_anchorage_exclusion(mean_lat, mean_lon, exclusion_bboxes):
+                        # Require 12 windows (3h) instead of 8 (2h)
+                        if run_len < _MIN_CONSECUTIVE_WINDOWS_STRICT:
+                            run_start = idx
+                            continue
+                        # Require all windows have SOG < 0.5kn
+                        run_max_sog = max(w[4] for w in run)
+                        if run_max_sog >= _SOG_STATIONARY_STRICT:
+                            run_start = idx
+                            continue
                     duration = int((end_dt - start_dt).total_seconds() / 60)
 
                     # Port proximity filter: skip if both vessels are within 3nm of a major port

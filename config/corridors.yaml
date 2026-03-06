@@ -394,6 +394,43 @@ corridors:
     description: "Zhoushan/Ningbo anchorage — major Chinese crude import hub, STS and lightering operations for teapot refineries (CREA 2025)"
     tags: [anchorage, import, far_east]
 
+  # --- ANCHORAGE EXCLUSION ZONES (Med STS FP reduction) ---
+  # Tight polygons around legitimate anchorage areas within STS zones.
+  # Phase A applies stricter thresholds (12 windows, SOG < 0.5kn) when
+  # both vessels are inside an exclusion zone, reducing 85-90% FP rate.
+  # NOTE: These do NOT suppress detection — they raise the bar.
+  - name: "Ceuta Anchorage Exclusion"
+    geometry: "POLYGON((-5.35 35.88, -5.28 35.88, -5.28 35.92, -5.35 35.92, -5.35 35.88))"
+    corridor_type: anchorage_holding
+    risk_weight: 1.0
+    is_jamming_zone: false
+    description: "Ceuta port anchorage — high density of legitimately anchored vessels; STS stricter thresholds apply"
+    tags: [anchorage_exclusion, med_fp_reduction]
+
+  - name: "Laconian Gulf Anchorage Exclusion"
+    geometry: "POLYGON((22.85 36.40, 23.05 36.40, 23.05 36.55, 22.85 36.55, 22.85 36.40))"
+    corridor_type: anchorage_holding
+    risk_weight: 1.0
+    is_jamming_zone: false
+    description: "Laconian Gulf inner anchorage — vessels waiting for STS or port entry; also a real STS waiting zone so detection NOT suppressed"
+    tags: [anchorage_exclusion, med_fp_reduction, sts_waiting_zone]
+
+  - name: "Hurd Bank Anchorage Exclusion"
+    geometry: "POLYGON((14.70 35.65, 15.10 35.65, 15.10 35.85, 14.70 35.85, 14.70 35.65))"
+    corridor_type: anchorage_holding
+    risk_weight: 1.0
+    is_jamming_zone: false
+    description: "Hurd Bank / Malta anchorage — legitimate lightering and waiting area; stricter STS thresholds apply"
+    tags: [anchorage_exclusion, med_fp_reduction]
+
+  - name: "Cyprus Anchorage Exclusion"
+    geometry: "POLYGON((33.50 34.50, 33.80 34.50, 33.80 34.70, 33.50 34.70, 33.50 34.50))"
+    corridor_type: anchorage_holding
+    risk_weight: 1.0
+    is_jamming_zone: false
+    description: "Limassol/Cyprus anchorage — busy commercial anchorage within Cyprus STS zone; stricter thresholds apply"
+    tags: [anchorage_exclusion, med_fp_reduction]
+
   - name: "Mundra (India) Import Zone"
     geometry: "POLYGON((69.0 22.3, 70.0 22.3, 70.0 23.3, 69.0 23.3, 69.0 22.3))"
     corridor_type: import_route
