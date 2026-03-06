@@ -37,6 +37,7 @@ from app.models.data_coverage_window import DataCoverageWindow
 from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, DarkVesselDetection
 from app.models.tip_submission import TipSubmission
 from app.models.alert_subscription import AlertSubscription
+from app.models.ingestion_status import IngestionStatus
 
 __all__ = [
     "Base",
@@ -80,4 +81,5 @@ __all__ = [
     "DataCoverageWindow",
     "TipSubmission",
     "AlertSubscription",
+    "IngestionStatus",
 ]

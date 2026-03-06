@@ -488,7 +488,8 @@ class TestIngestionStatus:
         resp = api_client.get("/api/v1/ingestion-status")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "idle"
+        assert data["status"] in ("idle", "ok")
+        assert "sources" in data
 
 
 # ---------------------------------------------------------------------------

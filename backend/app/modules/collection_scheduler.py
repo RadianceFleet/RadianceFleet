@@ -124,6 +124,9 @@ class CollectionScheduler:
                 # Record completion
                 self._finish_collection_run(db, run, result)
 
+                # Persist ingestion status
+                self._update_ingestion_status(db, source_name, result)
+
                 logger.info(
                     "Collected %s: %s",
                     source_name,
@@ -136,6 +139,11 @@ class CollectionScheduler:
                         self._fail_collection_run(db, run, str(e))
                 except Exception:
                     pass
+                # Persist error status
+                try:
+                    self._update_ingestion_status(db, source_name, error=str(e))
+                except Exception:
+                    pass
             finally:
                 try:
                     db.close()
@@ -144,6 +152,7 @@ class CollectionScheduler:
 
             # Retention pruning
             self._prune_old_points(source_name)
+            self._prune_old_observations()
 
             # Absolute-time sleep: wait until next_run
             remaining = next_run - time.monotonic()
@@ -192,6 +201,34 @@ class CollectionScheduler:
             db.commit()
         except Exception:
             pass
+
+    def _update_ingestion_status(
+        self, db: Session, source_name: str, result: dict | None = None, error: str | None = None
+    ):
+        """Persist ingestion status to DB."""
+        try:
+            from app.models.ingestion_status import update_ingestion_status
+            records = 0
+            if result:
+                records = result.get("points_ingested", result.get("points_imported", 0))
+            update_ingestion_status(db, source_name, records=records, error=error)
+            db.commit()
+        except Exception as e:
+            logger.debug("Failed to update ingestion status for %s: %s", source_name, e)
+
+    def _prune_old_observations(self):
+        """Purge AIS observations older than the configured retention window."""
+        db = self._db_factory()
+        try:
+            from app.models.ais_observation import AISObservation
+            deleted = AISObservation.purge_old(db)
+            if deleted:
+                db.commit()
+                logger.info("Purged %d stale AIS observations", deleted)
+        except Exception as e:
+            logger.warning("AIS observation purge failed: %s", e)
+        finally:
+            db.close()
 
     # Sources that store historical/archive data — never pruned
     ARCHIVE_SOURCES = {"noaa", "dma", "gfw", "barentswatch_historical"}
