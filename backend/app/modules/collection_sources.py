@@ -92,7 +92,8 @@ _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
         name="aisstream",
         description="aisstream.io WebSocket (global corridors)",
         interval_seconds=getattr(settings, "COLLECT_AISSTREAM_INTERVAL", 300),
-        enabled=bool(getattr(settings, "AISSTREAM_API_KEY", None)),
+        enabled=bool(getattr(settings, "AISSTREAM_API_KEY", None))
+        and not getattr(settings, "AISSTREAM_WORKER_ENABLED", False),
         collector=_collect_aisstream,
     ),
     "dma": lambda: SourceInfo(

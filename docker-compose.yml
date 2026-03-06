@@ -28,9 +28,24 @@ services:
     entrypoint: ["uv", "run", "radiancefleet", "update", "--stream-time", "1h"]
     environment:
       DATABASE_URL: postgresql+psycopg2://radiancefleet:radiancefleet@db:5432/radiancefleet
+      AISSTREAM_API_KEY: ${AISSTREAM_API_KEY:-}
+      AISSTREAM_WORKER_ENABLED: ${AISSTREAM_WORKER_ENABLED:-false}
     depends_on:
       db:
         condition: service_healthy
+
+  ws-worker:
+    build: .
+    entrypoint: ["uv", "run", "radiancefleet", "stream"]
+    environment:
+      DATABASE_URL: postgresql+psycopg2://radiancefleet:radiancefleet@db:5432/radiancefleet
+      AISSTREAM_API_KEY: ${AISSTREAM_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - worker
 
 volumes:
   pgdata:

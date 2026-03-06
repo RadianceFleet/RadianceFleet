@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     AISSTREAM_WS_URL: str = "wss://stream.aisstream.io/v0/stream"
     AISSTREAM_BATCH_INTERVAL: int = 30
     AISSTREAM_DEFAULT_DURATION: int = 3600
+    # When true, cron/update skips aisstream (dedicated ws-worker handles it)
+    AISSTREAM_WORKER_ENABLED: bool = False
     # Global Fishing Watch API
     GFW_API_TOKEN: str | None = None
     GFW_API_BASE_URL: str = "https://gateway.api.globalfishingwatch.org"

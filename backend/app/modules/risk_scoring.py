@@ -1305,7 +1305,6 @@ def compute_gap_score(
             legitimacy_cfg = config.get("legitimacy", {})
             per_call = legitimacy_cfg.get("consistent_eu_port_calls", -5)
             breakdown["legitimacy_eu_port_calls"] = per_call * min(eu_calls, 3)  # cap at 3 calls
-    # TODO(v1.1): speed_variation_matches_weather (-8) — needs weather API integration
 
     # PSC clean record legitimacy: 0 detentions in last 3 years
     if db is not None and vessel is not None:

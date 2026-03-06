@@ -29,6 +29,10 @@ the frontend from global CDN.
 [Railway Cron]  — runs every 4 hours:
         radiancefleet update --stream-time 1h
         (watchlists + AIS collection + detection + email notifications)
+
+[Railway WebSocket Worker (optional)]  — runs continuously:
+        radiancefleet stream
+        (set AISSTREAM_WORKER_ENABLED=true on cron to avoid overlap)
 ```
 
 ### Step 1 — Fork and connect to Railway
@@ -250,6 +254,26 @@ DATABASE_URL=sqlite:///./rf.db radiancefleet score-alerts
 
 This is the recommended setup for a single analyst working on a dedicated machine or a
 private server with no external network exposure.
+
+### Process Topology
+
+```
+┌─────────────┐    ┌─────────────┐    ┌──────────────────────┐
+│  web        │    │  cron       │    │  ws-worker (optional) │
+│  FastAPI    │    │  update     │    │  stream               │
+│  port 8000  │    │  every 4h   │    │  continuous           │
+└──────┬──────┘    └──────┬──────┘    └──────────┬───────────┘
+       │                  │                      │
+       └──────────────────┼──────────────────────┘
+                          │
+                   ┌──────┴──────┐
+                   │  db         │
+                   │  PostgreSQL │
+                   └─────────────┘
+```
+
+- **Without ws-worker (default):** `docker compose up -d` — cron handles aisstream in time-boxed windows
+- **With ws-worker:** `AISSTREAM_WORKER_ENABLED=true docker compose --profile worker up -d` — continuous ingestion
 
 ### Step 1 — Clone and configure the environment
 
@@ -513,6 +537,7 @@ takes precedence over defaults; process environment variables take precedence ov
 | `UMBRA_API_KEY` | No | — | Umbra Space API key |
 | `OPENSANCTIONS_API_KEY` | No | — | OpenSanctions API key for watchlist updates |
 | `AISSTREAM_API_KEY` | No | — | AISStream.io API key for live AIS ingestion |
+| `AISSTREAM_WORKER_ENABLED` | No | `false` | When `true`, cron skips aisstream collection (dedicated ws-worker handles it) |
 
 CORS configuration: if you serve the frontend from a different origin than the API, set
 `CORS_ORIGINS` as a comma-separated list in `.env`:
@@ -635,6 +660,56 @@ For Docker-based deployments, add a healthcheck to the API service in `docker-co
       timeout: 10s
       retries: 3
 ```
+
+---
+
+## WebSocket Worker (Continuous AIS Ingestion)
+
+By default, the `cron` service runs `radiancefleet update --stream-time 1h`, which
+time-boxes the aisstream.io WebSocket to 1 hour per 4-hour cycle — leaving ~3 hours
+of dead time with no AIS ingestion.
+
+The optional `ws-worker` service runs `radiancefleet stream` continuously, eliminating
+dead time.
+
+### When to use the worker
+
+- **Time-boxed (default):** Sufficient for daily triage workflows where gaps of a few
+  hours between ingestion cycles are acceptable.
+- **Continuous (ws-worker):** Required when real-time alerting matters or when monitoring
+  vessels transiting narrow corridors where a 3-hour gap could miss an event entirely.
+
+### How to enable
+
+```bash
+# Set env var so cron doesn't also run aisstream
+export AISSTREAM_WORKER_ENABLED=true
+
+# Start all services including ws-worker
+docker compose --profile worker up -d
+```
+
+### Monitoring
+
+The worker reports ingestion status with source `aisstream-worker`. Check health via:
+
+```
+GET /api/v1/health/data-freshness
+```
+
+Look for the `aisstream-worker` entry — `last_success` should be within the last
+few minutes if the worker is running.
+
+### Circuit breaker behavior
+
+The worker has three layers of resilience:
+
+1. **Inner retries:** `stream_ais()` retries transient WebSocket failures (3 attempts
+   with exponential backoff).
+2. **Outer retry loop:** When the circuit breaker opens (too many failures), the CLI
+   waits 60 seconds (breaker reset timeout) and reconnects automatically.
+3. **Docker restart:** `restart: unless-stopped` handles unexpected crashes (OOM,
+   segfault). The inner retry logic handles normal transient failures.
 
 ---
 

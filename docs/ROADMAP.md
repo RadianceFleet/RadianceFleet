@@ -112,7 +112,7 @@ Accuracy foundation, 6 quick-win detectors, 3 major gap closures, signal merging
 | Convoy / storage detector | `convoy_detector.py`: convoy + floating storage + Arctic no-ice-class detection. |
 | Voyage prediction | `voyage_predictor.py`: route templates, Jaccard similarity, deviation scoring. `RouteTemplate` model. |
 | Cargo inference | `cargo_inference.py`: draught-based laden/ballast state + port context classification. |
-| Weather correlator | `weather_correlator.py`: NOAA GFS stub — speed deductions only (−8/−15 kn) for fair comparison. |
+| Weather correlator | `weather_correlator.py`: Open-Meteo Archive API (free, no key) — wind speed correlation with LRU cache. Scoring deductions (-8/-15 kn) for weather-explained speed anomalies. |
 
 ---
 
@@ -150,12 +150,48 @@ All v1 "ideas" that required external integrations are now implemented.
 
 ---
 
+## v2.1 — Complete (OSINT Scoring)
+
+| Feature | Description |
+|---------|-------------|
+| Sanctioned port detection | Scoring signal for vessels calling at known sanctioned ports. |
+| Temporal decay | Risk signal decay over time for aging anomalies. |
+| KSE archetype matching | Pattern matching against KSE Institute shadow fleet archetypes. |
+| EEZ proximity signals | Scoring for vessels operating near sensitive exclusive economic zones. |
+
+---
+
+## v3.0 — Complete (Infrastructure & API Consolidation)
+
+Production infrastructure, frontend expansion, data quality hardening, and API surface cleanup.
+
+| Feature | Description |
+|---------|-------------|
+| Docker & CI | Multi-stage Dockerfile (uv+node), docker-compose.yml (web+postgres+cron). GitHub Actions CI (uv+ruff+pytest + npm+tsc+build). |
+| Structured logging | `structlog` integration (JSON in prod, console in dev). `LOG_FORMAT` setting. |
+| Sentry integration | Optional `sentry-sdk[fastapi]` dependency, init only if `SENTRY_DSN` set. |
+| Rate limiting | slowapi tiered rate limiting: viewer 30/min, admin 120/min, default 60/min per IP. |
+| Circuit breakers | `pybreaker` on 6 external API clients. Circuit state exposed in `/health`. |
+| SPA serving | `StaticFiles` + catch-all route serves frontend build from backend. |
+| Merge chain detection | `merge_chain.py`: BFS chain detection wrapper, min-link confidence scoring, `GET /merge-chains` endpoint. |
+| AIS cargo type parsing | Ship type code → cargo type mapping with mismatch scoring. |
+| Timestamp priority | AIS source timestamp priority prevents stale satellite data from overwriting newer positions. |
+| Ingestion persistence | `IngestionStatus` model tracks ingestion state in database instead of `app.state`. |
+| Data completeness cap | Prevents under-tracked vessels from scoring CRITICAL (exempt high-confidence). |
+| Med STS FP reduction | Anchorage exclusion zones in `config/` reduce Mediterranean STS false positives. |
+| Watchlist auto-update | Scheduler with per-source intervals for automatic watchlist refreshes. |
+| Frontend pages | Fleet Analysis, Ownership Graph, Detector Results, Voyage Prediction pages. Batch alert operations (Mark Reviewed, Export Selected CSV). |
+| Frontend tests | Vitest setup with 23 smoke + interaction tests. |
+| Silent failure audit | Logging added to all bare `except` blocks in risk_scoring, routes_admin, routes_detection. |
+| Routes refactor | `routes.py` (3,220 lines) split into 5 sub-routers. |
+| API consolidation | Removed 33 unused endpoints with no frontend callers (11 detector triggers, 4 hunt writes, 4 fleet/convoy/satellite duplicates, 12 vessel sub-resources, 1 admin alias, 1 merge-chain). ~1,313 lines deleted. Endpoints reduced from ~114 to ~76. CLI and modules unaffected. |
+
+---
+
 ## Open / In Progress
 
 | Item | Status |
 |------|--------|
-| `merge_chain.py` module | `MergeChain` model exists (`backend/app/models/merge_chain.py`) but the BFS chain detection logic module was not created. Identity merge chains tracked at model level only. |
-| Cargo type from AIS voyage data | `cargo_inference.py` infers laden/ballast from draught, but AIS voyage field cargo type declarations are not parsed or scored. |
 | Commercial satellite order placement | `sar_correlator.py` identifies candidates; actual Planet Labs / Maxar API order placement is not implemented (Copernicus URL generation remains the action output). |
 | Multi-analyst workflow | JWT admin auth exists but is single-user. Per-analyst alert assignment, concurrent session management, and reviewer chain-of-custody in evidence cards are not implemented. |
 | Additional PSC MOUs | `psc_loader.py` covers Tokyo, Black Sea, Abuja, Paris MOUs. Remaining MOUs researched (2026-03): **Mediterranean** (THETIS-Med, bulk download forbidden), **Indian Ocean** (web search form only at iomou.org, no bulk/API), **Riyadh** (PDF reports only), **Viña del Mar** (PDF reports only). None offer programmatic data access. Will integrate if any publish structured data. |
@@ -167,5 +203,4 @@ All v1 "ideas" that required external integrations are now implemented.
 - **SQLite geometry**: SpatiaLite is used for local development. ST_Intersects corridor correlation requires PostgreSQL + PostGIS in production.
 - **Copernicus URL only**: Satellite check preparation generates a query URL for manual download. Automated satellite order placement is not implemented.
 - **Equasis ToS**: `equasis_client.py` is disabled by default (`EQUASIS_SCRAPING_ENABLED=false`). Automated Equasis access violates their Terms of Service. Use Datalastic API for production enrichment.
-- **Weather correlations**: `weather_correlator.py` uses NOAA GFS stub with hard-coded speed deductions; live API integration is not active.
 - **BarentsWatch 14-day limit**: Historical data older than 14 days is purged by BarentsWatch; only recent Norwegian EEZ data is available.

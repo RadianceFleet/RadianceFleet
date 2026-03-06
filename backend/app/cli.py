@@ -274,6 +274,58 @@ def update(
         db.close()
 
 
+@app.command("stream")
+def stream(
+    batch_interval: int = typer.Option(30, "--batch-interval", help="Seconds between batch DB writes"),
+):
+    """Run aisstream.io WebSocket consumer continuously (dedicated worker)."""
+    import asyncio
+    import time as _time
+    from app.database import SessionLocal
+    from app.modules.aisstream_client import stream_ais, get_corridor_bounding_boxes
+    from app.models.ingestion_status import update_ingestion_status
+
+    api_key = settings.AISSTREAM_API_KEY
+    if not api_key:
+        console.print("[red]AISSTREAM_API_KEY is required[/red]")
+        raise typer.Exit(1)
+
+    db = SessionLocal()
+    try:
+        boxes = get_corridor_bounding_boxes(db)
+    finally:
+        db.close()
+
+    def on_batch(stats: dict):
+        batch_db = SessionLocal()
+        try:
+            update_ingestion_status(batch_db, source="aisstream-worker",
+                                    records=stats.get("points_stored", 0), status="running")
+            batch_db.commit()
+        except Exception:
+            batch_db.rollback()
+        finally:
+            batch_db.close()
+
+    console.print(f"[bold]Continuous aisstream.io WebSocket consumer[/bold]")
+    console.print(f"  Bounding boxes: {len(boxes)}, Batch interval: {batch_interval}s")
+
+    try:
+        while True:  # Outer loop: survive circuit breaker trips
+            result = asyncio.run(stream_ais(
+                api_key=api_key, bounding_boxes=boxes,
+                duration_seconds=0, batch_interval=batch_interval,
+                db_factory=SessionLocal, progress_callback=on_batch,
+            ))
+            if result.get("error") == "circuit breaker open":
+                console.print("[yellow]Circuit breaker open, waiting 60s...[/yellow]")
+                _time.sleep(60)
+                continue
+            break  # Normal exit (shouldn't happen with duration=0)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Stopped by user[/yellow]")
+
+
 @app.command("check-vessels")
 def check_vessels(
     auto: bool = typer.Option(False, "--auto", help="Only show auto-merge results"),
