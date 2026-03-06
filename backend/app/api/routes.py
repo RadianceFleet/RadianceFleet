@@ -1170,8 +1170,8 @@ def corridors_geojson(db: Session = Depends(get_db)):
             shape = load_geometry(c.geometry)
             if shape is not None:
                 geom_json = shapely.geometry.mapping(shape)
-        except Exception:
-            pass  # graceful degradation — geometry unavailable
+        except Exception as e:
+            logger.debug("Corridor geometry deserialization failed for corridor %s: %s", c.corridor_id, e)
 
         if geom_json:
             ct = str(c.corridor_type.value) if hasattr(c.corridor_type, "value") else c.corridor_type
@@ -2301,7 +2301,8 @@ def get_draught_history(vessel_id: int, db: Session = Depends(get_db)):
             ],
             "total": len(events),
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("Draught history fetch failed for vessel %s: %s", vessel_id, e)
         return {"vessel_id": vessel_id, "events": [], "total": 0}
 
 
@@ -2352,7 +2353,8 @@ def get_satellite_tasking_candidates(
             ],
             "total": len(candidates),
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("Satellite tasking candidates fetch failed: %s", e)
         return {"candidates": [], "total": 0}
 
 
@@ -2411,7 +2413,8 @@ def list_fleet_clusters(
             ],
             "total": len(clusters),
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("Owner clusters fetch failed: %s", e)
         return {"clusters": [], "total": 0}
 
 
@@ -2452,7 +2455,8 @@ def get_fleet_cluster(cluster_id: int, db: Session = Depends(get_db)):
         }
     except HTTPException:
         raise
-    except Exception:
+    except Exception as e:
+        logger.warning("Owner cluster detail fetch failed for cluster %s: %s", cluster_id, e)
         raise HTTPException(status_code=500, detail="Error fetching cluster details")
 
 
@@ -2503,8 +2507,8 @@ def get_collection_status(
         per_source_breakdown = {
             (row[0] or "unknown"): row[1] for row in source_rows
         }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Per-source AIS breakdown query failed: %s", e)
 
     # Collection runs (Agent B's CollectionRun model may not exist yet)
     collection_runs = []
@@ -2528,16 +2532,16 @@ def get_collection_status(
             }
             for r in runs
         ]
-    except Exception:
-        # CollectionRun table may not exist yet
-        pass
+    except Exception as e:
+        logger.debug("CollectionRun query failed (table may not exist): %s", e)
 
     # Merge readiness diagnostic
     merge_readiness = {}
     try:
         from app.modules.identity_resolver import diagnose_merge_readiness
         merge_readiness = diagnose_merge_readiness(db)
-    except Exception:
+    except Exception as e:
+        logger.debug("Merge readiness diagnostic failed: %s", e)
         merge_readiness = {"error": "merge readiness diagnostic unavailable"}
 
     # Data quality warnings
@@ -2593,6 +2597,18 @@ def admin_login(request: Request, body: AdminLoginRequest):
 def admin_refresh(request: Request, _admin=Depends(require_admin)):
     """Refresh admin JWT token (called silently by frontend)."""
     return {"token": create_admin_token()}
+
+
+@router.post("/admin/purge-observations", tags=["admin"])
+def admin_purge_observations(
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Admin: purge AIS observations older than the configured retention window."""
+    from app.models.ais_observation import AISObservation
+    deleted = AISObservation.purge_old(db)
+    db.commit()
+    return {"deleted": deleted}
 
 
 # ---------------------------------------------------------------------------
@@ -2811,7 +2827,8 @@ def list_fleet_alerts(
             ],
             "total": len(alerts),
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("Fleet alerts fetch failed: %s", e)
         return {"alerts": [], "total": 0}
 
 
@@ -3140,6 +3157,36 @@ def get_coverage_gaps(
         return {"status": "coverage_tracker not available", "gaps": []}
     except Exception as e:
         return {"status": f"error: {str(e)}", "gaps": []}
+
+
+# ---------------------------------------------------------------------------
+# Merge chains
+# ---------------------------------------------------------------------------
+
+@router.get("/merge-chains", tags=["identity"])
+def list_merge_chains(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    min_confidence: Optional[float] = Query(None, ge=0, le=100),
+    confidence_band: Optional[str] = Query(None, description="HIGH, MEDIUM, or LOW"),
+    db: Session = Depends(get_db),
+):
+    """List detected merge chains with pagination and optional filters."""
+    from app.modules.merge_chain import get_merge_chains, get_merge_chain_count, serialize_merge_chain
+
+    chains = get_merge_chains(
+        db, skip=skip, limit=limit,
+        min_confidence=min_confidence, confidence_band=confidence_band,
+    )
+    total = get_merge_chain_count(
+        db, min_confidence=min_confidence, confidence_band=confidence_band,
+    )
+    return {
+        "items": [serialize_merge_chain(c) for c in chains],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 @router.post("/data/backfill", tags=["data"])
