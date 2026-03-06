@@ -12,7 +12,7 @@ class TestCorridorAuditLogging:
             obj.corridor_id = 42
         mock_db.add.side_effect = set_id
 
-        with patch("app.api.routes._audit_log") as mock_audit:
+        with patch("app.api.routes_detection._audit_log") as mock_audit:
             resp = api_client.post(
                 "/api/v1/corridors",
                 json={"name": "Test Corridor", "corridor_type": "export_route", "risk_weight": 1.5},
@@ -32,7 +32,7 @@ class TestCorridorAuditLogging:
         corridor.is_jamming_zone = False
         mock_db.query.return_value.filter.return_value.first.return_value = corridor
 
-        with patch("app.api.routes._audit_log") as mock_audit:
+        with patch("app.api.routes_detection._audit_log") as mock_audit:
             resp = api_client.patch(
                 "/api/v1/corridors/1",
                 json={"name": "Updated Name"},
@@ -53,7 +53,7 @@ class TestWatchlistAuditLogging:
             obj.watchlist_entry_id = 10
         mock_db.add.side_effect = set_id
 
-        with patch("app.api.routes._audit_log") as mock_audit:
+        with patch("app.api.routes_vessels._audit_log") as mock_audit:
             resp = api_client.post(
                 "/api/v1/watchlist",
                 json={"vessel_id": 1, "reason": "Test"},
@@ -72,7 +72,7 @@ class TestAISImportAuditLogging:
             "replaced": 0, "ignored": 0, "errors": [],
             "errors_truncated": False, "total_errors": 0,
         }):
-            with patch("app.api.routes._audit_log") as mock_audit:
+            with patch("app.api.routes_admin._audit_log") as mock_audit:
                 from io import BytesIO
                 resp = api_client.post(
                     "/api/v1/ais/import",

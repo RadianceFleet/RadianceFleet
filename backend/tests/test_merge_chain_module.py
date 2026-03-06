@@ -235,7 +235,7 @@ class TestMergeChainsEndpoint:
         mock_count.return_value = 1
 
         client = TestClient(app)
-        with patch("app.api.routes.get_db", return_value=MagicMock()):
+        with patch("app.api.routes_vessels.get_db", return_value=MagicMock()):
             resp = client.get("/merge-chains")
 
         assert resp.status_code == 200

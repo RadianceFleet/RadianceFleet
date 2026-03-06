@@ -1049,3 +1049,33 @@ def get_port_calls(
         })
 
     return {"vessel_id": vessel_id, "items": items, "total": len(items)}
+
+
+# ---------------------------------------------------------------------------
+# Merge Chains
+# ---------------------------------------------------------------------------
+
+@router.get("/merge-chains", tags=["identity"])
+def list_merge_chains(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    min_confidence: Optional[float] = Query(None, ge=0, le=100),
+    confidence_band: Optional[str] = Query(None, description="HIGH, MEDIUM, or LOW"),
+    db: Session = Depends(get_db),
+):
+    """List detected merge chains with pagination and optional filters."""
+    from app.modules.merge_chain import get_merge_chains, get_merge_chain_count, serialize_merge_chain
+
+    chains = get_merge_chains(
+        db, skip=skip, limit=limit,
+        min_confidence=min_confidence, confidence_band=confidence_band,
+    )
+    total = get_merge_chain_count(
+        db, min_confidence=min_confidence, confidence_band=confidence_band,
+    )
+    return {
+        "items": [serialize_merge_chain(c) for c in chains],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
