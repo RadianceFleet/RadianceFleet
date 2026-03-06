@@ -441,7 +441,8 @@ def _had_russian_port_call(db: Session, vessel, gap_start: datetime, days_before
                 if port_shape is None:
                     continue
                 port_lat, port_lon = port_shape.y, port_shape.x
-            except Exception:
+            except Exception as e:
+                logger.debug("Port geometry load failed for terminal: %s", e)
                 continue
             if haversine_nm(pt.lat, pt.lon, port_lat, port_lon) <= 5.0:
                 return True
@@ -470,7 +471,8 @@ def _temporal_recency_factor(signal_dt: datetime | None, gap_dt: datetime) -> fl
         sig = signal_dt.replace(tzinfo=None) if signal_dt.tzinfo else signal_dt
         ref = gap_dt.replace(tzinfo=None) if gap_dt.tzinfo else gap_dt
         days_ago = (ref - sig).days
-    except Exception:
+    except Exception as e:
+        logger.debug("Temporal recency calculation failed: %s", e)
         return 1.0
     if days_ago <= 7:
         return 2.0
@@ -695,12 +697,12 @@ def compute_gap_score(
                                         s == _vessel_source for s in _other_sources
                                     ):
                                         _same_source = True
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.debug("Same-source check failed for dark zone evasion: %s", e)
                             if not _same_source:
                                 _selective_evasion = True
-                    except Exception:
-                        pass  # If query fails, fall back to standard deduction
+                    except Exception as e:
+                        logger.debug("Selective dark zone evasion query failed for vessel %s: %s", vessel.vessel_id, e)
 
                 if _selective_evasion:
                     # Selective dark: only this vessel went dark, others are transmitting
@@ -1319,8 +1321,8 @@ def compute_gap_score(
                 ).count()
                 if psc_detentions == 0:
                     breakdown["legitimacy_psc_clean_record"] = legitimacy_cfg.get("psc_clean_record", -10)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("PSC clean record scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # IG P&I club member legitimacy: insured by International Group club
     if db is not None and vessel is not None:
@@ -1344,8 +1346,8 @@ def compute_gap_score(
                         ig_names.add(club.lower())
                 if pi_club.strip().lower() in ig_names:
                     breakdown["legitimacy_ig_pi_club_member"] = legitimacy_cfg.get("ig_pi_club_member", -15)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("IG P&I club scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # Long trading history legitimacy: >10 years continuous AIS history
     if db is not None and vessel is not None:
@@ -1419,7 +1421,8 @@ def compute_gap_score(
             try:
                 fs = mmsi_first_seen.replace(tzinfo=None) if mmsi_first_seen.tzinfo else mmsi_first_seen
                 mmsi_age_days = (scoring_date - fs).days
-            except Exception:
+            except Exception as e:
+                logger.debug("MMSI age calculation failed: %s", e)
                 mmsi_age_days = 9999
             behavioral_cfg = config.get("behavioral", {})
             if mmsi_age_days < 30 and not _suppress_data_absence:
@@ -1574,10 +1577,11 @@ def compute_gap_score(
                                         "proximity_10nm", 25
                                     )
                                     break
-                            except Exception:
+                            except Exception as e:
+                                logger.debug("Sanctioned port geometry load failed: %s", e)
                                 continue
-        except Exception:
-            pass  # Graceful skip if tables not present
+        except Exception as e:
+            logger.debug("Sanctioned port scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
         # Signal 3: CREA voyage — arrival/departure matches sanctioned terminal
         try:
@@ -1597,8 +1601,8 @@ def compute_gap_score(
                         "crea_confirmed", 35
                     )
                     break
-        except Exception:
-            pass  # Graceful skip if CreaVoyage table not present
+        except Exception as e:
+            logger.debug("CREA voyage scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # Phase 6.14: Distance-to-EEZ-boundary gap signal
     # GFW Science Advances (2022): EEZ boundary proximity is the #1 predictor of
@@ -1626,8 +1630,8 @@ def compute_gap_score(
                     elif _dist_nm <= eez_cfg.get("within_20nm_threshold", 20.0):
                         breakdown["eez_boundary_proximity_20nm"] = eez_cfg.get("within_20nm", 15)
                         breakdown["_eez_boundary_name"] = _eez_name
-                except Exception:
-                    pass  # Graceful skip if utility fails
+                except Exception as e:
+                    logger.debug("EEZ boundary proximity scoring failed: %s", e)
 
     # Phase: Identity merge signals
     if db is not None and vessel is not None:
@@ -1642,8 +1646,8 @@ def compute_gap_score(
             ).count()
             if isinstance(absorbed_count, int) and absorbed_count > 0:
                 breakdown["identity_merge_detected"] = merge_cfg.get("identity_merge_detected", 30)
-        except Exception:
-            pass  # Graceful skip if DB query fails (e.g. MagicMock in tests)
+        except Exception as e:
+            logger.debug("Identity merge scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
         # imo_fabricated: IMO fails checksum
         _imo = vessel.imo if isinstance(vessel.imo, str) else None
@@ -1721,8 +1725,8 @@ def compute_gap_score(
                     best_draught_key = key
             if best_draught_key:
                 breakdown[best_draught_key] = best_draught_score
-        except Exception:
-            pass  # Graceful skip if DraughtChangeEvent table doesn't exist yet
+        except Exception as e:
+            logger.debug("Draught scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Phase M: Identity fraud scoring ───────────────────────────────────
     if db is not None and vessel is not None:
@@ -1798,8 +1802,8 @@ def compute_gap_score(
                         if key not in breakdown:
                             pts = fleet_cfg.get(fa.alert_type, fa.risk_score_component)
                             breakdown[key] = pts
-        except Exception:
-            pass  # Graceful skip if fleet tables don't exist yet
+        except Exception as e:
+            logger.debug("Fleet scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage 2-E: ISM/P&I continuity scoring ──────────────────────────────
     if _scoring_settings.ISM_CONTINUITY_SCORING_ENABLED and db is not None and vessel is not None:
@@ -1820,8 +1824,8 @@ def compute_gap_score(
                     breakdown["pi_club_persistent_across_owners"] = ism_cfg.get(
                         "same_pi_across_owners", 15
                     )
-        except Exception:
-            pass  # Graceful skip if FleetAlert table doesn't exist yet
+        except Exception as e:
+            logger.debug("ISM/P&I continuity scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage 2-A: P&I validation scoring ──────────────────────────────────
     if _scoring_settings.PI_VALIDATION_SCORING_ENABLED and db is not None and vessel is not None:
@@ -1855,8 +1859,8 @@ def compute_gap_score(
                 # not because it's uninsured. Suppress for low-risk flags.
                 if not _suppress_data_absence:
                     breakdown["pi_no_insurer"] = pi_val_cfg.get("no_insurer", 15)
-        except Exception:
-            pass  # Graceful skip if VesselOwner table query fails
+        except Exception as e:
+            logger.debug("P&I validation scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage 2-B: Fraudulent registry scoring ─────────────────────────────
     if _scoring_settings.FRAUDULENT_REGISTRY_SCORING_ENABLED and vessel is not None:
@@ -1902,8 +1906,8 @@ def compute_gap_score(
                     breakdown["at_sea_no_port_call_180d"] = at_sea_cfg.get("no_port_call_180d", 25)
                 elif _days_since >= 90:
                     breakdown["at_sea_no_port_call_90d"] = at_sea_cfg.get("no_port_call_90d", 15)
-        except Exception:
-            pass  # Graceful skip if port_call table not available
+        except Exception as e:
+            logger.debug("At-sea operations scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage 2-F: Rename velocity scoring ──────────────────────────────────
     if _scoring_settings.RENAME_VELOCITY_SCORING_ENABLED and db is not None and vessel is not None:
@@ -1951,8 +1955,8 @@ def compute_gap_score(
                 intermediaries = ev.get("intermediary_vessel_ids", [])
                 if vessel.vessel_id in intermediaries:
                     breakdown["sts_intermediary"] = sts_chain_cfg.get("intermediary_vessel", 15)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("STS chain scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage 3-C: Scrapped vessel registry scoring ──────────────────────────
     if _scoring_settings.SCRAPPED_REGISTRY_SCORING_ENABLED and db is not None and vessel is not None:
@@ -2000,8 +2004,8 @@ def compute_gap_score(
                             "scrapped_imo_in_chain", 35
                         )
                     break  # one chain match is enough
-        except Exception:
-            pass  # Graceful skip if merge_chains table doesn't exist yet
+        except Exception as e:
+            logger.debug("Merge chain scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage 5-B: Convoy scoring ────────────────────────────────────────────
     if _scoring_settings.CONVOY_SCORING_ENABLED and db is not None and vessel is not None:
@@ -2027,8 +2031,8 @@ def compute_gap_score(
                         best_convoy = ce
                 if best_convoy:
                     breakdown[f"convoy_{best_convoy.convoy_id}"] = best_convoy_score
-        except Exception:
-            pass  # Graceful skip if convoy table doesn't exist yet
+        except Exception as e:
+            logger.debug("Convoy scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage 5-A: Ownership graph scoring ─────────────────────────────────
     if _scoring_settings.OWNERSHIP_GRAPH_SCORING_ENABLED and db is not None and vessel is not None:
@@ -2117,10 +2121,10 @@ def compute_gap_score(
                             breakdown["ownership_cluster_sanctioned"] = og_cfg.get(
                                 "shared_address_sanctioned", 35
                             )
-                except Exception:
-                    pass  # Graceful skip if OwnerCluster tables don't exist yet
-        except Exception:
-            pass  # Graceful skip if ownership graph tables don't exist yet
+                except Exception as e:
+                    logger.debug("Owner cluster sanctions propagation failed for vessel %s: %s", vessel.vessel_id, e)
+        except Exception as e:
+            logger.debug("Ownership graph scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage 5-C: Voyage prediction + cargo inference + weather scoring ────
     if _scoring_settings.VOYAGE_SCORING_ENABLED and db is not None and vessel is not None:
@@ -2135,8 +2139,8 @@ def compute_gap_score(
                     breakdown["route_deviation_toward_sts"] = voyage_cfg.get(
                         "route_deviation_toward_sts", 25
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Voyage prediction scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
         # Cargo inference: laden from Russian terminal + STS
         if _scoring_settings.CARGO_INFERENCE_ENABLED:
@@ -2147,8 +2151,8 @@ def compute_gap_score(
                     breakdown["laden_from_russian_terminal_sts"] = voyage_cfg.get(
                         "laden_from_russian_terminal_sts", 15
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Cargo inference scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
         # Weather correlation: deduction on speed anomaly ONLY
         if _scoring_settings.WEATHER_CORRELATION_ENABLED:
@@ -2171,8 +2175,8 @@ def compute_gap_score(
                                     "weather_speed_correction_wind", -8
                                 )
                                 break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Weather correlation scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Stage C: Route laundering scoring ─────────────────────────────────
     if _scoring_settings.ROUTE_LAUNDERING_SCORING_ENABLED and db is not None and vessel is not None:
@@ -2270,8 +2274,8 @@ def compute_gap_score(
                         elif _z_score >= 2.0:
                             breakdown["behavioral_deviation_2sigma"] = 25
                             breakdown["_behavioral_z_score"] = round(_z_score, 2)
-        except Exception:
-            pass  # Graceful skip — baseline is a corroborating signal, not load-bearing
+        except Exception as e:
+            logger.debug("Behavioral baseline scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
     # ── Phase 7: KSE Shadow Fleet Archetype Score ──────────────────────────
     # KSE Institute finding (2023-2024): 92% of new shadow crude tankers are:
@@ -2373,6 +2377,46 @@ def compute_gap_score(
         _amb_cap = _fp_cfg.get("ambiguous_type_low_risk_cap", 50)
         final_score = min(final_score, _amb_cap)
         breakdown["_ambiguous_type_low_risk_cap_applied"] = _amb_cap
+
+    # ── Data completeness cap: prevent under-tracked vessels from scoring HIGH/CRITICAL ──
+    # New vessels with few AIS points accumulate score from data absence alone.
+    # Cap at MEDIUM unless high-confidence signals (spoofing, watchlist, identity fraud) fire.
+    _HIGH_CONFIDENCE_KEYS = frozenset({
+        "impossible_reappear", "speed_spoof_before_gap", "speed_impossible",
+        "mmsi_reuse_implied_speed_30kn", "mmsi_reuse_implied_speed_100kn",
+        "circle_pattern", "identity_swap", "cross_receiver_disagreement",
+        "imo_fabricated", "imo_simultaneous_use", "stateless_mmsi",
+        "scrapped_imo_reuse", "track_naturalness_high",
+    })
+    _dc_cfg = config.get("data_completeness", {})
+    _dc_max = _dc_cfg.get("max_score_if_incomplete", 50)
+    if db is not None and vessel is not None and final_score > _dc_max:
+        _dc_min_pts = _dc_cfg.get("min_points", 50)
+        _dc_min_days = _dc_cfg.get("min_days", 14)
+        _first_seen = getattr(vessel, "mmsi_first_seen_utc", None)
+        _tracking_days = (
+            (scoring_date - _first_seen).days
+            if _first_seen is not None
+            else 0
+        )
+        _is_incomplete = _tracking_days < _dc_min_days
+        if _is_incomplete:
+            from sqlalchemy import func as sa_func
+            from app.models.ais_point import AISPoint
+            _pt_count = db.query(sa_func.count(AISPoint.ais_point_id)).filter(
+                AISPoint.vessel_id == vessel.vessel_id
+            ).scalar() or 0
+            _is_incomplete = _pt_count < _dc_min_pts
+        if _is_incomplete:
+            _has_hc = any(k in _HIGH_CONFIDENCE_KEYS for k in breakdown)
+            _has_watchlist = any(k.startswith("watchlist_") for k in breakdown)
+            _has_sanctions = "owner_or_manager_on_sanctions_list" in breakdown
+            _has_flag_hop = any(k.startswith("flag_hopping") for k in breakdown)
+            if not (_has_hc or _has_watchlist or _has_sanctions or _has_flag_hop):
+                final_score = min(final_score, _dc_max)
+                breakdown["_data_completeness_cap_applied"] = True
+                breakdown["_data_completeness_points"] = _pt_count
+                breakdown["_data_completeness_days"] = _tracking_days
 
     # ── Phase 4b: Pole Star MTI-Style Pillar Score Separation ────────────────
     # Splits signals into 3 independent pillars for analyst interpretability.

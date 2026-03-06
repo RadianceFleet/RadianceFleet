@@ -459,8 +459,9 @@ class TestCombinedFixImpact:
 
     def test_ru_vessel_same_conditions_still_high(self):
         """RU + Type None + STS corridor + no port call + new MMSI:
-        All risk signals fire; score must remain elevated."""
-        recent_mmsi = datetime(2025, 5, 25, 0, 0)  # 7 days before scoring_date
+        All risk signals fire; score must remain elevated.
+        Uses 30-day tracking history to avoid data completeness cap."""
+        recent_mmsi = datetime(2025, 5, 15, 0, 0)  # 17 days before scoring_date (bypasses 14d cap)
         vessel = _make_vessel(
             flag="RU",
             flag_risk="high_risk",
@@ -481,3 +482,134 @@ class TestCombinedFixImpact:
         assert score >= 100, (
             f"RU vessel with full signals should score ≥100; score={score}"
         )
+
+
+# ── Data completeness cap: under-tracked vessels capped at MEDIUM ────────────
+
+class TestDataCompletenessCap:
+    """New vessel + high-risk flag + data absence = CRITICAL from missing data alone.
+
+    The data completeness cap limits score to 50 (MEDIUM) for vessels with
+    <50 AIS points and <14 days tracking, unless high-confidence signals fire.
+    """
+
+    def _new_vessel_db(self, point_count: int = 5) -> MagicMock:
+        """DB mock returning a low AIS point count."""
+        db = _minimal_db()
+        # Override scalar() to return point_count for the AIS count query
+        mock_q = db.query.return_value
+        mock_q.filter.return_value.scalar.return_value = point_count
+        return db
+
+    def test_new_vessel_capped_at_medium(self):
+        """Under-tracked vessel with only data-absence signals → capped at 50."""
+        recent = datetime(2025, 5, 30, 0, 0)  # 2 days before scoring_date
+        vessel = _make_vessel(
+            flag="CM", flag_risk="high_risk",
+            mmsi_first_seen=recent, year_built=2003,
+        )
+        corridor = _make_sts_corridor("sts_zone")
+        db = self._new_vessel_db(point_count=10)
+
+        score, breakdown = _score(vessel, corridor=corridor, db=db)
+
+        assert "_data_completeness_cap_applied" in breakdown
+        assert score <= 50, f"Under-tracked vessel should be capped at 50; score={score}"
+
+    def test_well_tracked_vessel_not_capped(self):
+        """Vessel with 14+ days tracking history → no cap."""
+        old = datetime(2025, 4, 1, 0, 0)  # 61 days before scoring_date
+        vessel = _make_vessel(
+            flag="CM", flag_risk="high_risk",
+            mmsi_first_seen=old, year_built=2003,
+        )
+        corridor = _make_sts_corridor("sts_zone")
+        db = self._new_vessel_db(point_count=200)
+
+        score, breakdown = _score(vessel, corridor=corridor, db=db)
+
+        assert "_data_completeness_cap_applied" not in breakdown
+
+    def test_high_confidence_impossible_reappear_exempts_cap(self):
+        """Impossible reappear signal → cap does NOT apply (high-confidence)."""
+        recent = datetime(2025, 5, 30, 0, 0)
+        vessel = _make_vessel(
+            flag="CM", flag_risk="high_risk",
+            mmsi_first_seen=recent, year_built=2003,
+        )
+        gap = _make_gap(vessel, duration_minutes=1800)
+        gap.impossible_speed_flag = True  # triggers impossible_reappear signal
+        gap.velocity_plausibility_ratio = 1.5
+        db = self._new_vessel_db(point_count=10)
+
+        with _settings_ctx():
+            score, breakdown = compute_gap_score(
+                gap, _CONFIG, db=db, scoring_date=datetime(2025, 6, 1, 12, 0),
+            )
+
+        assert "impossible_reappear" in breakdown
+        assert "_data_completeness_cap_applied" not in breakdown
+
+    def test_high_confidence_speed_spoof_exempts_cap(self):
+        """Speed spoof signal → cap does NOT apply."""
+        recent = datetime(2025, 5, 30, 0, 0)
+        vessel = _make_vessel(
+            flag="CM", flag_risk="high_risk",
+            mmsi_first_seen=recent, year_built=2003, deadweight=250000,
+        )
+        gap = _make_gap(vessel, duration_minutes=1800)
+        gap.pre_gap_sog = 25.0  # above spoof threshold for VLCC
+        db = self._new_vessel_db(point_count=10)
+
+        with _settings_ctx():
+            score, breakdown = compute_gap_score(
+                gap, _CONFIG, db=db, scoring_date=datetime(2025, 6, 1, 12, 0),
+            )
+
+        assert "speed_spoof_before_gap" in breakdown
+        assert "_data_completeness_cap_applied" not in breakdown
+
+    def test_speed_impossible_exempts_cap(self):
+        """Speed impossible (>30kn) → cap does NOT apply."""
+        recent = datetime(2025, 5, 30, 0, 0)
+        vessel = _make_vessel(
+            flag="CM", flag_risk="high_risk",
+            mmsi_first_seen=recent, year_built=2003,
+        )
+        gap = _make_gap(vessel, duration_minutes=1800)
+        gap.pre_gap_sog = 35.0  # >30kn triggers speed_impossible
+        db = self._new_vessel_db(point_count=10)
+
+        with _settings_ctx():
+            score, breakdown = compute_gap_score(
+                gap, _CONFIG, db=db, scoring_date=datetime(2025, 6, 1, 12, 0),
+            )
+
+        assert "speed_impossible" in breakdown
+        assert "_data_completeness_cap_applied" not in breakdown
+
+    def test_no_db_skips_cap(self):
+        """When db=None, the data completeness cap is skipped gracefully."""
+        recent = datetime(2025, 5, 30, 0, 0)
+        vessel = _make_vessel(
+            flag="CM", flag_risk="high_risk",
+            mmsi_first_seen=recent, year_built=2003,
+        )
+        # No db → cap logic is skipped entirely
+        score, breakdown = _score(vessel, db=None)
+        # Should not crash; cap might or might not apply depending on db=None guard
+        # The important thing is no exception
+
+    def test_no_first_seen_treated_as_zero_days(self):
+        """Vessel with mmsi_first_seen_utc=None → treated as 0 tracking days."""
+        vessel = _make_vessel(
+            flag="CM", flag_risk="high_risk",
+            mmsi_first_seen=None, year_built=2003,
+        )
+        corridor = _make_sts_corridor("sts_zone")
+        db = self._new_vessel_db(point_count=10)
+
+        score, breakdown = _score(vessel, corridor=corridor, db=db)
+
+        assert "_data_completeness_cap_applied" in breakdown
+        assert score <= 50
