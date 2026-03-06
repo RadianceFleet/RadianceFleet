@@ -1079,3 +1079,242 @@ def list_merge_chains(
         "skip": skip,
         "limit": limit,
     }
+
+
+# ---------------------------------------------------------------------------
+# Detector Result Endpoints (per-vessel)
+# ---------------------------------------------------------------------------
+
+@router.get("/vessels/{vessel_id}/track-naturalness", tags=["detection"])
+def get_vessel_track_naturalness(
+    vessel_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Query synthetic track anomalies for a vessel."""
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.base import SpoofingTypeEnum
+
+    q = db.query(SpoofingAnomaly).filter(
+        SpoofingAnomaly.vessel_id == vessel_id,
+        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.SYNTHETIC_TRACK,
+    )
+    total = q.count()
+    items = q.order_by(SpoofingAnomaly.start_time_utc.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [
+            {
+                "anomaly_id": a.anomaly_id,
+                "vessel_id": a.vessel_id,
+                "start_time_utc": a.start_time_utc.isoformat() if a.start_time_utc else None,
+                "end_time_utc": a.end_time_utc.isoformat() if a.end_time_utc else None,
+                "plausibility_score": a.plausibility_score,
+                "risk_score_component": a.risk_score_component,
+                "evidence": a.evidence_json,
+            }
+            for a in items
+        ],
+        "total": total,
+    }
+
+
+@router.get("/vessels/{vessel_id}/draught-events", tags=["detection"])
+def get_vessel_draught_events(
+    vessel_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Query draught change events for a vessel."""
+    from app.models.draught_event import DraughtChangeEvent
+
+    q = db.query(DraughtChangeEvent).filter(DraughtChangeEvent.vessel_id == vessel_id)
+    total = q.count()
+    items = q.order_by(DraughtChangeEvent.timestamp_utc.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [
+            {
+                "event_id": e.event_id,
+                "vessel_id": e.vessel_id,
+                "timestamp_utc": e.timestamp_utc.isoformat() if e.timestamp_utc else None,
+                "old_draught_m": e.old_draught_m,
+                "new_draught_m": e.new_draught_m,
+                "delta_m": e.delta_m,
+                "is_offshore": e.is_offshore,
+                "distance_to_port_nm": e.distance_to_port_nm,
+                "risk_score_component": e.risk_score_component,
+            }
+            for e in items
+        ],
+        "total": total,
+    }
+
+
+@router.get("/vessels/{vessel_id}/flag-history", tags=["detection"])
+def get_vessel_flag_history(
+    vessel_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Query flag hopping anomalies for a vessel."""
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.base import SpoofingTypeEnum
+
+    q = db.query(SpoofingAnomaly).filter(
+        SpoofingAnomaly.vessel_id == vessel_id,
+        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING,
+    )
+    total = q.count()
+    items = q.order_by(SpoofingAnomaly.start_time_utc.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [
+            {
+                "anomaly_id": a.anomaly_id,
+                "vessel_id": a.vessel_id,
+                "start_time_utc": a.start_time_utc.isoformat() if a.start_time_utc else None,
+                "end_time_utc": a.end_time_utc.isoformat() if a.end_time_utc else None,
+                "risk_score_component": a.risk_score_component,
+                "evidence": a.evidence_json,
+            }
+            for a in items
+        ],
+        "total": total,
+    }
+
+
+@router.get("/vessels/{vessel_id}/imo-collisions", tags=["detection"])
+def get_vessel_imo_collisions(
+    vessel_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Query IMO fraud / simultaneous IMO anomalies for a vessel."""
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.base import SpoofingTypeEnum
+
+    q = db.query(SpoofingAnomaly).filter(
+        SpoofingAnomaly.vessel_id == vessel_id,
+        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+    )
+    total = q.count()
+    items = q.order_by(SpoofingAnomaly.start_time_utc.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [
+            {
+                "anomaly_id": a.anomaly_id,
+                "vessel_id": a.vessel_id,
+                "start_time_utc": a.start_time_utc.isoformat() if a.start_time_utc else None,
+                "end_time_utc": a.end_time_utc.isoformat() if a.end_time_utc else None,
+                "implied_speed_kn": a.implied_speed_kn,
+                "risk_score_component": a.risk_score_component,
+                "evidence": a.evidence_json,
+            }
+            for a in items
+        ],
+        "total": total,
+    }
+
+
+@router.get("/vessels/{vessel_id}/destination-anomalies", tags=["detection"])
+def get_vessel_destination_anomalies(
+    vessel_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Query destination deviation anomalies for a vessel."""
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.base import SpoofingTypeEnum
+
+    q = db.query(SpoofingAnomaly).filter(
+        SpoofingAnomaly.vessel_id == vessel_id,
+        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.DESTINATION_DEVIATION,
+    )
+    total = q.count()
+    items = q.order_by(SpoofingAnomaly.start_time_utc.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [
+            {
+                "anomaly_id": a.anomaly_id,
+                "vessel_id": a.vessel_id,
+                "start_time_utc": a.start_time_utc.isoformat() if a.start_time_utc else None,
+                "end_time_utc": a.end_time_utc.isoformat() if a.end_time_utc else None,
+                "risk_score_component": a.risk_score_component,
+                "evidence": a.evidence_json,
+            }
+            for a in items
+        ],
+        "total": total,
+    }
+
+
+@router.get("/vessels/{vessel_id}/sts-chains", tags=["detection"])
+def get_vessel_sts_chains(
+    vessel_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Query STS relay chain alerts involving a vessel.
+
+    STS chains are stored as FleetAlert records with alert_type='sts_relay_chain'.
+    Filters by vessel_id presence in vessel_ids_json.
+    """
+    from app.models.fleet_alert import FleetAlert
+
+    # FleetAlert.vessel_ids_json is a JSON list; filter those containing vessel_id
+    all_chain_alerts = (
+        db.query(FleetAlert)
+        .filter(FleetAlert.alert_type == "sts_relay_chain")
+        .order_by(FleetAlert.created_utc.desc())
+        .all()
+    )
+    # Filter in Python since JSON array containment varies by DB
+    matching = [a for a in all_chain_alerts if a.vessel_ids_json and vessel_id in a.vessel_ids_json]
+    total = len(matching)
+    page = matching[skip:skip + limit]
+    return {
+        "items": [
+            {
+                "alert_id": a.alert_id,
+                "owner_cluster_id": a.owner_cluster_id,
+                "vessel_ids": a.vessel_ids_json,
+                "evidence": a.evidence_json,
+                "risk_score_component": a.risk_score_component,
+                "created_utc": a.created_utc.isoformat() if a.created_utc else None,
+            }
+            for a in page
+        ],
+        "total": total,
+    }
+
+
+@router.get("/vessels/{vessel_id}/cargo-state", tags=["detection"])
+def get_vessel_cargo_state(
+    vessel_id: int,
+    db: Session = Depends(get_db),
+):
+    """Return current cargo inference state (laden/ballast) for a vessel."""
+    from app.modules.cargo_inference import infer_cargo_state
+
+    result = infer_cargo_state(db, vessel_id)
+    if not result:
+        return {"vessel_id": vessel_id, "state": None, "message": "No draught data available"}
+    return result
+
+
+@router.get("/vessels/{vessel_id}/voyage-prediction", tags=["detection"])
+def get_vessel_voyage_prediction(
+    vessel_id: int,
+    db: Session = Depends(get_db),
+):
+    """Return voyage prediction (next destination) for a vessel."""
+    from app.modules.voyage_predictor import predict_next_destination
+
+    result = predict_next_destination(db, vessel_id)
+    if result is None:
+        return {"vessel_id": vessel_id, "prediction": None, "message": "Insufficient port call history"}
+    return result

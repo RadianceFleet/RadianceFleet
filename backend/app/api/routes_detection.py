@@ -332,6 +332,99 @@ def list_fleet_clusters(
         return {"clusters": [], "total": 0}
 
 
+@router.get("/fleet-alerts", tags=["fleet"])
+def list_fleet_alerts_paginated(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    alert_type: Optional[str] = Query(None, description="Filter by alert_type"),
+    db: Session = Depends(get_db),
+):
+    """Paginated fleet-level alerts."""
+    from app.models.fleet_alert import FleetAlert
+
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
+    q = db.query(FleetAlert)
+    if alert_type:
+        q = q.filter(FleetAlert.alert_type == alert_type)
+    total = q.count()
+    items = q.order_by(FleetAlert.created_utc.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [
+            {
+                "alert_id": a.alert_id,
+                "owner_cluster_id": a.owner_cluster_id,
+                "alert_type": a.alert_type,
+                "vessel_ids": a.vessel_ids_json,
+                "evidence": a.evidence_json,
+                "risk_score_component": a.risk_score_component,
+                "created_utc": a.created_utc.isoformat() if a.created_utc else None,
+            }
+            for a in items
+        ],
+        "total": total,
+    }
+
+
+@router.get("/owner-clusters", tags=["fleet"])
+def list_owner_clusters_paginated(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Paginated owner clusters."""
+    from app.models.owner_cluster import OwnerCluster
+
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
+    q = db.query(OwnerCluster)
+    total = q.count()
+    items = q.order_by(OwnerCluster.vessel_count.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [
+            {
+                "cluster_id": c.cluster_id,
+                "canonical_name": c.canonical_name,
+                "country": c.country,
+                "is_sanctioned": c.is_sanctioned,
+                "vessel_count": c.vessel_count,
+            }
+            for c in items
+        ],
+        "total": total,
+    }
+
+
+@router.get("/convoys", tags=["detection"])
+def list_convoys(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Paginated convoy detection results."""
+    from app.models.convoy_event import ConvoyEvent
+
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
+    q = db.query(ConvoyEvent)
+    total = q.count()
+    items = q.order_by(ConvoyEvent.start_time_utc.desc()).offset(skip).limit(limit).all()
+    return {
+        "items": [
+            {
+                "convoy_id": e.convoy_id,
+                "vessel_a_id": e.vessel_a_id,
+                "vessel_b_id": e.vessel_b_id,
+                "start_time_utc": e.start_time_utc.isoformat() if e.start_time_utc else None,
+                "end_time_utc": e.end_time_utc.isoformat() if e.end_time_utc else None,
+                "duration_hours": e.duration_hours,
+                "mean_distance_nm": e.mean_distance_nm,
+                "risk_score_component": e.risk_score_component,
+                "evidence": e.evidence_json,
+            }
+            for e in items
+        ],
+        "total": total,
+    }
+
+
 @router.get("/fleet/clusters/{cluster_id}", tags=["fleet"])
 def get_fleet_cluster(cluster_id: int, db: Session = Depends(get_db)):
     """Get details for a specific owner cluster."""
