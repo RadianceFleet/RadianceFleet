@@ -95,6 +95,8 @@ def _run_migrations() -> None:
         # Watchlist stub scoring — vessels with no AIS history
         ("vessels", "watchlist_stub_score", "INTEGER"),
         ("vessels", "watchlist_stub_breakdown", "JSON"),
+        # OSINT improvements — sanctioned terminal flag on ports
+        ("ports", "is_sanctioned", "BOOLEAN DEFAULT 0"),
     ]
 
     _col_cache: dict[str, set[str]] = {}

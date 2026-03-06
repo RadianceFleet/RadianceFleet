@@ -157,12 +157,29 @@ _RUSSIAN_OIL_TERMINALS: set[str] = {
     "Taman",          # Black Sea, crude
 }
 
+# Sanctioned Russian energy terminals — confirmed under US/EU/UK sanctions
+# Visiting these terminals is a direct indicator of shadow fleet operations.
+# Sources: OFAC Russia Energy Sector, EU Council Reg 833/2014, CSIS maritime advisories.
+_SANCTIONED_TERMINALS: set[str] = {
+    "Primorsk",          # OFAC-listed Baltic crude terminal
+    "Ust-Luga",          # OFAC-listed Baltic crude + products
+    "Novorossiysk",      # OFAC-listed Black Sea crude terminal
+    "Kavkaz",            # Kerch Strait terminal — sanctions evasion hub
+    "Tuapse",            # Black Sea products terminal
+    "Nakhodka/Kozmino",  # ESPO Pacific crude terminal
+    "De-Kastri",         # Sakhalin crude terminal
+    "Varandey",          # Arctic crude — Lukoil operated
+    "Taman",             # Black Sea crude — active shadow fleet loading point
+    "Vysotsk",           # Baltic products terminal
+}
+
 
 def seed_ports(db: Session) -> dict:
     """Insert major ports if not already present. Idempotent — skips existing by name.
 
     Sets is_eu=True for ports in EU member states (needed for legitimacy scoring).
     Sets is_russian_oil_terminal=True for major Russian crude export terminals.
+    Sets is_sanctioned=True for terminals under active OFAC/EU/UK sanctions.
     """
     from app.models.port import Port
     from shapely.geometry import Point
@@ -174,9 +191,11 @@ def seed_ports(db: Session) -> dict:
     skipped = 0
     updated_eu = 0
     updated_terminal = 0
+    updated_sanctioned = 0
     for name, country, lat, lon in MAJOR_PORTS:
         is_eu = country in _EU_COUNTRIES
         is_oil_terminal = name in _RUSSIAN_OIL_TERMINALS
+        is_sanctioned = name in _SANCTIONED_TERMINALS
         existing = db.query(Port).filter(Port.name == name).first()
         if existing:
             # Fix existing ports that should have is_eu=True
@@ -187,6 +206,10 @@ def seed_ports(db: Session) -> dict:
             if is_oil_terminal and not existing.is_russian_oil_terminal:
                 existing.is_russian_oil_terminal = True
                 updated_terminal += 1
+            # Fix existing ports that should be marked as sanctioned
+            if is_sanctioned and not existing.is_sanctioned:
+                existing.is_sanctioned = True
+                updated_sanctioned += 1
             skipped += 1
             continue
         port = Port(
@@ -196,13 +219,17 @@ def seed_ports(db: Session) -> dict:
             major_port=True,
             is_eu=is_eu,
             is_russian_oil_terminal=is_oil_terminal,
+            is_sanctioned=is_sanctioned,
         )
         db.add(port)
         inserted += 1
 
     db.commit()
     logger.info(
-        "seed_ports: inserted=%d skipped=%d updated_eu=%d updated_terminal=%d",
-        inserted, skipped, updated_eu, updated_terminal,
+        "seed_ports: inserted=%d skipped=%d updated_eu=%d updated_terminal=%d updated_sanctioned=%d",
+        inserted, skipped, updated_eu, updated_terminal, updated_sanctioned,
     )
-    return {"inserted": inserted, "skipped": skipped, "updated_eu": updated_eu, "updated_terminal": updated_terminal}
+    return {
+        "inserted": inserted, "skipped": skipped, "updated_eu": updated_eu,
+        "updated_terminal": updated_terminal, "updated_sanctioned": updated_sanctioned,
+    }
