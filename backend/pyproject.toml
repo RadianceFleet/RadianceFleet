@@ -56,6 +56,7 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-p no:xdist -p no:randomly --timeout=30"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
