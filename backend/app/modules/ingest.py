@@ -133,16 +133,19 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
             rejected += 1
             continue
         # H1: Update data freshness tracking
+        # 5C: Use source_timestamp if provided, otherwise fall back to point timestamp
         point_ts = _parse_timestamp(row)
-        if point_ts is not None:
+        source_ts_raw = row.get("source_timestamp") or row.get("source_timestamp_utc")
+        source_ts = _try_parse_ts(source_ts_raw) if source_ts_raw else point_ts
+        if source_ts is not None:
             try:
                 current = getattr(vessel, "last_ais_received_utc", None)
-                if current is None or not isinstance(current, datetime) or point_ts > current:
-                    vessel.last_ais_received_utc = point_ts
+                if current is None or not isinstance(current, datetime) or source_ts > current:
+                    vessel.last_ais_received_utc = source_ts
             except (TypeError, AttributeError):
-                vessel.last_ais_received_utc = point_ts
+                vessel.last_ais_received_utc = source_ts
         _check_sog_class_limit(vessel, row.get("sog"))
-        result = _create_ais_point(db, vessel, row)
+        result = _create_ais_point(db, vessel, row, source_timestamp=source_ts)
         if result is None:
             ignored_count += 1
             continue
@@ -255,6 +258,12 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
     return vessel
 
 
+def _try_parse_ts(value) -> datetime | None:
+    """Try to parse a timestamp value, returning None on failure."""
+    from app.modules.normalize import parse_timestamp_flexible
+    return parse_timestamp_flexible(value)
+
+
 def _parse_timestamp(row: dict) -> datetime | None:
     """Parse timestamp from row, returning None if unparseable.
 
@@ -329,7 +338,7 @@ def _track_field_change(
         ))
 
 
-def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str | None:
+def _create_ais_point(db: Session, vessel: Vessel, row: dict, *, source_timestamp: datetime | None = None) -> AISPoint | str | None:
     """Create or replace an AIS point.
 
     Returns:
@@ -364,8 +373,8 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
             draught=draught_val,
         )
         db.add(obs)
-    except Exception:
-        pass  # Don't let observation write failure block main ingestion
+    except Exception as e:
+        logger.warning("AIS observation dual-write failed for vessel %s (MMSI %s): %s", vessel.vessel_id, vessel.mmsi, e)
 
     # 1.2: SOG/COG default to None (not 0) when missing
     sog_raw = row.get("sog")
@@ -455,6 +464,7 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict) -> AISPoint | str 
         draught=draught_val,
         destination=destination_val,
         ingested_at=datetime.now(timezone.utc),
+        source_timestamp_utc=source_timestamp,
     )
     db.add(point)
 

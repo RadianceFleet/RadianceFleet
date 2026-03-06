@@ -37,5 +37,6 @@ class AISPoint(Base):
     draught: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     destination: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     ingested_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    source_timestamp_utc: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="ais_points")

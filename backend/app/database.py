@@ -97,6 +97,8 @@ def _run_migrations() -> None:
         ("vessels", "watchlist_stub_breakdown", "JSON"),
         # OSINT improvements — sanctioned terminal flag on ports
         ("ports", "is_sanctioned", "BOOLEAN DEFAULT 0"),
+        # 5C — AIS source timestamp priority
+        ("ais_points", "source_timestamp_utc", "DATETIME"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
