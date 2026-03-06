@@ -20,7 +20,10 @@ from typing import Any, Callable
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import pybreaker
+
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 from app.modules.normalize import is_non_vessel_mmsi, parse_timestamp_flexible
 
 logger = logging.getLogger(__name__)
@@ -386,6 +389,11 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
         if ts is None:
             continue
 
+        # Update data freshness tracking
+        current_ais = getattr(vessel, "last_ais_received_utc", None)
+        if current_ais is None or not isinstance(current_ais, datetime) or ts > current_ais:
+            vessel.last_ais_received_utc = ts
+
         # Skip duplicates (same vessel + timestamp)
         existing = (
             db.query(AISPoint)
@@ -517,6 +525,13 @@ async def stream_ais(
 
     while True:
         try:
+            # Check circuit breaker before attempting connection
+            if breakers["aisstream"].current_state == "open":
+                logger.warning("aisstream circuit breaker is open — skipping connection")
+                stats["error"] = "circuit breaker open"
+                stats["incomplete"] = True
+                break
+
             async with websockets.connect(ws_url) as ws:
                 # Reset retry count on successful connection
                 retry_count = 0
@@ -608,6 +623,12 @@ async def stream_ais(
                 break
 
         except (websockets.ConnectionClosed, websockets.WebSocketException, OSError) as exc:
+            # Record failure in circuit breaker
+            try:
+                breakers["aisstream"].call(lambda: (_ for _ in ()).throw(exc))
+            except (pybreaker.CircuitBreakerError, type(exc)):
+                pass
+
             # Check if time budget is exhausted
             elapsed = time.monotonic() - start_time
             if duration_seconds > 0 and elapsed >= duration_seconds:

@@ -12,10 +12,12 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import httpx
+import pybreaker
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ def fetch_digitraffic_ais(
 
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = client.get(_AIS_ENDPOINT)
+            resp = breakers["digitraffic"].call(client.get, _AIS_ENDPOINT)
             resp.raise_for_status()
             data = resp.json()
 
@@ -122,6 +124,11 @@ def fetch_digitraffic_ais(
                         if not vessel:
                             errors += 1
                             continue
+
+                # Update data freshness tracking
+                current_ais = getattr(vessel, "last_ais_received_utc", None)
+                if current_ais is None or not isinstance(current_ais, datetime) or timestamp > current_ais:
+                    vessel.last_ais_received_utc = timestamp
 
                 # Downsample: skip if we have a recent digitraffic point (< 30 min)
                 last_point = (
@@ -230,7 +237,9 @@ def fetch_digitraffic_port_calls(db: Session, mmsi: str | None = None) -> dict:
             params["vesselMmsi"] = mmsi
 
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = client.get(_PORT_CALLS_ENDPOINT, params=params)
+            resp = breakers["digitraffic"].call(
+                client.get, _PORT_CALLS_ENDPOINT, params=params
+            )
             resp.raise_for_status()
             data = resp.json()
 

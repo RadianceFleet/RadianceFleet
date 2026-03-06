@@ -218,6 +218,11 @@ def ingest_aishub_positions(
             stats["skipped"] += 1
             continue
 
+        # Update data freshness tracking
+        current_ais = getattr(vessel, "last_ais_received_utc", None)
+        if current_ais is None or not isinstance(current_ais, datetime) or ts > current_ais:
+            vessel.last_ais_received_utc = ts
+
         # Skip duplicates
         existing = (
             db.query(AISPoint)

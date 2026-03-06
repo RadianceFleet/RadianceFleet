@@ -10,10 +10,12 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 
 import httpx
+import pybreaker
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +51,8 @@ def get_barentswatch_token(
         raise ValueError("BARENTSWATCH_CLIENT_ID and BARENTSWATCH_CLIENT_SECRET required")
 
     with httpx.Client(timeout=_TIMEOUT) as client:
-        resp = client.post(
+        resp = breakers["barentswatch"].call(
+            client.post,
             url,
             data={
                 "grant_type": "client_credentials",
@@ -131,7 +134,8 @@ def fetch_barentswatch_tracks(
                         if end_date:
                             params["to"] = end_date.isoformat()
 
-                        resp = client.get(
+                        resp = breakers["barentswatch"].call(
+                            client.get,
                             f"{api_base}/v1/ais/tracks",
                             params=params,
                             headers=headers,
@@ -166,7 +170,8 @@ def fetch_barentswatch_tracks(
                 if end_date:
                     params["to"] = end_date.isoformat()
 
-                resp = client.get(
+                resp = breakers["barentswatch"].call(
+                    client.get,
                     f"{api_base}/v1/ais/latest",
                     params=params,
                     headers=headers,
@@ -267,6 +272,11 @@ def _ingest_barentswatch_feature(
                 if not vessel:
                     stats["errors"] += 1
                     return
+
+        # Update data freshness tracking
+        current_ais = getattr(vessel, "last_ais_received_utc", None)
+        if current_ais is None or not isinstance(current_ais, datetime) or timestamp > current_ais:
+            vessel.last_ais_received_utc = timestamp
 
         # Dedup
         existing = (

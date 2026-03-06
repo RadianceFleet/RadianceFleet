@@ -11,9 +11,11 @@ import logging
 import socket
 from datetime import datetime, timezone
 
+import pybreaker
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
@@ -66,9 +68,14 @@ def stream_kystverket(
             _port,
             duration_seconds,
         )
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(30)
-        sock.connect((_host, _port))
+
+        def _connect():
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(30)
+            s.connect((_host, _port))
+            return s
+
+        sock = breakers["kystverket"].call(_connect)
 
         buffer = b""
         batch: list[dict] = []
@@ -220,6 +227,12 @@ def _ingest_point(db: Session, pt: dict) -> None:
             vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
             if not vessel:
                 raise
+
+    # Update data freshness tracking
+    current_ais = getattr(vessel, "last_ais_received_utc", None)
+    pt_ts = pt["timestamp_utc"]
+    if current_ais is None or not isinstance(current_ais, datetime) or pt_ts > current_ais:
+        vessel.last_ais_received_utc = pt_ts
 
     # Dedup
     existing = (
