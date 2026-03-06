@@ -513,7 +513,7 @@ class TestStage1Integration:
         assert hasattr(s, "FEED_OUTAGE_DETECTION_ENABLED")
         assert hasattr(s, "COVERAGE_QUALITY_TAGGING_ENABLED")
         assert s.FEED_OUTAGE_DETECTION_ENABLED is True  # E6: stable detectors enabled by default
-        assert s.COVERAGE_QUALITY_TAGGING_ENABLED is False
+        assert s.COVERAGE_QUALITY_TAGGING_ENABLED is True
 
 
 class TestPartialOutageGuard:

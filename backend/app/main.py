@@ -140,20 +140,12 @@ app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
 
 app.include_router(router, prefix="/api/v1")
 
-# ── Static files + SPA fallback ──────────────────────────────────────────────
-_static_dir = Path(__file__).resolve().parent.parent / "static"
-if _static_dir.is_dir():
-    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
-    @app.get("/{full_path:path}")
-    async def spa_fallback(full_path: str):
-        """Serve index.html for any path not matched by API/health/docs routes."""
-        if full_path.startswith(("api/", "health", "docs", "openapi.json", "redoc")):
-            return JSONResponse(status_code=404, content={"detail": "Not found"})
-        index = _static_dir / "index.html"
-        if index.exists():
-            return FileResponse(str(index))
-        return JSONResponse(status_code=404, content={"detail": "Frontend not built"})
+@app.get("/health")
+def health() -> dict:
+    from app.modules.circuit_breakers import get_circuit_states
+
+    return {"status": "ok", "version": "0.1.0", "circuit_breakers": get_circuit_states()}
 
 
 # ── Structured error handlers ─────────────────────────────────────────────────
@@ -174,8 +166,17 @@ async def general_error_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": "Internal server error", "detail": "An unexpected error occurred."})
 
 
-@app.get("/health")
-def health() -> dict:
-    from app.modules.circuit_breakers import get_circuit_states
+# ── Static files + SPA fallback ──────────────────────────────────────────────
+_static_dir = Path(__file__).resolve().parent.parent / "static"
+if _static_dir.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
-    return {"status": "ok", "version": "0.1.0", "circuit_breakers": get_circuit_states()}
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        """Serve index.html for any path not matched by API/health/docs routes."""
+        if full_path.startswith(("api/", "health", "docs", "openapi.json", "redoc")):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        index = _static_dir / "index.html"
+        if index.exists():
+            return FileResponse(str(index))
+        return JSONResponse(status_code=404, content={"detail": "Frontend not built"})

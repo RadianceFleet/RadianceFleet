@@ -489,13 +489,13 @@ class TestIntegration:
         assert s.TRACK_REPLAY_DETECTION_ENABLED is False
         assert s.TRACK_REPLAY_SCORING_ENABLED is False
 
-    def test_feature_flags_default_false(self):
+    def test_feature_flags_default_true(self):
         from app.config import Settings
         s = Settings(_env_file=None)
-        assert s.SCRAPPED_REGISTRY_DETECTION_ENABLED is False
-        assert s.SCRAPPED_REGISTRY_SCORING_ENABLED is False
-        assert s.TRACK_REPLAY_DETECTION_ENABLED is False
-        assert s.TRACK_REPLAY_SCORING_ENABLED is False
+        assert s.SCRAPPED_REGISTRY_DETECTION_ENABLED is True
+        assert s.SCRAPPED_REGISTRY_SCORING_ENABLED is True
+        assert s.TRACK_REPLAY_DETECTION_ENABLED is True
+        assert s.TRACK_REPLAY_SCORING_ENABLED is True
 
     def test_yaml_sections_exist(self):
         import yaml

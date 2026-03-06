@@ -535,6 +535,7 @@ def test_vlcc_in_sts_zone_with_legitimacy():
         duration_minutes=6 * 60,
         corridor_type="sts_zone",
         deadweight=250_000,
+        mmsi_first_seen_utc=datetime(2025, 1, 1),  # well before gap_start → bypass data completeness cap
     )
     mock_db = _make_full_mock_db(recent_gap_count=0, all_class_a=True)
     score, bd = compute_gap_score(gap, config, db=mock_db)

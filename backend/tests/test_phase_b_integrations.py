@@ -490,7 +490,7 @@ class TestConfigSettings:
         from app.config import Settings
 
         s = Settings(DATABASE_URL="sqlite:///test.db", _env_file=None)
-        assert s.KYSTVERKET_ENABLED is False
+        assert s.KYSTVERKET_ENABLED is True
         assert s.KYSTVERKET_HOST == "153.44.253.27"
         assert s.KYSTVERKET_PORT == 5631
 
@@ -498,11 +498,11 @@ class TestConfigSettings:
         from app.config import Settings
 
         s = Settings(DATABASE_URL="sqlite:///test.db", _env_file=None)
-        assert s.DIGITRAFFIC_ENABLED is False
+        assert s.DIGITRAFFIC_ENABLED is True
 
     def test_crea_defaults(self):
         from app.config import Settings
 
         s = Settings(DATABASE_URL="sqlite:///test.db", _env_file=None)
-        assert s.CREA_ENABLED is False
+        assert s.CREA_ENABLED is True
         assert s.CREA_API_BASE_URL == "https://api.russiafossiltracker.com"

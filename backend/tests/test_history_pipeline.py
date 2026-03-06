@@ -846,16 +846,22 @@ class TestCLIHistory:
                 assert "2024-03-01" in result.output
 
     def test_history_backfill_records_coverage(self):
-        """'history backfill' calls _call_source and records coverage."""
+        """'history backfill' calls fetch_and_import_noaa for noaa source."""
         from typer.testing import CliRunner
         from app.cli import app as cli_app
 
         runner = CliRunner()
+        mock_stats = {
+            "dates_downloaded": 31,
+            "dates_attempted": 31,
+            "total_accepted": 100,
+            "dates_failed": [],
+        }
         with patch("app.database.SessionLocal") as mock_sl:
             mock_db = MagicMock()
             mock_sl.return_value = mock_db
-            with patch("app.modules.history_scheduler.HistoryScheduler._call_source",
-                       return_value={"points": 100}) as mock_call:
+            with patch("app.modules.noaa_client.fetch_and_import_noaa",
+                       return_value=mock_stats) as mock_call:
                 result = runner.invoke(cli_app, [
                     "history", "backfill",
                     "--source", "noaa",
@@ -864,4 +870,4 @@ class TestCLIHistory:
                 ])
                 assert result.exit_code == 0
                 mock_call.assert_called_once()
-                assert "complete" in result.output.lower() or "Result" in result.output
+                assert "100" in result.output or "imported" in result.output.lower()

@@ -545,8 +545,8 @@ class TestConfigIntegration:
         s = Settings()
         assert hasattr(s, "CONVOY_DETECTION_ENABLED")
         assert hasattr(s, "CONVOY_SCORING_ENABLED")
-        assert s.CONVOY_DETECTION_ENABLED is False
-        assert s.CONVOY_SCORING_ENABLED is False
+        assert s.CONVOY_DETECTION_ENABLED is True
+        assert s.CONVOY_SCORING_ENABLED is True
 
     def test_convoy_in_expected_sections(self):
         """convoy should be listed in _EXPECTED_SECTIONS."""

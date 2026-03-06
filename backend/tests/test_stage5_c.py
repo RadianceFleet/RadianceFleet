@@ -615,29 +615,29 @@ class TestWeatherCorrelation:
 
 class TestFeatureFlags:
 
-    def test_voyage_prediction_flag_default_false(self):
-        """VOYAGE_PREDICTION_ENABLED defaults to False."""
+    def test_voyage_prediction_flag_default_true(self):
+        """VOYAGE_PREDICTION_ENABLED defaults to True."""
         from app.config import Settings
         s = Settings()
-        assert s.VOYAGE_PREDICTION_ENABLED is False
+        assert s.VOYAGE_PREDICTION_ENABLED is True
 
-    def test_voyage_scoring_flag_default_false(self):
-        """VOYAGE_SCORING_ENABLED defaults to False."""
+    def test_voyage_scoring_flag_default_true(self):
+        """VOYAGE_SCORING_ENABLED defaults to True."""
         from app.config import Settings
         s = Settings()
-        assert s.VOYAGE_SCORING_ENABLED is False
+        assert s.VOYAGE_SCORING_ENABLED is True
 
-    def test_cargo_inference_flag_default_false(self):
-        """CARGO_INFERENCE_ENABLED defaults to False."""
+    def test_cargo_inference_flag_default_true(self):
+        """CARGO_INFERENCE_ENABLED defaults to True."""
         from app.config import Settings
         s = Settings()
-        assert s.CARGO_INFERENCE_ENABLED is False
+        assert s.CARGO_INFERENCE_ENABLED is True
 
-    def test_weather_correlation_flag_default_false(self):
-        """WEATHER_CORRELATION_ENABLED defaults to False."""
+    def test_weather_correlation_flag_default_true(self):
+        """WEATHER_CORRELATION_ENABLED defaults to True."""
         from app.config import Settings
         s = Settings()
-        assert s.WEATHER_CORRELATION_ENABLED is False
+        assert s.WEATHER_CORRELATION_ENABLED is True
 
 
 # ──────────────────────────────────────────────────────────────────────────────

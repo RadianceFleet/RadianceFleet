@@ -112,7 +112,8 @@ class TestFetchOfacSdn:
         client.__enter__ = MagicMock(return_value=client)
         client.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.modules.data_fetcher.httpx.Client", return_value=client):
+        with patch("app.modules.data_fetcher.httpx.Client", return_value=client), \
+             patch("time.sleep"):
             result = fetch_ofac_sdn(tmp_data_dir)
 
         assert result["status"] == "error"
@@ -126,7 +127,8 @@ class TestFetchOfacSdn:
         response = _mock_stream_response(b"", status_code=500)
         client = _mock_client(response)
 
-        with patch("app.modules.data_fetcher.httpx.Client", return_value=client):
+        with patch("app.modules.data_fetcher.httpx.Client", return_value=client), \
+             patch("time.sleep"):
             result = fetch_ofac_sdn(tmp_data_dir)
 
         assert result["status"] == "error"
@@ -364,7 +366,8 @@ class TestTimeout:
         client.__enter__ = MagicMock(return_value=client)
         client.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.modules.data_fetcher.httpx.Client", return_value=client):
+        with patch("app.modules.data_fetcher.httpx.Client", return_value=client), \
+             patch("time.sleep"):
             result = fetch_ofac_sdn(tmp_data_dir)
 
         assert result["status"] == "error"

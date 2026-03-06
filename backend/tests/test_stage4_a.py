@@ -177,19 +177,19 @@ class TestMergeChainModel:
 # ---------------------------------------------------------------------------
 
 class TestFeatureFlags:
-    """Test config flags exist and default to False."""
+    """Test config flags exist and default to True."""
 
     def test_merge_chain_detection_flag_exists(self):
         from app.config import Settings
         s = Settings(DATABASE_URL="sqlite:///test.db")
         assert hasattr(s, "MERGE_CHAIN_DETECTION_ENABLED")
-        assert s.MERGE_CHAIN_DETECTION_ENABLED is False
+        assert s.MERGE_CHAIN_DETECTION_ENABLED is True
 
     def test_merge_chain_scoring_flag_exists(self):
         from app.config import Settings
         s = Settings(DATABASE_URL="sqlite:///test.db")
         assert hasattr(s, "MERGE_CHAIN_SCORING_ENABLED")
-        assert s.MERGE_CHAIN_SCORING_ENABLED is False
+        assert s.MERGE_CHAIN_SCORING_ENABLED is True
 
 
 # ---------------------------------------------------------------------------

@@ -255,17 +255,8 @@ class TestE6DefaultDetectorFlags:
     ]
 
     _SHOULD_REMAIN_DISABLED = [
-        "TRACK_NATURALNESS_ENABLED",
-        "TRACK_NATURALNESS_SCORING_ENABLED",
-        "FINGERPRINT_SCORING_ENABLED",
-        "SAR_CORRELATION_ENABLED",
-        "SAR_CORRELATION_SCORING_ENABLED",
-        "WEATHER_CORRELATION_ENABLED",
-        "DARK_STS_DETECTION_ENABLED",
-        "DARK_STS_SCORING_ENABLED",
-        "CARGO_INFERENCE_ENABLED",
-        "DESTINATION_DETECTION_ENABLED",
-        "DESTINATION_SCORING_ENABLED",
+        # All previously experimental flags have been intentionally enabled;
+        # this list is now empty but kept for future experimental detectors.
     ]
 
     def test_stable_detectors_enabled_by_default(self):

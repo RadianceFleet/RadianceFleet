@@ -84,10 +84,12 @@ class TestD1FlagLessThan2yHighRisk:
         # Set up query chain for the flag_less_than_2y_AND_high_risk check
         # We need the db.query().filter().order_by().first() to return flag_change
         db.query.return_value.filter.return_value.order_by.return_value.first.return_value = flag_change
-        # Other query chains return empty to avoid side effects
+        # Other query chains return empty/None to avoid side effects
+        db.query.return_value.filter.return_value.first.return_value = None
         db.query.return_value.filter.return_value.all.return_value = []
         db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
         db.query.return_value.filter.return_value.count.return_value = 0
+        db.query.return_value.filter.return_value.scalar.return_value = 0
 
         scoring_date = datetime(2026, 1, 15, 12, 0)
         score, breakdown = compute_gap_score(
@@ -106,9 +108,11 @@ class TestD1FlagLessThan2yHighRisk:
 
         db = MagicMock()
         db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        db.query.return_value.filter.return_value.first.return_value = None
         db.query.return_value.filter.return_value.all.return_value = []
         db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
         db.query.return_value.filter.return_value.count.return_value = 0
+        db.query.return_value.filter.return_value.scalar.return_value = 0
 
         scoring_date = datetime(2026, 1, 15, 12, 0)
         score, breakdown = compute_gap_score(
@@ -131,9 +135,11 @@ class TestD1FlagLessThan2yHighRisk:
         old_flag_change.field_changed = "flag"
 
         db.query.return_value.filter.return_value.order_by.return_value.first.return_value = old_flag_change
+        db.query.return_value.filter.return_value.first.return_value = None
         db.query.return_value.filter.return_value.all.return_value = []
         db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
         db.query.return_value.filter.return_value.count.return_value = 0
+        db.query.return_value.filter.return_value.scalar.return_value = 0
 
         scoring_date = datetime(2026, 1, 15, 12, 0)
         score, breakdown = compute_gap_score(

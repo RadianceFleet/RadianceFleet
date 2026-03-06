@@ -133,27 +133,27 @@ class TestFeatureFlags:
     def test_route_laundering_flags(self):
         from app.config import Settings
         s = Settings(_env_file=None)
-        assert s.ROUTE_LAUNDERING_DETECTION_ENABLED is False
-        assert s.ROUTE_LAUNDERING_SCORING_ENABLED is False
+        assert s.ROUTE_LAUNDERING_DETECTION_ENABLED is True
+        assert s.ROUTE_LAUNDERING_SCORING_ENABLED is True
         assert s.ROUTE_LAUNDERING_LOOKBACK_DAYS == 180
 
     def test_pi_cycling_flags(self):
         from app.config import Settings
         s = Settings(_env_file=None)
-        assert s.PI_CYCLING_DETECTION_ENABLED is False
-        assert s.PI_CYCLING_SCORING_ENABLED is False
+        assert s.PI_CYCLING_DETECTION_ENABLED is True
+        assert s.PI_CYCLING_SCORING_ENABLED is True
 
     def test_sparse_transmission_flags(self):
         from app.config import Settings
         s = Settings(_env_file=None)
-        assert s.SPARSE_TRANSMISSION_DETECTION_ENABLED is False
-        assert s.SPARSE_TRANSMISSION_SCORING_ENABLED is False
+        assert s.SPARSE_TRANSMISSION_DETECTION_ENABLED is True
+        assert s.SPARSE_TRANSMISSION_SCORING_ENABLED is True
 
     def test_type_consistency_flags(self):
         from app.config import Settings
         s = Settings(_env_file=None)
-        assert s.TYPE_CONSISTENCY_DETECTION_ENABLED is False
-        assert s.TYPE_CONSISTENCY_SCORING_ENABLED is False
+        assert s.TYPE_CONSISTENCY_DETECTION_ENABLED is True
+        assert s.TYPE_CONSISTENCY_SCORING_ENABLED is True
 
 
 # ═══════════════════════════════════════════════════════════════════════════

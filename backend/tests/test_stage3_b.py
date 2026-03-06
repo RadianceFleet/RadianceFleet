@@ -416,13 +416,13 @@ class TestConfigIntegration:
         assert s.STS_CHAIN_DETECTION_ENABLED is True
         assert s.STS_CHAIN_SCORING_ENABLED is True
 
-    def test_feature_flags_default_false(self):
-        """Feature flags default to False."""
+    def test_feature_flags_default_true(self):
+        """Feature flags default to True (intentionally enabled)."""
         from app.config import Settings
 
         s = Settings(_env_file=None)
-        assert s.STS_CHAIN_DETECTION_ENABLED is False
-        assert s.STS_CHAIN_SCORING_ENABLED is False
+        assert s.STS_CHAIN_DETECTION_ENABLED is True
+        assert s.STS_CHAIN_SCORING_ENABLED is True
 
     def test_yaml_section_exists(self):
         """risk_scoring.yaml has an sts_chains section."""
@@ -458,10 +458,10 @@ class TestScoringIntegration:
     def test_scoring_disabled_by_default(self, mock_settings):
         """When STS_CHAIN_SCORING_ENABLED=False, no chain scoring is applied."""
         mock_settings.STS_CHAIN_SCORING_ENABLED = False
-        # This test verifies the flag exists and defaults to False
+        # This test verifies the flag exists and defaults to True
         from app.config import Settings
         s = Settings(_env_file=None)
-        assert s.STS_CHAIN_SCORING_ENABLED is False
+        assert s.STS_CHAIN_SCORING_ENABLED is True
 
 
 # ---------------------------------------------------------------------------

@@ -579,6 +579,23 @@ def rescore():
         db.close()
 
 
+@app.command("score-stubs")
+def score_stubs():
+    """Score watchlist stub vessels (no AIS history)."""
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        from app.modules.risk_scoring import score_watchlist_stubs
+        with console.status("[bold]Scoring watchlist stubs..."):
+            result = score_watchlist_stubs(db)
+        console.print(
+            f"[green]Stub scoring complete:[/green] "
+            f"scored={result.get('scored', 0)} cleared={result.get('cleared', 0)}"
+        )
+    finally:
+        db.close()
+
 
 
 @app.command("evaluate-detector")

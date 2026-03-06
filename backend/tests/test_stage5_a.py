@@ -371,8 +371,8 @@ class TestConfig:
         s = Settings()
         assert hasattr(s, "OWNERSHIP_GRAPH_ENABLED")
         assert hasattr(s, "OWNERSHIP_GRAPH_SCORING_ENABLED")
-        assert s.OWNERSHIP_GRAPH_ENABLED is False
-        assert s.OWNERSHIP_GRAPH_SCORING_ENABLED is False
+        assert s.OWNERSHIP_GRAPH_ENABLED is True
+        assert s.OWNERSHIP_GRAPH_SCORING_ENABLED is True
 
 
 # ---------------------------------------------------------------------------

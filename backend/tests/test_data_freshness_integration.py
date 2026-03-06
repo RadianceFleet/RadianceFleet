@@ -93,19 +93,17 @@ class TestStatsDataFreshness:
 class TestIngestionStatus:
     """GET /api/v1/ingestion-status tracks whether data is flowing."""
 
-    def test_ingestion_status_idle(self, api_client, mock_db):
+    def test_ingestion_status_ok(self, api_client, mock_db):
         resp = api_client.get("/api/v1/ingestion-status")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "idle"
+        assert data["status"] == "ok"
 
     def test_ingestion_status_has_required_fields(self, api_client, mock_db):
         resp = api_client.get("/api/v1/ingestion-status")
         data = resp.json()
         assert "status" in data
-        assert "processed" in data
-        assert "accepted" in data
-        assert "rejected" in data
+        assert "sources" in data
 
 
 # ---------------------------------------------------------------------------

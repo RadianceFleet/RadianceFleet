@@ -401,14 +401,14 @@ class TestFeatureFlags:
         from app.config import Settings
         s = Settings(DATABASE_URL="sqlite:///test.db")
         assert hasattr(s, "SAR_CORRELATION_ENABLED")
-        assert s.SAR_CORRELATION_ENABLED is False
+        assert s.SAR_CORRELATION_ENABLED is True
 
     def test_config_has_sar_correlation_scoring_enabled(self):
         """Config class should have SAR_CORRELATION_SCORING_ENABLED field."""
         from app.config import Settings
         s = Settings(DATABASE_URL="sqlite:///test.db")
         assert hasattr(s, "SAR_CORRELATION_SCORING_ENABLED")
-        assert s.SAR_CORRELATION_SCORING_ENABLED is False
+        assert s.SAR_CORRELATION_SCORING_ENABLED is True
 
 
 # ── Pipeline Wiring Tests ────────────────────────────────────────────────────
