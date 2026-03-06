@@ -16,6 +16,10 @@ import { DetectionPanel } from './pages/DetectionPanel'
 import { DarkVesselsPage } from './pages/DarkVesselsPage'
 import { MergeCandidatesPage } from './pages/MergeCandidatesPage'
 import { DonatePage } from './pages/DonatePage'
+import { FleetAnalysisPage } from './pages/FleetAnalysisPage'
+import { OwnershipGraphPage } from './pages/OwnershipGraphPage'
+import { DetectorResultsPage } from './pages/DetectorResultsPage'
+import { VoyagePredictionPage } from './pages/VoyagePredictionPage'
 
 export default function App() {
   return (
@@ -28,11 +32,15 @@ export default function App() {
             <Route path="alerts/:id" element={<AlertDetail />} />
             <Route path="vessels" element={<VesselSearchPage />} />
             <Route path="vessels/:id" element={<VesselDetailPage />} />
+            <Route path="vessels/:id/detectors" element={<DetectorResultsPage />} />
+            <Route path="vessels/:id/voyage" element={<VoyagePredictionPage />} />
             <Route path="map" element={<MapOverviewPage />} />
             <Route path="sts-events" element={<StsEventsPage />} />
             <Route path="corridors" element={<CorridorsPage />} />
             <Route path="corridors/:id" element={<CorridorDetailPage />} />
             <Route path="watchlist" element={<WatchlistPage />} />
+            <Route path="fleet" element={<FleetAnalysisPage />} />
+            <Route path="ownership" element={<OwnershipGraphPage />} />
             <Route path="ingest" element={<IngestionPage />} />
             <Route path="dark-vessels" element={<DarkVesselsPage />} />
             <Route path="merge-candidates" element={<MergeCandidatesPage />} />
