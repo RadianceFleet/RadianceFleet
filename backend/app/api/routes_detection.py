@@ -629,7 +629,7 @@ def get_dark_vessel(detection_id: int, db: Session = Depends(get_db)):
 # ─── Vessel Hunt (FR9) ────────────────────────────────────────────────────────
 
 @router.get("/hunt/targets", tags=["hunt"], response_model=list[VesselTargetProfileRead])
-def list_hunt_targets(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+def list_hunt_targets(skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)):
     """List all hunt target profiles."""
     from app.models.stubs import VesselTargetProfile
     return db.query(VesselTargetProfile).offset(skip).limit(limit).all()
@@ -705,6 +705,9 @@ def create_hunt_mission(body: SearchMissionCreateRequest, request: Request, db: 
     """Create a search mission for a target profile."""
     from app.models.stubs import VesselTargetProfile, SearchMission
 
+    if body.search_end_utc <= body.search_start_utc:
+        raise HTTPException(status_code=400, detail="search_end_utc must be after search_start_utc")
+
     profile = db.query(VesselTargetProfile).filter(
         VesselTargetProfile.profile_id == body.target_profile_id
     ).first()
@@ -741,8 +744,8 @@ def analyze_hunt_mission(mission_id: int, request: Request, db: Session = Depend
     try:
         from app.modules.vessel_hunt import find_hunt_candidates
         candidates = find_hunt_candidates(db, mission)
-    except (ImportError, AttributeError):
-        pass
+    except ImportError:
+        logger.warning("vessel_hunt module not available, returning empty candidates")
 
     return {"items": candidates, "total": len(candidates)}
 
@@ -761,6 +764,8 @@ def finalize_hunt_mission(
     ).first()
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
+    if getattr(mission, "status", None) == "finalized":
+        raise HTTPException(status_code=409, detail="Mission already finalized")
 
     candidate = db.query(HuntCandidate).filter(
         HuntCandidate.candidate_id == body.candidate_id,
