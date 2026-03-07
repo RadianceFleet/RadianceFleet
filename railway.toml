@@ -1,23 +1,11 @@
-# Railway deployment configuration
-# See: https://docs.railway.app/reference/config-as-code
+# Railway deployment configuration (single service — cron configured via dashboard)
+# See: https://docs.railway.com/reference/config-as-code
 
 [build]
-builder = "nixpacks"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
-[[services]]
-name = "web"
-source = "backend"
-
-[services.deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers"
+[deploy]
+startCommand = "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
-
-[[services]]
-name = "cron"
-source = "backend"
-
-[services.deploy]
-# Runs every 4 hours: fetch watchlists + AIS data + run detection + send email notifications
-cronSchedule = "0 */4 * * *"
-startCommand = "radiancefleet update --stream-time 1h"

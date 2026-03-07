@@ -47,7 +47,7 @@ if settings.SENTRY_DSN:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Validate risk_scoring.yaml at startup."""
-    config_path = Path(__file__).resolve().parent.parent.parent / "config" / "risk_scoring.yaml"
+    config_path = Path(settings.RISK_SCORING_CONFIG)
     if not config_path.exists():
         logger.critical("FATAL: config/risk_scoring.yaml not found at %s", config_path)
         sys.exit(1)
