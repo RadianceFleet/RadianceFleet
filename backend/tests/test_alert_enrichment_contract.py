@@ -36,6 +36,9 @@ class TestAlertDetailContract:
         alert.in_dark_zone = False
         alert.start_point_id = 100
         alert.end_point_id = 101
+        alert.is_false_positive = None
+        alert.reviewed_by = None
+        alert.review_date = None
 
         vessel = MagicMock()
         vessel.name = "SHADOW TANKER"
@@ -230,6 +233,9 @@ class TestAlertDetailNullFields:
         alert.in_dark_zone = False
         alert.start_point_id = None
         alert.end_point_id = None
+        alert.is_false_positive = None
+        alert.reviewed_by = None
+        alert.review_date = None
 
         # corridor_id is None, start_point_id is None, end_point_id is None
         # so the route skips corridor, AISPoint queries.
@@ -285,6 +291,9 @@ class TestAlertDetailPerformance:
         alert.in_dark_zone = False
         alert.start_point_id = None
         alert.end_point_id = None
+        alert.is_false_positive = None
+        alert.reviewed_by = None
+        alert.review_date = None
 
         call_count = [0]
 

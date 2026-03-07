@@ -78,6 +78,18 @@ export function useUpdateAlertNotes(id: string) {
   })
 }
 
+export function useSubmitAlertVerdict(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { verdict: string; reason?: string; reviewed_by?: string }) =>
+      apiFetch(`/alerts/${id}/verdict`, { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['alert', id] })
+      qc.invalidateQueries({ queryKey: ['alerts'] })
+    },
+  })
+}
+
 export function useBulkUpdateAlertStatus() {
   const qc = useQueryClient()
   return useMutation({

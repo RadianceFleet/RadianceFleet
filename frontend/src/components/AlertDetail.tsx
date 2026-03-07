@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useAlert, useUpdateAlertStatus, useUpdateAlertNotes } from '../hooks/useAlerts'
+import { useAlert, useUpdateAlertStatus, useUpdateAlertNotes, useSubmitAlertVerdict } from '../hooks/useAlerts'
 import { AlertMap } from './AlertMap'
 import { ScoreBreakdown } from './ScoreBreakdown'
 import { Spinner } from './ui/Spinner'
@@ -17,6 +17,7 @@ export function AlertDetail() {
   const { data: alert, isLoading, error } = useAlert(id)
   const statusMutation = useUpdateAlertStatus(id ?? '')
   const notesMutation = useUpdateAlertNotes(id ?? '')
+  const verdictMutation = useSubmitAlertVerdict(id ?? '')
 
   if (isLoading) return <Spinner text="Loading alert…" />
   if (error || !alert) {
@@ -226,6 +227,10 @@ export function AlertDetail() {
         analystNotes={alert.analyst_notes}
         statusMutation={statusMutation}
         notesMutation={notesMutation}
+        is_false_positive={alert.is_false_positive}
+        reviewed_by={alert.reviewed_by}
+        review_date={alert.review_date}
+        verdictMutation={verdictMutation}
       />
 
       {/* Extracted: export + satellite check actions */}

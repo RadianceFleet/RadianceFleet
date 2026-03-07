@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStsEvents } from '../hooks/useStsEvents'
 import { useStsValidation } from '../hooks/useStsValidation'
+import { useStsChains } from '../hooks/useStsChains'
+import { StsChainDiagram } from '../components/charts/StsChainDiagram'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -17,13 +19,71 @@ const headStyle: React.CSSProperties = {
   textAlign: 'left' as const,
   borderBottom: '1px solid var(--border)',
 }
+const tabStyle = (active: boolean): React.CSSProperties => ({
+  padding: '0.5rem 1rem',
+  cursor: 'pointer',
+  borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+  color: active ? 'var(--accent)' : 'var(--text-muted)',
+  background: 'none',
+  border: 'none',
+  fontSize: '0.875rem',
+  fontWeight: active ? 600 : 400,
+})
 
 function formatTimestamp(ts: string | null | undefined): string {
   if (!ts) return '-'
   return ts.slice(0, 16).replace('T', ' ')
 }
 
+type Tab = 'events' | 'chains'
+
 export function StsEventsPage() {
+  const [tab, setTab] = useState<Tab>('events')
+
+  return (
+    <div style={{ maxWidth: 1100 }}>
+      <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', color: 'var(--text-muted)' }}>
+        STS Transfer Events
+      </h2>
+
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
+        <button style={tabStyle(tab === 'events')} onClick={() => setTab('events')}>Events</button>
+        <button style={tabStyle(tab === 'chains')} onClick={() => setTab('chains')}>Chains</button>
+      </div>
+
+      {tab === 'events' && <EventsTab />}
+      {tab === 'chains' && <ChainsTab />}
+    </div>
+  )
+}
+
+function ChainsTab() {
+  const [page, setPage] = useState(0)
+  const { data, isLoading, error } = useStsChains({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const chains = data?.items ?? []
+  const total = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  return (
+    <Card>
+      {isLoading && <Spinner text="Loading STS chains..." />}
+      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load STS chains</p>}
+      {chains.length === 0 && !isLoading && !error && (
+        <EmptyState title="No STS relay chains" description="Relay chain alerts will appear here once detected" />
+      )}
+      {chains.length > 0 && (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <StsChainDiagram chains={chains} />
+          </div>
+          <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} label="chains" />
+        </>
+      )}
+    </Card>
+  )
+}
+
+function EventsTab() {
   const [page, setPage] = useState(0)
   const { data, isLoading, error } = useStsEvents({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const validation = useStsValidation()
@@ -32,12 +92,7 @@ export function StsEventsPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   return (
-    <div style={{ maxWidth: 1100 }}>
-      <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', color: 'var(--text-muted)' }}>
-        STS Transfer Events
-      </h2>
-
-      <Card>
+    <Card>
         {isLoading && <Spinner text="Loading STS events..." />}
         {error && (
           <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>
@@ -176,6 +231,5 @@ export function StsEventsPage() {
           </>
         )}
       </Card>
-    </div>
   )
 }

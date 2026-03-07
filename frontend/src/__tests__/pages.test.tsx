@@ -42,6 +42,29 @@ vi.mock('../hooks/useStsEvents', () => ({
   useStsEvents: () => ({ data: { items: [], total: 0 }, isLoading: false, error: null }),
 }))
 
+vi.mock('../hooks/useStsValidation', () => ({
+  useStsValidation: () => ({ mutate: vi.fn(), isPending: false }),
+}))
+
+vi.mock('../hooks/useValidation', () => ({
+  useValidation: () => ({ data: null, isLoading: false, error: null }),
+  useValidationSignals: () => ({ data: null, isLoading: false, error: null }),
+  useValidationSweep: () => ({ data: null, isLoading: false, error: null }),
+  useAnalystMetrics: () => ({ data: null, isLoading: false, error: null }),
+}))
+
+vi.mock('../hooks/useGlobalDetections', () => ({
+  useGlobalSpoofing: () => ({ data: { items: [], total: 0 }, isLoading: false, error: null }),
+}))
+
+vi.mock('../hooks/useStsChains', () => ({
+  useStsChains: () => ({ data: { items: [], total: 0 }, isLoading: false, error: null }),
+}))
+
+vi.mock('../hooks/useLoitering', () => ({
+  useGlobalLoitering: () => ({ data: { items: [], total: 0 }, isLoading: false, error: null }),
+}))
+
 vi.mock('../hooks/useDarkVessels', () => ({
   useDarkVessels: () => ({ data: { items: [], total: 0 }, isLoading: false, error: null }),
 }))
@@ -111,6 +134,8 @@ import { DonatePage } from '../pages/DonatePage'
 import { FleetAnalysisPage } from '../pages/FleetAnalysisPage'
 import { OwnershipGraphPage } from '../pages/OwnershipGraphPage'
 import { MapOverviewPage } from '../pages/MapOverviewPage'
+import { AccuracyDashboardPage } from '../pages/AccuracyDashboardPage'
+import { GlobalDetectionsPage } from '../pages/GlobalDetectionsPage'
 import { AlertListPage } from '../components/AlertList'
 
 describe('Page smoke tests', () => {
@@ -186,5 +211,15 @@ describe('Page smoke tests', () => {
   it('MapOverviewPage renders', () => {
     renderWithProviders(<MapOverviewPage />)
     expect(screen.getByTestId('map')).toBeInTheDocument()
+  })
+
+  it('AccuracyDashboardPage renders', () => {
+    renderWithProviders(<AccuracyDashboardPage />)
+    expect(screen.getByText(/Accuracy/i)).toBeInTheDocument()
+  })
+
+  it('GlobalDetectionsPage renders', () => {
+    renderWithProviders(<GlobalDetectionsPage />)
+    expect(screen.getByText(/Detections/i)).toBeInTheDocument()
   })
 })

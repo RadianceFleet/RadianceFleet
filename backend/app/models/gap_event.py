@@ -56,6 +56,11 @@ class AISGapEvent(Base):
     # Coverage quality tag from corridor metadata (GOOD/MODERATE/PARTIAL/POOR/NONE/UNKNOWN)
     coverage_quality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
+    # Analyst verdict fields
+    is_false_positive: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    reviewed_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="gap_events")
     corridor: Mapped[Optional["Corridor"]] = relationship("Corridor", back_populates="gap_events")
     start_point: Mapped[Optional["AISPoint"]] = relationship(

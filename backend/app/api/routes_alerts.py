@@ -370,6 +370,9 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
         sts_events=sts_list,
         prior_similar_count=prior_count,
         is_recurring_pattern=prior_count >= 3,
+        is_false_positive=alert.is_false_positive,
+        reviewed_by=alert.reviewed_by,
+        review_date=alert.review_date,
     )
 
 
@@ -406,6 +409,48 @@ def update_alert_status(
                {"old_status": old_status, "new_status": body.status, "reason": body.reason}, request)
     db.commit()
     return {"status": "ok", "new_status": body.status}
+
+
+@router.post("/alerts/{alert_id}/verdict", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def submit_alert_verdict(
+    request: Request,
+    alert_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """Record analyst verdict (confirmed true-positive or false-positive)."""
+    from app.models.gap_event import AISGapEvent
+    from app.schemas.gap_event import AlertVerdictRequest
+
+    body = AlertVerdictRequest(**body)
+
+    valid_verdicts = {"confirmed_tp", "confirmed_fp"}
+    if body.verdict not in valid_verdicts:
+        raise HTTPException(status_code=400, detail=f"Invalid verdict. Must be one of: {sorted(valid_verdicts)}")
+
+    alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.is_false_positive = body.verdict == "confirmed_fp"
+    alert.reviewed_by = body.reviewed_by
+    alert.review_date = datetime.now(timezone.utc)
+    alert.status = body.verdict
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    verdict_note = f"[{timestamp}] Verdict: {body.verdict}"
+    if body.reason:
+        verdict_note += f" — {body.reason}"
+    if body.reviewed_by:
+        verdict_note += f" (by {body.reviewed_by})"
+    existing_notes = alert.analyst_notes or ""
+    alert.analyst_notes = f"{existing_notes}\n{verdict_note}".strip()
+
+    _audit_log(db, "verdict", "alert", alert_id,
+               {"verdict": body.verdict, "reason": body.reason, "reviewed_by": body.reviewed_by}, request)
+    db.commit()
+    return {"status": "ok", "verdict": body.verdict, "is_false_positive": alert.is_false_positive}
 
 
 @router.post("/alerts/{alert_id}/notes", tags=["alerts"])

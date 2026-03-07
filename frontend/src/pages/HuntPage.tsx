@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useHuntTargets, useHuntMissions, useHuntCandidates } from '../hooks/useHunt'
+import { useHuntTargets, useHuntMissions, useHuntCandidates, useAnalyzeHuntMission, useFinalizeHuntMission } from '../hooks/useHunt'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
 import { Pagination } from '../components/ui/Pagination'
+import { CreateTargetModal } from '../components/hunt/CreateTargetModal'
+import { CreateMissionModal } from '../components/hunt/CreateMissionModal'
 
 const PAGE_SIZE = 20
 
@@ -31,11 +33,22 @@ function formatTimestamp(ts: string | null | undefined): string {
   return ts.slice(0, 16).replace('T', ' ')
 }
 
+const btnBase: React.CSSProperties = {
+  padding: '0.375rem 0.75rem',
+  fontSize: '0.8125rem',
+  fontWeight: 600,
+  borderRadius: 'var(--radius)',
+  cursor: 'pointer',
+  border: 'none',
+}
+
 type Tab = 'targets' | 'missions'
 
 export function HuntPage() {
   const [tab, setTab] = useState<Tab>('missions')
   const [selectedMissionId, setSelectedMissionId] = useState<number | null>(null)
+  const [showTargetModal, setShowTargetModal] = useState(false)
+  const [showMissionModal, setShowMissionModal] = useState(false)
 
   return (
     <div style={{ maxWidth: 1100 }}>
@@ -47,15 +60,36 @@ export function HuntPage() {
         <MissionDetail missionId={selectedMissionId} onBack={() => setSelectedMissionId(null)} />
       ) : (
         <>
-          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
-            <button style={tabStyle(tab === 'missions')} onClick={() => setTab('missions')}>Missions</button>
-            <button style={tabStyle(tab === 'targets')} onClick={() => setTab('targets')}>Targets</button>
+          <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', gap: 0, flex: 1 }}>
+              <button style={tabStyle(tab === 'missions')} onClick={() => setTab('missions')}>Missions</button>
+              <button style={tabStyle(tab === 'targets')} onClick={() => setTab('targets')}>Targets</button>
+            </div>
+            {tab === 'targets' && (
+              <button
+                onClick={() => setShowTargetModal(true)}
+                style={{ ...btnBase, background: 'var(--accent-primary)', color: '#fff', marginBottom: '2px' }}
+              >
+                + New Target
+              </button>
+            )}
+            {tab === 'missions' && (
+              <button
+                onClick={() => setShowMissionModal(true)}
+                style={{ ...btnBase, background: 'var(--accent-primary)', color: '#fff', marginBottom: '2px' }}
+              >
+                + New Mission
+              </button>
+            )}
           </div>
 
           {tab === 'targets' && <TargetsTab />}
           {tab === 'missions' && <MissionsTab onSelectMission={setSelectedMissionId} />}
         </>
       )}
+
+      {showTargetModal && <CreateTargetModal onClose={() => setShowTargetModal(false)} />}
+      {showMissionModal && <CreateMissionModal onClose={() => setShowMissionModal(false)} />}
     </div>
   )
 }
@@ -172,7 +206,10 @@ function MissionsTab({ onSelectMission }: { onSelectMission: (id: number) => voi
 
 function MissionDetail({ missionId, onBack }: { missionId: number; onBack: () => void }) {
   const [page, setPage] = useState(0)
+  const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(null)
   const { data: candidates, isLoading, error } = useHuntCandidates(missionId, { skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const analyzeMutation = useAnalyzeHuntMission()
+  const finalizeMutation = useFinalizeHuntMission()
   const items = candidates?.items ?? []
   const total = candidates?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -194,9 +231,53 @@ function MissionDetail({ missionId, onBack }: { missionId: number; onBack: () =>
         &larr; Back to missions
       </button>
 
-      <h3 style={{ margin: '0 0 1rem', fontSize: '0.9375rem', color: 'var(--text-muted)' }}>
-        Mission #{missionId} &mdash; Candidates
-      </h3>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+        <h3 style={{ margin: 0, fontSize: '0.9375rem', color: 'var(--text-muted)' }}>
+          Mission #{missionId} &mdash; Candidates
+        </h3>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            onClick={() => analyzeMutation.mutate(missionId)}
+            disabled={analyzeMutation.isPending}
+            style={{
+              ...btnBase,
+              background: 'var(--accent-primary)',
+              color: '#fff',
+              opacity: analyzeMutation.isPending ? 0.6 : 1,
+            }}
+          >
+            {analyzeMutation.isPending ? 'Analyzing...' : 'Analyze'}
+          </button>
+          <button
+            onClick={() => {
+              if (selectedCandidateId != null) {
+                finalizeMutation.mutate({ missionId, candidateId: selectedCandidateId })
+              }
+            }}
+            disabled={selectedCandidateId == null || finalizeMutation.isPending}
+            style={{
+              ...btnBase,
+              background: selectedCandidateId != null ? 'var(--accent-primary)' : 'transparent',
+              color: selectedCandidateId != null ? '#fff' : 'var(--text-muted)',
+              border: selectedCandidateId != null ? 'none' : '1px solid var(--border)',
+              opacity: finalizeMutation.isPending ? 0.6 : 1,
+            }}
+          >
+            {finalizeMutation.isPending ? 'Finalizing...' : 'Finalize'}
+          </button>
+        </div>
+      </div>
+
+      {analyzeMutation.isError && (
+        <p style={{ color: 'var(--score-critical)', fontSize: '0.8125rem', margin: '0 0 0.75rem' }}>
+          Analysis failed. Please try again.
+        </p>
+      )}
+      {finalizeMutation.isError && (
+        <p style={{ color: 'var(--score-critical)', fontSize: '0.8125rem', margin: '0 0 0.75rem' }}>
+          Finalization failed. Please try again.
+        </p>
+      )}
 
       <Card>
         {isLoading && <Spinner text="Loading candidates..." />}
@@ -212,6 +293,7 @@ function MissionDetail({ missionId, onBack }: { missionId: number; onBack: () =>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: 'var(--bg-base)' }}>
+                    <th style={headStyle}></th>
                     <th style={headStyle}>Candidate ID</th>
                     <th style={headStyle}>Score</th>
                     <th style={headStyle}>Similarity</th>
@@ -222,7 +304,24 @@ function MissionDetail({ missionId, onBack }: { missionId: number; onBack: () =>
                 </thead>
                 <tbody>
                   {items.map((c) => (
-                    <tr key={c.candidate_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <tr
+                      key={c.candidate_id}
+                      style={{
+                        borderBottom: '1px solid var(--border)',
+                        cursor: 'pointer',
+                        background: selectedCandidateId === c.candidate_id ? 'rgba(99,102,241,0.1)' : 'transparent',
+                      }}
+                      onClick={() => setSelectedCandidateId(c.candidate_id)}
+                    >
+                      <td style={cellStyle}>
+                        <input
+                          type="radio"
+                          name="candidate"
+                          checked={selectedCandidateId === c.candidate_id}
+                          onChange={() => setSelectedCandidateId(c.candidate_id)}
+                          style={{ accentColor: 'var(--accent-primary)' }}
+                        />
+                      </td>
                       <td style={{ ...cellStyle, fontFamily: 'monospace' }}>{c.candidate_id}</td>
                       <td style={cellStyle}>{c.hunt_score?.toFixed(2) ?? '-'}</td>
                       <td style={cellStyle}>{c.visual_similarity_score?.toFixed(2) ?? '-'}</td>

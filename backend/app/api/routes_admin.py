@@ -205,6 +205,59 @@ def admin_refresh(request: Request, _admin=Depends(require_admin)):
     return {"token": create_admin_token()}
 
 
+# ---------------------------------------------------------------------------
+# Validation Harness
+# ---------------------------------------------------------------------------
+
+@router.get("/admin/validate", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def admin_validate(
+    request: Request,
+    threshold_band: str = Query("high"),
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Run validation harness against ground truth."""
+    from app.modules.validation_harness import run_validation
+    return run_validation(db, threshold_band=threshold_band)
+
+
+@router.get("/admin/validate/signals", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def admin_validate_signals(
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Signal effectiveness report — lift ratios for each risk signal."""
+    from app.modules.validation_harness import signal_effectiveness_report
+    return signal_effectiveness_report(db)
+
+
+@router.get("/admin/validate/sweep", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def admin_validate_sweep(
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Sweep score thresholds — precision/recall/F2 at each threshold."""
+    from app.modules.validation_harness import sweep_thresholds
+    return sweep_thresholds(db)
+
+
+@router.get("/admin/validate/analyst-metrics", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def admin_analyst_metrics(
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Analyst feedback metrics — FP rates by score band and corridor."""
+    from app.modules.validation_harness import analyst_feedback_metrics
+    return analyst_feedback_metrics(db)
+
+
 @router.post("/admin/purge-observations", tags=["admin"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def admin_purge_observations(

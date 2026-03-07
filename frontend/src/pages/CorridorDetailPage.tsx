@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useCorridorDetail } from '../hooks/useCorridors'
 import { useUpdateCorridor, useDeleteCorridor } from '../hooks/useCorridorMutation'
-import type { CorridorUpdatePayload } from '../types/api'
+import { useAlerts } from '../hooks/useAlerts'
+import type { CorridorUpdatePayload, AlertSummary } from '../types/api'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { CorridorActivityChart } from '../components/charts/CorridorActivityChart'
@@ -364,8 +365,77 @@ export function CorridorDetailPage() {
             </h3>
             <CorridorActivityChart corridorId={id} />
           </Card>
+
+          <CorridorAlerts corridorId={id!} />
         </>
       )}
     </div>
+  )
+}
+
+const alertCellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.8125rem' }
+const alertHeadStyle: React.CSSProperties = {
+  ...alertCellStyle,
+  fontWeight: 600,
+  color: 'var(--text-muted)',
+  textAlign: 'left' as const,
+  borderBottom: '1px solid var(--border)',
+}
+
+function CorridorAlerts({ corridorId }: { corridorId: string }) {
+  const { data, isLoading, error } = useAlerts({ corridor_id: corridorId, limit: 20 })
+  const alerts: AlertSummary[] = data?.items ?? []
+
+  return (
+    <Card style={{ marginTop: '0.75rem' }}>
+      <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Corridor Alerts
+      </h3>
+
+      {isLoading && <Spinner text="Loading alerts..." />}
+      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.8125rem', margin: 0 }}>Failed to load alerts.</p>}
+
+      {alerts.length === 0 && !isLoading && !error && (
+        <p style={{ color: 'var(--text-dim)', fontSize: '0.8125rem', margin: 0 }}>No alerts for this corridor.</p>
+      )}
+
+      {alerts.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-base)' }}>
+                <th style={alertHeadStyle}>Alert ID</th>
+                <th style={alertHeadStyle}>Vessel</th>
+                <th style={alertHeadStyle}>Risk Score</th>
+                <th style={alertHeadStyle}>Date</th>
+                <th style={alertHeadStyle}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {alerts.map((a) => (
+                <tr key={a.gap_event_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={alertCellStyle}>
+                    <Link
+                      to={`/alerts/${a.gap_event_id}`}
+                      style={{ color: 'var(--accent)', textDecoration: 'none', fontFamily: 'monospace' }}
+                    >
+                      {a.gap_event_id}
+                    </Link>
+                  </td>
+                  <td style={alertCellStyle}>{a.vessel_name ?? '-'}</td>
+                  <td style={{ ...alertCellStyle, fontFamily: 'monospace', fontWeight: 600 }}>
+                    {a.risk_score?.toFixed(1) ?? '-'}
+                  </td>
+                  <td style={alertCellStyle}>
+                    {a.gap_start_utc ? a.gap_start_utc.slice(0, 16).replace('T', ' ') : '-'}
+                  </td>
+                  <td style={alertCellStyle}>{a.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   )
 }

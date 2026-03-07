@@ -784,9 +784,10 @@ def get_vessel_voyage_prediction(
     db: Session = Depends(get_db),
 ):
     """Return voyage prediction (next destination) for a vessel."""
-    from app.modules.voyage_predictor import predict_next_destination
+    from app.modules.voyage_predictor import predict_next_destination_enriched
 
-    result = predict_next_destination(db, vessel_id)
+    result = predict_next_destination_enriched(db, vessel_id)
     if result is None:
-        return {"vessel_id": vessel_id, "prediction": None, "message": "Insufficient port call history"}
+        msg = "Insufficient port call history"
+        return {"vessel_id": vessel_id, "prediction": None, "message": msg}
     return result

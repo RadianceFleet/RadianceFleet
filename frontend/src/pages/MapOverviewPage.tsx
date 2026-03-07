@@ -4,6 +4,8 @@ import { MapContainer, Marker, Popup } from 'react-leaflet'
 import { useAlertMapPoints } from '../hooks/useAlerts'
 import { MapLayerControl } from '../components/map/LayerControl'
 import { CorridorZoneOverlay } from '../components/map/CorridorZoneOverlay'
+import { LoiteringOverlay } from '../components/map/LoiteringOverlay'
+import { DarkVesselOverlay } from '../components/map/DarkVesselOverlay'
 import { Link } from 'react-router-dom'
 import L from 'leaflet'
 import { Spinner } from '../components/ui/Spinner'
@@ -24,6 +26,8 @@ function scoreIcon(score: number) {
 export function MapOverviewPage() {
   const { data, isLoading } = useAlertMapPoints()
   const [showCorridors, setShowCorridors] = useState(true)
+  const [showLoitering, setShowLoitering] = useState(false)
+  const [showDarkVessels, setShowDarkVessels] = useState(false)
 
   const alerts = (data?.points ?? []).filter(a => a.last_lat != null && a.last_lon != null)
 
@@ -35,7 +39,7 @@ export function MapOverviewPage() {
         background: 'var(--bg-card)', border: '1px solid var(--border)',
         borderRadius: 'var(--radius)', padding: '6px 10px', fontSize: 12,
       }}>
-        <label style={{ cursor: 'pointer', color: 'var(--text-body)' }}>
+        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block' }}>
           <input
             type="checkbox"
             checked={showCorridors}
@@ -43,6 +47,24 @@ export function MapOverviewPage() {
             style={{ marginRight: 6 }}
           />
           Corridors
+        </label>
+        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
+          <input
+            type="checkbox"
+            checked={showLoitering}
+            onChange={e => setShowLoitering(e.target.checked)}
+            style={{ marginRight: 6 }}
+          />
+          Loitering Zones
+        </label>
+        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
+          <input
+            type="checkbox"
+            checked={showDarkVessels}
+            onChange={e => setShowDarkVessels(e.target.checked)}
+            style={{ marginRight: 6 }}
+          />
+          Dark Vessels
         </label>
       </div>
       <MapContainer
@@ -53,6 +75,8 @@ export function MapOverviewPage() {
       >
         <MapLayerControl />
         {showCorridors && <CorridorZoneOverlay />}
+        {showLoitering && <LoiteringOverlay />}
+        {showDarkVessels && <DarkVesselOverlay />}
 
         {alerts.map(a => (
           <Marker

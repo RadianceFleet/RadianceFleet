@@ -111,6 +111,10 @@ def _run_migrations() -> None:
         # STS analyst validation
         ("sts_transfer_events", "user_validated", "BOOLEAN"),
         ("sts_transfer_events", "confidence_override", "REAL"),
+        # Analyst verdict fields
+        ("ais_gap_events", "is_false_positive", "BOOLEAN"),
+        ("ais_gap_events", "reviewed_by", "VARCHAR(100)"),
+        ("ais_gap_events", "review_date", "DATETIME"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
@@ -197,6 +201,10 @@ def _run_migrations() -> None:
             ):
                 cursor.execute(
                     f"ALTER TYPE spoofingtypeenum ADD VALUE IF NOT EXISTS '{val}'"
+                )
+            for val in ("confirmed_fp", "confirmed_tp"):
+                cursor.execute(
+                    f"ALTER TYPE alertstatusenum ADD VALUE IF NOT EXISTS '{val}'"
                 )
             cursor.close()
         finally:

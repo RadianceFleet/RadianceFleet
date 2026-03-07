@@ -26,6 +26,9 @@ export interface AlertSummary {
   dark_zone_id?: number
   prior_similar_count?: number | null
   is_recurring_pattern?: boolean | null
+  is_false_positive?: boolean | null
+  reviewed_by?: string | null
+  review_date?: string | null
 }
 
 export interface AISPointSummary {
@@ -110,6 +113,8 @@ export type AlertStatus =
   | 'needs_satellite_check'
   | 'documented'
   | 'dismissed'
+  | 'confirmed_fp'
+  | 'confirmed_tp'
 
 export interface AlertMapPoint {
   gap_event_id: number

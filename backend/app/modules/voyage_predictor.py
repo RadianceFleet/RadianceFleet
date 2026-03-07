@@ -306,3 +306,111 @@ def predict_next_destination(db: Session, vessel_id: int) -> dict | None:
             logger.warning("Route deviation check failed: %s", exc)
 
     return result
+
+
+def _port_coords(port) -> dict[str, float] | None:
+    """Extract lat/lon from a Port's WKT geometry (POINT)."""
+    if port is None or not port.geometry:
+        return None
+    try:
+        from app.utils.geo import load_geometry
+
+        geom = load_geometry(port.geometry)
+        if geom is None:
+            return None
+        centroid = geom.centroid
+        return {"lat": round(centroid.y, 4), "lon": round(centroid.x, 4)}
+    except Exception:
+        return None
+
+
+def predict_next_destination_enriched(db: Session, vessel_id: int) -> dict | None:
+    """Wrap predict_next_destination with enriched port/route details for the frontend."""
+    from app.models.route_template import RouteTemplate
+    from app.models.port import Port
+    from app.models.port_call import PortCall
+
+    base = predict_next_destination(db, vessel_id)
+    if base is None:
+        return None
+
+    template_id = base.get("template_id")
+    predicted_port_id = base.get("predicted_port_id")
+
+    # Enrich predicted destination with port details
+    predicted_destination = None
+    if predicted_port_id is not None:
+        port = db.query(Port).filter(Port.port_id == predicted_port_id).first()
+        if port is not None:
+            coords = _port_coords(port) or {}
+            predicted_destination = {
+                "port_id": port.port_id,
+                "name": port.name,
+                "lat": coords.get("lat"),
+                "lon": coords.get("lon"),
+                "country": port.country,
+            }
+
+    # Enrich template name and predicted route
+    template_name = None
+    predicted_route: list[dict] = []
+    if template_id is not None:
+        template = db.query(RouteTemplate).filter(RouteTemplate.template_id == template_id).first()
+        if template is not None:
+            # Derive template_name from vessel_type or port names
+            route_port_ids = template.route_ports_json or []
+            if route_port_ids:
+                ports = db.query(Port).filter(Port.port_id.in_(route_port_ids)).all()
+                port_map = {p.port_id: p for p in ports}
+                # Build predicted_route as lat/lon array in template order
+                for pid in route_port_ids:
+                    p = port_map.get(pid)
+                    if p is not None:
+                        coords = _port_coords(p)
+                        if coords:
+                            predicted_route.append(coords)
+                # Derive name from first and last port
+                first_port = port_map.get(route_port_ids[0])
+                last_port = port_map.get(route_port_ids[-1])
+                if first_port and last_port:
+                    template_name = f"{first_port.name} → {last_port.name}"
+                elif template.vessel_type:
+                    template_name = f"{template.vessel_type} Route"
+
+    # Build actual_route from recent port calls
+    actual_route: list[dict] = []
+    recent_calls = (
+        db.query(PortCall)
+        .filter(PortCall.vessel_id == vessel_id, PortCall.port_id.isnot(None))
+        .order_by(PortCall.arrival_utc.desc())
+        .limit(10)
+        .all()
+    )
+    if recent_calls:
+        port_ids = [pc.port_id for pc in recent_calls]
+        ports = db.query(Port).filter(Port.port_id.in_(port_ids)).all()
+        port_map = {p.port_id: p for p in ports}
+        for pc in reversed(recent_calls):  # chronological order
+            p = port_map.get(pc.port_id)
+            coords = _port_coords(p) if p else None
+            entry: dict[str, Any] = {
+                "lat": coords["lat"] if coords else None,
+                "lon": coords["lon"] if coords else None,
+                "port_name": p.name if p else None,
+                "arrival_utc": pc.arrival_utc.isoformat() if pc.arrival_utc else None,
+            }
+            actual_route.append(entry)
+
+    return {
+        "vessel_id": vessel_id,
+        "prediction": {
+            "template_id": template_id,
+            "template_name": template_name,
+            "confidence": base.get("confidence"),
+            "deviation_score": base.get("deviation_score", 0),
+            "deviation_toward_sts_zone": base.get("deviation_toward_sts_zone"),
+            "predicted_destination": predicted_destination,
+            "predicted_route": predicted_route,
+            "actual_route": actual_route,
+        },
+    }

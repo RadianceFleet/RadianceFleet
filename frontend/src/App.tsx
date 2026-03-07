@@ -23,6 +23,8 @@ import { VoyagePredictionPage } from './pages/VoyagePredictionPage'
 import { HuntPage } from './pages/HuntPage'
 import { TipsAdminPage } from './pages/TipsAdminPage'
 import { VesselTimelinePage } from './pages/VesselTimelinePage'
+import { AccuracyDashboardPage } from './pages/AccuracyDashboardPage'
+import { GlobalDetectionsPage } from './pages/GlobalDetectionsPage'
 
 export default function App() {
   return (
@@ -46,10 +48,12 @@ export default function App() {
             <Route path="fleet" element={<FleetAnalysisPage />} />
             <Route path="ownership" element={<OwnershipGraphPage />} />
             <Route path="ingest" element={<IngestionPage />} />
+            <Route path="detections" element={<GlobalDetectionsPage />} />
             <Route path="dark-vessels" element={<DarkVesselsPage />} />
             <Route path="merge-candidates" element={<MergeCandidatesPage />} />
             <Route path="hunt" element={<HuntPage />} />
             <Route path="detect" element={<DetectionPanel />} />
+            <Route path="accuracy" element={<AccuracyDashboardPage />} />
             <Route path="admin/tips" element={<TipsAdminPage />} />
             <Route path="donate" element={<DonatePage />} />
           </Route>

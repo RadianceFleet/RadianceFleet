@@ -70,6 +70,47 @@ def get_spoofing_events(
     return {"items": results, "total": len(results)}
 
 
+@router.get("/spoofing", tags=["detection"])
+def get_global_spoofing(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    anomaly_type: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Global spoofing anomalies list."""
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+
+    _validate_date_range(date_from, date_to)
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
+
+    q = db.query(SpoofingAnomaly)
+    if anomaly_type:
+        q = q.filter(SpoofingAnomaly.anomaly_type == anomaly_type)
+    if date_from:
+        q = q.filter(SpoofingAnomaly.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(SpoofingAnomaly.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+    q = q.order_by(SpoofingAnomaly.start_time_utc.desc())
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+
+    return {
+        "items": [
+            {
+                "anomaly_id": e.anomaly_id,
+                "vessel_id": e.vessel_id,
+                "anomaly_type": str(e.anomaly_type.value) if hasattr(e.anomaly_type, "value") else e.anomaly_type,
+                "start_time_utc": e.start_time_utc.isoformat() if e.start_time_utc else None,
+                "risk_score_component": e.risk_score_component,
+            }
+            for e in items
+        ],
+        "total": total,
+    }
+
+
 @router.get("/loitering/{vessel_id}", tags=["detection"])
 def get_loitering_events(
     vessel_id: int,
@@ -86,6 +127,101 @@ def get_loitering_events(
         q = q.filter(LoiteringEvent.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
     results = q.all()
     return {"items": results, "total": len(results)}
+
+
+@router.get("/sts-chains", tags=["detection"])
+def get_sts_chains(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """List STS relay chain alerts with vessel names."""
+    from app.models.fleet_alert import FleetAlert
+    from app.models.vessel import Vessel
+
+    _validate_date_range(date_from, date_to)
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
+
+    q = db.query(FleetAlert).filter(FleetAlert.alert_type == "sts_relay_chain")
+    if date_from:
+        q = q.filter(FleetAlert.created_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(FleetAlert.created_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+    q = q.order_by(FleetAlert.created_utc.desc())
+    total = q.count()
+    alerts = q.offset(skip).limit(limit).all()
+
+    # Collect all vessel IDs and batch-fetch names
+    all_vessel_ids: set[int] = set()
+    for a in alerts:
+        ev = a.evidence_json or {}
+        for vid in ev.get("chain_vessel_ids", []):
+            all_vessel_ids.add(vid)
+
+    vessel_name_map: dict[int, str | None] = {}
+    if all_vessel_ids:
+        rows = db.query(Vessel.vessel_id, Vessel.name).filter(Vessel.vessel_id.in_(all_vessel_ids)).all()
+        vessel_name_map = {r[0]: r[1] for r in rows}
+
+    items = []
+    for a in alerts:
+        ev = a.evidence_json or {}
+        chain_vessel_ids = ev.get("chain_vessel_ids", [])
+        items.append({
+            "alert_id": a.alert_id,
+            "chain_vessel_ids": chain_vessel_ids,
+            "vessel_names": {vid: vessel_name_map.get(vid) for vid in chain_vessel_ids},
+            "intermediary_vessel_ids": ev.get("intermediary_vessel_ids", []),
+            "hops": ev.get("hops", []),
+            "chain_length": len(chain_vessel_ids),
+            "risk_score_component": a.risk_score_component,
+            "created_utc": a.created_utc.isoformat() if a.created_utc else None,
+        })
+
+    return {"items": items, "total": total}
+
+
+@router.get("/loitering", tags=["detection"])
+def get_global_loitering(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Global loitering events list for map overlay."""
+    from app.models.loitering_event import LoiteringEvent
+
+    _validate_date_range(date_from, date_to)
+    limit = min(limit, settings.MAX_QUERY_LIMIT)
+
+    q = db.query(LoiteringEvent)
+    if date_from:
+        q = q.filter(LoiteringEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(LoiteringEvent.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+    q = q.order_by(LoiteringEvent.start_time_utc.desc())
+    total = q.count()
+    items = q.offset(skip).limit(limit).all()
+
+    return {
+        "items": [
+            {
+                "loiter_id": e.loiter_id,
+                "vessel_id": e.vessel_id,
+                "mean_lat": e.mean_lat,
+                "mean_lon": e.mean_lon,
+                "duration_hours": e.duration_hours,
+                "corridor_id": e.corridor_id,
+                "start_time_utc": e.start_time_utc.isoformat() if e.start_time_utc else None,
+                "median_sog_kn": e.median_sog_kn,
+            }
+            for e in items
+        ],
+        "total": total,
+    }
 
 
 @router.get("/sts-events", tags=["detection"])

@@ -24,6 +24,9 @@ class TestAlertPatterns:
         alert.in_dark_zone = False
         alert.start_point_id = None
         alert.end_point_id = None
+        alert.is_false_positive = None
+        alert.reviewed_by = None
+        alert.review_date = None
 
         vessel = MagicMock()
         vessel.vessel_id = 10

@@ -234,6 +234,92 @@ def signal_effectiveness_report(db: Session) -> list[dict]:
     return report
 
 
+def analyst_feedback_metrics(db: Session) -> dict:
+    """Aggregate analyst review outcomes on AIS gap events.
+
+    Returns total reviewed, confirmed TP/FP counts, FP rate,
+    and breakdowns by score band and corridor.
+    """
+    reviewed = (
+        db.query(AISGapEvent)
+        .filter(AISGapEvent.is_false_positive.isnot(None))
+        .all()
+    )
+
+    total_reviewed = len(reviewed)
+    confirmed_fp = sum(1 for r in reviewed if r.is_false_positive)
+    confirmed_tp = total_reviewed - confirmed_fp
+    fp_rate = confirmed_fp / total_reviewed if total_reviewed > 0 else 0.0
+
+    by_band: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0})
+    by_corridor: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0})
+
+    for r in reviewed:
+        band = _score_band(int(r.risk_score)) if r.risk_score is not None else "unknown"
+        key = "fp" if r.is_false_positive else "tp"
+        by_band[band][key] += 1
+        corridor_key = str(r.corridor_id) if r.corridor_id is not None else "none"
+        by_corridor[corridor_key][key] += 1
+
+    return {
+        "total_reviewed": total_reviewed,
+        "confirmed_tp": confirmed_tp,
+        "confirmed_fp": confirmed_fp,
+        "fp_rate": round(fp_rate, 4),
+        "by_score_band": dict(by_band),
+        "by_corridor": dict(by_corridor),
+    }
+
+
+def detector_correlation_report(db: Session) -> list[dict]:
+    """Compute co-occurrence FP rates for signal category pairs.
+
+    For analyst-reviewed alerts, extracts active signal categories from
+    risk_breakdown_json and computes FP rates for each category pair.
+    """
+    reviewed = (
+        db.query(AISGapEvent)
+        .filter(AISGapEvent.is_false_positive.isnot(None))
+        .all()
+    )
+
+    pair_counts: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"count": 0, "fp": 0})
+
+    for r in reviewed:
+        bd = r.risk_breakdown_json
+        if isinstance(bd, str):
+            try:
+                bd = json.loads(bd)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        if not isinstance(bd, dict):
+            continue
+
+        categories = sorted(bd.keys())
+        is_fp = bool(r.is_false_positive)
+
+        for i in range(len(categories)):
+            for j in range(i + 1, len(categories)):
+                pair = (categories[i], categories[j])
+                pair_counts[pair]["count"] += 1
+                if is_fp:
+                    pair_counts[pair]["fp"] += 1
+
+    results = []
+    for (cat_a, cat_b), counts in pair_counts.items():
+        fp_rate = counts["fp"] / counts["count"] if counts["count"] > 0 else 0.0
+        results.append({
+            "category_a": cat_a,
+            "category_b": cat_b,
+            "co_occurrence_count": counts["count"],
+            "fp_count": counts["fp"],
+            "fp_rate": round(fp_rate, 4),
+        })
+
+    results.sort(key=lambda x: x["co_occurrence_count"], reverse=True)
+    return results
+
+
 def sweep_thresholds(db: Session) -> list[dict]:
     """Sweep score thresholds from 0 to 200 in steps of 5.
 

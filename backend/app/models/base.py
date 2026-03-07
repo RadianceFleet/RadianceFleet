@@ -47,6 +47,8 @@ class AlertStatusEnum(str, enum.Enum):
     NEEDS_SATELLITE_CHECK = "needs_satellite_check"
     DOCUMENTED = "documented"
     DISMISSED = "dismissed"
+    CONFIRMED_FP = "confirmed_fp"
+    CONFIRMED_TP = "confirmed_tp"
 
 
 class SpoofingTypeEnum(str, enum.Enum):

@@ -92,6 +92,9 @@ class GapEventRead(BaseModel):
     coverage_quality: Optional[str] = None
     is_feed_outage: Optional[bool] = None
     original_vessel_id: Optional[int] = None
+    is_false_positive: Optional[bool] = None
+    reviewed_by: Optional[str] = None
+    review_date: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -126,3 +129,9 @@ class AlertStatusUpdate(BaseModel):
 class AlertNoteUpdate(BaseModel):
     notes: Optional[str] = None
     text: Optional[str] = None  # legacy key
+
+
+class AlertVerdictRequest(BaseModel):
+    verdict: str  # "confirmed_tp" or "confirmed_fp"
+    reason: Optional[str] = None
+    reviewed_by: Optional[str] = None
