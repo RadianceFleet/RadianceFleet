@@ -117,7 +117,8 @@ def had_russian_port_call(db: Session, vessel_id: int, before: datetime, days: i
                 dist = haversine_nm(pt.lat, pt.lon, centroid.y, centroid.x)
                 if dist <= 5.0:
                     return True
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to check terminal proximity: %s", e)
                 continue
     return False
 

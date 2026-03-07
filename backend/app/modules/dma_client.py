@@ -26,6 +26,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
@@ -157,12 +158,12 @@ def fetch_and_import_dma(
 
         try:
             with httpx.Client(timeout=120) as client:
-                resp = client.get(url)
+                resp = breakers["dma"].call(client.get, url)
             if resp.status_code == 404:
                 # Try non-gzip fallback
                 url = _build_url(current, gzip=False)
                 with httpx.Client(timeout=120) as client:
-                    resp = client.get(url)
+                    resp = breakers["dma"].call(client.get, url)
             resp.raise_for_status()
 
             # Stream CSV line-by-line

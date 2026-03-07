@@ -1,7 +1,10 @@
 """CLI commands: history status, gaps, backfill, schedule."""
 from __future__ import annotations
 
+import logging
 import typer
+
+logger = logging.getLogger(__name__)
 from datetime import date, timedelta
 from rich.table import Table
 
@@ -77,8 +80,8 @@ def history_status():
                         str(run.errors or 0),
                     )
                 console.print(runs_table)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to fetch ingestion history: %s", e)
     finally:
         db.close()
 
@@ -251,8 +254,8 @@ def history_backfill(
                 status="completed",
             )
             db.commit()
-        except (ImportError, AttributeError, TypeError):
-            pass
+        except (ImportError, AttributeError, TypeError) as e:
+            logger.error("Failed to record coverage window: %s", e)
 
         if detect:
             lookback_start = start_date - timedelta(days=90)
@@ -314,8 +317,8 @@ def history_schedule(
                     to_date = date.today() - timedelta(days=1)
                     from_date = to_date - timedelta(days=730)
                     gaps = find_coverage_gaps(db, source, from_date, to_date)
-                except (ImportError, AttributeError):
-                    pass
+                except (ImportError, AttributeError) as e:
+                    logger.error("Failed to find coverage gaps for %s: %s", source, e)
 
                 if gaps:
                     # Show first gap that would be filled

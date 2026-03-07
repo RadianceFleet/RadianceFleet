@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 from app.modules.normalize import is_non_vessel_mmsi, parse_timestamp_flexible
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,8 @@ def fetch_area_positions(
     positions = []
     try:
         with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-            resp = retry_request(
+            resp = breakers["aishub"].call(
+                retry_request,
                 client.get, _BASE_URL, params=params,
                 delays=[60, 120, 180],  # AISHub rate limit: 1 req/min
             )
