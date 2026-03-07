@@ -188,10 +188,30 @@ Production infrastructure, frontend expansion, data quality hardening, and API s
 
 ---
 
+## v3.1 — Complete (Accuracy Validation & Frontend UI Gaps)
+
+Phase 1 ("Usable by a journalist today") from the strategic product analysis — accuracy foundation and frontend surfaces for existing backend capabilities.
+
+| Feature | Description |
+|---------|-------------|
+| Accuracy validation harness | `validation_harness.py`: confusion matrix, precision, recall, F2 score, PR-AUC. `sweep_thresholds()` for precision-recall curves (0–200). `analyst_feedback_metrics()` for FP rate aggregation. `signal_effectiveness_report()` with lift analysis. `detector_correlation_report()` for signal pair FP rates. |
+| Ground truth loader | `ground_truth_loader.py`: CSV import for KSE shadow fleet, OFAC SDN, and clean baseline vessels. |
+| Accuracy dashboard | `AccuracyDashboardPage.tsx`: validation metrics with `PRCurveChart.tsx` (precision-recall scatter) and `FPRateByBandChart.tsx` (TP/FP by risk band). |
+| Hunt UI page | `HuntPage.tsx` + `useHunt.ts`: frontend surface for the vessel hunt workflow (targets, missions, candidate scoring). Backend existed since v1.1 — now accessible without CLI. |
+| Charting library | `recharts` v3.8.0 integrated. `CorridorActivityChart.tsx`, `ScoreDistributionChart.tsx` added alongside accuracy charts. |
+| Tips admin page | `TipsAdminPage.tsx` + `useTips.ts`: tip moderation UI with PENDING/REVIEWED/ACTIONED/DISMISSED statuses and analyst notes. |
+| Merge candidates page | `MergeCandidatesPage.tsx`: merge candidate table with confirm/reject actions. |
+| Bulk evidence export | `AlertExportPanel.tsx`: per-alert Markdown/JSON export. `ExportButton.tsx`: bulk CSV export. Backend `/alerts/export` and `/alerts/{id}/export` endpoints. |
+
+---
+
 ## Open / In Progress
 
 | Item | Status |
 |------|--------|
+| Docker Hub image | Dockerfile and docker-compose.yml exist and work. CI does not publish to Docker Hub — needs a `docker push` step in `.github/workflows/ci.yml`. |
+| Live demo instance | **Deployed** at `https://www.radiancefleet.com` on Railway (trial plan). PostgreSQL backend, health checks passing, all circuit breakers healthy. Needs data loading (AIS sources, watchlists) and upgrade from trial plan for production use. |
+| Merge chain graph visualization | Merge candidates display as a table (`MergeCandidatesPage.tsx`). Interactive graph rendering (e.g., D3/force-directed) for STS chains and identity merge chains is not yet implemented. `OwnershipGraphPage.tsx` exists for ownership graphs. |
 | Commercial satellite order placement | `sar_correlator.py` identifies candidates; actual Planet Labs / Maxar API order placement is not implemented (Copernicus URL generation remains the action output). |
 | Multi-analyst workflow | JWT admin auth exists but is single-user. Per-analyst alert assignment, concurrent session management, and reviewer chain-of-custody in evidence cards are not implemented. |
 | Additional PSC MOUs | `psc_loader.py` covers Tokyo, Black Sea, Abuja, Paris MOUs. Remaining MOUs researched (2026-03): **Mediterranean** (THETIS-Med, bulk download forbidden), **Indian Ocean** (web search form only at iomou.org, no bulk/API), **Riyadh** (PDF reports only), **Viña del Mar** (PDF reports only). None offer programmatic data access. Will integrate if any publish structured data. |

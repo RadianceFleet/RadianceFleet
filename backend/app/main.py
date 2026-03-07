@@ -175,13 +175,19 @@ async def general_error_handler(request: Request, exc: Exception):
 # ── Static files + SPA fallback ──────────────────────────────────────────────
 _static_dir = Path(__file__).resolve().parent.parent / "static"
 if _static_dir.is_dir():
-    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+    _assets_dir = _static_dir / "assets"
+    if _assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
 
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         """Serve index.html for any path not matched by API/health/docs routes."""
         if full_path.startswith(("api/", "health", "docs", "openapi.json", "redoc")):
             return JSONResponse(status_code=404, content={"detail": "Not found"})
+        # Serve actual static files (e.g. vite.svg) if they exist
+        candidate = _static_dir / full_path
+        if full_path and candidate.is_file() and _static_dir in candidate.resolve().parents:
+            return FileResponse(str(candidate))
         index = _static_dir / "index.html"
         if index.exists():
             return FileResponse(str(index))

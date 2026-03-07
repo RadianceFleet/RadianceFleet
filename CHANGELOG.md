@@ -5,8 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-07
+
 ### Added
-- OSINT-informed scoring: sanctioned port detection, temporal decay, KSE archetype matching, EEZ proximity signals
+- **Accuracy**: `validation_harness.py` — confusion matrix, precision, recall, F2 score, PR-AUC, threshold sweep (0–200), analyst feedback FP rate aggregation, signal effectiveness lift analysis, detector correlation FP report
+- **Accuracy**: `ground_truth_loader.py` — CSV import for KSE shadow fleet, OFAC SDN, and clean baseline vessels
+- **Frontend**: `AccuracyDashboardPage.tsx` — validation metrics with PR curve and FP-rate-by-band charts
+- **Frontend**: `HuntPage.tsx` + `useHunt.ts` — vessel hunt workflow UI (targets, missions, candidate scoring)
+- **Frontend**: `TipsAdminPage.tsx` + `useTips.ts` — tip moderation with PENDING/REVIEWED/ACTIONED/DISMISSED statuses
+- **Frontend**: `MergeCandidatesPage.tsx` — merge candidate table with confirm/reject actions
+- **Frontend**: `AlertExportPanel.tsx` — per-alert Markdown/JSON evidence export
+- **Frontend**: `recharts` v3.8.0 — `CorridorActivityChart.tsx`, `ScoreDistributionChart.tsx`, `PRCurveChart.tsx`, `FPRateByBandChart.tsx`
+- **Scoring**: OSINT-informed scoring — sanctioned port detection, temporal decay, KSE archetype matching, EEZ proximity signals
 
 ### Fixed
 - pytest-timeout added and xdist disabled to prevent test suite freezing
