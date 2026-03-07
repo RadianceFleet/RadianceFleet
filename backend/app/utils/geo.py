@@ -94,3 +94,9 @@ def initial_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float
     y = (math.cos(phi1) * math.sin(phi2)
          - math.sin(phi1) * math.cos(phi2) * math.cos(d_lambda))
     return math.degrees(math.atan2(x, y)) % 360
+
+
+def bearing_diff(b1: float, b2: float) -> float:
+    """Absolute angular difference between two bearings (0-180)."""
+    diff = abs(b1 - b2) % 360
+    return min(diff, 360 - diff)

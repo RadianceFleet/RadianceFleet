@@ -461,13 +461,24 @@ def add_to_watchlist(body: WatchlistAddRequest, request: Request, db: Session = 
     if not vessel_id:
         raise HTTPException(status_code=400, detail="vessel_id required")
 
+    VALID_WATCHLIST_SOURCES = {
+        "OFAC_SDN", "EU_COUNCIL", "KSE_SHADOW", "OPENSANCTIONS",
+        "FLEETLEAKS", "UKRAINE_GUR", "LOCAL_INVESTIGATION", "MANUAL",
+    }
+    source = (body.watchlist_source or body.source or "LOCAL_INVESTIGATION").upper()
+    if source not in VALID_WATCHLIST_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid source '{source}'. Must be one of: {sorted(VALID_WATCHLIST_SOURCES)}",
+        )
+
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
     if not vessel:
         raise HTTPException(status_code=404, detail="Vessel not found")
 
     entry = VesselWatchlist(
         vessel_id=vessel_id,
-        watchlist_source=body.watchlist_source or body.source or "LOCAL_INVESTIGATION",
+        watchlist_source=source,
         reason=body.reason,
         is_active=True,
     )

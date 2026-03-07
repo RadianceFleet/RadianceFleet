@@ -10,8 +10,44 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import polars as pl
+from unidecode import unidecode
+
+# ── Owner name normalization ─────────────────────────────────────────────────
+# Corporate suffixes to strip before comparison
+_SUFFIX_RE = re.compile(
+    r"\b(LLC|LTD|LIMITED|INC|CORP|CORPORATION|CO|COMPANY|SA|AG|GMBH|OOO|OAO|ZAO|PAO)\b",
+    re.IGNORECASE,
+)
+# Cyrillic corporate suffixes (before transliteration)
+_CYRILLIC_SUFFIX_RE = re.compile(
+    r"\b(ООО|ОАО|ЗАО|ПАО)\b",
+)
+_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
+_MULTI_SPACE_RE = re.compile(r"\s+")
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_owner_name(name: str) -> str:
+    """Normalize an owner name for fuzzy comparison.
+
+    Steps:
+    1. Strip Cyrillic corporate suffixes (ООО, ОАО, etc.)
+    2. Transliterate Cyrillic to Latin (unidecode)
+    3. Uppercase
+    4. Strip Latin corporate suffixes (LLC, Ltd, etc.)
+    5. Remove punctuation
+    6. Collapse whitespace
+    """
+    if not name:
+        return ""
+    text = _CYRILLIC_SUFFIX_RE.sub("", name)
+    text = unidecode(text)
+    text = text.upper()
+    text = _SUFFIX_RE.sub("", text)
+    text = _PUNCT_RE.sub(" ", text)
+    text = _MULTI_SPACE_RE.sub(" ", text).strip()
+    return text
 
 
 # --- Shared helpers ---

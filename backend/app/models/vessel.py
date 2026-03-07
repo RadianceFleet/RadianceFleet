@@ -74,3 +74,4 @@ class Vessel(Base):
         "StsTransferEvent", foreign_keys="StsTransferEvent.vessel_2_id",
         back_populates="vessel_2", cascade="all, delete-orphan"
     )
+    fingerprints: Mapped[list] = relationship("VesselFingerprint", back_populates="vessel")

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, Float, JSON, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Float, JSON, Boolean, ForeignKey
+from sqlalchemy.orm import relationship
 
 from app.models.base import Base
 
@@ -12,7 +13,7 @@ class VesselFingerprint(Base):
     __tablename__ = "vessel_fingerprints"
 
     fingerprint_id = Column(Integer, primary_key=True, autoincrement=True)
-    vessel_id = Column(Integer, nullable=False, index=True)
+    vessel_id = Column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)
     operational_state = Column(String(20))  # "ballast" or "laden" or "unknown"
     feature_vector_json = Column(JSON)  # 10-feature dict
     covariance_json = Column(JSON)  # covariance matrix (10x10 list of lists)
@@ -24,3 +25,5 @@ class VesselFingerprint(Base):
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
     updated_at = Column(DateTime, nullable=True)
+
+    vessel = relationship("Vessel", back_populates="fingerprints")

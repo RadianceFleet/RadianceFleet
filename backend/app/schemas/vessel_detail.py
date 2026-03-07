@@ -67,6 +67,10 @@ class VesselDetailRead(BaseModel):
     total_gaps_30d: int = 0
     watchlist_stub_score: Optional[int] = None
     watchlist_stub_breakdown: Optional[dict] = None
+    callsign: Optional[str] = None
+    owner_name: Optional[str] = None
+    ais_cargo_type: Optional[str] = None
+    last_ais_received_utc: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

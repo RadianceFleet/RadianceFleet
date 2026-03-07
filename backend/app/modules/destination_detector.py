@@ -31,7 +31,7 @@ from app.models.base import SpoofingTypeEnum
 from app.models.corridor import Corridor
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
-from app.utils.geo import initial_bearing as _initial_bearing
+from app.utils.geo import bearing_diff, initial_bearing as _initial_bearing
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +66,8 @@ SCORE_FREQUENT_CHANGES = int(_dest_cfg.get("destination_changes_3_in_7d", 20))
 
 
 
-def _bearing_diff(b1: float, b2: float) -> float:
-    """Absolute angular difference between two bearings (0-180)."""
-    diff = abs(b1 - b2) % 360
-    return min(diff, 360 - diff)
+# Backward-compatible alias for tests that import the private name
+_bearing_diff = bearing_diff
 
 
 def _is_blank_or_generic(dest: Optional[str]) -> bool:
@@ -278,7 +276,7 @@ def detect_destination_anomalies(
                         bearing_to_sts = _initial_bearing(
                             last_lat, last_lon, sts["lat"], sts["lon"]
                         )
-                        deviation = _bearing_diff(median_cog, bearing_to_sts)
+                        deviation = bearing_diff(median_cog, bearing_to_sts)
 
                         if deviation < _BEARING_DEVIATION_DEG:
                             # Vessel heading toward STS zone, not toward declared EU port

@@ -31,6 +31,6 @@ class SatelliteTaskingCandidate(Base):
         DateTime, default=func.now()
     )
 
-    corridor = relationship("Corridor")
+    corridor = relationship("Corridor", back_populates="satellite_tasking_candidates")
     vessel_a = relationship("Vessel", foreign_keys=[vessel_a_id])
     vessel_b = relationship("Vessel", foreign_keys=[vessel_b_id])

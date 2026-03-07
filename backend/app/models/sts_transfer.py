@@ -46,4 +46,4 @@ class StsTransferEvent(Base):
     vessel_2: Mapped["Vessel"] = relationship(
         "Vessel", foreign_keys=[vessel_2_id], back_populates="sts_events_as_vessel_2"
     )
-    corridor: Mapped[Optional["Corridor"]] = relationship("Corridor")
+    corridor: Mapped[Optional["Corridor"]] = relationship("Corridor", back_populates="sts_events")

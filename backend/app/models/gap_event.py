@@ -4,13 +4,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, Float, Boolean, DateTime, String, JSON, ForeignKey, Enum as SAEnum, Text
+from sqlalchemy import Integer, Float, Boolean, DateTime, String, JSON, ForeignKey, Enum as SAEnum, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, AlertStatusEnum
 
 
 class AISGapEvent(Base):
     __tablename__ = "ais_gap_events"
+    __table_args__ = (
+        Index("ix_gap_vessel_start", "vessel_id", "gap_start_utc"),
+    )
 
     gap_event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)

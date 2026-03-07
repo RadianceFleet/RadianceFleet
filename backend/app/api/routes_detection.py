@@ -13,6 +13,13 @@ from app.database import get_db
 from app.config import settings
 from app.schemas.corridor import CorridorCreateRequest, CorridorUpdateRequest
 from app.api._helpers import _audit_log, _validate_date_range, _get_coverage_quality, limiter
+from app.schemas.hunt import (
+    DarkVesselDetectionRead, DarkVesselListResponse,
+    VesselTargetProfileRead, SearchMissionRead,
+    HuntCandidateRead, HuntCandidateListResponse,
+    HuntTargetCreateRequest, SearchMissionCreateRequest,
+    MissionFinalizeRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -206,7 +213,11 @@ def list_fleet_clusters(
             "total": len(clusters),
         }
     except Exception as e:
-        logger.debug("Owner clusters fetch failed: %s", e)
+        from sqlalchemy.exc import OperationalError
+        if isinstance(e, OperationalError):
+            logger.debug("Owner clusters fetch failed (empty DB?): %s", e)
+        else:
+            logger.warning("Owner clusters fetch failed: %s", e)
         return {"items": [], "total": 0}
 
 
@@ -398,7 +409,7 @@ def corridors_geojson(db: Session = Depends(get_db)):
                 if shape is not None:
                     geom = shapely.geometry.mapping(shape)
             except Exception as e:
-                logger.debug("Corridor geometry deserialization failed for corridor %s: %s", c.corridor_id, e)
+                logger.warning("Corridor geometry deserialization failed for corridor %s: %s", c.corridor_id, e)
         features.append({
             "type": "Feature",
             "geometry": geom,
@@ -576,7 +587,7 @@ def get_corridor_activity(
 
 # ─── Dark Vessel Detections ───────────────────────────────────────────────────
 
-@router.get("/dark-vessels")
+@router.get("/dark-vessels", response_model=DarkVesselListResponse)
 def list_dark_vessels(
     ais_match_result: Optional[str] = None,
     corridor_id: Optional[int] = None,
@@ -602,7 +613,7 @@ def list_dark_vessels(
     return {"items": items, "total": total}
 
 
-@router.get("/dark-vessels/{detection_id}")
+@router.get("/dark-vessels/{detection_id}", response_model=DarkVesselDetectionRead)
 def get_dark_vessel(detection_id: int, db: Session = Depends(get_db)):
     from app.models.stubs import DarkVesselDetection
     det = (
@@ -617,14 +628,14 @@ def get_dark_vessel(detection_id: int, db: Session = Depends(get_db)):
 
 # ─── Vessel Hunt (FR9) ────────────────────────────────────────────────────────
 
-@router.get("/hunt/targets", tags=["hunt"])
+@router.get("/hunt/targets", tags=["hunt"], response_model=list[VesselTargetProfileRead])
 def list_hunt_targets(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
     """List all hunt target profiles."""
     from app.models.stubs import VesselTargetProfile
     return db.query(VesselTargetProfile).offset(skip).limit(limit).all()
 
 
-@router.get("/hunt/targets/{profile_id}", tags=["hunt"])
+@router.get("/hunt/targets/{profile_id}", tags=["hunt"], response_model=VesselTargetProfileRead)
 def get_hunt_target(profile_id: int, db: Session = Depends(get_db)):
     """Get a hunt target profile by ID."""
     from app.models.stubs import VesselTargetProfile
@@ -636,7 +647,7 @@ def get_hunt_target(profile_id: int, db: Session = Depends(get_db)):
     return profile
 
 
-@router.get("/hunt/missions/{mission_id}", tags=["hunt"])
+@router.get("/hunt/missions/{mission_id}", tags=["hunt"], response_model=SearchMissionRead)
 def get_hunt_mission(mission_id: int, db: Session = Depends(get_db)):
     """Get a search mission by ID."""
     from app.models.stubs import SearchMission
@@ -648,7 +659,7 @@ def get_hunt_mission(mission_id: int, db: Session = Depends(get_db)):
     return mission
 
 
-@router.get("/hunt/missions/{mission_id}/candidates", tags=["hunt"])
+@router.get("/hunt/missions/{mission_id}/candidates", tags=["hunt"], response_model=HuntCandidateListResponse)
 def list_hunt_candidates(
     mission_id: int,
     skip: int = Query(0, ge=0),
@@ -663,5 +674,104 @@ def list_hunt_candidates(
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": items, "total": total}
+
+
+@router.post("/hunt/targets", tags=["hunt"], response_model=VesselTargetProfileRead)
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def create_hunt_target(body: HuntTargetCreateRequest, request: Request, db: Session = Depends(get_db)):
+    """Create a vessel target profile for hunt."""
+    from app.models.vessel import Vessel
+    from app.models.stubs import VesselTargetProfile
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == body.vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    profile = VesselTargetProfile(
+        vessel_id=body.vessel_id,
+        deadweight_dwt=vessel.deadweight,
+        last_ais_position_lat=body.last_lat,
+        last_ais_position_lon=body.last_lon,
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+
+@router.post("/hunt/missions", tags=["hunt"], response_model=SearchMissionRead)
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def create_hunt_mission(body: SearchMissionCreateRequest, request: Request, db: Session = Depends(get_db)):
+    """Create a search mission for a target profile."""
+    from app.models.stubs import VesselTargetProfile, SearchMission
+
+    profile = db.query(VesselTargetProfile).filter(
+        VesselTargetProfile.profile_id == body.target_profile_id
+    ).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Target profile not found")
+
+    mission = SearchMission(
+        vessel_id=profile.vessel_id,
+        profile_id=profile.profile_id,
+        search_start_utc=body.search_start_utc,
+        search_end_utc=body.search_end_utc,
+        center_lat=profile.last_ais_position_lat,
+        center_lon=profile.last_ais_position_lon,
+    )
+    db.add(mission)
+    db.commit()
+    db.refresh(mission)
+    return mission
+
+
+@router.post("/hunt/missions/{mission_id}/analyze", tags=["hunt"], response_model=HuntCandidateListResponse)
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def analyze_hunt_mission(mission_id: int, request: Request, db: Session = Depends(get_db)):
+    """Run hunt analysis on a mission (synchronous)."""
+    from app.models.stubs import SearchMission
+
+    mission = db.query(SearchMission).filter(
+        SearchMission.mission_id == mission_id
+    ).first()
+    if not mission:
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    candidates = []
+    try:
+        from app.modules.vessel_hunt import find_hunt_candidates
+        candidates = find_hunt_candidates(db, mission)
+    except (ImportError, AttributeError):
+        pass
+
+    return {"items": candidates, "total": len(candidates)}
+
+
+@router.put("/hunt/missions/{mission_id}/finalize", tags=["hunt"], response_model=SearchMissionRead)
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def finalize_hunt_mission(
+    mission_id: int, body: MissionFinalizeRequest,
+    request: Request, db: Session = Depends(get_db),
+):
+    """Finalize a mission by selecting a candidate."""
+    from app.models.stubs import SearchMission, HuntCandidate
+
+    mission = db.query(SearchMission).filter(
+        SearchMission.mission_id == mission_id
+    ).first()
+    if not mission:
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    candidate = db.query(HuntCandidate).filter(
+        HuntCandidate.candidate_id == body.candidate_id,
+        HuntCandidate.mission_id == mission_id,
+    ).first()
+    if not candidate:
+        raise HTTPException(status_code=400, detail="Candidate not found or does not belong to this mission")
+
+    mission.status = "finalized"
+    db.commit()
+    db.refresh(mission)
+    return mission
 
 

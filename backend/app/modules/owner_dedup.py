@@ -5,56 +5,24 @@ comparisons, then union-find clustering.
 """
 from __future__ import annotations
 
-import re
 import logging
 from collections import defaultdict
 from typing import Dict, List
 
 from rapidfuzz import fuzz
-from unidecode import unidecode
 
 from app.config import settings
 from app.models.vessel_owner import VesselOwner
 from app.models.owner_cluster import OwnerCluster
 from app.models.owner_cluster_member import OwnerClusterMember
+from app.modules.normalize import normalize_owner_name
 
 logger = logging.getLogger(__name__)
 
-# Corporate suffixes to strip before comparison
-_SUFFIX_RE = re.compile(
-    r"\b(LLC|LTD|LIMITED|INC|CORP|CORPORATION|CO|COMPANY|SA|AG|GMBH|OOO|OAO|ZAO|PAO)\b",
-    re.IGNORECASE,
-)
-# Cyrillic corporate suffixes (before transliteration)
-_CYRILLIC_SUFFIX_RE = re.compile(
-    r"\b(ООО|ОАО|ЗАО|ПАО)\b",
-)
-_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
-_MULTI_SPACE_RE = re.compile(r"\s+")
-
 SIMILARITY_THRESHOLD = 85
 
-
-def _normalize_owner_name(name: str) -> str:
-    """Normalize an owner name for fuzzy comparison.
-
-    Steps:
-    1. Strip Cyrillic corporate suffixes (ООО, ОАО, etc.)
-    2. Transliterate Cyrillic to Latin (unidecode)
-    3. Uppercase
-    4. Strip Latin corporate suffixes (LLC, Ltd, etc.)
-    5. Remove punctuation
-    6. Collapse whitespace
-    """
-    if not name:
-        return ""
-    text = _CYRILLIC_SUFFIX_RE.sub("", name)
-    text = unidecode(text)
-    text = text.upper()
-    text = _SUFFIX_RE.sub("", text)
-    text = _PUNCT_RE.sub(" ", text)
-    text = _MULTI_SPACE_RE.sub(" ", text).strip()
-    return text
+# Backward-compatible alias for tests that import the private name
+_normalize_owner_name = normalize_owner_name
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +92,7 @@ def run_owner_dedup(db) -> dict:
     buckets: Dict[str, List[int]] = defaultdict(list)  # bucket_key -> [owner_ids]
 
     for owner in owners:
-        norm = _normalize_owner_name(owner.owner_name)
+        norm = normalize_owner_name(owner.owner_name)
         if not norm:
             continue
         norm_map[owner.owner_id] = norm

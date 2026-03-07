@@ -4,13 +4,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, Float, DateTime, ForeignKey
+from sqlalchemy import Integer, Float, DateTime, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
 
 class LoiteringEvent(Base):
     __tablename__ = "loitering_events"
+    __table_args__ = (
+        Index("ix_loiter_vessel_start", "vessel_id", "start_time_utc"),
+    )
 
     loiter_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)
@@ -24,5 +27,7 @@ class LoiteringEvent(Base):
     preceding_gap_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("ais_gap_events.gap_event_id", ondelete="SET NULL"), nullable=True)
     following_gap_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("ais_gap_events.gap_event_id", ondelete="SET NULL"), nullable=True)
     risk_score_component: Mapped[int] = mapped_column(Integer, default=0)
+
+    corridor: Mapped[Optional["Corridor"]] = relationship("Corridor", back_populates="loitering_events")
 
     vessel: Mapped["Vessel"] = relationship("Vessel")

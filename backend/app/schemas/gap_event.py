@@ -89,6 +89,9 @@ class GapEventRead(BaseModel):
     in_dark_zone: bool
     prior_similar_count: Optional[int] = None
     is_recurring_pattern: Optional[bool] = None
+    coverage_quality: Optional[str] = None
+    is_feed_outage: Optional[bool] = None
+    original_vessel_id: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

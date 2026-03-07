@@ -21,6 +21,7 @@ from app.models.ais_point import AISPoint
 from app.models.corridor import Corridor
 from app.models.dark_zone import DarkZone
 from app.models.gap_event import AISGapEvent
+from app.utils.geo import parse_wkt_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -30,21 +31,8 @@ BBOX_TOLERANCE_DEG: float = 0.1
 
 # ── Geometry helpers ──────────────────────────────────────────────────────────
 
-def _parse_wkt_bbox(wkt: str) -> Optional[tuple[float, float, float, float]]:
-    """Return (min_lon, min_lat, max_lon, max_lat) from a POLYGON WKT string.
-
-    Extracts all numeric coordinate pairs and derives an axis-aligned bounding
-    box.  Returns None if the WKT cannot be parsed.
-
-    The WKT coordinate order is ``lon lat`` (OGC convention), which
-    matches the POLYGON stored as WKT text in the geometry column.
-    """
-    pairs = re.findall(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", wkt)
-    if not pairs:
-        return None
-    lons = [float(p[0]) for p in pairs]
-    lats = [float(p[1]) for p in pairs]
-    return min(lons), min(lats), max(lons), max(lats)
+# Backward-compatible alias for tests that import the private name
+_parse_wkt_bbox = parse_wkt_bbox
 
 
 def _point_in_bbox(
@@ -94,7 +82,7 @@ def _intersecting_rows(
         wkt = _geometry_wkt(row.geometry)
         if wkt is None:
             continue
-        bbox = _parse_wkt_bbox(wkt)
+        bbox = parse_wkt_bbox(wkt)
         if bbox is None:
             continue
         if _point_in_bbox(start_lat, start_lon, bbox) or _point_in_bbox(end_lat, end_lon, bbox):
@@ -197,7 +185,7 @@ def find_corridor_for_point(db: Session, lat: float, lon: float) -> Optional[Cor
         wkt = _geometry_wkt(c.geometry)
         if wkt is None:
             continue
-        bbox = _parse_wkt_bbox(wkt)
+        bbox = parse_wkt_bbox(wkt)
         if bbox and _point_in_bbox(lat, lon, bbox):
             matches.append(c)
     if not matches:

@@ -22,5 +22,7 @@ class StsTransferEventRead(BaseModel):
     satellite_confirmation_status: Optional[str] = None
     eta_minutes: Optional[int] = None
     risk_score_component: int
+    user_validated: Optional[bool] = None
+    confidence_override: Optional[float] = None
 
     model_config = {"from_attributes": True}

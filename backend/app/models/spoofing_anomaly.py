@@ -4,13 +4,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, Float, DateTime, JSON, ForeignKey, Enum as SAEnum
+from sqlalchemy import Integer, Float, DateTime, JSON, ForeignKey, Enum as SAEnum, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, SpoofingTypeEnum
 
 
 class SpoofingAnomaly(Base):
     __tablename__ = "spoofing_anomalies"
+    __table_args__ = (
+        Index("ix_spoof_vessel_start", "vessel_id", "start_time_utc"),
+    )
 
     anomaly_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)

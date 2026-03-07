@@ -22,3 +22,6 @@ class Corridor(Base):
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
 
     gap_events: Mapped[list] = relationship("AISGapEvent", back_populates="corridor")
+    sts_events: Mapped[list] = relationship("StsTransferEvent", back_populates="corridor")
+    loitering_events: Mapped[list] = relationship("LoiteringEvent", back_populates="corridor")
+    satellite_tasking_candidates: Mapped[list] = relationship("SatelliteTaskingCandidate", back_populates="corridor")
