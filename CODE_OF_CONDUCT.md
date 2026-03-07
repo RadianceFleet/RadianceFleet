@@ -9,7 +9,7 @@ https://www.contributor-covenant.org/version/2/1/code_of_conduct.html
 
 Instances of unacceptable behavior may be reported to the project team at:
 
-**conduct@radiancefleet.org**
+**conduct@radiancefleet.com**
 
 All reports will be reviewed and investigated promptly and fairly. The project
 team is obligated to maintain confidentiality with regard to the reporter.

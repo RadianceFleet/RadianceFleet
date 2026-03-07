@@ -75,7 +75,7 @@ def _send_via_smtp(to_email: str, subject: str, html_body: str) -> bool:
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"RadianceFleet <{settings.SMTP_USER or 'noreply@radiancefleet.org'}>"
+        msg["From"] = f"RadianceFleet <{settings.SMTP_USER or 'noreply@radiancefleet.com'}>"
         msg["To"] = to_email
         msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
         msg.attach(MIMEText(html_body, "html"))
@@ -84,7 +84,7 @@ def _send_via_smtp(to_email: str, subject: str, html_body: str) -> bool:
             if settings.SMTP_USER and settings.SMTP_PASS:
                 server.login(settings.SMTP_USER, settings.SMTP_PASS)
             server.sendmail(
-                settings.SMTP_USER or "noreply@radiancefleet.org",
+                settings.SMTP_USER or "noreply@radiancefleet.com",
                 to_email,
                 msg.as_string(),
             )

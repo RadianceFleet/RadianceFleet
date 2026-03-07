@@ -159,7 +159,7 @@ Update `DATABASE_URL` in `.env` to match the new password.
 
 RadianceFleet follows a **90-day responsible disclosure policy**.
 
-- Report vulnerabilities by email to: `security@radiancefleet.org`
+- Report vulnerabilities by email to: `security@radiancefleet.com`
 - Include a description of the vulnerability, steps to reproduce, and any proof-of-concept code.
 - We will acknowledge receipt within 5 business days.
 - We will provide a remediation timeline within 14 days.

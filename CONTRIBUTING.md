@@ -449,4 +449,4 @@ docker-compose.yml   PostgreSQL + PostGIS service definition
 
 Open a GitHub Discussion or file an issue with the `question` label. For
 security-sensitive findings (e.g. data exposure, auth bypass), please email
-`conduct@radiancefleet.org` rather than filing a public issue.
+`conduct@radiancefleet.com` rather than filing a public issue.

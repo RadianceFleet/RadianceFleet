@@ -12,12 +12,13 @@ FROM ghcr.io/astral-sh/uv:0.6.6-python3.12-bookworm-slim
 
 WORKDIR /app/backend
 
-# Install dependencies first (cached layer)
-COPY backend/pyproject.toml ./
-RUN uv sync --no-dev
+# Install dependencies first (cached layer — only re-runs if deps change)
+COPY backend/pyproject.toml backend/uv.lock ./
+RUN uv sync --no-dev --no-install-project
 
-# Copy backend source
+# Copy backend source + re-sync to install the project itself (fast — deps cached)
 COPY backend/ ./
+RUN uv sync --no-dev
 
 # Copy config files (risk scoring, corridors, coverage zones)
 COPY config/ ./config/

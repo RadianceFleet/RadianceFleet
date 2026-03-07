@@ -200,7 +200,7 @@ class Settings(BaseSettings):
 
     # ── Email Notifications ─────────────────────────────────────────────────
     RESEND_API_KEY: str | None = None
-    EMAIL_FROM_DOMAIN: str = "radiancefleet.org"
+    EMAIL_FROM_DOMAIN: str = "radiancefleet.com"
     SMTP_HOST: str | None = None
     SMTP_PORT: int = 587
     SMTP_USER: str | None = None
