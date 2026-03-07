@@ -22,8 +22,8 @@ COPY backend/ ./
 # Copy config files (risk scoring, corridors, coverage zones)
 COPY config/ ./config/
 
-# Copy built frontend into static directory
-COPY --from=frontend-build /app/frontend/dist ./static
+# Copy built frontend from Vite output (outDir: ../backend/static)
+COPY --from=frontend-build /app/backend/static ./static
 
 EXPOSE 8000
 
