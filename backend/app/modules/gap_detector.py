@@ -65,7 +65,7 @@ def _is_near_port(db: Session, lat: float, lon: float, radius_nm: float = 5.0) -
     return False
 
 
-def _is_in_anchorage_corridor(db: Session, lat: float, lon: float, tolerance: float = 0.05) -> bool:
+def _is_in_anchorage_corridor(db: Session, lat: float, lon: float, tolerance: float | None = None) -> bool:
     """Check if a position falls within any anchorage_holding corridor.
 
     Designated waiting anchorages (e.g. Laconian Gulf STS anchorage) are modeled
@@ -76,6 +76,9 @@ def _is_in_anchorage_corridor(db: Session, lat: float, lon: float, tolerance: fl
     from app.models.base import CorridorTypeEnum
     from app.utils.geo import parse_wkt_bbox as _parse_wkt_bbox
     from app.modules.corridor_correlator import _geometry_wkt
+
+    if tolerance is None:
+        tolerance = settings.ANCHORAGE_TOLERANCE_DEG
 
     corridors = db.query(Corridor).filter(
         Corridor.corridor_type == CorridorTypeEnum.ANCHORAGE_HOLDING,
@@ -108,7 +111,7 @@ def run_gap_detection(
             "All gaps will miss corridor multipliers."
         )
 
-    vessels = db.query(Vessel).all()
+    vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
     total_gaps = 0
 
     for vessel in vessels:
@@ -312,7 +315,7 @@ def detect_stale_ais_data(
     if not settings.STALE_AIS_DETECTION_ENABLED:
         return {"stale_ais_anomalies": 0, "skipped": True}
 
-    vessels = db.query(Vessel).all()
+    vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
     anomalies_created = 0
     _MIN_CONSECUTIVE = 10
     _MIN_SPAN_HOURS = 2.0
@@ -440,7 +443,7 @@ def run_spoofing_detection(
     from app.models.base import SpoofingTypeEnum
     from app.models.port import Port
 
-    vessels = db.query(Vessel).all()
+    vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
     anomalies_created = 0
 
     for vessel in vessels:

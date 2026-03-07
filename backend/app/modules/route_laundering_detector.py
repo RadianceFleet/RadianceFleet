@@ -106,7 +106,7 @@ def run_route_laundering_detection(db: Session) -> dict:
     # Load all ports for country/name lookups
     all_ports = {p.port_id: p for p in db.query(Port).all()}
 
-    vessels = db.query(Vessel).all()
+    vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
     anomalies_created = 0
 
     for vessel in vessels:

@@ -279,9 +279,18 @@ def get_budget_status(db: Session) -> dict:
     """Get current verification budget status."""
     budget = getattr(settings, 'VERIFICATION_MONTHLY_BUDGET_USD', 500.0)
     spent = get_monthly_spend(db)
+    provider_status = {}
+    for name, provider in _PROVIDERS.items():
+        key_attr = f"{name.upper()}_API_KEY"
+        configured = bool(getattr(settings, key_attr, None))
+        provider_status[name] = {
+            "configured": configured,
+            "status": "ready" if configured else "not_configured",
+            "estimated_cost_usd": provider.estimated_cost(),
+        }
     return {
         "monthly_budget_usd": budget,
         "spent_usd": round(spent, 2),
         "remaining_usd": round(max(0, budget - spent), 2),
-        "providers": list(_PROVIDERS.keys()),
+        "providers": provider_status,
     }
