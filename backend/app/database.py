@@ -119,6 +119,17 @@ def _run_migrations() -> None:
 
     _col_cache: dict[str, set[str]] = {}
 
+    # Map SQLite types to PostgreSQL equivalents
+    _is_pg = engine.dialect.name == "postgresql"
+    _type_map: dict[str, str] = {}
+    if _is_pg:
+        _type_map = {
+            "DATETIME": "TIMESTAMP",
+            "BOOLEAN DEFAULT 0": "BOOLEAN DEFAULT FALSE",
+            "BOOLEAN NOT NULL DEFAULT 0": "BOOLEAN NOT NULL DEFAULT FALSE",
+            "JSON": "JSONB",
+        }
+
     with engine.connect() as conn:
         for table_name, col_name, col_type in column_migrations:
             if table_name not in _col_cache:
@@ -126,8 +137,9 @@ def _run_migrations() -> None:
                     c["name"] for c in inspector.get_columns(table_name)
                 }
             if col_name not in _col_cache[table_name]:
+                mapped_type = _type_map.get(col_type, col_type) if _is_pg else col_type
                 conn.execute(text(
-                    f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}"
+                    f"ALTER TABLE {table_name} ADD COLUMN {col_name} {mapped_type}"
                 ))
                 conn.commit()
                 _col_cache[table_name].add(col_name)
