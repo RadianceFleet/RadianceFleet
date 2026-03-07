@@ -183,22 +183,24 @@ def _merge_vessel_history(db: Session, canonical_id: int, absorbed_id: int) -> d
         .all()
     )
 
+    # Batch-preload canonical entries to avoid per-entry duplicate queries
+    canonical_entries = (
+        db.query(VesselHistory)
+        .filter(VesselHistory.vessel_id == canonical_id)
+        .all()
+    )
+    existing_keys = {
+        (h.field_changed, h.old_value, h.new_value, h.observed_at)
+        for h in canonical_entries
+    }
+
     for entry in entries:
-        dup = (
-            db.query(VesselHistory)
-            .filter(
-                VesselHistory.vessel_id == canonical_id,
-                VesselHistory.field_changed == entry.field_changed,
-                VesselHistory.old_value == entry.old_value,
-                VesselHistory.new_value == entry.new_value,
-                VesselHistory.observed_at == entry.observed_at,
-            )
-            .first()
-        )
-        if dup:
+        key = (entry.field_changed, entry.old_value, entry.new_value, entry.observed_at)
+        if key in existing_keys:
             result["duplicates_skipped"] += 1
             continue
         entry.vessel_id = canonical_id
+        existing_keys.add(key)
         result["reassigned"] += 1
 
     return result

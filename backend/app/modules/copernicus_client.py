@@ -17,6 +17,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,8 @@ def _get_access_token(
     from app.utils.http_retry import retry_request
 
     with httpx.Client(timeout=_TIMEOUT) as client:
-        resp = retry_request(
+        resp = breakers["copernicus"].call(
+            retry_request,
             client.post,
             _TOKEN_URL,
             data={
@@ -125,7 +127,8 @@ def find_sentinel1_scenes(
 
         with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
             try:
-                resp = retry_request(
+                resp = breakers["copernicus"].call(
+                    retry_request,
                     client.get,
                     _CATALOG_URL,
                     params=params,
@@ -136,7 +139,8 @@ def find_sentinel1_scenes(
                     # Token expired — invalidate cache and re-authenticate once
                     logger.info("Copernicus 401 — refreshing token and retrying")
                     token = _get_access_token(force_refresh=True)
-                    resp = retry_request(
+                    resp = breakers["copernicus"].call(
+                        retry_request,
                         client.get,
                         _CATALOG_URL,
                         params=params,
@@ -232,7 +236,8 @@ def find_sentinel2_scenes(
 
         with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
             try:
-                resp = retry_request(
+                resp = breakers["copernicus"].call(
+                    retry_request,
                     client.get,
                     _CATALOG_URL,
                     params=params,
@@ -242,7 +247,8 @@ def find_sentinel2_scenes(
                 if auth_exc.response.status_code == 401:
                     logger.info("Copernicus 401 — refreshing token for Sentinel-2 query")
                     token = _get_access_token(force_refresh=True)
-                    resp = retry_request(
+                    resp = breakers["copernicus"].call(
+                        retry_request,
                         client.get,
                         _CATALOG_URL,
                         params=params,

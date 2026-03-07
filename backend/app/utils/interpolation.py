@@ -14,19 +14,17 @@ from __future__ import annotations
 import math
 from typing import Optional
 
+from app.utils.geo import initial_bearing, _EARTH_RADIUS_NM
+
 
 def _bearing_rad(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Initial bearing from (lat1,lon1) to (lat2,lon2) in radians."""
-    lat1_r, lat2_r = math.radians(lat1), math.radians(lat2)
-    dlon = math.radians(lon2 - lon1)
-    x = math.sin(dlon) * math.cos(lat2_r)
-    y = math.cos(lat1_r) * math.sin(lat2_r) - math.sin(lat1_r) * math.cos(lat2_r) * math.cos(dlon)
-    return math.atan2(x, y)
+    return math.radians(initial_bearing(lat1, lon1, lat2, lon2))
 
 
 def _destination_point(lat: float, lon: float, bearing_rad: float, distance_nm: float) -> tuple[float, float]:
     """Compute destination point given start, bearing, and distance in nm."""
-    R_nm = 3440.065  # Earth radius in nautical miles
+    R_nm = _EARTH_RADIUS_NM
     d = distance_nm / R_nm
     lat_r = math.radians(lat)
     lon_r = math.radians(lon)

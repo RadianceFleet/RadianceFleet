@@ -20,7 +20,8 @@ from app.models.stubs import (
     DarkVesselDetection,
 )
 from app.models.vessel import Vessel
-from app.modules.gap_detector import compute_max_distance_nm, _haversine_nm
+from app.modules.gap_detector import compute_max_distance_nm
+from app.utils.geo import haversine_nm as _haversine_nm
 
 logger = logging.getLogger(__name__)
 

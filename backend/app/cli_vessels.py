@@ -2,7 +2,10 @@
 evaluate-detector, confirm-detector, watchlist-update."""
 from __future__ import annotations
 
+import logging
 import typer
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Optional
 from datetime import timedelta
@@ -299,7 +302,7 @@ def rescore():
                 + ", ".join(f"{k}={v}" for k, v in sorted(by_level.items()))
             )
         except ImportError:
-            pass
+            logger.error("Could not import confidence_classifier module")
 
         # Score watchlist stubs (vessels with no AIS history)
         try:
@@ -310,8 +313,8 @@ def rescore():
                 f"  Stub scoring: scored={stub_result.get('scored', 0)} "
                 f"cleared={stub_result.get('cleared', 0)}"
             )
-        except (ImportError, AttributeError):
-            pass
+        except (ImportError, AttributeError) as e:
+            logger.error("Could not run watchlist stub scoring: %s", e)
     finally:
         db.close()
 

@@ -40,6 +40,21 @@ breakers = {
     "equasis": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="equasis", listeners=[_listener]
     ),
+    "noaa": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="noaa", listeners=[_listener]
+    ),
+    "aishub": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="aishub", listeners=[_listener]
+    ),
+    "dma": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="dma", listeners=[_listener]
+    ),
+    "crea": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="crea", listeners=[_listener]
+    ),
+    "copernicus": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="copernicus", listeners=[_listener]
+    ),
 }
 
 

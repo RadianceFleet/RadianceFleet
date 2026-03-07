@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ def download_noaa_file(target_date: date, output_dir: Path | None = None) -> Pat
     from app.utils.http_retry import retry_request
 
     with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
-        with client.stream("GET", url) as resp:
+        with breakers["noaa"].call(client.stream, "GET", url) as resp:
             resp.raise_for_status()
             with open(tmp_path, "wb") as f:
                 for chunk in resp.iter_bytes(chunk_size=65536):

@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.modules.circuit_breakers import breakers
 from app.models.crea_voyage import CreaVoyage
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def fetch_crea_vessel_data(
 
     try:
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = client.get(f"{base_url}/v0/voyage", params=params)
+            resp = breakers["crea"].call(client.get, f"{base_url}/v0/voyage", params=params)
             if resp.status_code == 404:
                 return None
             resp.raise_for_status()

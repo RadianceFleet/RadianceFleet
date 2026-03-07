@@ -41,6 +41,7 @@ from app.models.corridor import Corridor
 from app.models.sts_transfer import StsTransferEvent
 from app.models.vessel import Vessel
 from app.models.base import STSDetectionTypeEnum, CorridorTypeEnum
+from app.utils.geo import parse_wkt_bbox as _parse_wkt_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -214,22 +215,6 @@ def _load_ais_points(
 
 
 # ── Corridor / bounding-box helpers ──────────────────────────────────────────
-
-def _parse_wkt_bbox(
-    geometry_value: object,
-) -> Optional[tuple[float, float, float, float]]:
-    """Extract (min_lon, min_lat, max_lon, max_lat) from a GeoAlchemy2 geometry value."""
-    import re
-
-    if geometry_value is None:
-        return None
-    raw = str(geometry_value)
-    pairs = re.findall(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", raw)
-    if not pairs:
-        return None
-    lons = [float(p[0]) for p in pairs]
-    lats = [float(p[1]) for p in pairs]
-    return min(lons), min(lats), max(lons), max(lats)
 
 
 def _build_sts_zone_bboxes(

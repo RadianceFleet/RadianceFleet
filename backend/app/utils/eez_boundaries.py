@@ -57,13 +57,9 @@ EEZ_BOUNDARY_LINES: list[tuple[str, list[tuple[float, float]]]] = [
 
 
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Compute great-circle distance in nautical miles."""
-    R_nm = 3440.065  # Earth radius in nautical miles
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    d_phi = math.radians(lat2 - lat1)
-    d_lam = math.radians(lon2 - lon1)
-    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lam / 2) ** 2
-    return R_nm * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    """Re-export of :func:`app.utils.geo.haversine_nm`."""
+    from app.utils.geo import haversine_nm
+    return haversine_nm(lat1, lon1, lat2, lon2)
 
 
 def _point_to_segment_distance_nm(

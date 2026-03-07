@@ -26,17 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate distance between two points in nautical miles."""
-    R_NM = 3440.065  # Earth radius in nautical miles
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
-    )
-    return R_NM * 2 * math.asin(math.sqrt(a))
+    """Re-export of :func:`app.utils.geo.haversine_nm`."""
+    from app.utils.geo import haversine_nm
+    return haversine_nm(lat1, lon1, lat2, lon2)
 
 
 def _has_recent_movement(db: Session, vessel_id: int, window_hours: int = 48) -> bool:

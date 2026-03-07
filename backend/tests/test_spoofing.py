@@ -9,7 +9,7 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from app.modules.gap_detector import _haversine_nm
+from app.utils.geo import haversine_nm as _haversine_nm
 
 
 # ── Helper factory ────────────────────────────────────────────────────────────

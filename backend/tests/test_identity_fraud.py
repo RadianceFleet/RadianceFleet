@@ -19,10 +19,8 @@ from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.modules.stateless_detector import run_stateless_detection, _extract_ship_mid
 from app.modules.flag_hopping_detector import run_flag_hopping_detection
 from app.utils.vessel_identity import validate_imo_checksum as _validate_imo_checksum
-from app.modules.imo_fraud_detector import (
-    run_imo_fraud_detection,
-    _haversine_nm,
-)
+from app.modules.imo_fraud_detector import run_imo_fraud_detection
+from app.utils.geo import haversine_nm as _haversine_nm
 
 
 # -- Shared fixture: in-memory SQLite session --

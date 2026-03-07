@@ -70,7 +70,7 @@ def run_stateless_detection(db: Session) -> dict:
     if not settings.STATELESS_MMSI_DETECTION_ENABLED:
         return {"status": "disabled"}
 
-    vessels = db.query(Vessel).all()
+    vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
     now = datetime.now(timezone.utc)
 
     tier1_count = 0

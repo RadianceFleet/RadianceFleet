@@ -85,6 +85,7 @@ def get_loitering_events(
 def get_sts_events(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    vessel_id: Optional[int] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -93,6 +94,8 @@ def get_sts_events(
     _validate_date_range(date_from, date_to)
     limit = min(limit, settings.MAX_QUERY_LIMIT)
     q = db.query(StsTransferEvent)
+    if vessel_id is not None:
+        q = q.filter(or_(StsTransferEvent.vessel_1_id == vessel_id, StsTransferEvent.vessel_2_id == vessel_id))
     if date_from:
         q = q.filter(StsTransferEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
     if date_to:
@@ -101,6 +104,49 @@ def get_sts_events(
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": items, "total": total}
+
+
+@router.patch("/sts-events/{sts_id}", tags=["detection"])
+def validate_sts_event(
+    sts_id: int,
+    user_validated: Optional[bool] = None,
+    confidence_override: Optional[float] = Query(None, ge=0.0, le=1.0),
+    db: Session = Depends(get_db),
+):
+    """Analyst validation: confirm/reject an STS transfer event."""
+    from app.models.sts_transfer import StsTransferEvent
+    event = db.query(StsTransferEvent).filter(StsTransferEvent.sts_id == sts_id).first()
+    if not event:
+        raise HTTPException(status_code=404, detail="STS event not found")
+    if user_validated is not None:
+        event.user_validated = user_validated
+    if confidence_override is not None:
+        event.confidence_override = confidence_override
+    db.commit()
+    return {"sts_id": sts_id, "user_validated": event.user_validated, "confidence_override": event.confidence_override}
+
+
+@router.get("/route-laundering/{vessel_id}", tags=["detection"])
+def get_route_laundering(
+    vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """Get route laundering anomalies for a vessel."""
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.base import SpoofingTypeEnum
+    _validate_date_range(date_from, date_to)
+    q = db.query(SpoofingAnomaly).filter(
+        SpoofingAnomaly.vessel_id == vessel_id,
+        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.ROUTE_LAUNDERING,
+    )
+    if date_from:
+        q = q.filter(SpoofingAnomaly.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+    if date_to:
+        q = q.filter(SpoofingAnomaly.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+    results = q.order_by(SpoofingAnomaly.start_time_utc.desc()).all()
+    return {"items": results, "total": len(results)}
 
 
 @router.post("/loitering/detect", tags=["detection"])

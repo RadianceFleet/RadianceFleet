@@ -6,9 +6,7 @@ or near STS transfer events.  Draught is a corroborating signal only:
 AIS draught is manually entered and unreliable on its own, but extreme
 swings far from port strengthen other detectors.
 """
-import math
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -21,6 +19,7 @@ from app.models.port import Port
 from app.models.gap_event import AISGapEvent
 from app.models.sts_transfer import StsTransferEvent
 from app.models.draught_event import DraughtChangeEvent
+from app.utils.geo import haversine_nm as _haversine_nm, parse_wkt_point as _parse_port_coords
 
 logger = logging.getLogger(__name__)
 
@@ -62,30 +61,6 @@ def _get_class_threshold(deadweight: float | None) -> float:
         return 1.5
     return 1.0
 
-
-def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance in nautical miles between two WGS-84 coordinates."""
-    _EARTH_RADIUS_NM = 3440.065
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    return _EARTH_RADIUS_NM * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
-def _parse_port_coords(geometry_wkt: str | None) -> tuple[float, float] | None:
-    """Extract (lat, lon) from WKT POINT geometry string.
-
-    Port.geometry stores WKT like "POINT(lon lat)".
-    Returns (lat, lon) tuple or None if unparseable.
-    """
-    if not geometry_wkt:
-        return None
-    m = re.match(r"POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)", geometry_wkt, re.IGNORECASE)
-    if not m:
-        return None
-    lon, lat = float(m.group(1)), float(m.group(2))
-    return (lat, lon)
 
 
 def _find_nearest_port(lat: float, lon: float, ports: list) -> tuple[Optional[int], Optional[float], bool]:

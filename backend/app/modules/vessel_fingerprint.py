@@ -23,6 +23,7 @@ from __future__ import annotations
 import datetime
 import logging
 import math
+import statistics as _stats
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -59,34 +60,27 @@ _DWT_TOLERANCE = 0.30  # +/-30%
 # ── Pure-Python math helpers ──────────────────────────────────────────────────
 
 def _median(values: list[float]) -> float:
-    """Compute median of a list of floats."""
     if not values:
         return 0.0
-    s = sorted(values)
-    n = len(s)
-    if n % 2 == 1:
-        return s[n // 2]
-    return (s[n // 2 - 1] + s[n // 2]) / 2.0
+    return _stats.median(values)
 
 
 def _mean(values: list[float]) -> float:
-    """Compute arithmetic mean."""
     if not values:
         return 0.0
-    return sum(values) / len(values)
+    return _stats.mean(values)
 
 
 def _variance(values: list[float]) -> float:
-    """Compute sample variance."""
     if len(values) < 2:
         return 0.0
-    m = _mean(values)
-    return sum((x - m) ** 2 for x in values) / (len(values) - 1)
+    return _stats.variance(values)
 
 
 def _std(values: list[float]) -> float:
-    """Compute sample standard deviation."""
-    return math.sqrt(_variance(values))
+    if len(values) < 2:
+        return 0.0
+    return _stats.stdev(values)
 
 
 def _iqr(values: list[float]) -> float:

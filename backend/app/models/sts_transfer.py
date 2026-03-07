@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import Integer, Float, String, DateTime, ForeignKey, Enum as SAEnum, UniqueConstraint
+from sqlalchemy import Boolean, Integer, Float, String, DateTime, ForeignKey, Enum as SAEnum, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, STSDetectionTypeEnum
 
@@ -36,6 +36,9 @@ class StsTransferEvent(Base):
     # ETA in minutes for approaching-vector detections (Phase 5.1 Phase B)
     eta_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     risk_score_component: Mapped[int] = mapped_column(Integer, default=0)
+    # Analyst validation fields
+    user_validated: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    confidence_override: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     vessel_1: Mapped["Vessel"] = relationship(
         "Vessel", foreign_keys=[vessel_1_id], back_populates="sts_events_as_vessel_1"

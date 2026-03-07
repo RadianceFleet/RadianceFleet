@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     STS_MIN_WINDOWS: int = 8  # 8 × 15 min = 2 hours sustained
     CLASS_B_NOISE_FILTER_SECONDS: int = 180
     LOITER_GAP_LINKAGE_HOURS: int = 48
+    ANCHORAGE_TOLERANCE_DEG: float = 0.05  # ~5.5 km bounding-box tolerance for anchorage corridors
     FUZZY_MATCH_THRESHOLD: int = 85
     COVERAGE_CONFIG: str = "config/coverage.yaml"
 
