@@ -10,10 +10,9 @@ from app.models.draught_event import DraughtChangeEvent
 from app.modules.draught_detector import (
     run_draught_detection,
     _get_class_threshold,
-    _haversine_nm,
     _is_valid_draught,
-    _parse_port_coords,
 )
+from app.utils.geo import haversine_nm as _haversine_nm, parse_wkt_point as _parse_port_coords
 from tests.conftest import (
     make_mock_vessel as _mock_vessel,
     make_mock_point as _mock_point,

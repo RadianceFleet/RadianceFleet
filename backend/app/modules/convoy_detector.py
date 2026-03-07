@@ -32,7 +32,7 @@ from app.models.convoy_event import ConvoyEvent
 from app.models.corridor import Corridor
 from app.models.vessel import Vessel
 from app.modules.risk_scoring import load_scoring_config
-from app.utils.geo import haversine_nm
+from app.utils.geo import haversine_nm, parse_wkt_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -82,17 +82,10 @@ def _convoy_score(duration_hours: float, config: dict | None = None) -> int:
 # ── Corridor matching ─────────────────────────────────────────────────────────
 
 def _parse_wkt_bbox(geometry_value: object) -> Optional[tuple[float, float, float, float]]:
-    """Extract (min_lon, min_lat, max_lon, max_lat) from WKT geometry."""
-    import re
+    """Thin wrapper around :func:`app.utils.geo.parse_wkt_bbox`."""
     if geometry_value is None:
         return None
-    raw = str(geometry_value)
-    pairs = re.findall(r"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)", raw)
-    if not pairs:
-        return None
-    lons = [float(p[0]) for p in pairs]
-    lats = [float(p[1]) for p in pairs]
-    return min(lons), min(lats), max(lons), max(lats)
+    return parse_wkt_bbox(str(geometry_value))
 
 
 def _in_bbox(lat: float, lon: float, bbox: tuple[float, float, float, float]) -> bool:

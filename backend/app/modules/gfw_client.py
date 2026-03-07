@@ -1080,14 +1080,14 @@ def import_gfw_port_visits(
 
 
 def _extract_bbox_from_wkt(wkt: str | None) -> tuple[float, float, float, float] | None:
-    """Extract (lat_min, lon_min, lat_max, lon_max) bounding box from WKT POLYGON."""
-    if not wkt:
+    """Extract (lat_min, lon_min, lat_max, lon_max) bounding box from WKT POLYGON.
+
+    Delegates to :func:`app.utils.geo.parse_wkt_bbox` (which returns lon-first)
+    then swaps to the lat-first order expected by GFW API callers.
+    """
+    from app.utils.geo import parse_wkt_bbox
+    bbox = parse_wkt_bbox(wkt) if wkt else None
+    if bbox is None:
         return None
-    import re
-    # Extract all coordinate pairs from WKT
-    nums = re.findall(r"(-?[\d.]+)\s+(-?[\d.]+)", wkt)
-    if not nums:
-        return None
-    lons = [float(n[0]) for n in nums]
-    lats = [float(n[1]) for n in nums]
-    return (min(lats), min(lons), max(lats), max(lons))
+    min_lon, min_lat, max_lon, max_lat = bbox
+    return (min_lat, min_lon, max_lat, max_lon)

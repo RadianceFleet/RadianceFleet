@@ -6,7 +6,8 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-from app.modules.gap_detector import _haversine_nm, detect_gaps_for_vessel
+from app.utils.geo import haversine_nm as _haversine_nm
+from app.modules.gap_detector import detect_gaps_for_vessel
 from app.modules.normalize import validate_ais_row
 from app.modules.risk_scoring import compute_gap_score, _score_band, load_scoring_config
 

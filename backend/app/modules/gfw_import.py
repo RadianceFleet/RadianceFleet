@@ -53,7 +53,7 @@ def parse_gfw_row(row: dict) -> dict:
     }
 
 
-_haversine_nm = haversine_nm  # alias for backward compat within this module
+_haversine_nm = haversine_nm  # module-local alias
 
 
 def ingest_gfw_csv(db: Session, filepath: str) -> dict:

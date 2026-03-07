@@ -16,6 +16,7 @@ from app.config import settings
 from app.models.vessel import Vessel
 from app.models.ais_point import AISPoint
 from app.models.gap_event import AISGapEvent
+from app.utils.geo import haversine_nm
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,8 @@ def _is_in_anchorage_corridor(db: Session, lat: float, lon: float, tolerance: fl
     """
     from app.models.corridor import Corridor
     from app.models.base import CorridorTypeEnum
-    from app.modules.corridor_correlator import _parse_wkt_bbox, _geometry_wkt
+    from app.utils.geo import parse_wkt_bbox as _parse_wkt_bbox
+    from app.modules.corridor_correlator import _geometry_wkt
 
     corridors = db.query(Corridor).filter(
         Corridor.corridor_type == CorridorTypeEnum.ANCHORAGE_HOLDING,
@@ -283,11 +285,7 @@ def _create_movement_envelope(db: Session, gap: AISGapEvent, vessel: Vessel) -> 
 
 
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Compute great-circle distance in nautical miles (Haversine formula).
-
-    Thin wrapper around app.utils.geo.haversine_nm for backward compatibility.
-    """
-    from app.utils.geo import haversine_nm
+    """Re-export of :func:`app.utils.geo.haversine_nm` (kept for test imports)."""
     return haversine_nm(lat1, lon1, lat2, lon2)
 
 

@@ -31,6 +31,7 @@ from app.models.base import SpoofingTypeEnum
 from app.models.corridor import Corridor
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
+from app.utils.geo import initial_bearing as _initial_bearing
 
 logger = logging.getLogger(__name__)
 
@@ -63,16 +64,6 @@ SCORE_HEADING_TO_STS = int(_dest_cfg.get("heading_to_sts_declaring_eu", 40))
 SCORE_BLANK_GENERIC = int(_dest_cfg.get("blank_generic_destination", 10))
 SCORE_FREQUENT_CHANGES = int(_dest_cfg.get("destination_changes_3_in_7d", 20))
 
-
-def _initial_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Compute initial bearing (degrees, 0-360) from point 1 to point 2."""
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    d_lambda = math.radians(lon2 - lon1)
-    x = math.sin(d_lambda) * math.cos(phi2)
-    y = (math.cos(phi1) * math.sin(phi2)
-         - math.sin(phi1) * math.cos(phi2) * math.cos(d_lambda))
-    return math.degrees(math.atan2(x, y)) % 360
 
 
 def _bearing_diff(b1: float, b2: float) -> float:

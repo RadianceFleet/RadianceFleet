@@ -13,7 +13,7 @@ import math
 import pytest
 from unittest.mock import MagicMock
 
-from app.modules.gap_detector import _haversine_nm
+from app.utils.geo import haversine_nm as _haversine_nm
 
 
 # ── ST_Intersects vs ST_Within concept tests ──────────────────────────────────

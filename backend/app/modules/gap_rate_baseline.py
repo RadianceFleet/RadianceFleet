@@ -20,7 +20,8 @@ from app.config import settings
 from app.models.corridor import Corridor
 from app.models.corridor_gap_baseline import CorridorGapBaseline
 from app.models.gap_event import AISGapEvent
-from app.modules.sts_detector import _parse_wkt_bbox, _in_bbox
+from app.utils.geo import parse_wkt_bbox as _parse_wkt_bbox
+from app.modules.sts_detector import _in_bbox
 
 logger = logging.getLogger(__name__)
 
