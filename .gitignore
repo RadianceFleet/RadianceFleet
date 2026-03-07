@@ -63,6 +63,7 @@ backend/alembic/versions/*.py
 # Worktrees (if using git worktrees)
 .worktrees/
 .claude/
+.mcp.json
 PRD.md
 backend/radiancefleet.db
 backend/radiancefleet.db*
