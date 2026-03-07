@@ -17,8 +17,13 @@ services:
     build: .
     ports:
       - "8000:8000"
+    env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://radiancefleet:radiancefleet@db:5432/radiancefleet
+    volumes:
+      # Mount custom config to override baked-in defaults (optional)
+      # Create this directory and copy/edit config files to customize thresholds
+      - ${RADIANCEFLEET_CONFIG_DIR:-./config}:/app/backend/config:ro
     depends_on:
       db:
         condition: service_healthy
@@ -26,10 +31,13 @@ services:
   cron:
     build: .
     entrypoint: ["uv", "run", "radiancefleet", "update", "--stream-time", "1h"]
+    env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://radiancefleet:radiancefleet@db:5432/radiancefleet
       AISSTREAM_API_KEY: ${AISSTREAM_API_KEY:-}
       AISSTREAM_WORKER_ENABLED: ${AISSTREAM_WORKER_ENABLED:-false}
+    volumes:
+      - ${RADIANCEFLEET_CONFIG_DIR:-./config}:/app/backend/config:ro
     depends_on:
       db:
         condition: service_healthy
@@ -37,9 +45,12 @@ services:
   ws-worker:
     build: .
     entrypoint: ["uv", "run", "radiancefleet", "stream"]
+    env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://radiancefleet:radiancefleet@db:5432/radiancefleet
       AISSTREAM_API_KEY: ${AISSTREAM_API_KEY:-}
+    volumes:
+      - ${RADIANCEFLEET_CONFIG_DIR:-./config}:/app/backend/config:ro
     depends_on:
       db:
         condition: service_healthy

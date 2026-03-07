@@ -49,14 +49,19 @@ async def lifespan(app: FastAPI):
     """Validate risk_scoring.yaml at startup."""
     config_path = Path(settings.RISK_SCORING_CONFIG)
     if not config_path.exists():
-        logger.critical("FATAL: config/risk_scoring.yaml not found at %s", config_path)
-        sys.exit(1)
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-    required_sections = ["gap_duration", "spoofing", "metadata", "legitimacy", "dark_zone", "corridor"]
-    for section in required_sections:
-        if section not in config:
-            logger.warning("Missing config section '%s' in risk_scoring.yaml — scoring may use defaults", section)
+        logger.warning("risk_scoring.yaml not found at %s — scoring will use defaults", config_path)
+    else:
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+        required_sections = ["gap_duration", "spoofing", "metadata", "legitimacy", "dark_zone", "corridor"]
+        for section in required_sections:
+            if section not in config:
+                logger.warning("Missing config section '%s' in risk_scoring.yaml — scoring may use defaults", section)
+
+    # Create tables if they don't exist (essential for fresh deployments)
+    from app.database import init_db
+    init_db()
+    logger.info("Database tables verified")
 
     # Start history backfill scheduler if enabled
     history_scheduler = None

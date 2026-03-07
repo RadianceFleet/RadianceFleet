@@ -4,7 +4,9 @@ Extracted from risk_scoring.py to reduce module size.
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +46,43 @@ _WATCHLIST_DEFAULTS = {
 }
 
 
+def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
+    """Apply SCORING_OVERRIDES env var on top of YAML config.
+
+    Supports targeted threshold tuning on platforms without filesystem access
+    (e.g. Render, Railway). Format is JSON with nested section keys:
+
+        SCORING_OVERRIDES={"gap_duration":{"24h_plus":60},"corridor":{"sts_zone":2.0}}
+
+    Only merges keys that exist in the YAML — won't create new sections.
+    """
+    raw = os.environ.get("SCORING_OVERRIDES")
+    if not raw:
+        return config
+    try:
+        overrides = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.error("SCORING_OVERRIDES is not valid JSON — ignoring")
+        return config
+    if not isinstance(overrides, dict):
+        logger.error("SCORING_OVERRIDES must be a JSON object — ignoring")
+        return config
+    count = 0
+    for section, values in overrides.items():
+        if section not in config:
+            logger.warning("SCORING_OVERRIDES: unknown section '%s' — skipping", section)
+            continue
+        if isinstance(values, dict) and isinstance(config[section], dict):
+            config[section].update(values)
+            count += len(values)
+        else:
+            config[section] = values
+            count += 1
+    if count:
+        logger.info("SCORING_OVERRIDES: applied %d override(s)", count)
+    return config
+
+
 def load_scoring_config() -> dict[str, Any]:
     global _SCORING_CONFIG
     if _SCORING_CONFIG is None:
@@ -54,6 +93,7 @@ def load_scoring_config() -> dict[str, Any]:
         else:
             with open(config_path) as f:
                 _SCORING_CONFIG = yaml.safe_load(f) or {}
+        _SCORING_CONFIG = _apply_env_overrides(_SCORING_CONFIG)
         missing = [s for s in _EXPECTED_SECTIONS if s not in _SCORING_CONFIG]
         if missing:
             logger.warning("risk_scoring.yaml missing sections: %s", ", ".join(missing))
@@ -102,6 +142,11 @@ def _is_whitelisted_operator(mmsi: str | int | None) -> bool:
         return False
     ops = _load_legitimate_operators_config()
     whitelisted = {str(m) for m in ops.get("whitelisted_mmsis", [])}
+    # EXTRA_WHITELISTED_MMSIS env var: comma-separated MMSIs to add at runtime
+    # (for platforms without filesystem access, e.g. Render)
+    extra = os.environ.get("EXTRA_WHITELISTED_MMSIS", "")
+    if extra:
+        whitelisted.update(m.strip() for m in extra.split(",") if m.strip())
     return str(mmsi) in whitelisted
 
 

@@ -39,10 +39,18 @@ data/
 *.csv
 *.json.gz
 
+# Production config overrides (never commit tuned thresholds or operator whitelists)
+# Use config/*.local.yaml for instance-specific calibration — see config/README.md
+config/*.local.yaml
+config/local/
+
 # Secrets
 *.pem
 *.key
 secrets/
+
+# Internal/private docs (dot-prefixed files in docs/)
+docs/.*
 
 # OS
 .DS_Store
