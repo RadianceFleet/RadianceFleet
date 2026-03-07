@@ -108,6 +108,9 @@ def _run_migrations() -> None:
         ("ais_points", "source_timestamp_utc", "DATETIME"),
         # 5B — AIS cargo type from ship_type field
         ("vessels", "ais_cargo_type", "VARCHAR(50)"),
+        # STS analyst validation
+        ("sts_transfer_events", "user_validated", "BOOLEAN"),
+        ("sts_transfer_events", "confidence_override", "REAL"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
