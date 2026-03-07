@@ -1,6 +1,8 @@
 """Admin, audit, ingestion, tips, subscriptions, and data coverage endpoints."""
 from __future__ import annotations
 
+import csv
+import io
 import logging
 from datetime import date, datetime, timezone
 from typing import Optional
@@ -19,6 +21,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _validate_csv_upload(file: UploadFile) -> None:
+    """Validate that an uploaded file is a parseable CSV.
+
+    Checks filename extension and reads the first line to verify UTF-8 encoding
+    and comma/tab delimiters. Does NOT rely on Content-Type header.
+    """
+    if file.filename and not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="File must have .csv extension")
+    # Read first chunk to validate encoding and format
+    first_bytes = file.file.read(8192)
+    file.file.seek(0)
+    if not first_bytes:
+        raise HTTPException(status_code=400, detail="File is empty")
+    try:
+        first_text = first_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File is not valid UTF-8 text")
+    # Check that first line has comma or tab delimiters (i.e., is tabular)
+    first_line = first_text.split("\n", 1)[0]
+    if "," not in first_line and "\t" not in first_line:
+        raise HTTPException(status_code=400, detail="File does not appear to be CSV (no comma or tab delimiters)")
+    # Verify CSV is parseable
+    try:
+        reader = csv.reader(io.StringIO(first_text))
+        header = next(reader)
+        if len(header) < 2:
+            raise HTTPException(status_code=400, detail="CSV header must have at least 2 columns")
+    except csv.Error:
+        raise HTTPException(status_code=400, detail="File is not valid CSV")
+
+
 # ---------------------------------------------------------------------------
 # AIS Ingestion
 # ---------------------------------------------------------------------------
@@ -35,6 +68,7 @@ def import_ais(
     from app.models.ingestion_status import update_ingestion_status
 
     _check_upload_size(file)
+    _validate_csv_upload(file)
 
     try:
         result = ingest_ais_csv(file.file, db)
@@ -47,8 +81,12 @@ def import_ais(
         db.commit()
         return result
     except Exception as e:
-        update_ingestion_status(db, "csv_import", error=str(e))
-        db.commit()
+        try:
+            update_ingestion_status(db, "csv_import", error=str(e))
+            db.commit()
+        except Exception:
+            logger.exception("Failed to record ingestion error status")
+            db.rollback()
         raise
 
 
@@ -92,6 +130,7 @@ async def import_gfw_detections(
 ):
     """Import pre-computed GFW vessel detection CSV (FR8)."""
     _check_upload_size(file)
+    _validate_csv_upload(file)
     from app.modules.gfw_import import ingest_gfw_csv
     import tempfile
     import os
