@@ -147,13 +147,30 @@ def _run_migrations() -> None:
     }
     if "uq_ais_point_vessel_ts_source" not in existing_uq:
         with engine.connect() as conn:
-            # Delete duplicate rows, keeping the one with the highest ais_point_id
-            conn.execute(text(
-                "DELETE FROM ais_points WHERE ais_point_id NOT IN ("
-                "  SELECT MAX(ais_point_id) FROM ais_points"
-                "  GROUP BY vessel_id, timestamp_utc, source"
-                ")"
-            ))
+            # Delete duplicate rows, keeping the highest-quality source per group
+            # (prefer non-null source_timestamp_utc, then highest ais_point_id)
+            if engine.dialect.name == "sqlite":
+                conn.execute(text(
+                    "DELETE FROM ais_points WHERE ais_point_id NOT IN ("
+                    "  SELECT ais_point_id FROM ("
+                    "    SELECT ais_point_id, ROW_NUMBER() OVER ("
+                    "      PARTITION BY vessel_id, timestamp_utc, source"
+                    "      ORDER BY source_timestamp_utc IS NULL, source_timestamp_utc DESC, ais_point_id DESC"
+                    "    ) AS rn FROM ais_points"
+                    "  ) WHERE rn = 1"
+                    ")"
+                ))
+            else:
+                conn.execute(text(
+                    "DELETE FROM ais_points WHERE ais_point_id NOT IN ("
+                    "  SELECT ais_point_id FROM ("
+                    "    SELECT ais_point_id, ROW_NUMBER() OVER ("
+                    "      PARTITION BY vessel_id, timestamp_utc, source"
+                    "      ORDER BY source_timestamp_utc DESC NULLS LAST, ais_point_id DESC"
+                    "    ) AS rn FROM ais_points"
+                    "  ) sub WHERE rn = 1"
+                    ")"
+                ))
             conn.commit()
             conn.execute(text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_ais_point_vessel_ts_source "

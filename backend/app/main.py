@@ -157,7 +157,8 @@ async def value_error_handler(request: Request, exc: ValueError):
 
 @app.exception_handler(IntegrityError)
 async def integrity_error_handler(request: Request, exc: IntegrityError):
-    return JSONResponse(status_code=409, content={"error": "Conflict", "detail": str(exc.orig) if exc.orig else str(exc)})
+    logger.warning("IntegrityError on %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(status_code=409, content={"error": "Conflict", "detail": "Conflict: the record may already exist"})
 
 
 @app.exception_handler(Exception)

@@ -85,6 +85,7 @@ def get_loitering_events(
 def get_sts_events(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    vessel_id: Optional[int] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -93,6 +94,8 @@ def get_sts_events(
     _validate_date_range(date_from, date_to)
     limit = min(limit, settings.MAX_QUERY_LIMIT)
     q = db.query(StsTransferEvent)
+    if vessel_id is not None:
+        q = q.filter(or_(StsTransferEvent.vessel_1_id == vessel_id, StsTransferEvent.vessel_2_id == vessel_id))
     if date_from:
         q = q.filter(StsTransferEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
     if date_to:
