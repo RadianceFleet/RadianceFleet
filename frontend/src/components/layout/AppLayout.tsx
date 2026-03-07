@@ -12,8 +12,10 @@ const NAV_ITEMS = [
   { to: '/fleet', label: 'Fleet' },
   { to: '/ownership', label: 'Ownership' },
   { to: '/merge-candidates', label: 'Merges' },
+  { to: '/hunt', label: 'Hunt' },
   { to: '/ingest', label: 'Ingest' },
   { to: '/detect', label: 'Detect' },
+  { to: '/admin/tips', label: 'Tips' },
   { to: '/donate', label: 'Support' },
 ]
 

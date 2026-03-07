@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useStats } from '../hooks/useStats'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
+import { ScoreDistributionChart } from '../components/charts/ScoreDistributionChart'
 
 export function DashboardPage() {
   const { data: stats, isLoading, error } = useStats()
@@ -10,7 +11,6 @@ export function DashboardPage() {
   if (error || !stats) return <p style={{ color: 'var(--score-critical)' }}>Failed to load stats.</p>
 
   const { alert_counts: counts, by_status, vessels_with_multiple_gaps_7d } = stats
-  const total = counts.total || 1 // avoid division by zero
 
   const statCards = [
     { label: 'Total Alerts', value: counts.total, color: 'var(--text-bright)' },
@@ -45,22 +45,7 @@ export function DashboardPage() {
         <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Score Distribution
         </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {scoreBands.map(b => {
-            const pct = total > 0 ? (b.count / total) * 100 : 0
-            return (
-              <div key={b.label}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '0.25rem' }}>
-                  <span style={{ color: b.color }}>{b.label}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{b.count} ({pct.toFixed(0)}%)</span>
-                </div>
-                <div style={{ height: 6, background: 'var(--bg-base)', borderRadius: 3 }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: b.color, borderRadius: 3 }} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <ScoreDistributionChart data={scoreBands} />
       </Card>
 
       {/* Status breakdown */}

@@ -10,6 +10,7 @@ import { VerificationPanel } from '../components/VerificationPanel'
 import { VerificationBadge } from '../components/VerificationBadge'
 import { VesselTimeline } from '../components/VesselTimeline'
 import { TipForm } from '../components/TipForm'
+import { RouteLaunderingSection } from '../components/RouteLaunderingSection'
 import { SubscribeForm } from '../components/SubscribeForm'
 import { VesselInfoSection } from './VesselInfoSection'
 import { VesselIdentityTimeline } from './VesselIdentityTimeline'
@@ -258,6 +259,9 @@ export function VesselDetailPage() {
             </table>
           )}
       </Card>
+
+      {/* ---- Route Laundering ---- */}
+      <RouteLaunderingSection vesselId={id!} />
 
       {/* ---- Gap alerts ---- */}
       <Card style={{ marginBottom: 16 }}>

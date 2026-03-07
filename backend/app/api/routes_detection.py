@@ -555,12 +555,22 @@ def get_corridor_activity(
     if date_to:
         q = q.filter(AISGapEvent.gap_start_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
 
-    if granularity == "day":
-        bucket = func.strftime("%Y-%m-%d", AISGapEvent.gap_start_utc)
-    elif granularity == "week":
-        bucket = func.strftime("%Y-W%W", AISGapEvent.gap_start_utc)
+    dialect_name = db.bind.dialect.name if db.bind else "sqlite"
+
+    if dialect_name == "postgresql":
+        if granularity == "day":
+            bucket = func.to_char(AISGapEvent.gap_start_utc, 'YYYY-MM-DD')
+        elif granularity == "week":
+            bucket = func.to_char(AISGapEvent.gap_start_utc, 'IYYY-"W"IW')
+        else:
+            bucket = func.to_char(AISGapEvent.gap_start_utc, 'YYYY-MM')
     else:
-        bucket = func.strftime("%Y-%m", AISGapEvent.gap_start_utc)
+        if granularity == "day":
+            bucket = func.strftime("%Y-%m-%d", AISGapEvent.gap_start_utc)
+        elif granularity == "week":
+            bucket = func.strftime("%Y-W%W", AISGapEvent.gap_start_utc)
+        else:
+            bucket = func.strftime("%Y-%m", AISGapEvent.gap_start_utc)
 
     rows = (
         q.group_by(bucket)
@@ -645,6 +655,13 @@ def get_hunt_target(profile_id: int, db: Session = Depends(get_db)):
     if not profile:
         raise HTTPException(status_code=404, detail="Target profile not found")
     return profile
+
+
+@router.get("/hunt/missions", tags=["hunt"], response_model=list[SearchMissionRead])
+def list_hunt_missions(skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)):
+    """List all search missions."""
+    from app.models.stubs import SearchMission
+    return db.query(SearchMission).order_by(SearchMission.created_at.desc()).offset(skip).limit(limit).all()
 
 
 @router.get("/hunt/missions/{mission_id}", tags=["hunt"], response_model=SearchMissionRead)
@@ -743,7 +760,7 @@ def analyze_hunt_mission(mission_id: int, request: Request, db: Session = Depend
     candidates = []
     try:
         from app.modules.vessel_hunt import find_hunt_candidates
-        candidates = find_hunt_candidates(db, mission)
+        candidates = find_hunt_candidates(mission.mission_id, db)
     except ImportError:
         logger.warning("vessel_hunt module not available, returning empty candidates")
 

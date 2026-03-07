@@ -20,6 +20,9 @@ import { FleetAnalysisPage } from './pages/FleetAnalysisPage'
 import { OwnershipGraphPage } from './pages/OwnershipGraphPage'
 import { DetectorResultsPage } from './pages/DetectorResultsPage'
 import { VoyagePredictionPage } from './pages/VoyagePredictionPage'
+import { HuntPage } from './pages/HuntPage'
+import { TipsAdminPage } from './pages/TipsAdminPage'
+import { VesselTimelinePage } from './pages/VesselTimelinePage'
 
 export default function App() {
   return (
@@ -34,6 +37,7 @@ export default function App() {
             <Route path="vessels/:id" element={<VesselDetailPage />} />
             <Route path="vessels/:id/detectors" element={<DetectorResultsPage />} />
             <Route path="vessels/:id/voyage" element={<VoyagePredictionPage />} />
+            <Route path="vessels/:id/timeline" element={<VesselTimelinePage />} />
             <Route path="map" element={<MapOverviewPage />} />
             <Route path="sts-events" element={<StsEventsPage />} />
             <Route path="corridors" element={<CorridorsPage />} />
@@ -44,7 +48,9 @@ export default function App() {
             <Route path="ingest" element={<IngestionPage />} />
             <Route path="dark-vessels" element={<DarkVesselsPage />} />
             <Route path="merge-candidates" element={<MergeCandidatesPage />} />
+            <Route path="hunt" element={<HuntPage />} />
             <Route path="detect" element={<DetectionPanel />} />
+            <Route path="admin/tips" element={<TipsAdminPage />} />
             <Route path="donate" element={<DonatePage />} />
           </Route>
         </Routes>

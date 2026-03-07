@@ -393,6 +393,64 @@ def _score_band(score: int) -> str:
     return "critical"
 
 
+# ── Pillar key sets (used by compute_gap_score and _corroboration_bonus) ──────
+
+_VESSEL_PILLAR_KEYS = frozenset({
+    # Identity, age, flag, ownership quality
+    "vessel_age_15_20y", "vessel_age_20_25y", "vessel_age_25_plus", "vessel_age_25_plus_high_risk",
+    "high_risk_flag", "flag_changes_3plus_90d", "flag_change_30d", "flag_change_7d",
+    "flag_AND_name_change_48h", "flag_change_high_to_low",
+    "pi_coverage_lapsed", "pi_validation", "fraudulent_registry",
+    "pi_cycling", "ism_continuity", "psc_detained_last_12m", "psc_major_deficiencies_3_plus",
+    "owner_or_manager_on_sanctions_list", "callsign_change", "identity_merge_detected",
+    "imo_fabricated", "stateless_mmsi", "flag_hopping", "rename_velocity_2_365d",
+    "rename_velocity_3_365d", "invalid_metadata_generic_name", "invalid_metadata_impossible_dwt",
+    "no_name_at_all", "name_all_caps_numbers", "kse_shadow_profile_match",
+    "kse_shadow_profile_strong", "ais_class_large_tanker_class_b", "class_switching_a_to_b",
+})
+_POSITION_PILLAR_KEYS = frozenset({
+    # AIS reporting quality, spoofing events, gaps
+    "anchor_in_open_ocean", "circle_pattern", "slow_roll", "mmsi_reuse_implied_speed_30kn",
+    "mmsi_reuse_implied_speed_100kn", "nav_status_speed_mismatch", "erratic_nav_status",
+    "dual_transmission_candidate", "cross_receiver_disagreement", "identity_swap",
+    "speed_spike", "speed_spoof", "speed_impossible", "track_naturalness_high",
+    "track_naturalness_medium", "track_naturalness_low", "sparse_transmission",
+    "stale_ais", "suspicious_mid", "new_mmsi_first_30d", "new_mmsi_first_60d",
+    "new_mmsi_russian_origin_flag", "dark_vessel_unmatched", "dark_vessel_in_corridor",
+    "eez_boundary_proximity_5nm", "eez_boundary_proximity_20nm",
+})
+_VOYAGE_PILLAR_KEYS = frozenset({
+    # Port patterns, STS, route integrity
+    "sanctioned_port_visit_confirmed", "sanctioned_port_proximity_10nm", "crea_sanctioned_destination",
+    "russian_port_recent", "russian_port_gap_sts", "voyage_cycle_pattern",
+    "at_sea_no_port_call_90d", "at_sea_no_port_call_180d", "at_sea_no_port_call_365d",
+    "route_deviation_toward_sts", "laden_from_russian_terminal_sts",
+    "destination_heading_to_sts_eu", "destination_blank_generic", "destination_changes",
+    "route_laundering", "sts_chain_3", "sts_chain_4_plus", "sts_with_sanctioned_vessel",
+    "sts_with_shadow_fleet_vessel", "draught_sts_confirmation", "draught_delta_across_gap",
+})
+_WATCHLIST_PILLAR_KEYS = frozenset({
+    "watchlist_ofac", "watchlist_eu", "kse_shadow_fleet",
+    "watchlist_stub_score",
+})
+
+
+def _corroboration_bonus(breakdown: dict, config: dict) -> int:
+    """Count detector families with >=10 points of signal. Bonus for multi-family corroboration."""
+    families = {
+        "POSITION": _POSITION_PILLAR_KEYS,
+        "IDENTITY": _VESSEL_PILLAR_KEYS,
+        "VOYAGE":   _VOYAGE_PILLAR_KEYS,
+        "WATCHLIST": _WATCHLIST_PILLAR_KEYS,
+    }
+    active = sum(1 for keys in families.values()
+                 if sum(breakdown.get(k, 0) for k in keys if breakdown.get(k, 0) > 0) >= 10)
+    if active >= 4: return config.get("families_4_bonus", 30)
+    if active >= 3: return config.get("families_3_bonus", 20)
+    if active >= 2: return config.get("families_2_bonus", 10)
+    return 0
+
+
 # ── Main scoring function ─────────────────────────────────────────────────────
 
 def compute_gap_score(
@@ -2315,40 +2373,6 @@ def compute_gap_score(
     # Splits signals into 3 independent pillars for analyst interpretability.
     # Inspired by Pole Star Maritime Transparency Index methodology.
     # Pillars don't change the total score — they decompose it for the UI.
-    _VESSEL_PILLAR_KEYS = frozenset({
-        # Identity, age, flag, ownership quality
-        "vessel_age_15_20y", "vessel_age_20_25y", "vessel_age_25_plus", "vessel_age_25_plus_high_risk",
-        "high_risk_flag", "flag_changes_3plus_90d", "flag_change_30d", "flag_change_7d",
-        "flag_AND_name_change_48h", "flag_change_high_to_low",
-        "pi_coverage_lapsed", "pi_validation", "fraudulent_registry",
-        "pi_cycling", "ism_continuity", "psc_detained_last_12m", "psc_major_deficiencies_3_plus",
-        "owner_or_manager_on_sanctions_list", "callsign_change", "identity_merge_detected",
-        "imo_fabricated", "stateless_mmsi", "flag_hopping", "rename_velocity_2_365d",
-        "rename_velocity_3_365d", "invalid_metadata_generic_name", "invalid_metadata_impossible_dwt",
-        "no_name_at_all", "name_all_caps_numbers", "kse_shadow_profile_match",
-        "kse_shadow_profile_strong", "ais_class_large_tanker_class_b", "class_switching_a_to_b",
-    })
-    _POSITION_PILLAR_KEYS = frozenset({
-        # AIS reporting quality, spoofing events, gaps
-        "anchor_in_open_ocean", "circle_pattern", "slow_roll", "mmsi_reuse_implied_speed_30kn",
-        "mmsi_reuse_implied_speed_100kn", "nav_status_speed_mismatch", "erratic_nav_status",
-        "dual_transmission_candidate", "cross_receiver_disagreement", "identity_swap",
-        "speed_spike", "speed_spoof", "speed_impossible", "track_naturalness_high",
-        "track_naturalness_medium", "track_naturalness_low", "sparse_transmission",
-        "stale_ais", "suspicious_mid", "new_mmsi_first_30d", "new_mmsi_first_60d",
-        "new_mmsi_russian_origin_flag", "dark_vessel_unmatched", "dark_vessel_in_corridor",
-        "eez_boundary_proximity_5nm", "eez_boundary_proximity_20nm",
-    })
-    _VOYAGE_PILLAR_KEYS = frozenset({
-        # Port patterns, STS, route integrity
-        "sanctioned_port_visit_confirmed", "sanctioned_port_proximity_10nm", "crea_sanctioned_destination",
-        "russian_port_recent", "russian_port_gap_sts", "voyage_cycle_pattern",
-        "at_sea_no_port_call_90d", "at_sea_no_port_call_180d", "at_sea_no_port_call_365d",
-        "route_deviation_toward_sts", "laden_from_russian_terminal_sts",
-        "destination_heading_to_sts_eu", "destination_blank_generic", "destination_changes",
-        "route_laundering", "sts_chain_3", "sts_chain_4_plus", "sts_with_sanctioned_vessel",
-        "sts_with_shadow_fleet_vessel", "draught_sts_confirmation", "draught_delta_across_gap",
-    })
 
     _p_vessel = sum(
         v for k, v in breakdown.items()
@@ -2373,5 +2397,14 @@ def compute_gap_score(
     breakdown["_pillar_vessel"] = _p_vessel
     breakdown["_pillar_position"] = _p_position
     breakdown["_pillar_voyage"] = _p_voyage
+
+    # ── Phase 4c: Cross-Detector Corroboration Bonus ──────────────────────
+    # Skip if data completeness cap was applied — bonus must not override safety caps.
+    corr_cfg = config.get("corroboration", {})
+    if corr_cfg.get("enabled", True) and "_data_completeness_cap_applied" not in breakdown:
+        bonus = _corroboration_bonus(breakdown, corr_cfg)
+        if bonus:
+            final_score = min(200, final_score + bonus)
+            breakdown["_corroboration_bonus"] = bonus
 
     return final_score, breakdown

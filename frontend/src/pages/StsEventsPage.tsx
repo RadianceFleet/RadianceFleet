@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStsEvents } from '../hooks/useStsEvents'
+import { useStsValidation } from '../hooks/useStsValidation'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -25,6 +26,7 @@ function formatTimestamp(ts: string | null | undefined): string {
 export function StsEventsPage() {
   const [page, setPage] = useState(0)
   const { data, isLoading, error } = useStsEvents({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const validation = useStsValidation()
   const events = data?.items
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -65,6 +67,7 @@ export function StsEventsPage() {
                     <th style={headStyle}>Proximity (meters)</th>
                     <th style={headStyle}>Corridor ID</th>
                     <th style={headStyle}>Risk Score</th>
+                    <th style={headStyle}>Validated</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -115,6 +118,47 @@ export function StsEventsPage() {
                         {evt.risk_score_component != null
                           ? (evt.risk_score_component as number)
                           : '-'}
+                      </td>
+                      <td style={cellStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span style={{ fontSize: '0.875rem' }}>
+                            {evt.user_validated === true
+                              ? '\u2705'
+                              : evt.user_validated === false
+                                ? '\u274C'
+                                : '\u2014'}
+                          </span>
+                          <button
+                            title="Confirm"
+                            onClick={() => validation.mutate({ stsId: evt.sts_id, user_validated: true })}
+                            style={{
+                              border: '1px solid var(--border)',
+                              borderRadius: 'var(--radius)',
+                              padding: '1px 6px',
+                              cursor: 'pointer',
+                              fontSize: '0.75rem',
+                              background: 'var(--bg-base)',
+                              color: 'var(--score-low, #22c55e)',
+                            }}
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            title="Reject"
+                            onClick={() => validation.mutate({ stsId: evt.sts_id, user_validated: false })}
+                            style={{
+                              border: '1px solid var(--border)',
+                              borderRadius: 'var(--radius)',
+                              padding: '1px 6px',
+                              cursor: 'pointer',
+                              fontSize: '0.75rem',
+                              background: 'var(--bg-base)',
+                              color: 'var(--score-critical, #ef4444)',
+                            }}
+                          >
+                            Reject
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

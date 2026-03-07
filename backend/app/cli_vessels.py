@@ -542,6 +542,65 @@ def search_vessel(
         db.close()
 
 
+@app.command("gt-import")
+def gt_import(
+    source: str = typer.Argument(..., help="Source type: kse, ofac, or clean"),
+    csv_path: str = typer.Argument(..., help="Path to CSV file"),
+):
+    """Import ground truth vessels from CSV (kse/ofac/clean)."""
+    from app.database import SessionLocal
+    from app.modules.ground_truth_loader import (
+        load_kse_csv, load_ofac_sdn_csv, load_clean_vessels_csv, link_ground_truth,
+    )
+
+    db = SessionLocal()
+    try:
+        loaders = {"kse": load_kse_csv, "ofac": load_ofac_sdn_csv, "clean": load_clean_vessels_csv}
+        loader = loaders.get(source.lower())
+        if not loader:
+            console.print(f"[red]Unknown source '{source}'. Use: kse, ofac, clean[/red]")
+            raise typer.Exit(1)
+        count = loader(db, csv_path)
+        console.print(f"[green]Imported {count} ground truth records from {source}[/green]")
+        linked = link_ground_truth(db)
+        console.print(f"[green]Linked {linked} records to existing vessels[/green]")
+    finally:
+        db.close()
+
+
+@app.command("validate")
+def validate(
+    threshold: str = typer.Option("high", "--threshold", help="Band threshold for positive classification"),
+    source: Optional[str] = typer.Option(None, "--source", help="Filter by ground truth source"),
+    verbose: bool = typer.Option(False, "--verbose", help="Show per-vessel details"),
+    signal_report: bool = typer.Option(False, "--signal-report", help="Show signal effectiveness report"),
+):
+    """Run validation harness against ground truth data."""
+    from app.database import SessionLocal
+    from app.modules.validation_harness import run_validation, signal_effectiveness_report
+
+    db = SessionLocal()
+    try:
+        result = run_validation(db, threshold_band=threshold)
+        console.print(f"\n[bold]Validation Results[/bold] (threshold: {threshold})")
+        console.print(f"  TP: {result['tp']}  FP: {result['fp']}")
+        console.print(f"  FN: {result['fn']}  TN: {result['tn']}")
+        console.print(f"  Precision: {result['precision']:.3f}")
+        console.print(f"  Recall:    {result['recall']:.3f}")
+        console.print(f"  F2:        {result['f2_score']:.3f}")
+        if result.get('pr_auc') is not None:
+            console.print(f"  PR-AUC:    {result['pr_auc']:.3f}")
+
+        if signal_report:
+            signals = signal_effectiveness_report(db)
+            console.print("\n[bold]Signal Effectiveness[/bold]")
+            for s in signals[:20]:
+                lift_color = "green" if s['lift'] >= 1.5 else ("yellow" if s['lift'] >= 1.0 else "red")
+                console.print(f"  [{lift_color}]{s['signal']:40s} lift={s['lift']:.2f}  TP_freq={s['tp_freq']:.0%}  FP_freq={s['fp_freq']:.0%}[/{lift_color}]")
+    finally:
+        db.close()
+
+
 @app.command("watchlist-update")
 def watchlist_update(
     force: bool = typer.Option(False, "--force", help="Ignore interval checks, update all sources"),

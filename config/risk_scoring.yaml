@@ -489,3 +489,12 @@ data_completeness:
   min_points: 50             # minimum AIS points for "adequately tracked"
   min_days: 14               # minimum tracking history (days since mmsi_first_seen_utc)
   max_score_if_incomplete: 50  # cap at MEDIUM band ceiling for under-tracked vessels
+
+# CROSS-DETECTOR CORROBORATION (v3.1)
+# Bonus when multiple independent detector families fire.
+# Applied post-multiplier so it adds exact points without amplification.
+corroboration:
+  enabled: true
+  families_2_bonus: 10
+  families_3_bonus: 20
+  families_4_bonus: 30

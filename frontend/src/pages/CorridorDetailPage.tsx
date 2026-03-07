@@ -5,6 +5,7 @@ import { useUpdateCorridor, useDeleteCorridor } from '../hooks/useCorridorMutati
 import type { CorridorUpdatePayload } from '../types/api'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
+import { CorridorActivityChart } from '../components/charts/CorridorActivityChart'
 
 const inputStyle: React.CSSProperties = {
   padding: '0.375rem 0.5rem',
@@ -357,6 +358,12 @@ export function CorridorDetailPage() {
               </div>
             </Card>
           </div>
+          <Card style={{ marginTop: '0.75rem' }}>
+            <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Activity Over Time
+            </h3>
+            <CorridorActivityChart corridorId={id} />
+          </Card>
         </>
       )}
     </div>

@@ -278,6 +278,8 @@ export interface StsEventSummary {
   satellite_confirmation_status: string | null
   eta_minutes: number | null
   risk_score_component: number
+  user_validated: boolean | null
+  confidence_override: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -313,22 +315,53 @@ export interface DarkVesselDetection {
 export interface HuntCandidate {
   candidate_id: number
   mission_id: number
-  vessel_id: number
-  detection_id: number | null
-  status: 'identified' | 'tracking' | 'confirmed' | 'dismissed'
-  confidence_score: number | null
-  notes: string | null
+  detection_lat: number | null
+  detection_lon: number | null
+  detection_time_utc: string | null
+  visual_similarity_score: number | null
+  length_estimate_m: number | null
+  heading_estimate_deg: number | null
+  hunt_score: number | null
+  score_breakdown_json: Record<string, unknown> | null
+  satellite_scene_id: string | null
+  image_chip_ref: string | null
+  analyst_review_status: string | null
+  government_alert_sent: boolean
 }
 
 export interface SearchMission {
   mission_id: number
-  name: string
-  status: 'planned' | 'active' | 'completed' | 'archived'
-  corridor_id: number | null
+  vessel_id: number
+  profile_id: number | null
+  search_start_utc: string | null
+  search_end_utc: string | null
   created_at: string
-  updated_at: string | null
-  target_count: number
-  candidate_count: number
+  analyst_id: string | null
+  search_ellipse_wkt: string | null
+  center_lat: number | null
+  center_lon: number | null
+  max_radius_nm: number | null
+  elapsed_hours: number | null
+  confidence: string | null
+  status: string
+}
+
+export interface VesselTargetProfile {
+  profile_id: number
+  vessel_id: number
+  reference_images_json: unknown[] | null
+  hull_type: string | null
+  deadweight_dwt: number | null
+  loa_meters: number | null
+  beam_meters: number | null
+  typical_draft_meters: number | null
+  funnel_color: string | null
+  hull_color: string | null
+  last_ais_position_lat: number | null
+  last_ais_position_lon: number | null
+  last_ais_timestamp_utc: string | null
+  profile_created_at: string
+  created_by_analyst_id: string | null
 }
 
 // ---------------------------------------------------------------------------

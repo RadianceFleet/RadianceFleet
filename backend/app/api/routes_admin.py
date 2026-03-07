@@ -296,6 +296,32 @@ def get_tips(
     ]
 
 
+class TipUpdateRequest(BaseModel):
+    status: Optional[str] = None
+    analyst_note: Optional[str] = None
+
+
+@router.patch("/admin/tips/{tip_id}", tags=["admin"])
+def update_tip(
+    tip_id: int,
+    body: TipUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Admin: update tip status and/or analyst note."""
+    from app.models.tip_submission import TipSubmission
+    tip = db.query(TipSubmission).filter(TipSubmission.id == tip_id).first()
+    if not tip:
+        raise HTTPException(status_code=404, detail="Tip not found")
+    if body.status is not None:
+        tip.status = body.status.upper()
+    if body.analyst_note is not None:
+        tip.analyst_note = body.analyst_note
+    db.commit()
+    return {"status": "updated", "id": tip_id}
+
+
 # ---------------------------------------------------------------------------
 # Email Subscriptions
 # ---------------------------------------------------------------------------

@@ -38,6 +38,7 @@ from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, 
 from app.models.tip_submission import TipSubmission
 from app.models.alert_subscription import AlertSubscription
 from app.models.ingestion_status import IngestionStatus
+from app.models.ground_truth import GroundTruthVessel
 
 __all__ = [
     "Base",
@@ -82,4 +83,5 @@ __all__ = [
     "TipSubmission",
     "AlertSubscription",
     "IngestionStatus",
+    "GroundTruthVessel",
 ]
