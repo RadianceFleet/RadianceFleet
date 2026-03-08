@@ -4,12 +4,12 @@ import { defineConfig, devices } from '@playwright/test';
  * Remote E2E tests for radiancefleet.com.
  *
  * Environment variables:
- *   BASE_URL          – target (default: https://radiancefleet.com)
+ *   BASE_URL          – target (default: https://www.radiancefleet.com)
  *   SITE_API_KEY      – global gate key (RADIANCEFLEET_API_KEY on server), optional
  *   SMOKE_DB_API_KEY  – DB-backed read-only API key for authenticated tests, optional
  */
 
-const BASE_URL = process.env.BASE_URL ?? 'https://radiancefleet.com';
+const BASE_URL = process.env.BASE_URL ?? 'https://www.radiancefleet.com';
 
 // If the global API-key gate is active, all requests need this header.
 const siteApiKey = process.env.SITE_API_KEY;

@@ -86,11 +86,22 @@ async def lifespan(app: FastAPI):
                     section,
                 )
 
-    # Create tables if they don't exist (essential for fresh deployments)
+    # Create tables if they don't exist (essential for fresh deployments).
+    # Retry on transient DNS/connection errors (Railway internal DNS may lag).
+    import asyncio
+
     from app.database import init_db
 
-    init_db()
-    logger.info("Database tables verified")
+    for attempt in range(1, 6):
+        try:
+            init_db()
+            logger.info("Database tables verified")
+            break
+        except Exception as exc:
+            if attempt == 5:
+                raise
+            logger.warning("DB init attempt %d/5 failed (%s), retrying in %ds…", attempt, exc, attempt * 2)
+            await asyncio.sleep(attempt * 2)
 
     # Start history backfill scheduler if enabled
     history_scheduler = None
@@ -184,7 +195,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     """Simple API key check. If RADIANCEFLEET_API_KEY is unset, all requests pass."""
 
     async def dispatch(self, request: Request, call_next):
-        if settings.RADIANCEFLEET_API_KEY is not None:
+        if settings.RADIANCEFLEET_API_KEY:
             path = request.url.path
             # Only require API key for /api/* endpoints.
             # Exempt: SPA frontend, static assets, health, docs, metrics.
