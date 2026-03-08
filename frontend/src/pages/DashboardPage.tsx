@@ -3,6 +3,7 @@ import { useStats } from '../hooks/useStats'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { ScoreDistributionChart } from '../components/charts/ScoreDistributionChart'
+import { AlertTrendChart } from '../components/charts/AlertTrendChart'
 
 export function DashboardPage() {
   const { data: stats, isLoading, error } = useStats()
@@ -46,6 +47,14 @@ export function DashboardPage() {
           Score Distribution
         </h3>
         <ScoreDistributionChart data={scoreBands} />
+      </Card>
+
+      {/* Alert Trends */}
+      <Card style={{ marginBottom: '1rem' }}>
+        <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Alert Trends (7 days)
+        </h3>
+        <AlertTrendChart period="7d" />
       </Card>
 
       {/* Status breakdown */}

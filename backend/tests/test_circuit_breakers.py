@@ -12,7 +12,7 @@ class TestCircuitBreakerModule:
             cb.close()
 
     def test_all_breakers_exist(self):
-        expected = {"gfw", "aisstream", "barentswatch", "digitraffic", "kystverket", "equasis"}
+        expected = {"gfw", "aisstream", "barentswatch", "digitraffic", "kystverket", "equasis", "noaa", "aishub", "dma", "crea", "copernicus", "planet", "capella", "maxar", "umbra"}
         assert set(breakers.keys()) == expected
 
     def test_breaker_defaults(self):
@@ -23,7 +23,7 @@ class TestCircuitBreakerModule:
 
     def test_get_circuit_states_all_closed(self):
         states = get_circuit_states()
-        assert len(states) == 6
+        assert len(states) == 15
         for name, info in states.items():
             assert info["state"] == "closed"
             assert info["fail_count"] == 0
@@ -106,4 +106,4 @@ class TestHealthEndpointIncludesBreakers:
         assert "gfw" in data["circuit_breakers"]
         assert data["circuit_breakers"]["gfw"]["state"] == "closed"
         assert data["circuit_breakers"]["gfw"]["fail_count"] == 0
-        assert len(data["circuit_breakers"]) == 6
+        assert len(data["circuit_breakers"]) == 15

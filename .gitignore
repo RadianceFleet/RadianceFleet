@@ -68,3 +68,4 @@ PRD.md
 backend/radiancefleet.db
 backend/radiancefleet.db*
 radiancefleet.db
+.playwright-mcp/

@@ -139,6 +139,42 @@ def search_vessels(
     return {"items": results, "total": total}
 
 
+@router.get("/vessels/{vessel_id}/track.geojson", tags=["vessels"])
+def get_vessel_track_geojson(
+    vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """Export vessel track as GeoJSON FeatureCollection."""
+    from app.models.vessel import Vessel
+    from app.modules.track_export import export_track_geojson
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+    return export_track_geojson(db, vessel_id, date_from, date_to)
+
+
+@router.get("/vessels/{vessel_id}/track.kml", tags=["vessels"])
+def get_vessel_track_kml(
+    vessel_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """Export vessel track as KML."""
+    from app.models.vessel import Vessel
+    from app.modules.track_export import export_track_kml
+    from fastapi.responses import Response
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+    kml_str = export_track_kml(db, vessel_id, vessel.name or f"Vessel {vessel_id}", date_from, date_to)
+    return Response(content=kml_str, media_type="application/vnd.google-earth.kml+xml")
+
+
 @router.get("/vessels/{vessel_id}", tags=["vessels"])
 def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
     """Full vessel profile including watchlist, spoofing, loitering, STS, gap counts."""

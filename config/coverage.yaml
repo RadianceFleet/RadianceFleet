@@ -2,31 +2,39 @@ Baltic:
   quality: GOOD
   description: "DMA CSV + aisstream.io — good terrestrial coverage"
   geometry: "POLYGON((9.0 53.5, 30.0 53.5, 30.0 66.0, 9.0 66.0, 9.0 53.5))"
+  suggested_sources: "MarineTraffic, VesselFinder (satellite AIS)"
 Turkish Straits:
   quality: GOOD
   description: "aisstream.io — well-monitored chokepoint"
   geometry: "POLYGON((25.5 39.5, 30.0 39.5, 30.0 42.0, 25.5 42.0, 25.5 39.5))"
+  suggested_sources: "MarineTraffic, Kpler"
 Black Sea:
   quality: POOR
   description: "No adequate free source; AIS heavily falsified in Russian-controlled areas"
   geometry: "POLYGON((27.5 40.5, 42.0 40.5, 42.0 47.5, 27.5 47.5, 27.5 40.5))"
+  suggested_sources: "Spire Maritime SAT-AIS, Orbcomm, Windward"
 Persian Gulf:
   quality: NONE
   description: "No free AIS source; commercial subscription required"
   geometry: "POLYGON((47.0 23.0, 57.0 23.0, 57.0 30.5, 47.0 30.5, 47.0 23.0))"
+  suggested_sources: "Spire Maritime, MarineTraffic Premium, Kpler"
 Singapore:
   quality: PARTIAL
   description: "aisstream.io partial — gaps in outer anchorage areas"
   geometry: "POLYGON((103.0 0.5, 105.0 0.5, 105.0 2.0, 103.0 2.0, 103.0 0.5))"
+  suggested_sources: "MPA Singapore feed, MarineTraffic"
 Mediterranean:
   quality: MODERATE
   description: "aisstream.io partial — good near ports, sparse open sea"
   geometry: "POLYGON((-6.0 30.0, 36.5 30.0, 36.5 46.0, -6.0 46.0, -6.0 30.0))"
+  suggested_sources: "Spire Maritime SAT-AIS, Orbcomm"
 Far East:
   quality: PARTIAL
   description: "aisstream.io — limited coverage outside port approaches"
   geometry: "POLYGON((120.0 25.0, 145.0 25.0, 145.0 50.0, 120.0 50.0, 120.0 25.0))"
+  suggested_sources: "Spire Maritime, ORBCOMM, exactEarth"
 Nakhodka:
   quality: PARTIAL
   description: "aisstream.io — limited coverage outside port approaches"
   geometry: "POLYGON((132.0 42.0, 136.0 42.0, 136.0 44.0, 132.0 44.0, 132.0 42.0))"
+  suggested_sources: "Spire Maritime SAT-AIS, Windward"

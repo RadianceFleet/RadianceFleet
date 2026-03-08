@@ -5,6 +5,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-03-08
+
+### Added
+- **Maxar satellite provider**: OAuth2 ROPC + API key auth, Discovery/Catalog API v2 search, Ordering API v1. Supports archive and fresh tasking with configurable pricing.
+- **Umbra satellite provider**: OAuth2 client credentials (50 token/24h limit), STAC v2 archive search, tasking API. SAR provider (cloud-independent).
+- **Vessel track on map**: `GET /vessels/{id}/track.geojson` and `track.kml` endpoints restored. Click alert marker to show vessel track polyline with AIS point popups.
+- **Alert heatmap**: Leaflet.heat overlay on map — toggle in layer controls, color-coded by risk score.
+- **SSE alert push**: `GET /sse/alerts` real-time Server-Sent Events endpoint with score threshold filtering, `Last-Event-ID` resume, keepalive pings. Frontend `useAlertStream` hook with toast notifications.
+- **Saved filters**: `saved_filters` table, `GET/POST/DELETE /alerts/saved-filters` CRUD per analyst.
+- **Dashboard trends**: `GET /alerts/trends` time-bucketed alert counts (7d/30d/90d) with review ratio. Recharts line chart on dashboard.
+- **Live signal effectiveness**: `GET /accuracy/signal-effectiveness` — per-signal FP rate and lift from analyst verdicts. Table on accuracy dashboard.
+- **Rescore diff report**: `POST /rescore-all-alerts?diff=true` returns before/after score changes and band migrations.
+- **Feed outage dashboard**: `DataFreshnessBanner` warns when AIS sources are stale. `DataHealthPage` shows per-source freshness and outage history.
+- **Coverage gap info**: CoverageOverlay now shows info popups with suggested commercial sources per region.
+- **DB backup/restore CLI**: `radiancefleet backup` (SQLite copy or pg_dump) and `radiancefleet restore --confirm` (pg_restore).
+- **PG migration hardening**: Row count validation, FK integrity checks, v3.3 table support (`analysts`, `satellite_orders`, `psc_detentions`, `saved_filters`), `--force` for idempotent re-run.
+- **Prometheus metrics**: Optional `prometheus-fastapi-instrumentator` (gated on `PROMETHEUS_ENABLED`). Exposes `/metrics` endpoint, excludes SSE endpoints.
+- **Slow query logging**: Middleware logs requests taking >500ms.
+- **Public API keys**: `api_keys` table, admin CRUD (`POST/GET/DELETE /admin/api-keys`). Read-only access via `X-API-Key` header alongside JWT auth.
+- **Webhook notifications**: `webhooks` table, admin CRUD + test endpoint. HMAC-signed payloads with 3x exponential backoff retry.
+- **Embeddable widgets**: `/embed/vessel/:vesselId` route with standalone `VesselCard` component. Embed via iframe with API key auth.
+- **CSV export customization**: `columns` query param on `/alerts/export` for selective column export. Column picker UI in AlertExportPanel.
+- **Config**: `MAXAR_USERNAME`, `UMBRA_CLIENT_ID`, `SSE_MAX_CONNECTIONS`, `PROMETHEUS_ENABLED`.
+- **Deps**: `leaflet.heat`, `@microsoft/fetch-event-source` (frontend); `prometheus-fastapi-instrumentator` (optional backend).
+- **Models**: `SavedFilter`, `ApiKey`, `Webhook` (3 new tables).
+- **Tests**: 18 new tests for Maxar and Umbra satellite providers.
+
+### Fixed
+- 7 pre-existing test failures resolved (circuit breaker count, version string, data freshness, ownership providers, stale AIS detection).
+- Version string updated from 3.2.0 to 3.4.0 in OpenAPI spec and health endpoint.
+
 ## [3.3.0] - 2026-03-08
 
 ### Added

@@ -22,7 +22,7 @@ class TestRootHealth:
     def test_returns_version(self, api_client):
         data = api_client.get("/health").json()
         assert "version" in data
-        assert data["version"] == "0.1.0"
+        assert data["version"] == "3.4.0"
 
     def test_response_is_json(self, api_client):
         resp = api_client.get("/health")

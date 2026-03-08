@@ -148,8 +148,9 @@ class TestStaleAISDetection:
         def side_effect_query(model):
             call_count[0] += 1
             if call_count[0] == 1:
-                # First call: db.query(Vessel).all()
+                # First call: db.query(Vessel).filter(...).all()
                 result = MagicMock()
+                result.filter.return_value = result
                 result.all.return_value = [vessel]
                 return result
             else:

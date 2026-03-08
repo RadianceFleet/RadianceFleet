@@ -43,6 +43,24 @@ if settings.SENTRY_DSN:
             "Install with: uv pip install 'radiancefleet[monitoring]'"
         )
 
+# ── Prometheus Metrics (optional dep — gated on PROMETHEUS_ENABLED) ──
+if getattr(settings, "PROMETHEUS_ENABLED", False):
+    try:
+        from prometheus_fastapi_instrumentator import Instrumentator
+
+        _instrumentator = Instrumentator(
+            should_instrument=lambda info: not info.request.url.path.startswith("/sse/"),
+            excluded_handlers=["/metrics"],
+        )
+    except ImportError:
+        _instrumentator = None
+        logger.warning(
+            "PROMETHEUS_ENABLED is set but prometheus-fastapi-instrumentator is not installed. "
+            "Install with: uv pip install prometheus-fastapi-instrumentator"
+        )
+else:
+    _instrumentator = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -92,7 +110,7 @@ app = FastAPI(
         "**Deprecation policy:** Endpoints are not removed without at least one minor version "
         "of deprecation notice. Deprecated endpoints return a `Deprecation` response header."
     ),
-    version="3.2.0",
+    version="3.4.0",
     license_info={"name": "Apache-2.0"},
     lifespan=lifespan,
     openapi_tags=[
@@ -123,6 +141,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+
+class SlowQueryMiddleware(BaseHTTPMiddleware):
+    """Log requests that take longer than 500ms."""
+
+    async def dispatch(self, request: Request, call_next):
+        import time
+
+        start = time.monotonic()
+        response = await call_next(request)
+        elapsed_ms = (time.monotonic() - start) * 1000
+        if elapsed_ms > 500:
+            logger.warning(
+                "Slow request: %s %s took %.0fms",
+                request.method,
+                request.url.path,
+                elapsed_ms,
+            )
+        return response
+
+
+app.add_middleware(SlowQueryMiddleware)
 
 
 # API key authentication middleware
@@ -163,12 +203,16 @@ app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
 
 app.include_router(router, prefix="/api/v1")
 
+# Expose /metrics for Prometheus scraping
+if _instrumentator is not None:
+    _instrumentator.instrument(app).expose(app, endpoint="/metrics")
+
 
 @app.get("/health")
 def health() -> dict:
     from app.modules.circuit_breakers import get_circuit_states
 
-    return {"status": "ok", "version": "3.2.0", "circuit_breakers": get_circuit_states()}
+    return {"status": "ok", "version": "3.4.0", "circuit_breakers": get_circuit_states()}
 
 
 # ── Structured error handlers ─────────────────────────────────────────────────
@@ -200,7 +244,7 @@ if _static_dir.is_dir():
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         """Serve index.html for any path not matched by API/health/docs routes."""
-        if full_path.startswith(("api/", "health", "docs", "openapi.json", "redoc")):
+        if full_path.startswith(("api/", "health", "docs", "openapi.json", "redoc", "metrics")):
             return JSONResponse(status_code=404, content={"detail": "Not found"})
         # Serve actual static files (e.g. vite.svg) if they exist
         candidate = _static_dir / full_path

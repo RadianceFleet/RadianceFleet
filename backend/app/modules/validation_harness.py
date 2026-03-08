@@ -320,6 +320,67 @@ def detector_correlation_report(db: Session) -> list[dict]:
     return results
 
 
+def live_signal_effectiveness(db: Session) -> list[dict]:
+    """Compute per-signal FP rate and lift from analyst verdicts.
+
+    Uses actual analyst verdict data (confirmed_tp / confirmed_fp) rather than
+    ground truth labels, giving a live feedback loop on signal quality.
+    """
+    from app.models.gap_event import AISGapEvent
+
+    # Get all alerts with verdicts
+    reviewed = db.query(AISGapEvent).filter(
+        AISGapEvent.is_false_positive != None  # noqa: E711
+    ).all()
+
+    if not reviewed:
+        return []
+
+    # Count signal occurrences in TP vs FP
+    signal_tp: dict[str, int] = defaultdict(int)
+    signal_fp: dict[str, int] = defaultdict(int)
+    total_tp = 0
+    total_fp = 0
+
+    for alert in reviewed:
+        is_fp = alert.is_false_positive
+        breakdown = alert.risk_breakdown_json or {}
+        if is_fp:
+            total_fp += 1
+        else:
+            total_tp += 1
+
+        for signal_name in breakdown:
+            if isinstance(breakdown[signal_name], (int, float)) and breakdown[signal_name] != 0:
+                if is_fp:
+                    signal_fp[signal_name] += 1
+                else:
+                    signal_tp[signal_name] += 1
+
+    if total_tp == 0 and total_fp == 0:
+        return []
+
+    results = []
+    all_signals = set(signal_tp.keys()) | set(signal_fp.keys())
+    for signal in sorted(all_signals):
+        tp_count = signal_tp.get(signal, 0)
+        fp_count = signal_fp.get(signal, 0)
+        tp_freq = tp_count / max(1, total_tp)
+        fp_freq = fp_count / max(1, total_fp)
+        # Lift = TP frequency / FP frequency (higher = more predictive of true positives)
+        lift = tp_freq / fp_freq if fp_freq > 0 else ("inf" if tp_freq > 0 else 0)
+        results.append({
+            "signal": signal,
+            "tp_count": tp_count,
+            "fp_count": fp_count,
+            "tp_freq": round(tp_freq, 4),
+            "fp_freq": round(fp_freq, 4),
+            "lift": round(lift, 2) if isinstance(lift, float) else lift,
+        })
+
+    return results
+
+
 def sweep_thresholds(db: Session) -> list[dict]:
     """Sweep score thresholds from 0 to 200 in steps of 5.
 

@@ -34,6 +34,16 @@ const approvalBadgeColors: Record<string, string> = {
   pending: '#f59e0b',
 }
 
+const CSV_COLUMNS = [
+  'alert_id', 'vessel_mmsi', 'vessel_name', 'flag', 'dwt',
+  'gap_start_utc', 'gap_end_utc', 'duration_hours',
+  'corridor_name', 'risk_score', 'status', 'analyst_notes',
+] as const
+
+type CsvColumn = (typeof CSV_COLUMNS)[number]
+
+const API_BASE = '/api/v1'
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -43,6 +53,8 @@ export function AlertExportPanel({ alertId, approvalStatus, onApprovalChange }: 
   const [satLoading, setSatLoading] = useState(false)
   const [satResult, setSatResult] = useState<string | null>(null)
   const [approvalLoading, setApprovalLoading] = useState(false)
+  const [csvColumnsOpen, setCsvColumnsOpen] = useState(false)
+  const [selectedColumns, setSelectedColumns] = useState<Set<CsvColumn>>(new Set(CSV_COLUMNS))
 
   const analyst = getAnalyst()
   const canApprove = analyst?.role === 'senior_analyst' || analyst?.role === 'admin'
@@ -61,6 +73,50 @@ export function AlertExportPanel({ alertId, approvalStatus, onApprovalChange }: 
       URL.revokeObjectURL(url)
     } catch (err) {
       setExportError(err instanceof Error ? err.message : 'Export failed')
+    }
+  }
+
+  const handleCsvExport = async () => {
+    setExportError(null)
+    try {
+      const params = new URLSearchParams({ ids: alertId })
+      if (selectedColumns.size < CSV_COLUMNS.length && selectedColumns.size > 0) {
+        params.set('columns', Array.from(selectedColumns).join(','))
+      }
+      const token = localStorage.getItem('rf_token')
+      const headers: Record<string, string> = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      const res = await fetch(`${API_BASE}/alerts/export?${params.toString()}`, { headers })
+      if (!res.ok) throw new Error(`CSV export failed: ${res.status}`)
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `alert_${alertId}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'CSV export failed')
+    }
+  }
+
+  const toggleColumn = (col: CsvColumn) => {
+    setSelectedColumns(prev => {
+      const next = new Set(prev)
+      if (next.has(col)) {
+        next.delete(col)
+      } else {
+        next.add(col)
+      }
+      return next
+    })
+  }
+
+  const toggleAllColumns = () => {
+    if (selectedColumns.size === CSV_COLUMNS.length) {
+      setSelectedColumns(new Set())
+    } else {
+      setSelectedColumns(new Set(CSV_COLUMNS))
     }
   }
 
@@ -102,6 +158,12 @@ export function AlertExportPanel({ alertId, approvalStatus, onApprovalChange }: 
           Export JSON
         </button>
         <button
+          onClick={() => setCsvColumnsOpen(prev => !prev)}
+          style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--accent)' }}
+        >
+          Export CSV {csvColumnsOpen ? '\u25B2' : '\u25BC'}
+        </button>
+        <button
           onClick={handleSatelliteCheck}
           disabled={satLoading}
           style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--warning)', opacity: satLoading ? 0.6 : 1 }}
@@ -109,6 +171,48 @@ export function AlertExportPanel({ alertId, approvalStatus, onApprovalChange }: 
           {satLoading ? 'Preparing...' : 'Prepare satellite check'}
         </button>
       </div>
+
+      {/* CSV column picker */}
+      {csvColumnsOpen && (
+        <div style={{
+          marginTop: 8, padding: 10, border: '1px solid var(--border)',
+          borderRadius: 'var(--radius)', background: 'var(--bg-base)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
+              Select columns ({selectedColumns.size}/{CSV_COLUMNS.length})
+            </span>
+            <button
+              onClick={toggleAllColumns}
+              style={{ ...btnStyle, fontSize: 11, padding: '2px 8px' }}
+            >
+              {selectedColumns.size === CSV_COLUMNS.length ? 'Deselect all' : 'Select all'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+            {CSV_COLUMNS.map(col => (
+              <label key={col} style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={selectedColumns.has(col)}
+                  onChange={() => toggleColumn(col)}
+                />
+                {col}
+              </label>
+            ))}
+          </div>
+          <button
+            onClick={handleCsvExport}
+            disabled={selectedColumns.size === 0}
+            style={{
+              ...btnStyle, marginTop: 8, background: 'var(--accent)', color: '#fff',
+              opacity: selectedColumns.size === 0 ? 0.5 : 1,
+            }}
+          >
+            Download CSV
+          </button>
+        </div>
+      )}
 
       {/* Evidence approval status */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>

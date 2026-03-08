@@ -261,7 +261,7 @@ def test_verification_budget(api_client, mock_db):
     assert "spent_usd" in data
     assert "remaining_usd" in data
     assert "providers" in data
-    assert isinstance(data["providers"], list)
+    assert isinstance(data["providers"], dict)
     assert "skylight" in data["providers"]
     assert "spire" in data["providers"]
     assert "seaweb" in data["providers"]

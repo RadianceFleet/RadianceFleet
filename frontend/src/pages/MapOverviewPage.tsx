@@ -7,7 +7,10 @@ import { CorridorZoneOverlay } from '../components/map/CorridorZoneOverlay'
 import { LoiteringOverlay } from '../components/map/LoiteringOverlay'
 import { DarkVesselOverlay } from '../components/map/DarkVesselOverlay'
 import { CoverageOverlay } from '../components/map/CoverageOverlay'
+import { VesselTrackOverlay } from '../components/map/VesselTrackOverlay'
+import { AlertHeatmapOverlay } from '../components/map/AlertHeatmapOverlay'
 import { Link } from 'react-router-dom'
+import { DataFreshnessBanner } from '../components/DataFreshnessBanner'
 import L from 'leaflet'
 import { Spinner } from '../components/ui/Spinner'
 
@@ -30,10 +33,15 @@ export function MapOverviewPage() {
   const [showLoitering, setShowLoitering] = useState(false)
   const [showDarkVessels, setShowDarkVessels] = useState(false)
   const [showCoverage, setShowCoverage] = useState(false)
+  const [showHeatmap, setShowHeatmap] = useState(false)
+  const [selectedVesselId, setSelectedVesselId] = useState<number | null>(null)
+  const [selectedVesselName, setSelectedVesselName] = useState<string | undefined>(undefined)
 
   const alerts = (data?.points ?? []).filter(a => a.last_lat != null && a.last_lon != null)
 
   return (
+    <>
+    <DataFreshnessBanner />
     <div style={{ height: 'calc(100vh - 120px)', borderRadius: 'var(--radius-md)', overflow: 'hidden', position: 'relative' }}>
       {isLoading && <Spinner text="Loading map data…" />}
       <div style={{
@@ -77,6 +85,27 @@ export function MapOverviewPage() {
           />
           Coverage Quality
         </label>
+        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
+          <input
+            type="checkbox"
+            checked={showHeatmap}
+            onChange={e => setShowHeatmap(e.target.checked)}
+            style={{ marginRight: 6 }}
+          />
+          Alert Heatmap
+        </label>
+        {selectedVesselId && (
+          <button
+            onClick={() => { setSelectedVesselId(null); setSelectedVesselName(undefined) }}
+            style={{
+              display: 'block', marginTop: 6, fontSize: 11, cursor: 'pointer',
+              background: '#3b82f6', color: '#fff', border: 'none',
+              borderRadius: 4, padding: '2px 8px',
+            }}
+          >
+            Hide Track
+          </button>
+        )}
       </div>
       <MapContainer
         center={[40, 25]}
@@ -89,6 +118,8 @@ export function MapOverviewPage() {
         {showLoitering && <LoiteringOverlay />}
         {showDarkVessels && <DarkVesselOverlay />}
         {showCoverage && <CoverageOverlay />}
+        {showHeatmap && <AlertHeatmapOverlay />}
+        {selectedVesselId && <VesselTrackOverlay vesselId={selectedVesselId} vesselName={selectedVesselName} />}
 
         {alerts.map(a => (
           <Marker
@@ -104,11 +135,24 @@ export function MapOverviewPage() {
                 {a.gap_start_utc.slice(0, 16).replace('T', ' ')} UTC<br />
                 Duration: {(a.duration_minutes / 60).toFixed(1)}h<br />
                 <Link to={`/alerts/${a.gap_event_id}`}>View details</Link>
+                {' | '}
+                <a
+                  href="#"
+                  onClick={e => {
+                    e.preventDefault()
+                    setSelectedVesselId(a.vessel_id)
+                    setSelectedVesselName(a.vessel_name ?? undefined)
+                  }}
+                  style={{ color: '#3b82f6' }}
+                >
+                  Show Track
+                </a>
               </div>
             </Popup>
           </Marker>
         ))}
       </MapContainer>
     </div>
+    </>
   )
 }

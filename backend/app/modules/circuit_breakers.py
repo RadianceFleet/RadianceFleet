@@ -61,6 +61,12 @@ breakers = {
     "capella": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="capella", listeners=[_listener]
     ),
+    "maxar": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="maxar", listeners=[_listener]
+    ),
+    "umbra": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="umbra", listeners=[_listener]
+    ),
 }
 
 

@@ -79,3 +79,23 @@ export function useMergeChains(params?: { min_confidence?: number; confidence_ba
     queryFn: () => apiFetch<{ items: MergeChainItem[]; total: number }>(`/merge-chains?${qp}`),
   })
 }
+
+export function useVesselTrack(vesselId: string | number | undefined) {
+  return useQuery({
+    queryKey: ['vessel-track', vesselId],
+    queryFn: async () => {
+      const res = await fetch(
+        `${(import.meta.env.VITE_API_URL ?? '')}/api/v1/vessels/${vesselId}/track.geojson`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem('rf_admin_token') ?? ''}`,
+          },
+        }
+      )
+      if (!res.ok) throw new Error('Failed to load track')
+      return res.json()
+    },
+    enabled: !!vesselId,
+    staleTime: 60_000,
+  })
+}

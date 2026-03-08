@@ -45,6 +45,9 @@ from app.models.alert_edit_lock import AlertEditLock
 from app.models.satellite_order import SatelliteOrder
 from app.models.satellite_order_log import SatelliteOrderLog
 from app.models.psc_detention import PscDetention
+from app.models.saved_filter import SavedFilter
+from app.models.api_key import ApiKey
+from app.models.webhook import Webhook
 
 __all__ = [
     "Base",
@@ -96,4 +99,7 @@ __all__ = [
     "SatelliteOrder",
     "SatelliteOrderLog",
     "PscDetention",
+    "SavedFilter",
+    "ApiKey",
+    "Webhook",
 ]

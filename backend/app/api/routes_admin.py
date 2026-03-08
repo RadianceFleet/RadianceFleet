@@ -1,9 +1,10 @@
-"""Admin, audit, ingestion, tips, subscriptions, and data coverage endpoints."""
+"""Admin, audit, ingestion, tips, subscriptions, data coverage, API key, and webhook endpoints."""
 from __future__ import annotations
 
 import csv
 import io
 import logging
+import secrets
 from datetime import date, datetime, timezone
 from typing import Optional
 
@@ -673,3 +674,196 @@ def trigger_backfill(
         return {"status": "coverage_tracker not available"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Backfill failed: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# API Key Management
+# ---------------------------------------------------------------------------
+
+class ApiKeyCreateRequest(BaseModel):
+    name: str
+
+
+@router.post("/admin/api-keys", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def create_api_key(
+    request: Request,
+    body: ApiKeyCreateRequest,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: create a new read-only API key. Returns the raw key ONCE."""
+    from app.models.api_key import ApiKey
+
+    raw_key = secrets.token_hex(32)
+    hashed = hash_password(raw_key)
+    api_key = ApiKey(
+        key_hash=hashed,
+        name=body.name,
+        scope="read_only",
+        rate_limit="30/minute",
+        created_by=_admin["analyst_id"],
+        is_active=True,
+    )
+    db.add(api_key)
+    db.commit()
+    db.refresh(api_key)
+    _audit_log(db, "api_key_create", "api_key", api_key.key_id,
+               {"name": body.name}, request, analyst_id=_admin["analyst_id"])
+    db.commit()
+    return {
+        "key_id": api_key.key_id,
+        "name": api_key.name,
+        "scope": api_key.scope,
+        "rate_limit": api_key.rate_limit,
+        "created_at": api_key.created_at.isoformat() if api_key.created_at else None,
+        "raw_key": raw_key,
+    }
+
+
+@router.get("/admin/api-keys", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def list_api_keys(
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: list all API keys (without hashes)."""
+    from app.models.api_key import ApiKey
+
+    keys = db.query(ApiKey).order_by(ApiKey.key_id).all()
+    return [
+        {
+            "key_id": k.key_id,
+            "name": k.name,
+            "scope": k.scope,
+            "rate_limit": k.rate_limit,
+            "is_active": k.is_active,
+            "created_at": k.created_at.isoformat() if k.created_at else None,
+            "created_by": k.created_by,
+        }
+        for k in keys
+    ]
+
+
+@router.delete("/admin/api-keys/{key_id}", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def deactivate_api_key(
+    key_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: deactivate an API key (soft delete)."""
+    from app.models.api_key import ApiKey
+
+    api_key = db.query(ApiKey).filter(ApiKey.key_id == key_id).first()
+    if not api_key:
+        raise HTTPException(status_code=404, detail="API key not found")
+    api_key.is_active = False
+    _audit_log(db, "api_key_deactivate", "api_key", key_id,
+               {"name": api_key.name}, request, analyst_id=_admin["analyst_id"])
+    db.commit()
+    return {"status": "deactivated", "key_id": key_id}
+
+
+# ---------------------------------------------------------------------------
+# Webhook Management
+# ---------------------------------------------------------------------------
+
+class WebhookCreateRequest(BaseModel):
+    url: str
+    events: Optional[str] = "critical_alert"
+    secret: Optional[str] = None
+
+
+@router.post("/admin/webhooks", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def create_webhook(
+    request: Request,
+    body: WebhookCreateRequest,
+    db: Session = Depends(get_db),
+    admin: dict = Depends(require_admin_role),
+):
+    """Admin: register a new webhook endpoint."""
+    from app.models.webhook import Webhook
+
+    wh = Webhook(
+        url=body.url,
+        events=body.events,
+        secret=body.secret,
+        created_by=admin.get("analyst_id") if isinstance(admin, dict) else None,
+    )
+    db.add(wh)
+    db.commit()
+    db.refresh(wh)
+    return {"webhook_id": wh.webhook_id, "url": wh.url, "events": wh.events, "is_active": wh.is_active}
+
+
+@router.get("/admin/webhooks", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def list_webhooks(
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: list all registered webhooks (secrets excluded)."""
+    from app.models.webhook import Webhook
+
+    webhooks = db.query(Webhook).order_by(Webhook.webhook_id).all()
+    return [
+        {
+            "webhook_id": wh.webhook_id,
+            "url": wh.url,
+            "events": wh.events,
+            "is_active": wh.is_active,
+            "created_at": wh.created_at.isoformat() if wh.created_at else None,
+        }
+        for wh in webhooks
+    ]
+
+
+@router.delete("/admin/webhooks/{webhook_id}", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def deactivate_webhook(
+    webhook_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: deactivate a webhook (soft delete)."""
+    from app.models.webhook import Webhook
+
+    wh = db.query(Webhook).filter(Webhook.webhook_id == webhook_id).first()
+    if not wh:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    wh.is_active = False
+    db.commit()
+    return {"status": "deactivated", "webhook_id": webhook_id}
+
+
+@router.post("/admin/webhooks/{webhook_id}/test", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+async def test_webhook(
+    webhook_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: send a test event to a webhook URL."""
+    from app.models.webhook import Webhook
+    from app.modules.webhook_dispatcher import dispatch_webhook
+
+    wh = db.query(Webhook).filter(Webhook.webhook_id == webhook_id).first()
+    if not wh:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+
+    success = await dispatch_webhook(
+        wh.url,
+        "test",
+        {"message": "This is a test webhook from RadianceFleet."},
+        wh.secret,
+    )
+    if success:
+        return {"status": "delivered", "webhook_id": webhook_id}
+    raise HTTPException(status_code=502, detail="Webhook delivery failed after 3 attempts")

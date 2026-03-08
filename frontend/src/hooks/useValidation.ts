@@ -76,6 +76,23 @@ export function useAnalystMetrics() {
   })
 }
 
+export interface LiveSignalEffectiveness {
+  signal: string
+  tp_count: number
+  fp_count: number
+  tp_freq: number
+  fp_freq: number
+  lift: number | string
+}
+
+export function useLiveSignalEffectiveness() {
+  return useQuery({
+    queryKey: ['live-signal-effectiveness'],
+    queryFn: () => apiFetch<LiveSignalEffectiveness[]>('/accuracy/signal-effectiveness'),
+    retry: false,
+  })
+}
+
 export interface DetectorCorrelation {
   category_a: string
   category_b: string

@@ -54,7 +54,7 @@ class TestRootHealthEndpoint:
         resp = api_client.get("/health")
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "0.1.0"
+        assert data["version"] == "3.4.0"
 
 
 # ---------------------------------------------------------------------------

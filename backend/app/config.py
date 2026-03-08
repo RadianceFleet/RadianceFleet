@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_VIEWER: str = "30/minute"
     RATE_LIMIT_ADMIN: str = "120/minute"
     RATE_LIMIT_DEFAULT: str = "60/minute"
+    SSE_MAX_CONNECTIONS: int = 20
 
     # ── Detection Thresholds ────────────────────────────────────────────────
     GAP_MIN_HOURS: float = 2.0
@@ -103,6 +104,8 @@ class Settings(BaseSettings):
     PLANET_API_KEY: str | None = None
     CAPELLA_API_KEY: str | None = None
     MAXAR_API_KEY: str | None = None
+    MAXAR_USERNAME: str | None = None
+    UMBRA_CLIENT_ID: str | None = None
     UMBRA_API_KEY: str | None = None
     SATELLITE_MONTHLY_BUDGET_USD: float = 2000.0
     SATELLITE_ORDER_AUTO_SUBMIT: bool = False
@@ -220,6 +223,9 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     SENTRY_TRACES_SAMPLE_RATE: float = 0.1
     SENTRY_ENVIRONMENT: str = "production"
+
+    # ── Operations ───────────────────────────────────────────────────────
+    PROMETHEUS_ENABLED: bool = False
 
 
 settings = Settings()

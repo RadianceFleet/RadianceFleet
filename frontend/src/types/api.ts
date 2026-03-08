@@ -122,6 +122,7 @@ export type AlertStatus =
 
 export interface AlertMapPoint {
   gap_event_id: number
+  vessel_id: number
   last_lat: number | null
   last_lon: number | null
   risk_score: number

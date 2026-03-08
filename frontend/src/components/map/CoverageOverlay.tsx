@@ -35,8 +35,13 @@ export function CoverageOverlay() {
       onEachFeature={(feature, layer) => {
         const props = feature.properties
         if (props) {
+          let tooltip = `<b>${props.name}</b>: ${props.quality}<br/>${props.description}`
+          if (props.suggested_sources) {
+            tooltip += `<br/><br/><i>Suggested sources:</i><br/>${props.suggested_sources}`
+          }
+          layer.bindPopup(tooltip, { maxWidth: 300 })
           layer.bindTooltip(
-            `${props.name}: ${props.quality} — ${props.description}`,
+            `${props.name}: ${props.quality}`,
             { sticky: true }
           )
         }

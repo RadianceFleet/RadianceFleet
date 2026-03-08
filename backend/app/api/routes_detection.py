@@ -1056,6 +1056,17 @@ def coverage_geojson():
 
 
 # ---------------------------------------------------------------------------
+# Signal Effectiveness
+# ---------------------------------------------------------------------------
+
+@router.get("/accuracy/signal-effectiveness", tags=["scoring"])
+def signal_effectiveness_endpoint(db: Session = Depends(get_db)):
+    """Per-signal FP rate and lift from analyst verdicts."""
+    from app.modules.validation_harness import live_signal_effectiveness
+    return live_signal_effectiveness(db)
+
+
+# ---------------------------------------------------------------------------
 # Satellite Orders
 # ---------------------------------------------------------------------------
 

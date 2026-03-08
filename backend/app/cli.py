@@ -50,3 +50,4 @@ import app.cli_update as _cli_update  # noqa: F401,E402
 import app.cli_vessels as _cli_vessels  # noqa: F401,E402
 import app.cli_history as _cli_history  # noqa: F401,E402
 import app.cli_psc as _cli_psc  # noqa: F401,E402
+import app.cli_db as _cli_db  # noqa: F401,E402

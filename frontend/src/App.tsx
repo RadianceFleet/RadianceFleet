@@ -24,13 +24,21 @@ import { HuntPage } from './pages/HuntPage'
 import { TipsAdminPage } from './pages/TipsAdminPage'
 import { VesselTimelinePage } from './pages/VesselTimelinePage'
 import { AccuracyDashboardPage } from './pages/AccuracyDashboardPage'
+import { DataHealthPage } from './pages/DataHealthPage'
 import { GlobalDetectionsPage } from './pages/GlobalDetectionsPage'
+import { EmbedVesselPage } from './pages/EmbedVesselPage'
+import { useAlertStream } from './hooks/useAlertStream'
+import { AlertToast } from './components/AlertToast'
 
 export default function App() {
+  const { lastAlert } = useAlertStream({ enabled: !!localStorage.getItem('rf_admin_token') })
+
   return (
     <BrowserRouter>
       <ErrorBoundary>
+        <AlertToast alert={lastAlert} />
         <Routes>
+          <Route path="/embed/vessel/:vesselId" element={<EmbedVesselPage />} />
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path="alerts" element={<AlertListPage />} />
@@ -54,6 +62,7 @@ export default function App() {
             <Route path="hunt" element={<HuntPage />} />
             <Route path="detect" element={<DetectionPanel />} />
             <Route path="accuracy" element={<AccuracyDashboardPage />} />
+            <Route path="data-health" element={<DataHealthPage />} />
             <Route path="admin/tips" element={<TipsAdminPage />} />
             <Route path="donate" element={<DonatePage />} />
           </Route>

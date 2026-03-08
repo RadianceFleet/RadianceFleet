@@ -9,6 +9,7 @@ import {
   useValidationSweep,
   useAnalystMetrics,
   useDetectorCorrelation,
+  useLiveSignalEffectiveness,
 } from '../hooks/useValidation'
 import type { SignalEffectiveness } from '../hooks/useValidation'
 
@@ -44,6 +45,7 @@ export function AccuracyDashboardPage() {
   const sweep = useValidationSweep()
   const analyst = useAnalystMetrics()
   const correlation = useDetectorCorrelation()
+  const liveSignals = useLiveSignalEffectiveness()
 
   const handleSignalSort = (key: SortKey) => {
     setSignalSort(prev =>
@@ -200,6 +202,58 @@ export function AccuracyDashboardPage() {
         )}
         {signals.data && signals.data.length === 0 && (
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No signal data (need both TP and FP predictions).</p>
+        )}
+      </Card>
+
+      {/* Live Signal Effectiveness (from verdicts) */}
+      <Card style={{ marginBottom: 16 }}>
+        <h3 style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
+          Live Signal Effectiveness (from verdicts)
+        </h3>
+        {liveSignals.isLoading && <Spinner text="Loading live signals..." />}
+        {liveSignals.error && <p style={{ color: 'var(--score-critical)', fontSize: 13 }}>Failed to load live signal data.</p>}
+        {liveSignals.data && liveSignals.data.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-base)' }}>
+                  <th style={headStyle}>Signal</th>
+                  <th style={headStyle}>TP Count</th>
+                  <th style={headStyle}>FP Count</th>
+                  <th style={headStyle}>TP Freq</th>
+                  <th style={headStyle}>FP Freq</th>
+                  <th style={headStyle}>Lift</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveSignals.data.map(s => {
+                  const liftNum = typeof s.lift === 'number' ? s.lift : Infinity
+                  return (
+                    <tr key={s.signal} style={{
+                      borderBottom: '1px solid var(--border)',
+                      background: liftNum < 1.0 ? 'rgba(239, 68, 68, 0.08)' : undefined,
+                    }}>
+                      <td style={cellStyle}>{s.signal}</td>
+                      <td style={cellStyle}>{s.tp_count}</td>
+                      <td style={cellStyle}>{s.fp_count}</td>
+                      <td style={cellStyle}>{s.tp_freq.toFixed(4)}</td>
+                      <td style={cellStyle}>{s.fp_freq.toFixed(4)}</td>
+                      <td style={{
+                        ...cellStyle,
+                        color: liftNum < 1.0 ? 'var(--score-critical)' : 'var(--text-bright)',
+                        fontWeight: liftNum < 1.0 ? 700 : 400,
+                      }}>
+                        {s.lift === 'inf' ? '\u221E' : typeof s.lift === 'number' ? s.lift.toFixed(2) : s.lift}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {liveSignals.data && liveSignals.data.length === 0 && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>No verdict data available yet.</p>
         )}
       </Card>
 

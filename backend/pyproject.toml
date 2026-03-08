@@ -50,6 +50,7 @@ dev = [
     "types-pyyaml>=6.0.0",
 ]
 monitoring = ["sentry-sdk[fastapi]>=2.0.0"]
+metrics = ["prometheus-fastapi-instrumentator>=7.0.0"]
 
 [project.scripts]
 radiancefleet = "app.cli:app"

@@ -2,7 +2,9 @@
 
 Usage:
     DATABASE_URL=postgresql+psycopg2://... uv run python migrate_to_pg.py
+    DATABASE_URL=postgresql+psycopg2://... uv run python migrate_to_pg.py --force
 """
+import argparse
 import io
 import os
 import sys
@@ -38,6 +40,9 @@ TABLES = [
     "alert_subscriptions", "owner_clusters", "owner_cluster_members",
     "dark_zones", "movement_envelopes", "satellite_tasking_candidates",
     "route_templates", "crea_voyages",
+    # v3.3+ tables
+    "analysts", "alert_edit_locks", "satellite_orders",
+    "satellite_order_logs", "psc_detentions", "saved_filters",
 ]
 
 
@@ -71,7 +76,79 @@ def build_copy_buffer(table_name, common_cols, bool_cols):
     return buf, count
 
 
+def validate_row_counts(sqlite_eng, pg_eng, tables):
+    """Compare row counts between SQLite and PostgreSQL for each table."""
+    print("\nValidating row counts...")
+    mismatches = []
+    sqlite_inspector = sa_inspect(sqlite_eng)
+    sqlite_tables = set(sqlite_inspector.get_table_names())
+    pg_inspector = sa_inspect(pg_eng)
+    pg_tables = set(pg_inspector.get_table_names())
+
+    for table in tables:
+        src_count = 0
+        dst_count = 0
+        if table in sqlite_tables:
+            with sqlite_eng.connect() as conn:
+                src_count = conn.execute(
+                    text(f"SELECT COUNT(*) FROM [{table}]")
+                ).scalar()
+        if table in pg_tables:
+            with pg_eng.connect() as conn:
+                dst_count = conn.execute(
+                    text(f"SELECT COUNT(*) FROM {table}")
+                ).scalar()
+        status = "OK" if src_count == dst_count else "MISMATCH"
+        if status == "MISMATCH":
+            mismatches.append((table, src_count, dst_count))
+        print(f"  {table}: SQLite={src_count} PG={dst_count} [{status}]")
+
+    return mismatches
+
+
+# Key FK relationships to validate after migration
+FK_CHECKS = [
+    ("fleet_alerts", "vessel_id", "vessels", "id"),
+    ("ais_points", "vessel_id", "vessels", "id"),
+    ("ais_observations", "vessel_id", "vessels", "id"),
+    ("port_calls", "vessel_id", "vessels", "id"),
+    ("evidence_cards", "alert_id", "fleet_alerts", "id"),
+    ("merge_operations", "chain_id", "merge_chains", "id"),
+]
+
+
+def check_fk_integrity(pg_eng):
+    """Check for orphaned FK references in key tables."""
+    print("\nChecking FK integrity...")
+    pg_inspector = sa_inspect(pg_eng)
+    pg_tables = set(pg_inspector.get_table_names())
+    issues = []
+
+    for child_table, child_col, parent_table, parent_col in FK_CHECKS:
+        if child_table not in pg_tables or parent_table not in pg_tables:
+            continue
+        with pg_eng.connect() as conn:
+            orphan_count = conn.execute(text(
+                f"SELECT COUNT(*) FROM {child_table} c "
+                f"LEFT JOIN {parent_table} p ON c.{child_col} = p.{parent_col} "
+                f"WHERE c.{child_col} IS NOT NULL AND p.{parent_col} IS NULL"
+            )).scalar()
+        status = "OK" if orphan_count == 0 else f"ORPHANS={orphan_count}"
+        if orphan_count > 0:
+            issues.append((child_table, child_col, parent_table, orphan_count))
+        print(f"  {child_table}.{child_col} -> {parent_table}.{parent_col}: [{status}]")
+
+    return issues
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Migrate SQLite to PostgreSQL")
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Truncate destination tables before copying (idempotent re-run)",
+    )
+    args = parser.parse_args()
+
     print("Initializing PostgreSQL schema...")
     os.environ["DATABASE_URL"] = PG_URL
     sys.path.insert(0, os.path.dirname(__file__))
@@ -133,8 +210,23 @@ def main():
         # Disable FK checks and triggers
         cursor.execute("SET session_replication_role = 'replica'")
 
-        # Truncate all tables in one statement (CASCADE handles FKs)
+        # Check if destination has existing data
         all_pg_tables = [t for t in TABLES if t in pg_tables]
+        has_data = False
+        for t in all_pg_tables:
+            cursor.execute(f"SELECT EXISTS (SELECT 1 FROM {t} LIMIT 1)")
+            if cursor.fetchone()[0]:
+                has_data = True
+                break
+
+        if has_data and not args.force:
+            print("  WARNING: Destination tables contain data.")
+            print("  Use --force to truncate and re-migrate.")
+            cursor.close()
+            raw_conn.close()
+            sys.exit(1)
+
+        # Truncate all tables in one statement (CASCADE handles FKs)
         cursor.execute(f"TRUNCATE TABLE {', '.join(all_pg_tables)} CASCADE")
         print("  Truncated all tables")
 
@@ -183,7 +275,29 @@ def main():
         cursor.close()
         raw_conn.close()
 
-    print(f"\nDone! {total} total rows migrated.")
+    # --- Post-migration validation ---
+    mismatches = validate_row_counts(sqlite_engine, pg_engine, TABLES)
+    fk_issues = check_fk_integrity(pg_engine)
+
+    # --- Summary report ---
+    print("\n" + "=" * 60)
+    print("MIGRATION SUMMARY")
+    print("=" * 60)
+    print(f"  Total rows migrated: {total}")
+    print(f"  Tables processed:    {len(buffers)}")
+    print(f"  Row count mismatches: {len(mismatches)}")
+    if mismatches:
+        for table, src, dst in mismatches:
+            print(f"    - {table}: SQLite={src} PG={dst}")
+    print(f"  FK integrity issues: {len(fk_issues)}")
+    if fk_issues:
+        for child, col, parent, count in fk_issues:
+            print(f"    - {child}.{col} -> {parent}: {count} orphans")
+    if not mismatches and not fk_issues:
+        print("  Status: ALL CHECKS PASSED")
+    else:
+        print("  Status: COMPLETED WITH WARNINGS")
+    print("=" * 60)
 
 
 if __name__ == "__main__":

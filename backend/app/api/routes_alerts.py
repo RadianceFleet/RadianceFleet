@@ -124,6 +124,7 @@ def list_alert_map_points(db: Session = Depends(get_db)):
                 "last_lat": r.start_point.lat if r.start_point else None,
                 "last_lon": r.start_point.lon if r.start_point else None,
                 "risk_score": r.risk_score,
+                "vessel_id": r.vessel_id,
                 "vessel_name": r.vessel.name if r.vessel else None,
                 "gap_start_utc": r.gap_start_utc,
                 "duration_minutes": r.duration_minutes,
@@ -140,6 +141,7 @@ def export_alerts_csv(
     date_to: Optional[date] = None,
     min_score: Optional[int] = None,
     ids: Optional[str] = Query(None, description="Comma-separated alert IDs to export"),
+    columns: Optional[str] = Query(None, description="Comma-separated column names to include"),
     db: Session = Depends(get_db),
 ):
     """Bulk export alerts as publication-ready CSV."""
@@ -164,36 +166,50 @@ def export_alerts_csv(
 
     alerts = q.order_by(AISGapEvent.risk_score.desc()).all()
 
+    all_columns = [
+        "alert_id", "vessel_mmsi", "vessel_name", "flag", "dwt",
+        "gap_start_utc", "gap_end_utc", "duration_hours",
+        "corridor_name", "risk_score", "status", "analyst_notes",
+    ]
+
+    if columns:
+        requested = [c.strip() for c in columns.split(",") if c.strip()]
+        selected = [c for c in requested if c in all_columns]
+        if not selected:
+            selected = all_columns
+    else:
+        selected = all_columns
+
+    def _row_dict(alert):
+        vessel = alert.vessel
+        corridor = alert.corridor
+        return {
+            "alert_id": alert.gap_event_id,
+            "vessel_mmsi": vessel.mmsi if vessel else "",
+            "vessel_name": vessel.name if vessel else "",
+            "flag": vessel.flag if vessel else "",
+            "dwt": vessel.deadweight if vessel else "",
+            "gap_start_utc": alert.gap_start_utc.isoformat() if alert.gap_start_utc else "",
+            "gap_end_utc": alert.gap_end_utc.isoformat() if alert.gap_end_utc else "",
+            "duration_hours": round(alert.duration_minutes / 60, 2) if alert.duration_minutes else "",
+            "corridor_name": corridor.name if corridor else "",
+            "risk_score": alert.risk_score,
+            "status": alert.status,
+            "analyst_notes": alert.analyst_notes or "",
+        }
+
     def generate():
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow([
-            "alert_id", "vessel_mmsi", "vessel_name", "flag", "dwt",
-            "gap_start_utc", "gap_end_utc", "duration_hours",
-            "corridor_name", "risk_score", "status", "analyst_notes",
-        ])
+        writer.writerow(selected)
         yield output.getvalue()
         output.seek(0)
         output.truncate(0)
 
         try:
             for alert in alerts:
-                vessel = alert.vessel
-                corridor = alert.corridor
-                writer.writerow([
-                    alert.gap_event_id,
-                    vessel.mmsi if vessel else "",
-                    vessel.name if vessel else "",
-                    vessel.flag if vessel else "",
-                    vessel.deadweight if vessel else "",
-                    alert.gap_start_utc.isoformat() if alert.gap_start_utc else "",
-                    alert.gap_end_utc.isoformat() if alert.gap_end_utc else "",
-                    round(alert.duration_minutes / 60, 2) if alert.duration_minutes else "",
-                    corridor.name if corridor else "",
-                    alert.risk_score,
-                    alert.status,
-                    alert.analyst_notes or "",
-                ])
+                row = _row_dict(alert)
+                writer.writerow([row[col] for col in selected])
                 yield output.getvalue()
                 output.seek(0)
                 output.truncate(0)
@@ -230,6 +246,145 @@ def my_alerts(
         item["vessel_mmsi"] = r.vessel.mmsi if r.vessel else None
         items.append(item)
     return {"items": items, "total": total}
+
+
+# ---------------------------------------------------------------------------
+# Saved Filters
+# ---------------------------------------------------------------------------
+
+@router.get("/alerts/saved-filters", tags=["alerts"])
+def list_saved_filters(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """List saved filters for the current analyst."""
+    from app.models.saved_filter import SavedFilter
+    filters = db.query(SavedFilter).filter(
+        SavedFilter.analyst_id == auth["analyst_id"]
+    ).order_by(SavedFilter.created_at.desc()).all()
+    return {
+        "items": [
+            {
+                "filter_id": f.filter_id,
+                "name": f.name,
+                "filter_json": f.filter_json,
+                "is_default": f.is_default,
+                "created_at": f.created_at.isoformat() if f.created_at else None,
+            }
+            for f in filters
+        ]
+    }
+
+
+@router.post("/alerts/saved-filters", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def create_saved_filter(
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Save a filter configuration."""
+    from app.models.saved_filter import SavedFilter
+
+    name = body.get("name", "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+    filter_json = body.get("filter_json", {})
+    is_default = body.get("is_default", False)
+
+    # If setting as default, clear other defaults
+    if is_default:
+        db.query(SavedFilter).filter(
+            SavedFilter.analyst_id == auth["analyst_id"],
+            SavedFilter.is_default == True,
+        ).update({"is_default": False})
+
+    sf = SavedFilter(
+        analyst_id=auth["analyst_id"],
+        name=name,
+        filter_json=filter_json,
+        is_default=is_default,
+    )
+    db.add(sf)
+    db.commit()
+    return {"filter_id": sf.filter_id, "name": sf.name}
+
+
+@router.delete("/alerts/saved-filters/{filter_id}", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def delete_saved_filter(
+    filter_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Delete a saved filter."""
+    from app.models.saved_filter import SavedFilter
+    deleted = db.query(SavedFilter).filter(
+        SavedFilter.filter_id == filter_id,
+        SavedFilter.analyst_id == auth["analyst_id"],
+    ).delete()
+    db.commit()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Filter not found")
+    return {"status": "deleted"}
+
+
+# ---------------------------------------------------------------------------
+# Alert Trends
+# ---------------------------------------------------------------------------
+
+@router.get("/alerts/trends", tags=["dashboard"])
+def get_alert_trends(
+    period: str = Query("7d", description="7d, 30d, or 90d"),
+    db: Session = Depends(get_db),
+):
+    """Time-bucketed alert counts for trend analysis."""
+    from app.models.gap_event import AISGapEvent
+
+    days_map = {"7d": 7, "30d": 30, "90d": 90}
+    days = days_map.get(period, 7)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days)
+
+    # Bucket by day
+    alerts = db.query(AISGapEvent).filter(
+        AISGapEvent.gap_start_utc >= cutoff
+    ).all()
+
+    daily_counts: dict[str, dict] = {}
+    for a in alerts:
+        day_key = a.gap_start_utc.strftime("%Y-%m-%d") if a.gap_start_utc else "unknown"
+        if day_key not in daily_counts:
+            daily_counts[day_key] = {"date": day_key, "total": 0, "critical": 0, "high": 0, "medium": 0, "low": 0, "reviewed": 0}
+        daily_counts[day_key]["total"] += 1
+        score = a.risk_score or 0
+        if score >= 76:
+            daily_counts[day_key]["critical"] += 1
+        elif score >= 51:
+            daily_counts[day_key]["high"] += 1
+        elif score >= 21:
+            daily_counts[day_key]["medium"] += 1
+        else:
+            daily_counts[day_key]["low"] += 1
+        status = str(a.status.value) if hasattr(a.status, "value") else str(a.status)
+        if status not in ("new",):
+            daily_counts[day_key]["reviewed"] += 1
+
+    buckets = sorted(daily_counts.values(), key=lambda x: x["date"])
+    total_new = sum(b["total"] - b["reviewed"] for b in buckets)
+    total_reviewed = sum(b["reviewed"] for b in buckets)
+
+    return {
+        "period": period,
+        "buckets": buckets,
+        "summary": {
+            "total_new": total_new,
+            "total_reviewed": total_reviewed,
+            "review_ratio": round(total_reviewed / max(1, total_new + total_reviewed), 3),
+        },
+    }
 
 
 @router.get("/alerts/{alert_id}", tags=["alerts"])
@@ -762,10 +917,58 @@ def score_alerts(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/rescore-all-alerts", tags=["scoring"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def rescore_all_alerts(request: Request, db: Session = Depends(get_db)):
+def rescore_all_alerts(
+    request: Request,
+    diff: bool = Query(False, description="If true, return before/after score changes"),
+    db: Session = Depends(get_db),
+):
     """Clear and re-compute all risk scores (use after config changes)."""
+    if diff:
+        from app.models.gap_event import AISGapEvent
+        from app.modules.risk_scoring import rescore_all_alerts as _rescore
+
+        # Capture before scores
+        alerts_before = {}
+        for alert in db.query(AISGapEvent).all():
+            alerts_before[alert.gap_event_id] = {
+                "score": alert.risk_score,
+                "band": _score_band_label(alert.risk_score),
+            }
+
+        result = _rescore(db)
+
+        # Capture after and compute diff
+        changes = []
+        for alert in db.query(AISGapEvent).all():
+            before = alerts_before.get(alert.gap_event_id, {"score": 0, "band": "low"})
+            after_score = alert.risk_score
+            after_band = _score_band_label(after_score)
+            if before["score"] != after_score:
+                changes.append({
+                    "gap_event_id": alert.gap_event_id,
+                    "before_score": before["score"],
+                    "after_score": after_score,
+                    "before_band": before["band"],
+                    "after_band": after_band,
+                    "delta": after_score - before["score"],
+                })
+
+        result["diff"] = {
+            "total_changed": len(changes),
+            "band_changes": sum(1 for c in changes if c["before_band"] != c["after_band"]),
+            "changes": changes[:100],  # Limit to first 100
+        }
+        return result
+
     from app.modules.risk_scoring import rescore_all_alerts as _rescore
     return _rescore(db)
+
+
+def _score_band_label(score: int) -> str:
+    if score >= 76: return "critical"
+    if score >= 51: return "high"
+    if score >= 21: return "medium"
+    return "low"
 
 
 # ---------------------------------------------------------------------------
