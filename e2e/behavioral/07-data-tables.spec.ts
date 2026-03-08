@@ -93,8 +93,15 @@ test.describe('Data Tables', () => {
       return;
     }
 
-    // Navigate to last page (max 5 clicks to avoid runaway)
-    for (let i = 1; i < totalPages && i <= 5; i++) {
+    if (totalPages > 6) {
+      // Too many pages to navigate — just verify Next is enabled on page 1
+      advisoryReport(testInfo, `${totalPages} pages — skipping last-page check`);
+      await expect(alp.nextButton).toBeEnabled();
+      return;
+    }
+
+    // Navigate to last page
+    for (let i = 1; i < totalPages; i++) {
       const nextP = waitForAlerts(page);
       await alp.nextButton.click();
       await nextP;

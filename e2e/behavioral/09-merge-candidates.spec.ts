@@ -83,19 +83,13 @@ test.describe('Merge Candidates', () => {
 
     await graphToggle.click();
 
-    // Graph view may show empty state if no merge chains exist
-    const svg = page.locator('svg');
-    const emptyState = page.getByText(/no merge chains/i);
-    const hasSvg = await svg.first().isVisible({ timeout: 5_000 }).catch(() => false);
+    // Graph view shows either SVG visualization OR empty state
+    const svgOrEmpty = page.locator('svg').first().or(page.getByText('No merge chains', { exact: true }));
+    await expect(svgOrEmpty).toBeVisible({ timeout: 10_000 });
 
-    if (!hasSvg) {
-      const hasEmpty = await emptyState.isVisible().catch(() => false);
-      if (hasEmpty) {
-        advisoryReport(testInfo, 'No merge chains — graph view shows empty state');
-        return;
-      }
-      // Neither SVG nor empty state — real problem
-      await expect(svg.first()).toBeVisible({ timeout: 5_000 });
+    const hasEmpty = await page.getByText('No merge chains', { exact: true }).isVisible().catch(() => false);
+    if (hasEmpty) {
+      advisoryReport(testInfo, 'No merge chains — graph view shows empty state');
     }
   });
 
@@ -119,16 +113,9 @@ test.describe('Merge Candidates', () => {
     // Switch to graph view
     await graphToggle.click();
 
-    // Graph view may show empty state if no merge chains exist
-    const svg = page.locator('svg');
-    const emptyState = page.getByText(/no merge chains/i);
-    const hasSvg = await svg.first().isVisible({ timeout: 5_000 }).catch(() => false);
-    const hasEmpty = await emptyState.isVisible().catch(() => false);
-
-    if (!hasSvg && !hasEmpty) {
-      advisoryReport(testInfo, 'Graph view shows neither SVG nor empty state');
-      return;
-    }
+    // Wait for graph or empty state
+    const svgOrEmpty = page.locator('svg').first().or(page.getByText('No merge chains', { exact: true }));
+    await expect(svgOrEmpty).toBeVisible({ timeout: 10_000 });
 
     // Switch back to table view
     await tableToggle.click();
