@@ -100,6 +100,11 @@ class GapEventRead(BaseModel):
 
 
 class GapEventDetailRead(GapEventRead):
+    assigned_to: Optional[int] = None
+    assigned_to_username: Optional[str] = None
+    assigned_at: Optional[str] = None
+    version: int = 1
+
     vessel_name: Optional[str] = None
     vessel_mmsi: Optional[str] = None
     vessel_flag: Optional[str] = None
@@ -124,6 +129,7 @@ class GapEventStatusUpdate(BaseModel):
 class AlertStatusUpdate(BaseModel):
     status: str
     reason: Optional[str] = None
+    version: Optional[int] = None
 
 
 class AlertNoteUpdate(BaseModel):
@@ -135,3 +141,4 @@ class AlertVerdictRequest(BaseModel):
     verdict: str  # "confirmed_tp" or "confirmed_fp"
     reason: Optional[str] = None
     reviewed_by: Optional[str] = None
+    version: Optional[int] = None

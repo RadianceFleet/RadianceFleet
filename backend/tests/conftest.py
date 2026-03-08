@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.database import get_db
+from app.auth import require_auth, require_senior_or_admin
 
 
 @pytest.fixture
@@ -26,7 +27,12 @@ def api_client(mock_db):
     def override_get_db():
         yield mock_db
 
+    def override_auth():
+        return {"analyst_id": 1, "username": "test_admin", "role": "admin"}
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[require_auth] = override_auth
+    app.dependency_overrides[require_senior_or_admin] = override_auth
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()

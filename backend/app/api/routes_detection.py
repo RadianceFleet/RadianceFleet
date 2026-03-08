@@ -933,3 +933,255 @@ def finalize_hunt_mission(
     return mission
 
 
+# ---------------------------------------------------------------------------
+# Merge Chains
+# ---------------------------------------------------------------------------
+
+@router.get("/merge-chains", tags=["merge-chains"])
+def list_merge_chains(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    min_confidence: Optional[float] = None,
+    confidence_band: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """List merge chains with hydrated vessel nodes and edges."""
+    from app.modules.merge_chain import get_merge_chains, get_merge_chain_count
+    from app.models.vessel import Vessel
+    from app.models.merge_candidate import MergeCandidate
+
+    chains = get_merge_chains(
+        db, skip=skip, limit=limit,
+        min_confidence=min_confidence, confidence_band=confidence_band,
+    )
+    total = get_merge_chain_count(
+        db, min_confidence=min_confidence, confidence_band=confidence_band,
+    )
+
+    items = []
+    for chain in chains:
+        vessel_ids = chain.vessel_ids_json or []
+        link_ids = chain.links_json or []
+
+        # Hydrate vessel nodes
+        vessels = {}
+        if vessel_ids:
+            rows = db.query(Vessel).filter(Vessel.vessel_id.in_(vessel_ids)).all()
+            vessels = {v.vessel_id: v for v in rows}
+
+        nodes = []
+        for vid in vessel_ids:
+            v = vessels.get(vid)
+            nodes.append({
+                "vessel_id": vid,
+                "mmsi": v.mmsi if v else None,
+                "name": v.name if v else None,
+                "flag": getattr(v, "flag", None) if v else None,
+                "role": "primary" if vid == vessel_ids[0] else "absorbed",
+            })
+
+        # Hydrate edges from merge candidates
+        edges = []
+        if link_ids:
+            mc_rows = db.query(MergeCandidate).filter(
+                MergeCandidate.candidate_id.in_(link_ids)
+            ).all()
+            for mc in mc_rows:
+                edges.append({
+                    "candidate_id": mc.candidate_id,
+                    "source_id": mc.vessel_a_id,
+                    "target_id": mc.vessel_b_id,
+                    "confidence": mc.confidence_score,
+                    "evidence": None,
+                })
+
+        items.append({
+            "chain_id": chain.chain_id,
+            "confidence_band": chain.confidence_band,
+            "confidence": chain.confidence,
+            "chain_length": chain.chain_length,
+            "nodes": nodes,
+            "edges": edges,
+        })
+
+    return {"items": items, "total": total}
+
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+
+@router.get("/coverage/geojson", tags=["coverage"])
+def coverage_geojson():
+    """AIS coverage quality regions as GeoJSON FeatureCollection."""
+    import yaml
+    from pathlib import Path
+
+    config_path = Path(settings.COVERAGE_CONFIG)
+    if not config_path.is_absolute():
+        config_path = Path.cwd() / config_path
+
+    if not config_path.exists():
+        raise HTTPException(status_code=404, detail=f"Coverage config not found: {config_path}")
+
+    raw = yaml.safe_load(config_path.read_text()) or {}
+
+    features = []
+    for region_key, region_data in raw.items():
+        if not isinstance(region_data, dict):
+            continue
+
+        geometry = None
+        wkt = region_data.get("geometry_wkt") or region_data.get("geometry")
+        if wkt:
+            try:
+                from shapely import wkt as shapely_wkt
+                import shapely.geometry
+                shape = shapely_wkt.loads(wkt)
+                geometry = shapely.geometry.mapping(shape)
+            except Exception:
+                pass
+
+        features.append({
+            "type": "Feature",
+            "properties": {
+                "name": region_data.get("name", region_key),
+                "quality": region_data.get("quality", "UNKNOWN"),
+                "description": region_data.get("description", ""),
+            },
+            "geometry": geometry,
+        })
+
+    return {"type": "FeatureCollection", "features": features}
+
+
+# ---------------------------------------------------------------------------
+# Satellite Orders
+# ---------------------------------------------------------------------------
+
+@router.get("/satellite/providers", tags=["satellite"])
+def list_satellite_providers(db: Session = Depends(get_db)):
+    """List configured satellite providers and budget."""
+    from app.modules.satellite_providers import list_providers
+    from app.modules.satellite_order_manager import get_satellite_budget_status
+
+    providers = list_providers()
+    configured = []
+    for p in providers:
+        key_field = f"{p.upper()}_API_KEY"
+        configured.append({"name": p, "configured": bool(getattr(settings, key_field, None))})
+    budget = get_satellite_budget_status(db)
+    return {"providers": configured, "budget": budget}
+
+
+@router.get("/satellite/orders", tags=["satellite"])
+def list_satellite_orders(
+    status: Optional[str] = None,
+    provider: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """List satellite orders."""
+    from app.models.satellite_order import SatelliteOrder
+
+    q = db.query(SatelliteOrder).order_by(SatelliteOrder.created_utc.desc())
+    if status:
+        q = q.filter(SatelliteOrder.status == status)
+    if provider:
+        q = q.filter(SatelliteOrder.provider == provider)
+    total = q.count()
+    orders = q.offset(skip).limit(limit).all()
+    return {
+        "total": total,
+        "orders": [
+            {
+                "satellite_order_id": o.satellite_order_id,
+                "provider": o.provider,
+                "order_type": o.order_type,
+                "external_order_id": o.external_order_id,
+                "status": o.status,
+                "cost_usd": o.cost_usd,
+                "created_utc": o.created_utc.isoformat() if o.created_utc else None,
+                "updated_utc": o.updated_utc.isoformat() if o.updated_utc else None,
+            }
+            for o in orders
+        ],
+    }
+
+
+@router.get("/satellite/orders/{order_id}", tags=["satellite"])
+def get_satellite_order(order_id: int, db: Session = Depends(get_db)):
+    """Get satellite order detail."""
+    from app.models.satellite_order import SatelliteOrder
+
+    order = db.query(SatelliteOrder).filter(
+        SatelliteOrder.satellite_order_id == order_id
+    ).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {c.name: getattr(order, c.name) for c in order.__table__.columns}
+
+
+@router.post("/satellite/orders/search", tags=["satellite"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def search_satellite_archive(request: Request, body: dict, db: Session = Depends(get_db)):
+    """Search satellite archive for an alert."""
+    from app.modules.satellite_order_manager import search_archive_for_alert
+
+    alert_id = body.get("alert_id")
+    provider = body.get("provider", "planet")
+    if not alert_id:
+        raise HTTPException(status_code=422, detail="alert_id required")
+    try:
+        return search_archive_for_alert(db, alert_id, provider)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/satellite/orders/{order_id}/submit", tags=["satellite"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def submit_satellite_order(
+    order_id: int, body: dict, request: Request, db: Session = Depends(get_db),
+):
+    """Submit a draft satellite order."""
+    from app.modules.satellite_order_manager import submit_order
+
+    scene_ids = body.get("scene_ids", [])
+    try:
+        return submit_order(db, order_id, scene_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/satellite/orders/{order_id}/cancel", tags=["satellite"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def cancel_satellite_order(
+    order_id: int, request: Request, db: Session = Depends(get_db),
+):
+    """Cancel a satellite order."""
+    from app.modules.satellite_order_manager import cancel_order
+
+    try:
+        return cancel_order(db, order_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/satellite/orders/poll", tags=["satellite"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def poll_satellite_orders(request: Request, db: Session = Depends(get_db)):
+    """Poll status of active satellite orders."""
+    from app.modules.satellite_order_manager import poll_order_status
+
+    return {"results": poll_order_status(db)}
+
+
+@router.get("/satellite/budget", tags=["satellite"])
+def satellite_budget(db: Session = Depends(get_db)):
+    """Current satellite imagery budget status."""
+    from app.modules.satellite_order_manager import get_satellite_budget_status
+
+    return get_satellite_budget_status(db)
+
+

@@ -55,6 +55,12 @@ breakers = {
     "copernicus": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="copernicus", listeners=[_listener]
     ),
+    "planet": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="planet", listeners=[_listener]
+    ),
+    "capella": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="capella", listeners=[_listener]
+    ),
 }
 
 

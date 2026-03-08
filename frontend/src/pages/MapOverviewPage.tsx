@@ -6,6 +6,7 @@ import { MapLayerControl } from '../components/map/LayerControl'
 import { CorridorZoneOverlay } from '../components/map/CorridorZoneOverlay'
 import { LoiteringOverlay } from '../components/map/LoiteringOverlay'
 import { DarkVesselOverlay } from '../components/map/DarkVesselOverlay'
+import { CoverageOverlay } from '../components/map/CoverageOverlay'
 import { Link } from 'react-router-dom'
 import L from 'leaflet'
 import { Spinner } from '../components/ui/Spinner'
@@ -28,6 +29,7 @@ export function MapOverviewPage() {
   const [showCorridors, setShowCorridors] = useState(true)
   const [showLoitering, setShowLoitering] = useState(false)
   const [showDarkVessels, setShowDarkVessels] = useState(false)
+  const [showCoverage, setShowCoverage] = useState(false)
 
   const alerts = (data?.points ?? []).filter(a => a.last_lat != null && a.last_lon != null)
 
@@ -66,6 +68,15 @@ export function MapOverviewPage() {
           />
           Dark Vessels
         </label>
+        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
+          <input
+            type="checkbox"
+            checked={showCoverage}
+            onChange={e => setShowCoverage(e.target.checked)}
+            style={{ marginRight: 6 }}
+          />
+          Coverage Quality
+        </label>
       </div>
       <MapContainer
         center={[40, 25]}
@@ -77,6 +88,7 @@ export function MapOverviewPage() {
         {showCorridors && <CorridorZoneOverlay />}
         {showLoitering && <LoiteringOverlay />}
         {showDarkVessels && <DarkVesselOverlay />}
+        {showCoverage && <CoverageOverlay />}
 
         {alerts.map(a => (
           <Marker

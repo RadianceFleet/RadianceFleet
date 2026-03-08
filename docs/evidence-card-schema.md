@@ -5,9 +5,10 @@ Evidence cards are the primary export format for analyst findings. They are gene
 ```bash
 uv run radiancefleet export evidence --alert 42 --format md
 uv run radiancefleet export evidence --alert 42 --format json
+uv run radiancefleet export evidence --alert 42 --format pdf
 ```
 
-Or via API: `POST /api/v1/alerts/{id}/export?format=md`
+Or via API: `POST /api/v1/alerts/{id}/export?format=md` (also accepts `json`, `csv`, `pdf`)
 
 ## Gate: analyst review required
 
@@ -98,6 +99,22 @@ Export is **blocked** when `status == "new"`. This enforces the analyst review g
 | `coverage` | [quality, description] | Regional AIS coverage quality |
 | `exported_at` | ISO datetime | Export timestamp |
 | `disclaimer` | string | Mandatory disclaimer text |
+
+## PDF rendering
+
+The PDF format (`format=pdf`) renders the same evidence card as a downloadable PDF report
+using fpdf2. The layout includes: title with risk score badge, gap details table, risk
+breakdown, linked anomalies, coverage caveat, and mandatory disclaimer. Unicode vessel
+names are supported via DejaVu fonts (installed in the Docker image); local development
+falls back to Helvetica (ASCII-only). Long fields are truncated to 500 characters to
+prevent page overflow.
+
+The PDF export is only available via API (`POST /api/v1/alerts/{id}/export?format=pdf`).
+The response has `Content-Type: application/pdf` and a `Content-Disposition` header for
+download. Like all other export formats, the analyst review gate applies — status must
+not be `"new"`.
+
+---
 
 ## Markdown rendering
 

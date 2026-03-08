@@ -3,19 +3,19 @@
 ## Running Tests
 
 ```bash
-cd backend && .venv/bin/pytest tests/ -v
+cd backend && uv run python -m pytest tests/ -v --timeout=30
 ```
 
 ## With Coverage
 
 ```bash
-cd backend && .venv/bin/pytest tests/ --cov=app --cov-report=term-missing
+cd backend && uv run python -m pytest tests/ --cov=app --cov-report=term-missing --timeout=30
 ```
 
 To generate an HTML report:
 
 ```bash
-cd backend && .venv/bin/pytest tests/ --cov=app --cov-report=html
+cd backend && uv run python -m pytest tests/ --cov=app --cov-report=html --timeout=30
 ```
 
 The HTML report is written to `backend/htmlcov/index.html`.
@@ -24,8 +24,9 @@ The HTML report is written to `backend/htmlcov/index.html`.
 
 ## Test Structure
 
-The test suite contains 115 tests across 9 focused test files. Each file is dedicated
-to a single module or functional boundary.
+The test suite contains **2,673+ tests** across 20+ test files. Each file is dedicated
+to a single module or functional boundary. The original 9 core test files are listed
+below, followed by additional test files added in v2.0–v3.2.
 
 ### test_gap_detection.py
 
@@ -153,6 +154,21 @@ Integration tests for the vessel API endpoints using the `api_client` fixture:
 - `GET /api/v1/vessels/{vessel_id}/history` returns VesselHistory change log
 - `GET /api/v1/vessels/{vessel_id}/watchlist` returns active watchlist entries
 - 404 returned for unknown vessel_id
+
+### Additional test files (v2.0–v3.2)
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `test_merge_chains_api.py` | 5 | `GET /merge-chains` — empty list, hydrated nodes/edges, confidence_band filter, min_confidence filter, missing vessel fallback |
+| `test_track_export.py` | 10 | GeoJSON structure, `[lon, lat]` coordinate order, null geometry, date filtering, KML validity, XML escaping, `gx:Track` elements, API 404s |
+| `test_pdf_export.py` | 4 | PDF magic bytes, content-type, status "new" rejection, non-existent alert |
+| `test_coverage_geojson.py` | 4 | FeatureCollection structure, quality properties, feature count vs config, non-null geometry |
+| `test_validation_api.py` | ~20 | Accuracy dashboard endpoints, validation harness, ground truth loading |
+| `test_med_sts_exclusion.py` | 13 | Mediterranean STS anchorage exclusion zones |
+| `test_circuit_breakers.py` | ~10 | pybreaker circuit breaker state management |
+| `test_ingestion_status.py` | ~8 | AIS ingestion status tracking and persistence |
+| `test_scoring_osint.py` | ~15 | OSINT-informed scoring signals (sanctioned ports, KSE archetypes, EEZ proximity) |
+| + ~10 more files | ~2,400 | Detectors, modules, API endpoints across all subsystems |
 
 ---
 
@@ -323,7 +339,7 @@ def test_my_new_signal_does_not_fire_below_threshold():
 loitering events), use `mock_db` from `conftest.py` and configure the appropriate
 `query().filter().all()` return value before calling `compute_gap_score(..., db=mock_db)`.
 
-**Step 6.** Verify the full suite still passes: `cd backend && .venv/bin/pytest tests/ -v`.
+**Step 6.** Verify the full suite still passes: `cd backend && uv run python -m pytest tests/ -v --timeout=30`.
 
 ---
 
@@ -346,15 +362,14 @@ different detection scenario:
 To populate a local database with sample data:
 
 ```bash
-source backend/.venv/bin/activate
-python scripts/generate_sample_data.py
+cd backend && uv run python ../scripts/generate_sample_data.py
 ```
 
 ---
 
 ## Coverage Targets
 
-The suite currently contains **115 tests** (as of v1.0). The following targets apply
+The suite currently contains **2,673+ tests** (as of v3.2). The following targets apply
 when contributing new signals, detectors, or API endpoints:
 
 - Every new scoring signal requires at minimum:
@@ -368,5 +383,13 @@ when contributing new signals, detectors, or API endpoints:
   - 1 not-found / error test
 
 Coverage for `app/modules/` should remain above 80%. Run
-`pytest --cov=app --cov-report=term-missing` to identify uncovered lines before
+`uv run python -m pytest tests/ --cov=app --cov-report=term-missing --timeout=30` to identify uncovered lines before
 submitting a pull request.
+
+### Frontend tests
+
+The frontend has 23 Vitest smoke and interaction tests:
+
+```bash
+cd frontend && npm test
+```

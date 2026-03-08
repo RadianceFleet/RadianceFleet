@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth'
 
 export function LoginModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () => void }) {
   const { login } = useAuth()
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -17,12 +18,12 @@ export function LoginModal({ onSuccess, onClose }: { onSuccess: () => void; onCl
     e.preventDefault()
     setError(null)
     setLoading(true)
-    const ok = await login(password)
+    const ok = await login(username, password)
     setLoading(false)
     if (ok) {
       onSuccess()
     } else {
-      setError('Invalid password')
+      setError('Invalid username or password')
       setPassword('')
     }
   }
@@ -47,11 +48,18 @@ export function LoginModal({ onSuccess, onClose }: { onSuccess: () => void; onCl
         <h3 style={{ margin: '0 0 16px', fontSize: 16 }}>Admin Login</h3>
         <form onSubmit={handleSubmit}>
           <input
+            type="text"
+            value={username}
+            onChange={e => setUsername(e.target.value)}
+            placeholder="Username"
+            autoFocus
+            style={inputStyle}
+          />
+          <input
             type="password"
             value={password}
             onChange={e => setPassword(e.target.value)}
             placeholder="Password"
-            autoFocus
             style={inputStyle}
           />
           {error && <p style={{ color: 'var(--score-critical)', fontSize: 13, margin: '0 0 12px' }}>{error}</p>}

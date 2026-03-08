@@ -13,7 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.config import settings
-from app.auth import create_admin_token, verify_admin_password, require_admin
+from app.auth import (
+    create_admin_token, create_token, verify_admin_password, verify_password,
+    hash_password, require_auth, require_admin as require_admin_role,
+)
 from app.api._helpers import _audit_log, _validate_date_range, _check_upload_size, limiter
 
 logger = logging.getLogger(__name__)
@@ -185,24 +188,153 @@ def list_audit_logs(
 # Admin Auth
 # ---------------------------------------------------------------------------
 
-class AdminLoginRequest(BaseModel):
-    password: str
-
-
 @router.post("/admin/login", tags=["admin"])
 @limiter.limit("5/hour")
-def admin_login(request: Request, body: AdminLoginRequest):
-    """Rate-limited admin login. Returns JWT token valid for 30 minutes."""
-    if not verify_admin_password(body.password):
-        raise HTTPException(status_code=401, detail="Invalid password")
-    return {"token": create_admin_token()}
+def admin_login(request: Request, body: dict, db: Session = Depends(get_db)):
+    """Rate-limited login. Supports analyst DB login (username+password) and legacy admin login."""
+    from app.schemas.analyst import AnalystLoginRequest, AnalystLoginResponse, AnalystRead
+    from app.models.analyst import Analyst
+    from datetime import datetime as _dt, timezone as _tz
+
+    parsed = AnalystLoginRequest(**body)
+
+    if parsed.username:
+        # DB-backed analyst login
+        analyst = db.query(Analyst).filter(Analyst.username == parsed.username).first()
+        if not analyst or not analyst.is_active:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not verify_password(parsed.password, analyst.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        analyst.last_login_at = _dt.now(_tz.utc)
+        db.commit()
+        role_val = analyst.role.value if hasattr(analyst.role, "value") else str(analyst.role)
+        token = create_token(analyst.analyst_id, analyst.username, role_val)
+        return AnalystLoginResponse(
+            token=token,
+            analyst=AnalystRead.model_validate(analyst),
+        ).model_dump()
+    else:
+        # Legacy admin login (no username — uses ADMIN_PASSWORD env var)
+        if not verify_admin_password(parsed.password):
+            raise HTTPException(status_code=401, detail="Invalid password")
+        return {"token": create_admin_token()}
 
 
 @router.post("/admin/refresh", tags=["admin"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def admin_refresh(request: Request, _admin=Depends(require_admin)):
-    """Refresh admin JWT token (called silently by frontend)."""
-    return {"token": create_admin_token()}
+def admin_refresh(request: Request, auth: dict = Depends(require_auth)):
+    """Refresh JWT token (called silently by frontend)."""
+    return {"token": create_token(auth["analyst_id"], auth["username"], auth["role"])}
+
+
+# ---------------------------------------------------------------------------
+# Analyst Management (admin-only)
+# ---------------------------------------------------------------------------
+
+@router.post("/admin/analysts", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def create_analyst(
+    request: Request,
+    body: dict,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: create a new analyst account."""
+    from app.schemas.analyst import AnalystCreate, AnalystRead
+    from app.models.analyst import Analyst
+    from app.models.base import AnalystRoleEnum
+
+    parsed = AnalystCreate(**body)
+    valid_roles = {e.value for e in AnalystRoleEnum}
+    if parsed.role not in valid_roles:
+        raise HTTPException(status_code=422, detail=f"Invalid role. Must be one of: {sorted(valid_roles)}")
+
+    existing = db.query(Analyst).filter(Analyst.username == parsed.username).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Username already exists")
+
+    analyst = Analyst(
+        username=parsed.username,
+        display_name=parsed.display_name,
+        password_hash=hash_password(parsed.password),
+        role=parsed.role,
+        is_active=True,
+    )
+    db.add(analyst)
+    db.commit()
+    db.refresh(analyst)
+    return AnalystRead.model_validate(analyst).model_dump()
+
+
+@router.get("/admin/analysts", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def list_analysts(
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: list all analyst accounts."""
+    from app.schemas.analyst import AnalystRead
+    from app.models.analyst import Analyst
+
+    analysts = db.query(Analyst).order_by(Analyst.analyst_id).all()
+    return [AnalystRead.model_validate(a).model_dump() for a in analysts]
+
+
+@router.patch("/admin/analysts/{analyst_id}", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def update_analyst(
+    analyst_id: int,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: update analyst role, display_name, or is_active."""
+    from app.models.analyst import Analyst
+    from app.models.base import AnalystRoleEnum
+
+    analyst = db.query(Analyst).filter(Analyst.analyst_id == analyst_id).first()
+    if not analyst:
+        raise HTTPException(status_code=404, detail="Analyst not found")
+
+    if "role" in body:
+        valid_roles = {e.value for e in AnalystRoleEnum}
+        if body["role"] not in valid_roles:
+            raise HTTPException(status_code=422, detail=f"Invalid role. Must be one of: {sorted(valid_roles)}")
+        analyst.role = body["role"]
+    if "display_name" in body:
+        analyst.display_name = body["display_name"]
+    if "is_active" in body:
+        analyst.is_active = body["is_active"]
+
+    db.commit()
+    return {"status": "updated", "analyst_id": analyst_id}
+
+
+@router.post("/admin/analysts/{analyst_id}/reset-password", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def reset_analyst_password(
+    analyst_id: int,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: reset an analyst's password."""
+    from app.models.analyst import Analyst
+
+    analyst = db.query(Analyst).filter(Analyst.analyst_id == analyst_id).first()
+    if not analyst:
+        raise HTTPException(status_code=404, detail="Analyst not found")
+
+    new_password = body.get("password")
+    if not new_password:
+        raise HTTPException(status_code=422, detail="password is required")
+
+    analyst.password_hash = hash_password(new_password)
+    db.commit()
+    return {"status": "password_reset", "analyst_id": analyst_id}
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +347,7 @@ def admin_validate(
     request: Request,
     threshold_band: str = Query("high"),
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin_role),
 ):
     """Run validation harness against ground truth."""
     from app.modules.validation_harness import run_validation
@@ -227,7 +359,7 @@ def admin_validate(
 def admin_validate_signals(
     request: Request,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin_role),
 ):
     """Signal effectiveness report — lift ratios for each risk signal."""
     from app.modules.validation_harness import signal_effectiveness_report
@@ -239,7 +371,7 @@ def admin_validate_signals(
 def admin_validate_sweep(
     request: Request,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin_role),
 ):
     """Sweep score thresholds — precision/recall/F2 at each threshold."""
     from app.modules.validation_harness import sweep_thresholds
@@ -251,23 +383,11 @@ def admin_validate_sweep(
 def admin_analyst_metrics(
     request: Request,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin_role),
 ):
     """Analyst feedback metrics — FP rates by score band and corridor."""
     from app.modules.validation_harness import analyst_feedback_metrics
     return analyst_feedback_metrics(db)
-
-
-@router.get("/admin/validate/detector-correlation", tags=["admin"])
-@limiter.limit(settings.RATE_LIMIT_ADMIN)
-def admin_detector_correlation(
-    request: Request,
-    db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
-):
-    """Detector correlation report — co-occurrence FP rates for signal pairs."""
-    from app.modules.validation_harness import detector_correlation_report
-    return detector_correlation_report(db)
 
 
 @router.post("/admin/purge-observations", tags=["admin"])
@@ -275,7 +395,7 @@ def admin_detector_correlation(
 def admin_purge_observations(
     request: Request,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin_role),
 ):
     """Admin: purge AIS observations older than the configured retention window."""
     from app.models.ais_observation import AISObservation
@@ -339,7 +459,7 @@ def get_tips(
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin_role),
 ):
     """Admin: list tip submissions, paginated."""
     from app.models.tip_submission import TipSubmission
@@ -372,7 +492,7 @@ def update_tip(
     body: TipUpdateRequest,
     request: Request,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin),
+    _admin=Depends(require_admin_role),
 ):
     """Admin: update tip status and/or analyst note."""
     from app.models.tip_submission import TipSubmission

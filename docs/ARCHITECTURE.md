@@ -205,6 +205,22 @@ disclaimer that the output is investigative triage and not a legal determination
 Output is persisted as an `EvidenceCard` row. Markdown output uses human-readable
 headers and a formatted score breakdown table.
 
+### evidence_pdf.py
+
+Renders evidence cards as downloadable PDF reports using fpdf2 (pure Python, no system
+dependencies beyond an optional DejaVu font for Unicode). Reuses the same data gathering
+logic as `evidence_export.py` via `_build_card()`. Layout: title with risk score badge,
+gap details table, risk breakdown, linked anomalies, coverage caveat, disclaimer.
+
+### track_export.py
+
+Exports vessel AIS tracks in two geospatial formats. `export_track_geojson()` produces
+an RFC 7946 GeoJSON FeatureCollection with a LineString geometry (`[lon, lat]` coordinate
+order) and per-point properties (timestamp, SOG, COG). `export_track_kml()` produces KML
+with `gx:Track` elements using `xml.etree.ElementTree` for proper XML escaping of vessel
+names containing special characters (`&`, `<`). Both accept optional `date_from`/`date_to`
+filters and query the `AISPoint` table (full history, not the 72h rolling `AISObservation`).
+
 ---
 
 ## Why Sync SQLAlchemy
@@ -343,34 +359,49 @@ DarkZone
 
 ## API Architecture
 
-All API routes are defined in a single `backend/app/api/routes.py` file using FastAPI's
-`APIRouter()` pattern. The router is mounted on the main `app` with the prefix
-`/api/v1/`. Every route that requires database access receives a session via
-`Depends(get_db)`, where `get_db()` is a generator that opens a SQLAlchemy session and
-closes it after the request completes. No route opens a session directly.
+API routes are split across 5 sub-router files under `backend/app/api/`, aggregated by
+`routes.py` which includes all sub-routers. The combined router is mounted on the main
+`app` with the prefix `/api/v1/`. Every route that requires database access receives a
+session via `Depends(get_db)`, where `get_db()` is a generator that opens a SQLAlchemy
+session and closes it after the request completes. No route opens a session directly.
 
-Route groupings (all under `/api/v1/`):
+### Sub-router files
+
+| File | Scope | Endpoints |
+|------|-------|-----------|
+| `routes_vessels.py` | `/vessels/*` — search, detail, history, watchlist, track export | ~21 |
+| `routes_alerts.py` | `/alerts/*` — list, detail, status, notes, export (JSON/MD/CSV/PDF), satellite check | ~13 |
+| `routes_detection.py` | `/detect/*`, `/fleet/*`, corridors, hunt, merge chains, coverage, STS events | ~23 |
+| `routes_admin.py` | `/admin/*`, `/ingestion/*`, watchlist, scoring, dark vessels | ~16 |
+| `routes_health.py` | `/health/*` — health check, data freshness, stats | ~3 |
+| `_helpers.py` | Shared utilities: `limiter`, `_audit_log()` | — |
+
+### Key endpoints (all under `/api/v1/`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/vessels/search` | Vessel search with MMSI/name/flag filters |
-| GET | `/vessels/{vessel_id}` | Vessel detail with recent alerts |
-| GET | `/vessels/{vessel_id}/alerts` | All alerts for a vessel |
+| GET | `/vessels` | Vessel search with MMSI/IMO/name/flag/type filters |
+| GET | `/vessels/{vessel_id}` | Vessel detail with alert/anomaly counts |
+| GET | `/vessels/{vessel_id}/alerts` | All gap alerts for a vessel |
 | GET | `/vessels/{vessel_id}/history` | VesselHistory change log |
-| GET | `/vessels/{vessel_id}/watchlist` | Watchlist entries for a vessel |
-| GET | `/alerts` | Alert list with status/score/corridor filters |
-| GET | `/alerts/{alert_id}` | Alert detail with breakdown |
-| PATCH | `/alerts/{alert_id}/status` | Update alert status |
-| GET | `/alerts/{alert_id}/evidence` | Export evidence card (JSON or MD) |
-| GET | `/alerts/export/csv` | Bulk CSV export (StreamingResponse) |
-| GET | `/corridors` | List all corridors |
-| GET | `/corridors/{corridor_id}` | Corridor detail |
+| GET | `/vessels/{vessel_id}/track.geojson` | GeoJSON LineString track export (RFC 7946) |
+| GET | `/vessels/{vessel_id}/track.kml` | KML track export with `gx:Track` timestamps |
+| GET | `/alerts` | Alert list with status/score/corridor/date filters, paginated |
+| GET | `/alerts/{alert_id}` | Alert detail with risk breakdown and linked anomalies |
+| POST | `/alerts/{alert_id}/status` | Update alert status |
+| POST | `/alerts/{alert_id}/export` | Export evidence card (JSON, MD, CSV, or PDF) |
+| GET | `/alerts/export` | Bulk CSV export (StreamingResponse) |
+| GET | `/alerts/map` | Lightweight map projection for markers |
+| GET | `/corridors` | List all corridors with alert counts |
+| GET | `/corridors/geojson` | Corridor geometries as GeoJSON FeatureCollection |
+| GET | `/merge-chains` | Merge chain graphs with hydrated vessel nodes and edges |
+| GET | `/coverage/geojson` | AIS coverage quality regions as GeoJSON FeatureCollection |
 | GET | `/watchlist` | List watchlist entries |
 | POST | `/watchlist` | Add watchlist entry |
-| DELETE | `/watchlist/{watchlist_id}` | Remove watchlist entry |
-| POST | `/ingest/status` | Ingestion job status (in-memory app.state) |
-| GET | `/stats` | Aggregate statistics |
-| GET | `/health` | Health check |
+| GET | `/stats` | Dashboard aggregate statistics |
+| GET | `/health` | Health check with circuit breaker states |
+
+See `docs/API.md` for the complete endpoint reference with query parameters.
 
 ---
 

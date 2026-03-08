@@ -1,11 +1,42 @@
 # Deployment Guide
 
-This guide covers four deployment scenarios:
+This guide covers five deployment scenarios:
 
-1. **[Hosted Public Instance (Railway + Cloudflare Pages)](#hosted-public-instance-railway--cloudflare-pages)** — recommended for a publicly accessible, continuously updated instance
-2. **[Local Development (SQLite, no Docker)](#local-development-sqlite-no-docker)** — fastest path for a single analyst on a laptop
-3. **[Single-User Production (Docker Compose + PostgreSQL)](#single-user-production-docker-compose--postgresql)** — dedicated private server
-4. **[Multi-User Production](#multi-user-production)** — shared team server behind nginx
+1. **[Docker Hub / ghcr.io (Pre-built Image)](#docker-hub--ghcrio-pre-built-image)** — fastest path for Docker users
+2. **[Hosted Public Instance (Railway + Cloudflare Pages)](#hosted-public-instance-railway--cloudflare-pages)** — recommended for a publicly accessible, continuously updated instance
+3. **[Local Development (SQLite, no Docker)](#local-development-sqlite-no-docker)** — fastest path for a single analyst on a laptop
+4. **[Single-User Production (Docker Compose + PostgreSQL)](#single-user-production-docker-compose--postgresql)** — dedicated private server
+5. **[Multi-User Production](#multi-user-production)** — shared team server behind nginx
+
+---
+
+## Docker Hub / ghcr.io (Pre-built Image)
+
+Pre-built images are published on every push to `main`:
+
+```bash
+# From Docker Hub
+docker pull radiancefleet/radiancefleet:latest
+
+# Or from GitHub Container Registry
+docker pull ghcr.io/radiancefleet/radiancefleet:latest
+```
+
+Run with SQLite (simplest):
+
+```bash
+docker run -p 8000:8000 radiancefleet/radiancefleet:latest
+```
+
+Run with PostgreSQL:
+
+```bash
+docker run -p 8000:8000 \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/radiancefleet \
+  radiancefleet/radiancefleet:latest
+```
+
+Images are tagged with both `latest` and the git commit SHA (e.g., `radiancefleet/radiancefleet:abc1234`) for reproducible deployments.
 
 ---
 
@@ -141,7 +172,7 @@ radiancefleet start --demo
 ```bash
 # Backend health (replace with your Railway URL)
 curl https://your-app.railway.app/health
-# Expected: {"status": "ok", "version": "0.1.0"}
+# Expected: {"status": "ok", "version": "3.2.0", "circuit_breakers": {...}}
 
 # Data freshness (shows last update timestamp)
 curl https://your-app.railway.app/api/v1/health/data-freshness
@@ -499,11 +530,13 @@ and rebuild.
 ### Concurrency considerations
 
 RadianceFleet uses synchronous SQLAlchemy with a single database session per request.
-Multiple analysts working simultaneously can cause **last-write-wins** conflicts on analyst
-notes and alert status fields — there is no optimistic locking or conflict resolution in the
-MVP. To reduce the risk:
+v3.3 adds three concurrency mechanisms to prevent data conflicts:
 
-- Assign distinct vessel ranges to each analyst.
+- **Edit locks**: DB-level advisory locks with configurable TTL (`EDIT_LOCK_TTL_SECONDS`, default 300s). An analyst must acquire a lock before editing an alert; other analysts see a 409 Conflict.
+- **Optimistic locking**: A `version` field on gap events is incremented on each update. If two analysts submit changes to the same alert, the second gets a 409 Conflict and must reload.
+- **Alert assignment**: Assign alerts to specific analysts to partition work.
+
+Additional recommendations:
 - Coordinate before running `rescore-all-alerts`, which rewrites scores for the entire dataset.
 - Set a PostgreSQL connection pool size appropriate for your team size:
 
@@ -538,6 +571,10 @@ takes precedence over defaults; process environment variables take precedence ov
 | `OPENSANCTIONS_API_KEY` | No | — | OpenSanctions API key for watchlist updates |
 | `AISSTREAM_API_KEY` | No | — | AISStream.io API key for live AIS ingestion |
 | `AISSTREAM_WORKER_ENABLED` | No | `false` | When `true`, cron skips aisstream collection (dedicated ws-worker handles it) |
+| `EDIT_LOCK_TTL_SECONDS` | No | `300` | Edit lock duration in seconds before automatic expiry |
+| `MAXAR_API_KEY` | No | — | Maxar satellite imagery API key (stub — not yet implemented) |
+| `SATELLITE_MONTHLY_BUDGET_USD` | No | `2000.0` | Monthly budget cap for commercial satellite orders |
+| `SATELLITE_ORDER_AUTO_SUBMIT` | No | `false` | When `true`, orders are auto-submitted (default: stay in draft for analyst review) |
 
 CORS configuration: if you serve the frontend from a different origin than the API, set
 `CORS_ORIGINS` as a comma-separated list in `.env`:

@@ -97,6 +97,19 @@ def export_evidence_card(alert_id: int, format: str, db: Session) -> dict[str, A
     )
     card_data = _build_card(gap, vessel, corridor=corridor, db=db)
 
+    # Chain of custody metadata
+    card_record = db.query(EvidenceCard).filter(
+        EvidenceCard.gap_event_id == alert_id
+    ).order_by(EvidenceCard.created_at.desc()).first()
+    if card_record:
+        card_data["chain_of_custody"] = {
+            "exported_by": card_record.exported_by,
+            "approval_status": card_record.approval_status or "draft",
+            "approved_by": card_record.approved_by,
+            "approved_at": card_record.approved_at.isoformat() if card_record.approved_at else None,
+            "approval_notes": card_record.approval_notes,
+        }
+
     if format == "json":
         content = json.dumps(card_data, indent=2, default=str)
         media_type = "application/json"

@@ -149,6 +149,7 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
     from app.models.loitering_event import LoiteringEvent
     from app.models.sts_transfer import StsTransferEvent
     from app.models.gap_event import AISGapEvent
+    from app.schemas.psc_detention import PscDetentionRead
 
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
     if not vessel:
@@ -173,6 +174,9 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
             "flag_risk_category": str(vessel.flag_risk_category.value) if hasattr(vessel.flag_risk_category, "value") else vessel.flag_risk_category,
             "pi_coverage_status": str(vessel.pi_coverage_status.value) if hasattr(vessel.pi_coverage_status, "value") else vessel.pi_coverage_status,
             "psc_detained_last_12m": vessel.psc_detained_last_12m,
+            "psc_detention_count": 0,
+            "psc_latest_detention_date": None,
+            "psc_detentions": [],
             "mmsi_first_seen_utc": vessel.mmsi_first_seen_utc,
             "vessel_laid_up_30d": vessel.vessel_laid_up_30d,
             "vessel_laid_up_60d": vessel.vessel_laid_up_60d,
@@ -219,6 +223,12 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         StsTransferEvent.start_time_utc >= now - timedelta(days=60),
     ).all()
 
+    # PSC detention records (safe for mock objects)
+    try:
+        _psc_dets = list(vessel.psc_detentions) if vessel.psc_detentions else []
+    except (TypeError, AttributeError):
+        _psc_dets = []
+
     # External verification deep-links (Phase C15)
     equasis_url = None
     opencorporates_url = None
@@ -241,6 +251,9 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         "flag_risk_category": str(vessel.flag_risk_category.value) if hasattr(vessel.flag_risk_category, "value") else vessel.flag_risk_category,
         "pi_coverage_status": str(vessel.pi_coverage_status.value) if hasattr(vessel.pi_coverage_status, "value") else vessel.pi_coverage_status,
         "psc_detained_last_12m": vessel.psc_detained_last_12m,
+        "psc_detention_count": len(_psc_dets),
+        "psc_latest_detention_date": max(d.detention_date for d in _psc_dets).isoformat() if _psc_dets else None,
+        "psc_detentions": [PscDetentionRead.model_validate(d).model_dump() for d in _psc_dets[:10]],
         "mmsi_first_seen_utc": vessel.mmsi_first_seen_utc,
         "vessel_laid_up_30d": vessel.vessel_laid_up_30d,
         "vessel_laid_up_60d": vessel.vessel_laid_up_60d,
@@ -275,6 +288,19 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         "watchlist_stub_score": vessel.watchlist_stub_score,
         "watchlist_stub_breakdown": vessel.watchlist_stub_breakdown,
     }
+
+
+@router.get("/vessels/{vessel_id}/psc-detentions", tags=["vessels"])
+def get_vessel_psc_detentions(vessel_id: int, db: Session = Depends(get_db)):
+    """List PSC detentions for a vessel, ordered by date DESC."""
+    from app.models.psc_detention import PscDetention
+    from app.schemas.psc_detention import PscDetentionRead
+
+    detentions = db.query(PscDetention).filter(
+        PscDetention.vessel_id == vessel_id
+    ).order_by(PscDetention.detention_date.desc()).all()
+
+    return [PscDetentionRead.model_validate(d).model_dump() for d in detentions]
 
 
 @router.get("/vessels/{vessel_id}/alerts", tags=["vessels"])

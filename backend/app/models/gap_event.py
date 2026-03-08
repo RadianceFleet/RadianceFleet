@@ -61,7 +61,13 @@ class AISGapEvent(Base):
     reviewed_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     review_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
+    # Assignment & optimistic locking
+    assigned_to: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("analysts.analyst_id"), nullable=True, index=True)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
     vessel: Mapped["Vessel"] = relationship("Vessel", back_populates="gap_events")
+    assigned_analyst: Mapped[Optional["Analyst"]] = relationship("Analyst", foreign_keys=[assigned_to])
     corridor: Mapped[Optional["Corridor"]] = relationship("Corridor", back_populates="gap_events")
     start_point: Mapped[Optional["AISPoint"]] = relationship(
         "AISPoint", foreign_keys=[start_point_id], lazy="joined"

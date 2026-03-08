@@ -5,6 +5,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-03-08
+
+### Added
+- **Multi-analyst workflow**: `Analyst` model with role-based access (analyst, senior_analyst, admin). JWT auth with per-analyst tokens, password hashing via passlib+bcrypt.
+- **Auth propagation**: All alert write endpoints (`status`, `verdict`, `notes`, `export`, `bulk-status`) now require `require_auth` dependency. Analyst identity tracked in audit logs.
+- **Analyst CRUD**: `POST/GET/PATCH /admin/analysts`, `POST /admin/analysts/{id}/reset-password` (admin only). DB-based login with username+password alongside legacy `ADMIN_PASSWORD`.
+- **Alert assignment**: `POST/DELETE /alerts/{id}/assign`, `GET /alerts/my` — assign alerts to analysts, filter by assignee.
+- **Edit locking**: `POST /alerts/{id}/lock`, `POST /alerts/{id}/lock/heartbeat`, `DELETE /alerts/{id}/lock` — DB-level edit locks with configurable TTL (default 300s). 409 Conflict on lock contention.
+- **Optimistic locking**: `version` field on `AISGapEvent`. Status and verdict updates accept optional `version` param; return 409 on mismatch.
+- **Evidence chain-of-custody**: `exported_by`, `approved_by`, `approval_status` (draft/approved/rejected) on evidence cards. `POST /evidence-cards/{id}/approve`, `POST /evidence-cards/{id}/reject` endpoints for senior/admin review.
+- **Satellite order placement**: `SatelliteOrder` and `SatelliteOrderLog` models. Provider abstraction (ABC) with Planet Labs and Capella Space clients (httpx, circuit breaker protected).
+- **Satellite order API**: `GET /satellite/providers`, `GET/POST /satellite/orders`, `POST /satellite/orders/search`, `POST /satellite/orders/{id}/submit`, `POST /satellite/orders/{id}/cancel`, `POST /satellite/orders/poll`, `GET /satellite/budget`.
+- **Satellite CLI**: `radiancefleet satellite search`, `submit`, `poll-orders`, `budget` sub-commands.
+- **PSC detention history**: `PscDetention` model (17 columns, unique constraint on vessel+date+mou+entity_id). `GET /vessels/{id}/psc-detentions` endpoint. Vessel detail now includes `psc_detention_count`, `psc_latest_detention_date`, and up to 10 recent detentions.
+- **PSC enhanced scoring**: 6 new risk signals — multiple detentions (+10/+20), recency (+10/+15), Paris MOU ban (+15), high deficiency count (+8). Additive to existing boolean-based scoring.
+- **PSC CLI**: `radiancefleet psc import`, `sync`, `stats` sub-commands.
+- **Frontend**: Username field in login modal, auto auth header injection, alert assignment UI, edit lock indicator, evidence approval buttons (approve/reject with status badge), PSC detention table component.
+- **Deps**: `passlib>=1.7.4`, `bcrypt>=4.0.0,<5.0.0` for analyst password hashing.
+- **Config**: `EDIT_LOCK_TTL_SECONDS`, `PLANET_API_KEY`, `CAPELLA_API_KEY`, `MAXAR_API_KEY`, `UMBRA_API_KEY`, `SATELLITE_MONTHLY_BUDGET_USD`, `SATELLITE_ORDER_AUTO_SUBMIT`.
+- **Tests**: 109 new tests across 12 test files covering analyst auth, assignment, locking, optimistic locking, evidence custody, satellite orders/manager/clients, PSC model/scoring/API.
+
+### Changed
+- Multi-user deployment section updated: optimistic locking and edit locks now prevent last-write-wins conflicts.
+- `_audit_log()` helper accepts optional `analyst_id` parameter for per-analyst attribution.
+- Evidence export includes `chain_of_custody` section with exporter/approver attribution.
+- PSC loader refactored: `_upsert_detention()` creates `PscDetention` records, `sync_vessel_psc_summary()` recomputes boolean flags from full detention history.
+
+## [3.2.0] - 2026-03-08
+
+### Added
+- **CI**: Docker Hub + ghcr.io publish job in GitHub Actions (builds on push to `main`, tags `latest` + git SHA, GHA build cache)
+- **API**: `GET /merge-chains` — merge chain graph visualization with hydrated vessel nodes and edges
+- **API**: `GET /vessels/{id}/track.geojson` — RFC 7946 GeoJSON track export from AISPoint history
+- **API**: `GET /vessels/{id}/track.kml` — KML track export with `gx:Track` timestamps (XML-safe vessel names)
+- **API**: `POST /alerts/{id}/export?format=pdf` — PDF evidence report via fpdf2 (DejaVu Unicode font in Docker, Helvetica fallback locally)
+- **API**: `GET /coverage/geojson` — AIS coverage quality regions as GeoJSON FeatureCollection with WKT polygon geometry
+- **Frontend**: Merge chain graph visualization — hand-rolled SVG with nodes, edges, confidence coloring, vessel navigation
+- **Frontend**: MergeCandidatesPage Table/Graph view toggle
+- **Frontend**: Coverage quality map overlay (color-coded by GOOD/MODERATE/PARTIAL/POOR/NONE)
+- **Frontend**: PDF export button in AlertExportPanel (raw fetch + blob bypass for binary download)
+- **Docs**: `docs/METHODOLOGY.md` — full methodology document (purpose, data sources, detection methods, scoring, validation, limitations, interpretation)
+- **Deps**: `fpdf2>=2.8.0` for PDF evidence report generation
+- **Docker**: `fonts-dejavu-core` installed in Dockerfile for Unicode PDF support
+- **OpenAPI**: Tag descriptions, deprecation policy, version bumped to 3.2.0
+
+### Fixed
+- API docs path inconsistency in `docs/API.md` (`/api/v1/docs` → `/docs`)
+- Coverage test path resolution (absolute path via monkeypatch for CI compatibility)
+
 ## [3.1.0] - 2026-03-07
 
 ### Added

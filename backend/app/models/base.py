@@ -108,6 +108,12 @@ class DarkZoneTypeEnum(str, enum.Enum):
     STS_HOTSPOT = "sts_hotspot"
 
 
+class AnalystRoleEnum(str, enum.Enum):
+    ANALYST = "analyst"
+    SENIOR_ANALYST = "senior_analyst"
+    ADMIN = "admin"
+
+
 class MergeCandidateStatusEnum(str, enum.Enum):
     PENDING = "pending"
     AUTO_MERGED = "auto_merged"

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.config import settings
+from app.auth import require_auth, require_senior_or_admin
 from app.schemas.alerts import BulkStatusUpdateRequest, NoteAddRequest
 from app.api._helpers import _audit_log, _validate_date_range, limiter
 
@@ -36,6 +37,7 @@ def list_alerts(
     vessel_name: Optional[str] = None,
     min_score: Optional[int] = None,
     status: Optional[str] = None,
+    assigned_to: Optional[int] = None,
     sort_by: str = Query("risk_score", description="Field to sort by: risk_score|gap_start_utc|duration_minutes|vessel_name"),
     sort_order: str = Query("desc", description="asc or desc"),
     skip: int = Query(0, ge=0),
@@ -53,6 +55,7 @@ def list_alerts(
     q = db.query(AISGapEvent).options(
         joinedload(AISGapEvent.vessel),
         joinedload(AISGapEvent.start_point),
+        joinedload(AISGapEvent.assigned_analyst),
     )
     if date_from:
         q = q.filter(AISGapEvent.gap_start_utc >= datetime.combine(date_from, datetime.min.time()))
@@ -70,6 +73,8 @@ def list_alerts(
         q = q.filter(AISGapEvent.risk_score >= min_score)
     if status:
         q = q.filter(AISGapEvent.status == status)
+    if assigned_to is not None:
+        q = q.filter(AISGapEvent.assigned_to == assigned_to)
 
     sort_col_map = {
         "risk_score": AISGapEvent.risk_score,
@@ -93,6 +98,9 @@ def list_alerts(
         item["last_lon"] = r.start_point.lon if r.start_point else None
         item["vessel_name"] = r.vessel.name if r.vessel else None
         item["vessel_mmsi"] = r.vessel.mmsi if r.vessel else None
+        item["assigned_to"] = r.assigned_to if isinstance(getattr(r, "assigned_to", None), int) else None
+        item["assigned_to_username"] = r.assigned_analyst.username if isinstance(getattr(r, "assigned_to", None), int) and getattr(r, "assigned_analyst", None) else None
+        item["version"] = r.version if isinstance(getattr(r, "version", None), int) else 1
         items.append(item)
     return {"items": items, "total": total}
 
@@ -198,6 +206,30 @@ def export_alerts_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@router.get("/alerts/my", tags=["alerts"])
+def my_alerts(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Get alerts assigned to current analyst."""
+    from app.models.gap_event import AISGapEvent
+
+    q = db.query(AISGapEvent).options(
+        joinedload(AISGapEvent.vessel),
+    ).filter(AISGapEvent.assigned_to == auth["analyst_id"])
+    total = q.count()
+    results = q.order_by(AISGapEvent.risk_score.desc()).offset(skip).limit(limit).all()
+    items = []
+    for r in results:
+        item = {c.name: getattr(r, c.name) for c in r.__table__.columns}
+        item["vessel_name"] = r.vessel.name if r.vessel else None
+        item["vessel_mmsi"] = r.vessel.mmsi if r.vessel else None
+        items.append(item)
+    return {"items": items, "total": total}
 
 
 @router.get("/alerts/{alert_id}", tags=["alerts"])
@@ -373,6 +405,10 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
         is_false_positive=alert.is_false_positive,
         reviewed_by=alert.reviewed_by,
         review_date=alert.review_date,
+        assigned_to=getattr(alert, "assigned_to", None) if isinstance(getattr(alert, "assigned_to", None), int) else None,
+        assigned_to_username=alert.assigned_analyst.username if isinstance(getattr(alert, "assigned_to", None), int) and getattr(alert, "assigned_analyst", None) else None,
+        assigned_at=alert.assigned_at.isoformat() if isinstance(getattr(alert, "assigned_at", None), datetime) else None,
+        version=alert.version if isinstance(getattr(alert, "version", None), int) else 1,
     )
 
 
@@ -383,6 +419,7 @@ def update_alert_status(
     body: dict,
     request: Request = None,
     db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
 ):
     """Explicitly set alert status. Body: {status: '...', reason: '...'}"""
     from app.models.gap_event import AISGapEvent
@@ -394,19 +431,25 @@ def update_alert_status(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
+    # Optimistic locking check
+    if body.version is not None and alert.version != body.version:
+        raise HTTPException(status_code=409, detail="Version conflict")
+
     valid_statuses = [e.value for e in AlertStatusEnum]
     if body.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
 
     old_status = alert.status
     alert.status = body.status
+    alert.version += 1
     if body.reason:
         existing_notes = alert.analyst_notes or ""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
         alert.analyst_notes = f"{existing_notes}\n[{timestamp}] Status → {body.status}: {body.reason}".strip()
 
     _audit_log(db, "status_change", "alert", alert_id,
-               {"old_status": old_status, "new_status": body.status, "reason": body.reason}, request)
+               {"old_status": old_status, "new_status": body.status, "reason": body.reason},
+               request, analyst_id=auth["analyst_id"])
     db.commit()
     return {"status": "ok", "new_status": body.status}
 
@@ -418,6 +461,7 @@ def submit_alert_verdict(
     alert_id: int,
     body: dict,
     db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
 ):
     """Record analyst verdict (confirmed true-positive or false-positive)."""
     from app.models.gap_event import AISGapEvent
@@ -433,29 +477,34 @@ def submit_alert_verdict(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
+    # Optimistic locking check
+    if body.version is not None and alert.version != body.version:
+        raise HTTPException(status_code=409, detail="Version conflict")
+
     alert.is_false_positive = body.verdict == "confirmed_fp"
-    alert.reviewed_by = body.reviewed_by
+    alert.reviewed_by = auth["username"]
     alert.review_date = datetime.now(timezone.utc)
     alert.status = body.verdict
+    alert.version += 1
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     verdict_note = f"[{timestamp}] Verdict: {body.verdict}"
     if body.reason:
         verdict_note += f" — {body.reason}"
-    if body.reviewed_by:
-        verdict_note += f" (by {body.reviewed_by})"
+    verdict_note += f" (by {auth['username']})"
     existing_notes = alert.analyst_notes or ""
     alert.analyst_notes = f"{existing_notes}\n{verdict_note}".strip()
 
     _audit_log(db, "verdict", "alert", alert_id,
-               {"verdict": body.verdict, "reason": body.reason, "reviewed_by": body.reviewed_by}, request)
+               {"verdict": body.verdict, "reason": body.reason, "reviewed_by": auth["username"]},
+               request, analyst_id=auth["analyst_id"])
     db.commit()
     return {"status": "ok", "verdict": body.verdict, "is_false_positive": alert.is_false_positive}
 
 
 @router.post("/alerts/{alert_id}/notes", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def add_note(request: Request, alert_id: int, body: NoteAddRequest, db: Session = Depends(get_db)):
+def add_note(request: Request, alert_id: int, body: NoteAddRequest, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
     from app.models.gap_event import AISGapEvent
 
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
@@ -469,7 +518,7 @@ def add_note(request: Request, alert_id: int, body: NoteAddRequest, db: Session 
 
 @router.post("/alerts/bulk-status", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def bulk_update_alert_status(request: Request, payload: BulkStatusUpdateRequest, db: Session = Depends(get_db)):
+def bulk_update_alert_status(request: Request, payload: BulkStatusUpdateRequest, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
     """Bulk-update alert statuses for triage workflow."""
     from app.models.gap_event import AISGapEvent
 
@@ -494,12 +543,35 @@ def prepare_satellite_check(alert_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/alerts/{alert_id}/export", tags=["alerts"])
-def export_evidence(alert_id: int, format: str = "json", request=None, db: Session = Depends(get_db)):
+def export_evidence(alert_id: int, format: str = "json", request=None, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+    if format == "pdf":
+        from app.modules.evidence_pdf import export_evidence_pdf
+        try:
+            pdf_bytes = export_evidence_pdf(alert_id, db)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        _audit_log(db, "evidence_export", "alert", alert_id, {"format": "pdf"},
+                   request, analyst_id=auth["analyst_id"])
+        db.commit()
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="evidence_{alert_id}.pdf"'}
+        )
     from app.modules.evidence_export import export_evidence_card
     result = export_evidence_card(alert_id, format, db)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
-    _audit_log(db, "evidence_export", "alert", alert_id, {"format": format}, request)
+    # Track exported_by on evidence card
+    from app.models.evidence_card import EvidenceCard
+    card = db.query(EvidenceCard).filter(
+        EvidenceCard.gap_event_id == alert_id
+    ).order_by(EvidenceCard.created_at.desc()).first()
+    if card:
+        card.exported_by = auth["analyst_id"]
+        card.approval_status = "draft"
+    _audit_log(db, "evidence_export", "alert", alert_id, {"format": format},
+               request, analyst_id=auth["analyst_id"])
     db.commit()
     return result
 
@@ -513,6 +585,167 @@ def export_gov_package(alert_id: int, db: Session = Depends(get_db)):
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     return result
+
+
+# ---------------------------------------------------------------------------
+# Evidence Approval
+# ---------------------------------------------------------------------------
+
+@router.post("/evidence-cards/{card_id}/approve", tags=["evidence"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def approve_evidence(card_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_senior_or_admin)):
+    """Senior/admin approves evidence card."""
+    from app.models.evidence_card import EvidenceCard
+    card = db.query(EvidenceCard).filter(EvidenceCard.evidence_card_id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Evidence card not found")
+    if card.approval_status == "approved":
+        raise HTTPException(status_code=400, detail="Already approved")
+    card.approved_by = auth["analyst_id"]
+    card.approved_at = datetime.now(timezone.utc)
+    card.approval_status = "approved"
+    _audit_log(db, "evidence_approve", "evidence_card", card_id,
+               {"approved_by": auth["username"]}, request, analyst_id=auth["analyst_id"])
+    db.commit()
+    return {"status": "ok", "approval_status": "approved"}
+
+
+@router.post("/evidence-cards/{card_id}/reject", tags=["evidence"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def reject_evidence(card_id: int, body: dict, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_senior_or_admin)):
+    """Senior/admin rejects evidence card with notes."""
+    from app.models.evidence_card import EvidenceCard
+    card = db.query(EvidenceCard).filter(EvidenceCard.evidence_card_id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Evidence card not found")
+    card.approved_by = auth["analyst_id"]
+    card.approved_at = datetime.now(timezone.utc)
+    card.approval_status = "rejected"
+    card.approval_notes = body.get("notes", "")
+    _audit_log(db, "evidence_reject", "evidence_card", card_id,
+               {"rejected_by": auth["username"], "notes": body.get("notes")}, request, analyst_id=auth["analyst_id"])
+    db.commit()
+    return {"status": "ok", "approval_status": "rejected"}
+
+
+# ---------------------------------------------------------------------------
+# Assignment
+# ---------------------------------------------------------------------------
+
+@router.post("/alerts/{alert_id}/assign", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def assign_alert(alert_id: int, body: dict, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+    """Assign alert to an analyst."""
+    from app.models.gap_event import AISGapEvent
+    from app.models.analyst import Analyst
+
+    analyst_id = body.get("analyst_id")
+    if not analyst_id:
+        raise HTTPException(status_code=422, detail="analyst_id required")
+    analyst = db.query(Analyst).filter(Analyst.analyst_id == analyst_id).first()
+    if not analyst:
+        raise HTTPException(status_code=404, detail="Analyst not found")
+    alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    alert.assigned_to = analyst_id
+    alert.assigned_at = datetime.now(timezone.utc)
+    _audit_log(db, "assign", "alert", alert_id, {"analyst_id": analyst_id, "by": auth["analyst_id"]}, request)
+    db.commit()
+    return {"status": "ok", "assigned_to": analyst_id}
+
+
+@router.delete("/alerts/{alert_id}/assign", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def unassign_alert(alert_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+    """Unassign alert."""
+    from app.models.gap_event import AISGapEvent
+
+    alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    alert.assigned_to = None
+    alert.assigned_at = None
+    db.commit()
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Edit Locks
+# ---------------------------------------------------------------------------
+
+@router.post("/alerts/{alert_id}/lock", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def acquire_lock(alert_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+    """Acquire edit lock. Returns 409 if held by another analyst."""
+    from app.models.alert_edit_lock import AlertEditLock
+    from app.models.gap_event import AISGapEvent
+
+    alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    now = datetime.now(timezone.utc)
+    # Clean expired locks
+    db.query(AlertEditLock).filter(AlertEditLock.expires_at < now).delete()
+
+    existing = db.query(AlertEditLock).filter(AlertEditLock.alert_id == alert_id).first()
+    if existing:
+        if existing.analyst_id != auth["analyst_id"]:
+            raise HTTPException(status_code=409, detail=f"Lock held by analyst {existing.analyst_id}")
+        # Extend own lock
+        existing.expires_at = now + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS)
+        db.commit()
+        return {
+            "lock_id": existing.lock_id, "alert_id": alert_id, "analyst_id": auth["analyst_id"],
+            "analyst_username": auth["username"], "acquired_at": existing.acquired_at.isoformat(),
+            "expires_at": existing.expires_at.isoformat(),
+        }
+
+    lock = AlertEditLock(
+        alert_id=alert_id,
+        analyst_id=auth["analyst_id"],
+        acquired_at=now,
+        expires_at=now + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS),
+    )
+    db.add(lock)
+    db.commit()
+    return {
+        "lock_id": lock.lock_id, "alert_id": alert_id, "analyst_id": auth["analyst_id"],
+        "analyst_username": auth["username"], "acquired_at": lock.acquired_at.isoformat(),
+        "expires_at": lock.expires_at.isoformat(),
+    }
+
+
+@router.post("/alerts/{alert_id}/lock/heartbeat", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def heartbeat_lock(alert_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+    """Extend lock TTL."""
+    from app.models.alert_edit_lock import AlertEditLock
+
+    lock = db.query(AlertEditLock).filter(
+        AlertEditLock.alert_id == alert_id,
+        AlertEditLock.analyst_id == auth["analyst_id"],
+    ).first()
+    if not lock:
+        raise HTTPException(status_code=404, detail="No lock held")
+    lock.expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS)
+    db.commit()
+    return {"status": "ok", "expires_at": lock.expires_at.isoformat()}
+
+
+@router.delete("/alerts/{alert_id}/lock", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def release_lock(alert_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+    """Release edit lock."""
+    from app.models.alert_edit_lock import AlertEditLock
+
+    deleted = db.query(AlertEditLock).filter(
+        AlertEditLock.alert_id == alert_id,
+        AlertEditLock.analyst_id == auth["analyst_id"],
+    ).delete()
+    db.commit()
+    return {"status": "ok", "released": deleted > 0}
 
 
 # ---------------------------------------------------------------------------

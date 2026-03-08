@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
 import { buildQueryParams } from '../utils/queryParams'
-import type { VesselSummary, VesselDetail, VesselHistoryEntry, VesselAlias, TimelineEvent, MergeCandidateSummary } from '../types/api'
+import type { VesselSummary, VesselDetail, VesselHistoryEntry, VesselAlias, TimelineEvent, MergeCandidateSummary, MergeChainItem } from '../types/api'
 
 export interface VesselSearchFilters {
   search?: string
@@ -69,5 +69,13 @@ export function useMergeCandidates(status?: string) {
   return useQuery({
     queryKey: ['merge-candidates', status],
     queryFn: () => apiFetch<{ items: MergeCandidateSummary[]; total: number }>(`/merge-candidates?${params}`),
+  })
+}
+
+export function useMergeChains(params?: { min_confidence?: number; confidence_band?: string }) {
+  const qp = buildQueryParams(params ?? {})
+  return useQuery({
+    queryKey: ['merge-chains', params],
+    queryFn: () => apiFetch<{ items: MergeChainItem[]; total: number }>(`/merge-chains?${qp}`),
   })
 }

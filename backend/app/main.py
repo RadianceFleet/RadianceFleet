@@ -85,14 +85,32 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="RadianceFleet",
     description=(
-        "Open source maritime anomaly detection for shadow fleet triage. "
-        "Rate limits: configurable per-IP (default 60/min, admin 120/min, viewer 30/min). "
-        "Terms: Research and journalism use only. Outputs are anomaly indicators for human "
-        "investigation, not legal determinations."
+        "Open source maritime anomaly detection for shadow fleet triage.\n\n"
+        "**Rate limits:** configurable per-IP (default 60/min, admin 120/min, viewer 30/min).\n\n"
+        "**Terms:** Research and journalism use only. Outputs are anomaly indicators for human "
+        "investigation, not legal determinations.\n\n"
+        "**Deprecation policy:** Endpoints are not removed without at least one minor version "
+        "of deprecation notice. Deprecated endpoints return a `Deprecation` response header."
     ),
-    version="0.1.0",
+    version="3.2.0",
     license_info={"name": "Apache-2.0"},
     lifespan=lifespan,
+    openapi_tags=[
+        {"name": "alerts", "description": "AIS gap alerts, scoring, and triage"},
+        {"name": "vessels", "description": "Vessel search, detail, and ownership"},
+        {"name": "detection", "description": "Gap, spoofing, loitering, STS detection triggers and results"},
+        {"name": "corridors", "description": "Corridor management and activity analysis"},
+        {"name": "fleet", "description": "Fleet-level owner clusters and alerts"},
+        {"name": "merge", "description": "Merge candidates and identity resolution"},
+        {"name": "watchlist", "description": "Watchlist management and import"},
+        {"name": "hunt", "description": "Named vessel hunt workflow (FR9)"},
+        {"name": "coverage", "description": "AIS coverage quality regions"},
+        {"name": "scoring", "description": "Risk scoring engine operations"},
+        {"name": "export", "description": "Evidence export (cards, gov packages, PDF)"},
+        {"name": "verification", "description": "Paid verification budget and triggers"},
+        {"name": "admin", "description": "Audit log, ingestion, admin operations"},
+        {"name": "dashboard", "description": "Dashboard statistics"},
+    ],
 )
 
 # CORS — origins from settings (supports comma-separated env var)
@@ -150,7 +168,7 @@ app.include_router(router, prefix="/api/v1")
 def health() -> dict:
     from app.modules.circuit_breakers import get_circuit_states
 
-    return {"status": "ok", "version": "0.1.0", "circuit_breakers": get_circuit_states()}
+    return {"status": "ok", "version": "3.2.0", "circuit_breakers": get_circuit_states()}
 
 
 # ── Structured error handlers ─────────────────────────────────────────────────

@@ -843,6 +843,41 @@ def compute_gap_score(
         if isinstance(vessel.psc_major_deficiencies_last_12m, int) and vessel.psc_major_deficiencies_last_12m >= 3:
             breakdown["psc_major_deficiencies_3_plus"] = psc_cfg.get("psc_major_deficiencies_3_plus", 10)
 
+    # Enhanced PSC scoring from detention records
+    if db is not None and vessel is not None:
+        from app.models.psc_detention import PscDetention as _PscDet
+
+        _now_psc = datetime.now(timezone.utc)
+        _psc_weights = config.get("psc_detention", {})
+
+        detentions_24m = db.query(_PscDet).filter(
+            _PscDet.vessel_id == vessel.vessel_id,
+            _PscDet.detention_date >= (_now_psc - timedelta(days=730)).date(),
+        ).all()
+
+        if len(detentions_24m) >= 3:
+            breakdown["psc_multiple_detentions_3_plus"] = _psc_weights.get("multiple_detentions_3_plus", 20)
+        elif len(detentions_24m) >= 2:
+            breakdown["psc_multiple_detentions_2"] = _psc_weights.get("multiple_detentions_2", 10)
+
+        # Recency signals
+        _recent_90d = any(d.detention_date >= (_now_psc - timedelta(days=90)).date() for d in detentions_24m)
+        _recent_30d = any(d.detention_date >= (_now_psc - timedelta(days=30)).date() for d in detentions_24m)
+
+        if _recent_30d:
+            breakdown["psc_detention_in_last_30d"] = _psc_weights.get("detention_in_last_30d", 15)
+        elif _recent_90d:
+            breakdown["psc_detention_in_last_90d"] = _psc_weights.get("detention_in_last_90d", 10)
+
+        # Paris MOU ban
+        if any(d.ban_type for d in detentions_24m):
+            breakdown["psc_paris_mou_ban"] = _psc_weights.get("paris_mou_ban", 15)
+
+        # High deficiency count
+        _total_deficiencies = sum(d.deficiency_count or 0 for d in detentions_24m)
+        if _total_deficiencies >= 10:
+            breakdown["psc_deficiency_count_10_plus"] = _psc_weights.get("deficiency_count_10_plus", 8)
+
     # class_switching_a_to_b: query VesselHistory for ais_class changes within 90d
     if db is not None and vessel is not None:
         from app.models.vessel_history import VesselHistory as _VH

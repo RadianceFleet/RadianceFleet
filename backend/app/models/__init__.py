@@ -38,7 +38,13 @@ from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate, 
 from app.models.tip_submission import TipSubmission
 from app.models.alert_subscription import AlertSubscription
 from app.models.ingestion_status import IngestionStatus
+from app.models.audit_log import AuditLog
 from app.models.ground_truth import GroundTruthVessel
+from app.models.analyst import Analyst
+from app.models.alert_edit_lock import AlertEditLock
+from app.models.satellite_order import SatelliteOrder
+from app.models.satellite_order_log import SatelliteOrderLog
+from app.models.psc_detention import PscDetention
 
 __all__ = [
     "Base",
@@ -83,5 +89,11 @@ __all__ = [
     "TipSubmission",
     "AlertSubscription",
     "IngestionStatus",
+    "AuditLog",
     "GroundTruthVessel",
+    "Analyst",
+    "AlertEditLock",
+    "SatelliteOrder",
+    "SatelliteOrderLog",
+    "PscDetention",
 ]

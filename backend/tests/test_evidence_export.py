@@ -40,7 +40,7 @@ def _mock_db_for_export(corridor_name="Mediterranean STS Zone"):
         gap, vessel, corridor, None, None, None
     ]
     db.query.return_value.filter.return_value.order_by.return_value.first.side_effect = [
-        None, None, None
+        None, None, None, None
     ]
     db.add = MagicMock()
     db.commit = MagicMock()

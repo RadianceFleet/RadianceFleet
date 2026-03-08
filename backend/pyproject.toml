@@ -36,6 +36,9 @@ dependencies = [
     "structlog>=24.0.0",
     "pybreaker>=1.0.0",
     "psycopg2-binary>=2.9",
+    "fpdf2>=2.8.0",
+    "passlib>=1.7.4",
+    "bcrypt>=4.0.0,<5.0.0",
 ]
 
 [project.optional-dependencies]
@@ -69,3 +72,8 @@ packages = ["app"]
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "pytest-timeout>=2.4.0",
+]

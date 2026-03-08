@@ -18,6 +18,7 @@ class AuditLog(Base):
     entity_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     user_agent: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    analyst_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=datetime.utcnow

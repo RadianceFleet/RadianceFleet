@@ -43,6 +43,31 @@ def init_db() -> None:
     from app.models import Base  # noqa: F401 — ensure all models are registered
     Base.metadata.create_all(bind=engine)
     _run_migrations()
+    _seed_admin_user(SessionLocal)
+
+
+def _seed_admin_user(session_factory) -> None:
+    """Create default admin analyst if table is empty and ADMIN_PASSWORD is set."""
+    if not settings.ADMIN_PASSWORD:
+        return
+    from app.models.analyst import Analyst
+    from app.auth import hash_password
+    db = session_factory()
+    try:
+        if db.query(Analyst).count() == 0:
+            admin = Analyst(
+                username="admin",
+                display_name="Administrator",
+                password_hash=hash_password(settings.ADMIN_PASSWORD),
+                role="admin",
+                is_active=True,
+            )
+            db.add(admin)
+            db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _run_migrations() -> None:
@@ -115,6 +140,16 @@ def _run_migrations() -> None:
         ("ais_gap_events", "is_false_positive", "BOOLEAN"),
         ("ais_gap_events", "reviewed_by", "VARCHAR(100)"),
         ("ais_gap_events", "review_date", "DATETIME"),
+        # v3.3 — multi-analyst workflow
+        ("audit_logs", "analyst_id", "INTEGER"),
+        ("ais_gap_events", "assigned_to", "INTEGER"),
+        ("ais_gap_events", "assigned_at", "DATETIME"),
+        ("ais_gap_events", "version", "INTEGER NOT NULL DEFAULT 1"),
+        ("evidence_cards", "exported_by", "INTEGER"),
+        ("evidence_cards", "approved_by", "INTEGER"),
+        ("evidence_cards", "approved_at", "DATETIME"),
+        ("evidence_cards", "approval_status", "VARCHAR(20)"),
+        ("evidence_cards", "approval_notes", "TEXT"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
@@ -218,6 +253,10 @@ def _run_migrations() -> None:
                 cursor.execute(
                     f"ALTER TYPE alertstatusenum ADD VALUE IF NOT EXISTS '{val}'"
                 )
+            # Analyst role enum
+            cursor.execute(
+                "DO $$ BEGIN CREATE TYPE analyst_role AS ENUM ('analyst', 'senior_analyst', 'admin'); EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
             cursor.close()
         finally:
             raw_conn.close()

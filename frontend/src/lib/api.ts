@@ -12,6 +12,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (!(init?.body instanceof FormData)) {
     headers['Content-Type'] = headers['Content-Type'] ?? 'application/json'
   }
+  const token = localStorage.getItem('rf_admin_token')
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers })
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))

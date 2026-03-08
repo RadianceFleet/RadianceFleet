@@ -75,3 +75,4 @@ class Vessel(Base):
         back_populates="vessel_2", cascade="all, delete-orphan"
     )
     fingerprints: Mapped[list] = relationship("VesselFingerprint", back_populates="vessel")
+    psc_detentions: Mapped[list["PscDetention"]] = relationship("PscDetention", back_populates="vessel", cascade="all, delete-orphan")

@@ -83,7 +83,7 @@ def _compute_freshness_warning(vessel, now) -> Optional[str]:
 
 
 def _audit_log(db: Session, action: str, entity_type: str, entity_id: int = None,
-               details: dict = None, request=None) -> None:
+               details: dict = None, request=None, analyst_id=None) -> None:
     """Record an analyst action for audit trail (PRD NFR5)."""
     from app.models.audit_log import AuditLog
     log = AuditLog(
@@ -91,6 +91,7 @@ def _audit_log(db: Session, action: str, entity_type: str, entity_id: int = None
         entity_type=entity_type,
         entity_id=entity_id,
         details=details,
+        analyst_id=analyst_id,
         user_agent=request.headers.get("user-agent") if request else None,
         ip_address=request.client.host if request and request.client else None,
     )

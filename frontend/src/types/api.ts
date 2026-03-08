@@ -29,6 +29,10 @@ export interface AlertSummary {
   is_false_positive?: boolean | null
   reviewed_by?: string | null
   review_date?: string | null
+  assigned_to?: number | null
+  assigned_to_username?: string | null
+  assigned_at?: string | null
+  version: number
 }
 
 export interface AISPointSummary {
@@ -402,4 +406,91 @@ export interface TimelineEvent {
   summary: string
   details: Record<string, unknown>
   related_entity_id: number
+}
+
+// ---------------------------------------------------------------------------
+// Merge Chain types
+// ---------------------------------------------------------------------------
+
+export interface MergeChainNode {
+  vessel_id: number
+  mmsi: string
+  name: string | null
+  flag: string | null
+  role: string
+}
+
+export interface MergeChainEdge {
+  source_id: number
+  target_id: number
+  confidence: number
+  evidence: string | null
+}
+
+export interface MergeChainItem {
+  chain_id: number
+  confidence_band: string
+  confidence: number
+  chain_length: number
+  nodes: MergeChainNode[]
+  edges: MergeChainEdge[]
+}
+
+// ---------------------------------------------------------------------------
+// Auth / Analyst types
+// ---------------------------------------------------------------------------
+
+export interface AlertLockInfo {
+  lock_id: number
+  alert_id: number
+  analyst_id: number
+  analyst_username: string
+  acquired_at: string
+  expires_at: string
+}
+
+export interface AnalystInfo {
+  analyst_id: number
+  username: string
+  display_name: string | null
+  role: 'analyst' | 'senior_analyst' | 'admin'
+}
+
+// ---------------------------------------------------------------------------
+// PSC detention types
+// ---------------------------------------------------------------------------
+
+export interface PscDetention {
+  psc_detention_id: number
+  detention_date: string
+  release_date: string | null
+  port_name: string | null
+  port_country: string | null
+  mou_source: string
+  deficiency_count: number
+  major_deficiency_count: number
+  detention_reason: string | null
+  authority_name: string | null
+  flag_at_detention: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Satellite order types
+// ---------------------------------------------------------------------------
+
+export interface SatelliteOrderSummary {
+  satellite_order_id: number
+  provider: string
+  order_type: string
+  external_order_id: string | null
+  status: string
+  cost_usd: number | null
+  created_utc: string | null
+  updated_utc: string | null
+}
+
+export interface SatelliteBudget {
+  budget_usd: number
+  spent_usd: number
+  remaining_usd: number
 }

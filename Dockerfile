@@ -20,6 +20,8 @@ RUN uv sync --no-dev --no-install-project
 COPY backend/ ./
 RUN uv sync --no-dev
 
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+
 # Copy config files (risk scoring, corridors, coverage zones)
 COPY config/ ./config/
 

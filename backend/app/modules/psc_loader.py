@@ -74,6 +74,84 @@ def _extract_name_from_ftm(entity: dict) -> str | None:
     return str(names[0]).strip() if names else None
 
 
+def _upsert_detention(db: Session, vessel: Any, data: dict) -> bool:
+    """Create a PscDetention record if no duplicate exists.
+
+    Args:
+        db: SQLAlchemy session.
+        vessel: Vessel ORM instance.
+        data: Dict with keys matching PscDetention columns
+              (detention_date, mou_source, data_source, raw_entity_id, etc.).
+
+    Returns:
+        True if a new record was created, False if duplicate skipped.
+    """
+    from app.models.psc_detention import PscDetention
+
+    detention_date = data.get("detention_date")
+    mou_source = data.get("mou_source", "unknown")
+    raw_entity_id = data.get("raw_entity_id")
+
+    # Check for existing duplicate
+    existing = (
+        db.query(PscDetention)
+        .filter(
+            PscDetention.vessel_id == vessel.vessel_id,
+            PscDetention.detention_date == detention_date,
+            PscDetention.mou_source == mou_source,
+            PscDetention.raw_entity_id == raw_entity_id,
+        )
+        .first()
+    )
+    if existing:
+        return False
+
+    record = PscDetention(
+        vessel_id=vessel.vessel_id,
+        detention_date=data.get("detention_date"),
+        release_date=data.get("release_date"),
+        port_name=data.get("port_name"),
+        port_country=data.get("port_country"),
+        mou_source=mou_source,
+        data_source=data.get("data_source", "unknown"),
+        deficiency_count=data.get("deficiency_count", 0),
+        major_deficiency_count=data.get("major_deficiency_count", 0),
+        detention_reason=data.get("detention_reason"),
+        ban_type=data.get("ban_type"),
+        authority_name=data.get("authority_name"),
+        imo_at_detention=data.get("imo_at_detention"),
+        vessel_name_at_detention=data.get("vessel_name_at_detention"),
+        flag_at_detention=data.get("flag_at_detention"),
+        raw_entity_id=raw_entity_id,
+    )
+    db.add(record)
+    return True
+
+
+def sync_vessel_psc_summary(db: Session, vessel: Any) -> None:
+    """Recompute vessel boolean PSC flags from PscDetention records.
+
+    Sets psc_detained_last_12m and psc_major_deficiencies_last_12m based on
+    detention records within the last 12 months.
+    """
+    from app.models.psc_detention import PscDetention
+
+    cutoff = date.today() - timedelta(days=365)
+
+    recent_detentions = (
+        db.query(PscDetention)
+        .filter(
+            PscDetention.vessel_id == vessel.vessel_id,
+            PscDetention.detention_date >= cutoff,
+        )
+        .all()
+    )
+
+    vessel.psc_detained_last_12m = len(recent_detentions) > 0
+    total_major = sum(d.major_deficiency_count for d in recent_detentions)
+    vessel.psc_major_deficiencies_last_12m = total_major
+
+
 def load_psc_ftm(
     db: Session,
     json_path: str | Path,
@@ -81,6 +159,8 @@ def load_psc_ftm(
     recency_days: int = 365,
 ) -> dict[str, int]:
     """Parse FTM JSON file and set psc_detained_last_12m on matching vessels.
+
+    Also creates PscDetention records for matched vessels.
 
     Args:
         db: SQLAlchemy session.
@@ -147,8 +227,28 @@ def load_psc_ftm(
             continue
 
         stats["matched"] += 1
-        if not vessel.psc_detained_last_12m:
-            vessel.psc_detained_last_12m = True
+
+        # Create detailed detention record
+        entity_id = entity.get("id")
+        ftm_name = _extract_name_from_ftm(entity)
+        props = entity.get("properties", {})
+        flag_list = props.get("flag", [])
+
+        detention_data = {
+            "detention_date": detention_date or date.today(),
+            "mou_source": source,
+            "data_source": "opensanctions_ftm",
+            "raw_entity_id": entity_id,
+            "imo_at_detention": imo,
+            "vessel_name_at_detention": ftm_name,
+            "flag_at_detention": str(flag_list[0]) if flag_list else None,
+        }
+        _upsert_detention(db, vessel, detention_data)
+
+        # Sync boolean flags from detention records
+        sync_vessel_psc_summary(db, vessel)
+
+        if vessel.psc_detained_last_12m:
             stats["recent"] += 1
 
     db.commit()
@@ -161,6 +261,8 @@ def load_emsa_bans(
     json_path: str | Path,
 ) -> dict[str, int]:
     """Parse EMSA ban API JSON and set psc_detained_last_12m on matching vessels.
+
+    Also creates PscDetention records for matched vessels.
 
     EMSA fields: imoNumber, shipName, banDate, banningAuthority, banReason, flag, ismCompany.
 
@@ -218,8 +320,26 @@ def load_emsa_bans(
             continue
 
         stats["matched"] += 1
-        if not vessel.psc_detained_last_12m:
-            vessel.psc_detained_last_12m = True
+
+        # Create detailed detention record
+        detention_data = {
+            "detention_date": ban_date or date.today(),
+            "mou_source": "paris_mou",
+            "data_source": "emsa_ban_api",
+            "raw_entity_id": str(imo) if imo else None,
+            "imo_at_detention": str(imo) if imo else None,
+            "vessel_name_at_detention": ship.get("shipName") or ship.get("name"),
+            "flag_at_detention": ship.get("flag"),
+            "authority_name": ship.get("banningAuthority"),
+            "detention_reason": ship.get("banReason"),
+            "ban_type": ship.get("banType"),
+        }
+        _upsert_detention(db, vessel, detention_data)
+
+        # Sync boolean flags from detention records
+        sync_vessel_psc_summary(db, vessel)
+
+        if vessel.psc_detained_last_12m:
             stats["flagged"] += 1
 
     db.commit()

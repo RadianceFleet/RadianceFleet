@@ -205,15 +205,35 @@ Phase 1 ("Usable by a journalist today") from the strategic product analysis —
 
 ---
 
+## v3.2 — Complete (Phase 1 Leftovers + Community Growth)
+
+| Feature | Description |
+|---------|-------------|
+| Docker Hub CI | Docker publish job in GitHub Actions — pushes to Docker Hub + ghcr.io on `main` push. Tags `latest` + git SHA. GHA build cache. |
+| Merge chain graph | `GET /merge-chains` endpoint with hydrated nodes/edges. SVG graph component with confidence coloring, vessel navigation. Table/Graph toggle in MergeCandidatesPage. |
+| Track export | `GET /vessels/{id}/track.geojson` (RFC 7946) and `GET /vessels/{id}/track.kml` (gx:Track, XML-safe names). |
+| PDF evidence report | `POST /alerts/{id}/export?format=pdf` via fpdf2. DejaVu Unicode font in Docker, Helvetica fallback. Frontend blob download bypass. |
+| Coverage map overlay | `GET /coverage/geojson` with WKT polygon geometry per region. Frontend overlay with quality-based color coding. |
+| Methodology document | `docs/METHODOLOGY.md` — 7-section document covering purpose, data sources, detection, scoring, validation, limitations, interpretation. |
+| API documentation polish | OpenAPI tag descriptions, deprecation policy, docs path fix, new endpoint docs in API.md. |
+
+---
+
+## v3.3 — Complete (Multi-Analyst + Satellite Orders + PSC Enhancement)
+
+| Feature | Description |
+|---------|-------------|
+| Multi-analyst workflow | `Analyst` model with roles (analyst, senior_analyst, admin). Per-analyst JWT auth, DB-based login, alert assignment, edit locks (5-min TTL), optimistic locking (version field), evidence chain-of-custody (exported_by, approval workflow). Legacy single-password login preserved. |
+| Commercial satellite order placement | `SatelliteOrder` + `SatelliteOrderLog` models. Provider abstraction with Planet Labs and Capella Space clients (httpx, circuit breaker). 8 API endpoints for order lifecycle (search, submit, poll, cancel). Budget enforcement. CLI sub-commands. |
+| PSC detention history | `PscDetention` model replacing boolean-only flags. Full detention records with MOU source, deficiency counts, port/country, authority. 6 new scoring signals (multiplicity, recency, ban type). Loader refactored for upsert + summary sync. CLI sub-commands. |
+
+---
+
 ## Open / In Progress
 
 | Item | Status |
 |------|--------|
-| Docker Hub image | Dockerfile and docker-compose.yml exist and work. CI does not publish to Docker Hub — needs a `docker push` step in `.github/workflows/ci.yml`. |
-| Live demo instance | **Deployed** at `https://www.radiancefleet.com` on Railway (trial plan). PostgreSQL backend, health checks passing, all circuit breakers healthy. Needs data loading (AIS sources, watchlists) and upgrade from trial plan for production use. |
-| Merge chain graph visualization | Merge candidates display as a table (`MergeCandidatesPage.tsx`). Interactive graph rendering (e.g., D3/force-directed) for STS chains and identity merge chains is not yet implemented. `OwnershipGraphPage.tsx` exists for ownership graphs. |
-| Commercial satellite order placement | `sar_correlator.py` identifies candidates; actual Planet Labs / Maxar API order placement is not implemented (Copernicus URL generation remains the action output). |
-| Multi-analyst workflow | JWT admin auth exists but is single-user. Per-analyst alert assignment, concurrent session management, and reviewer chain-of-custody in evidence cards are not implemented. |
+| Live demo instance | **Live** at `https://www.radiancefleet.com` on Railway (Hobby plan). PostgreSQL backend, 11,903 alerts across 5,498 vessels, all 11 circuit breakers healthy. Data loaded: AIS positions, OFAC/KSE/OpenSanctions watchlists, gap/spoofing/loitering detection complete, risk scoring applied. |
 | Additional PSC MOUs | `psc_loader.py` covers Tokyo, Black Sea, Abuja, Paris MOUs. Remaining MOUs researched (2026-03): **Mediterranean** (THETIS-Med, bulk download forbidden), **Indian Ocean** (web search form only at iomou.org, no bulk/API), **Riyadh** (PDF reports only), **Viña del Mar** (PDF reports only). None offer programmatic data access. Will integrate if any publish structured data. |
 
 ---
@@ -221,6 +241,6 @@ Phase 1 ("Usable by a journalist today") from the strategic product analysis —
 ## Known Limitations
 
 - **SQLite geometry**: SpatiaLite is used for local development. ST_Intersects corridor correlation requires PostgreSQL + PostGIS in production.
-- **Copernicus URL only**: Satellite check preparation generates a query URL for manual download. Automated satellite order placement is not implemented.
+- **Satellite order providers**: Planet Labs and Capella Space clients are implemented but require valid API keys. Orders stay in draft until analyst confirms (budget safety). Maxar and Umbra provider stubs accept API keys but are not yet implemented.
 - **Equasis ToS**: `equasis_client.py` is disabled by default (`EQUASIS_SCRAPING_ENABLED=false`). Automated Equasis access violates their Terms of Service. Use Datalastic API for production enrichment.
 - **BarentsWatch 14-day limit**: Historical data older than 14 days is purged by BarentsWatch; only recent Norwegian EEZ data is available.

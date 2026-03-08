@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { ExportResponse } from '../types/api'
+import type { ExportResponse, AnalystInfo } from '../types/api'
 import { apiFetch } from '../lib/api'
 import { btnStyle } from '../styles/tables'
 
@@ -9,16 +9,43 @@ import { btnStyle } from '../styles/tables'
 
 export interface AlertExportPanelProps {
   alertId: string
+  approvalStatus?: string | null
+  onApprovalChange?: (newStatus: string) => void
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+const ANALYST_KEY = 'rf_analyst_info'
+
+function getAnalyst(): AnalystInfo | null {
+  try {
+    const raw = localStorage.getItem(ANALYST_KEY)
+    return raw ? (JSON.parse(raw) as AnalystInfo) : null
+  } catch {
+    return null
+  }
+}
+
+const approvalBadgeColors: Record<string, string> = {
+  approved: '#22c55e',
+  rejected: '#ef4444',
+  pending: '#f59e0b',
 }
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function AlertExportPanel({ alertId }: AlertExportPanelProps) {
+export function AlertExportPanel({ alertId, approvalStatus, onApprovalChange }: AlertExportPanelProps) {
   const [exportError, setExportError] = useState<string | null>(null)
   const [satLoading, setSatLoading] = useState(false)
   const [satResult, setSatResult] = useState<string | null>(null)
+  const [approvalLoading, setApprovalLoading] = useState(false)
+
+  const analyst = getAnalyst()
+  const canApprove = analyst?.role === 'senior_analyst' || analyst?.role === 'admin'
 
   const handleExport = async (fmt: 'md' | 'json') => {
     setExportError(null)
@@ -50,9 +77,24 @@ export function AlertExportPanel({ alertId }: AlertExportPanelProps) {
     }
   }
 
+  const handleApproval = async (action: 'approve' | 'reject') => {
+    setApprovalLoading(true)
+    try {
+      await apiFetch(`/alerts/${alertId}/evidence/${action}`, { method: 'POST' })
+      onApprovalChange?.(action === 'approve' ? 'approved' : 'rejected')
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : `Failed to ${action}`)
+    } finally {
+      setApprovalLoading(false)
+    }
+  }
+
+  const statusLabel = approvalStatus ?? 'pending'
+  const badgeColor = approvalBadgeColors[statusLabel] ?? 'var(--text-dim)'
+
   return (
     <>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={() => handleExport('md')} style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--accent)' }}>
           Export Markdown
         </button>
@@ -64,9 +106,40 @@ export function AlertExportPanel({ alertId }: AlertExportPanelProps) {
           disabled={satLoading}
           style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--warning)', opacity: satLoading ? 0.6 : 1 }}
         >
-          {satLoading ? 'Preparing…' : 'Prepare satellite check'}
+          {satLoading ? 'Preparing...' : 'Prepare satellite check'}
         </button>
       </div>
+
+      {/* Evidence approval status */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Evidence:</span>
+        <span style={{
+          fontSize: 11, fontWeight: 600, padding: '2px 8px',
+          borderRadius: 'var(--radius)', background: badgeColor, color: '#fff',
+          textTransform: 'uppercase', letterSpacing: 0.5,
+        }}>
+          {statusLabel}
+        </span>
+        {canApprove && statusLabel !== 'approved' && (
+          <button
+            onClick={() => handleApproval('approve')}
+            disabled={approvalLoading}
+            style={{ ...btnStyle, fontSize: 11, padding: '2px 10px', color: '#22c55e', borderColor: '#22c55e' }}
+          >
+            Approve
+          </button>
+        )}
+        {canApprove && statusLabel !== 'rejected' && (
+          <button
+            onClick={() => handleApproval('reject')}
+            disabled={approvalLoading}
+            style={{ ...btnStyle, fontSize: 11, padding: '2px 10px', color: '#ef4444', borderColor: '#ef4444' }}
+          >
+            Reject
+          </button>
+        )}
+      </div>
+
       {exportError && (
         <p style={{ fontSize: 12, color: 'var(--score-critical)', marginTop: 8 }}>{exportError}</p>
       )}
@@ -74,7 +147,7 @@ export function AlertExportPanel({ alertId }: AlertExportPanelProps) {
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>{satResult}</p>
       )}
       <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 12 }}>
-        Note: export requires status ≠ "new" (analyst review gate — NFR7)
+        Note: export requires status &ne; &quot;new&quot; (analyst review gate -- NFR7)
       </p>
     </>
   )

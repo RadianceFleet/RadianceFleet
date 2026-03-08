@@ -84,9 +84,9 @@ class TestAlertVerdict:
             },
         )
         assert response.status_code == 200
-        assert mock_alert.reviewed_by == "analyst_jane"
+        assert mock_alert.reviewed_by == "test_admin"  # Auth override sets username
         assert "Vessel was in dry dock" in mock_alert.analyst_notes
-        assert "analyst_jane" in mock_alert.analyst_notes
+        assert "test_admin" in mock_alert.analyst_notes
 
     def test_verdict_appends_to_existing_notes(self, api_client, mock_db):
         mock_alert = _make_mock_alert(analyst_notes="Previous note here")

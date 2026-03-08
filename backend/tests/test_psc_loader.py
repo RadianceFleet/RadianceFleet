@@ -1,7 +1,7 @@
 """Tests for PSC detention data loaders (FTM JSON + EMSA ban API)."""
 import json
 from datetime import date, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -15,14 +15,22 @@ def _make_vessel(vessel_id=1, imo="1234567", name="TEST VESSEL", psc_detained=Fa
     v.imo = imo
     v.name = name
     v.psc_detained_last_12m = psc_detained
+    v.psc_major_deficiencies_last_12m = 0
     return v
 
 
-def _make_db_for_imo_lookup(vessel):
-    """Build a mock DB that finds a vessel by IMO query."""
+def _make_db_for_imo_lookup(vessel, return_detentions=None):
+    """Build a mock DB that finds a vessel by IMO query.
+
+    If return_detentions is provided, sync_vessel_psc_summary queries will
+    return those detention records (needed for boolean flag recomputation).
+    """
     db = MagicMock()
     # load_psc_ftm: db.query(Vessel).filter(Vessel.imo == imo).first()
     db.query.return_value.filter.return_value.first.return_value = vessel
+    # For sync_vessel_psc_summary: db.query(PscDetention).filter(...).all()
+    if return_detentions is not None:
+        db.query.return_value.filter.return_value.filter.return_value.all.return_value = return_detentions
     return db
 
 
@@ -50,10 +58,16 @@ class TestLoadPscFtm:
         assert result["total"] == 1
         assert result["matched"] == 1
 
-    def test_load_ftm_sets_detained_true(self, tmp_path):
-        """Matching vessel gets psc_detained_last_12m set to True."""
+    @patch("app.modules.psc_loader.sync_vessel_psc_summary")
+    def test_load_ftm_sets_detained_true(self, mock_sync, tmp_path):
+        """Matching vessel gets detention record created and sync called."""
         vessel = _make_vessel(imo="9553359", psc_detained=False)
         db = _make_db_for_imo_lookup(vessel)
+
+        # Make sync_vessel_psc_summary actually set the flag
+        def _set_flag(db_arg, v):
+            v.psc_detained_last_12m = True
+        mock_sync.side_effect = _set_flag
 
         ftm_data = [{
             "schema": "Vessel",
@@ -69,6 +83,7 @@ class TestLoadPscFtm:
         load_psc_ftm(db, ftm_path, source="test")
 
         assert vessel.psc_detained_last_12m is True
+        mock_sync.assert_called_once()
 
     def test_old_detention_not_flagged(self, tmp_path):
         """Detention older than recency_days is skipped."""
@@ -112,10 +127,15 @@ class TestLoadPscFtm:
 
 
 class TestLoadEmsaBans:
-    def test_load_emsa_ban_matches_vessel(self, tmp_path):
+    @patch("app.modules.psc_loader.sync_vessel_psc_summary")
+    def test_load_emsa_ban_matches_vessel(self, mock_sync, tmp_path):
         """EMSA ban entry with imoNumber matches vessel."""
         vessel = _make_vessel(imo="9553359", psc_detained=False)
         db = _make_db_for_imo_lookup(vessel)
+
+        def _set_flag(db_arg, v):
+            v.psc_detained_last_12m = True
+        mock_sync.side_effect = _set_flag
 
         ban_data = [{
             "imoNumber": "9553359",
@@ -133,3 +153,4 @@ class TestLoadEmsaBans:
         assert result["total"] == 1
         assert result["matched"] == 1
         assert vessel.psc_detained_last_12m is True
+        mock_sync.assert_called_once()

@@ -8,8 +8,11 @@ RadianceFleet exposes a REST API built with FastAPI. All endpoints are under the
 
 When the server is running, interactive documentation is available at:
 
-- `GET /api/v1/docs` — Swagger UI (try-it-out, request builder)
-- `GET /api/v1/redoc` — ReDoc (readable reference format)
+- `GET /docs` — Swagger UI (try-it-out, request builder)
+- `GET /redoc` — ReDoc (readable reference format)
+
+> **Note:** Docs are served at the root level (`/docs`, `/redoc`), not under `/api/v1/`.
+> All API endpoints are under the `/api/v1/` prefix.
 
 Start the server:
 
@@ -17,13 +20,31 @@ Start the server:
 radiancefleet serve --host 127.0.0.1 --port 8000
 ```
 
-Then open http://127.0.0.1:8000/api/v1/docs in a browser.
+Then open http://127.0.0.1:8000/docs in a browser.
 
 ---
 
 ## Authentication
 
-Optional API key authentication. Set the `RADIANCEFLEET_API_KEY` environment variable to enable. When set, all requests must include the `X-API-Key` header. When unset, all requests pass without authentication (default for local dev).
+Two authentication mechanisms are available:
+
+1. **API key** (read-only gate): Set `RADIANCEFLEET_API_KEY` to require `X-API-Key` header on all requests.
+2. **JWT analyst auth** (write endpoint protection): All alert write endpoints require a Bearer token obtained via `POST /admin/login`. Tokens carry `analyst_id`, `username`, and `role` claims. Roles: `analyst`, `senior_analyst`, `admin`.
+
+Login:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "alice", "password": "secret"}'
+# Returns: {"access_token": "eyJ...", "analyst": {...}}
+```
+
+Include the token on subsequent requests:
+
+```bash
+curl -H "Authorization: Bearer eyJ..." "http://localhost:8000/api/v1/alerts/my"
+```
 
 ---
 
@@ -42,7 +63,7 @@ Common status codes:
 | 400 | Bad request (invalid body, blocked export) |
 | 401 | Unauthorized (missing or invalid `X-API-Key` when auth is enabled) |
 | 404 | Resource not found |
-| 409 | Conflict (e.g. deleting a corridor that has linked gap events) |
+| 409 | Conflict (e.g. edit lock held by another analyst, version mismatch, corridor with linked events) |
 | 422 | Validation error (FastAPI schema validation) |
 | 429 | Rate limit exceeded (60 requests/minute per IP on read endpoints) |
 
@@ -82,6 +103,9 @@ All paths below are relative to `/api/v1/`.
 | `GET` | `/vessels/{vessel_id}/alerts` | All gap events for a vessel, sortable |
 | `GET` | `/vessels/{vessel_id}/history` | Identity change history (renames, flag changes) |
 | `GET` | `/vessels/{vessel_id}/watchlist` | Active watchlist entries for a vessel |
+| `GET` | `/vessels/{vessel_id}/track.geojson` | Export vessel AIS track as GeoJSON LineString (RFC 7946) |
+| `GET` | `/vessels/{vessel_id}/track.kml` | Export vessel AIS track as KML with `gx:Track` timestamps |
+| `GET` | `/vessels/{vessel_id}/psc-detentions` | PSC detention history for a vessel, ordered by detention date descending |
 
 ### Alerts
 
@@ -94,9 +118,31 @@ All paths below are relative to `/api/v1/`.
 | `POST` | `/alerts/{alert_id}/status` | Update alert status (new / under_review / confirmed / dismissed) |
 | `POST` | `/alerts/{alert_id}/notes` | Append analyst notes to an alert |
 | `POST` | `/alerts/{alert_id}/satellite-check` | Prepare satellite check package for the alert's gap window |
-| `POST` | `/alerts/{alert_id}/export` | Export evidence card for the alert (blocked if status is `new`) |
+| `POST` | `/alerts/{alert_id}/export` | Export evidence card (json, md, csv, or **pdf**); blocked if status is `new` |
 | `POST` | `/alerts/{alert_id}/export/gov-package` | Export government alert package combining evidence card and hunt context |
 | `POST` | `/alerts/bulk-status` | Bulk-update status for multiple alerts in a single request |
+| `POST` | `/alerts/{alert_id}/assign` | Assign an alert to an analyst (body: `{analyst_id}`) |
+| `DELETE` | `/alerts/{alert_id}/assign` | Unassign an alert |
+| `GET` | `/alerts/my` | List alerts assigned to the current analyst |
+| `POST` | `/alerts/{alert_id}/lock` | Acquire an edit lock (returns 409 if held by another analyst) |
+| `POST` | `/alerts/{alert_id}/lock/heartbeat` | Extend edit lock TTL |
+| `DELETE` | `/alerts/{alert_id}/lock` | Release an edit lock |
+| `POST` | `/alerts/{alert_id}/verdict` | Submit analyst verdict with optional version for optimistic locking |
+| `POST` | `/evidence-cards/{card_id}/approve` | Approve an evidence card (senior_analyst or admin only) |
+| `POST` | `/evidence-cards/{card_id}/reject` | Reject an evidence card with notes (senior_analyst or admin only) |
+
+### Satellite Orders
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/satellite/providers` | List configured satellite imagery providers and budget status |
+| `GET` | `/satellite/orders` | List satellite orders (paginated, filterable by status/provider) |
+| `GET` | `/satellite/orders/{order_id}` | Get satellite order detail |
+| `POST` | `/satellite/orders/search` | Search provider archive for an alert's gap window |
+| `POST` | `/satellite/orders/{order_id}/submit` | Submit a draft order (budget check enforced) |
+| `POST` | `/satellite/orders/{order_id}/cancel` | Cancel a submitted order |
+| `POST` | `/satellite/orders/poll` | Trigger status poll for active orders |
+| `GET` | `/satellite/budget` | Current monthly spend and remaining budget |
 
 ### Corridors
 
@@ -147,10 +193,27 @@ Vessel hunt endpoints implement FR9: given a gap event, compute a drift ellipse 
 | `GET` | `/hunt/missions/{mission_id}/candidates` | List all hunt candidates for a mission |
 | `POST` | `/hunt/missions/{mission_id}/confirm/{candidate_id}` | Confirm a candidate as the target vessel and mark the mission as finalized |
 
+### Merge Chains
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/merge-chains` | List merge chains with hydrated graph nodes and edges; filter by `min_confidence` or `confidence_band` |
+
+### Coverage
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/coverage/geojson` | AIS coverage quality regions as GeoJSON FeatureCollection for map overlay |
+
 ### Admin
 
 | Method | Path | Description |
 |--------|------|-------------|
+| `POST` | `/admin/login` | Analyst login (username + password); returns JWT access token |
+| `POST` | `/admin/analysts` | Create a new analyst (admin only) |
+| `GET` | `/admin/analysts` | List all analysts (admin only) |
+| `PATCH` | `/admin/analysts/{analyst_id}` | Update analyst role, display name, or active status (admin only) |
+| `POST` | `/admin/analysts/{analyst_id}/reset-password` | Reset an analyst's password (admin only) |
 | `GET` | `/audit-log` | View the analyst action audit trail (PRD NFR5); filterable by `action` and `entity_type`; paginated |
 
 ### System
@@ -174,6 +237,7 @@ Vessel hunt endpoints implement FR9: given a gap event, compute a drift ellipse 
 | `vessel_id` | int | none | Filter by vessel |
 | `min_score` | int | none | Minimum risk score (0–100) |
 | `status` | string | none | Alert status: `new`, `under_review`, `confirmed`, `dismissed` |
+| `assigned_to` | int | none | Filter by assigned analyst ID |
 | `sort_by` | string | `risk_score` | Sort field: `risk_score`, `gap_start_utc`, `duration_minutes` |
 | `sort_order` | string | `desc` | `asc` or `desc` |
 | `skip` | int | 0 | Pagination offset |

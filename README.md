@@ -3,11 +3,14 @@
 ![CI](https://github.com/radiancefleet/RadianceFleet/actions/workflows/ci.yml/badge.svg)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
-![Tests](https://img.shields.io/badge/tests-2258%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-2782%20passing-brightgreen)
+[![Docker](https://img.shields.io/badge/Docker%20Hub-radiancefleet-blue)](https://hub.docker.com/r/radiancefleet/radiancefleet)
 
 Open-source maritime anomaly detection for Russian shadow fleet triage.
 
 RadianceFleet helps investigative journalists, OSINT researchers, and NGO analysts detect suspicious AIS gaps on oil tanker routes, score risk with explainable rules, and export evidence cards for publication. It is a triage and evidence assembly tool -- not a sanctions enforcement system or a legal determination engine.
+
+> **Live instance:** [radiancefleet.com](https://www.radiancefleet.com) — 11,900+ alerts across 5,400+ vessels, fully operational.
 
 > **Investigative triage tool -- not a legal finding.**
 > All exported evidence cards carry a mandatory disclaimer.
@@ -23,9 +26,14 @@ RadianceFleet helps investigative journalists, OSINT researchers, and NGO analys
 - Cross-references OFAC SDN, KSE shadow fleet list, and OpenSanctions watchlists
 - Correlates gaps against 11 seed corridors (export routes, STS zones, dark zones)
 - Prepares Sentinel-1 satellite check packages with pre-filled Copernicus Browser URLs
-- Exports evidence cards (Markdown and JSON) with mandatory analyst disclaimer
+- Places commercial satellite orders via Planet Labs and Capella Space APIs with budget enforcement
+- Exports evidence cards (Markdown, JSON, CSV, and PDF) with mandatory analyst disclaimer and chain-of-custody
+- Exports vessel tracks as GeoJSON and KML for external GIS tools
 - Imports Global Fishing Watch pre-computed vessel detections for dark ship identification
 - Provides a vessel hunt workflow: target profiling, drift ellipse search missions, candidate scoring
+- Visualizes merge chains as interactive SVG graphs with confidence coloring
+- Displays AIS coverage quality map overlay by region
+- Supports multi-analyst workflows with role-based auth, alert assignment, edit locks, and evidence approval
 
 ## Quick Start
 
@@ -81,12 +89,12 @@ For a detailed walkthrough, see [docs/quickstart.md](docs/quickstart.md).
 
 ```
 backend/              Python package
-  app/models/         SQLAlchemy data models (30+ tables)
-  app/modules/        Detection engines (48+ modules)
-  app/api/            FastAPI REST endpoints (65+)
+  app/models/         SQLAlchemy data models (48 tables)
+  app/modules/        Detection engines (55+ modules)
+  app/api/            FastAPI REST endpoints (90+)
   app/schemas/        Pydantic request/response schemas
   app/cli.py          Typer CLI entry point
-  tests/              pytest (2,258 tests)
+  tests/              pytest (2,782+ tests)
 frontend/             React 18 + TypeScript + Vite + React-Leaflet
 config/               corridors.yaml, risk_scoring.yaml, coverage.yaml
 railway.toml          Railway deployment config (web + cron services)
@@ -114,8 +122,9 @@ railway.toml          Railway deployment config (web + cron services)
 - **Risk scoring engine** -- 12 signal categories, corridor and vessel-size multipliers, legitimacy deductions, gap frequency subsumption
 - **Corridor correlation** -- ST_Intersects trajectory-based matching against 11 seed corridors
 - **Watchlist matching** -- OFAC SDN, KSE shadow fleet, OpenSanctions with fuzzy name matching
-- **Satellite workflow** -- bounding box generation, Copernicus Browser URL pre-fill, data source coverage metadata
-- **Evidence export** -- Markdown and JSON cards with score breakdown, mandatory disclaimer, analyst review gate
+- **Satellite workflow** -- bounding box generation, Copernicus Browser URL pre-fill, commercial order placement (Planet Labs, Capella Space) with budget enforcement
+- **Multi-analyst workflow** -- role-based auth (analyst/senior/admin), alert assignment, DB-level edit locks, optimistic locking, evidence chain-of-custody with approval workflow
+- **Evidence export** -- Markdown and JSON cards with score breakdown, mandatory disclaimer, analyst review gate, chain-of-custody attribution
 - **Vessel hunt** -- target profiling, drift ellipse search missions, dark vessel candidate scoring and confirmation
 
 ## CLI Commands

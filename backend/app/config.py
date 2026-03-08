@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173"
     ADMIN_JWT_SECRET: str | None = None  # Generate: openssl rand -hex 32
     ADMIN_PASSWORD: str | None = None  # Strong password for POST /admin/login
+    EDIT_LOCK_TTL_SECONDS: int = 300
     RATE_LIMIT_VIEWER: str = "30/minute"
     RATE_LIMIT_ADMIN: str = "120/minute"
     RATE_LIMIT_DEFAULT: str = "60/minute"
@@ -97,6 +98,14 @@ class Settings(BaseSettings):
     SPIRE_API_KEY: str = ""
     SEAWEB_API_KEY: str = ""
     VERIFICATION_MONTHLY_BUDGET_USD: float = 500.0
+
+    # ── Satellite Imagery Ordering ───────────────────────────────────────
+    PLANET_API_KEY: str | None = None
+    CAPELLA_API_KEY: str | None = None
+    MAXAR_API_KEY: str | None = None
+    UMBRA_API_KEY: str | None = None
+    SATELLITE_MONTHLY_BUDGET_USD: float = 2000.0
+    SATELLITE_ORDER_AUTO_SUBMIT: bool = False
 
     # ── Vessel Identity Merging ─────────────────────────────────────────────
     MERGE_MAX_SPEED_KN: float = 16.0

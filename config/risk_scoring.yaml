@@ -190,6 +190,12 @@ pi_insurance:
 psc_detention:
   psc_detained_last_12m: 15
   psc_major_deficiencies_3_plus: 10
+  multiple_detentions_2: 10           # 2 in 24 months
+  multiple_detentions_3_plus: 20      # 3+ in 24 months
+  detention_in_last_90d: 10           # recency
+  detention_in_last_30d: 15           # strong recency
+  paris_mou_ban: 15                   # ban > detention
+  deficiency_count_10_plus: 8         # high deficiency count
 
 # DARK VESSEL DETECTIONS (satellite detection with no AIS match)
 dark_vessel:
