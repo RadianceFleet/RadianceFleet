@@ -19,7 +19,7 @@ class Vessel(Base):
     mmsi: Mapped[str] = mapped_column(String(9), unique=True, nullable=False, index=True)
     imo: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
     name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    flag: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    flag: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     vessel_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     deadweight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     is_heuristic_dwt: Mapped[bool] = mapped_column(Boolean, default=False)

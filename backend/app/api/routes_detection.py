@@ -496,38 +496,6 @@ def list_corridors(
     return {"items": result, "total": total}
 
 
-@router.get("/corridors/{corridor_id}", tags=["corridors"])
-def get_corridor(corridor_id: int, db: Session = Depends(get_db)):
-    from app.models.corridor import Corridor
-    from app.models.gap_event import AISGapEvent
-
-    corridor = db.query(Corridor).filter(Corridor.corridor_id == corridor_id).first()
-    if not corridor:
-        raise HTTPException(status_code=404, detail="Corridor not found")
-
-    now = datetime.now(timezone.utc)
-    alert_7d = db.query(AISGapEvent).filter(
-        AISGapEvent.corridor_id == corridor_id,
-        AISGapEvent.gap_start_utc >= now - timedelta(days=7),
-    ).count()
-    alert_30d = db.query(AISGapEvent).filter(
-        AISGapEvent.corridor_id == corridor_id,
-        AISGapEvent.gap_start_utc >= now - timedelta(days=30),
-    ).count()
-
-    return {
-        "corridor_id": corridor.corridor_id,
-        "name": corridor.name,
-        "corridor_type": str(corridor.corridor_type.value) if hasattr(corridor.corridor_type, "value") else corridor.corridor_type,
-        "risk_weight": corridor.risk_weight,
-        "is_jamming_zone": corridor.is_jamming_zone,
-        "description": corridor.description,
-        "alert_count_7d": alert_7d,
-        "alert_count_30d": alert_30d,
-        "coverage_quality": _get_coverage_quality(corridor.name),
-    }
-
-
 @router.get("/corridors/geojson", tags=["corridors"])
 def corridors_geojson(db: Session = Depends(get_db)):
     """Return all corridors as a GeoJSON FeatureCollection for map overlay."""
@@ -558,6 +526,38 @@ def corridors_geojson(db: Session = Depends(get_db)):
             },
         })
     return {"type": "FeatureCollection", "features": features}
+
+
+@router.get("/corridors/{corridor_id}", tags=["corridors"])
+def get_corridor(corridor_id: int, db: Session = Depends(get_db)):
+    from app.models.corridor import Corridor
+    from app.models.gap_event import AISGapEvent
+
+    corridor = db.query(Corridor).filter(Corridor.corridor_id == corridor_id).first()
+    if not corridor:
+        raise HTTPException(status_code=404, detail="Corridor not found")
+
+    now = datetime.now(timezone.utc)
+    alert_7d = db.query(AISGapEvent).filter(
+        AISGapEvent.corridor_id == corridor_id,
+        AISGapEvent.gap_start_utc >= now - timedelta(days=7),
+    ).count()
+    alert_30d = db.query(AISGapEvent).filter(
+        AISGapEvent.corridor_id == corridor_id,
+        AISGapEvent.gap_start_utc >= now - timedelta(days=30),
+    ).count()
+
+    return {
+        "corridor_id": corridor.corridor_id,
+        "name": corridor.name,
+        "corridor_type": str(corridor.corridor_type.value) if hasattr(corridor.corridor_type, "value") else corridor.corridor_type,
+        "risk_weight": corridor.risk_weight,
+        "is_jamming_zone": corridor.is_jamming_zone,
+        "description": corridor.description,
+        "alert_count_7d": alert_7d,
+        "alert_count_30d": alert_30d,
+        "coverage_quality": _get_coverage_quality(corridor.name),
+    }
 
 
 @router.post("/corridors", tags=["corridors"])
