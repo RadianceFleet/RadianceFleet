@@ -1,9 +1,10 @@
 """VesselFingerprint — behavioral fingerprint for vessel identity corroboration."""
+
 from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, Float, JSON, Boolean, ForeignKey
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 
 from app.models.base import Base
@@ -22,7 +23,7 @@ class VesselFingerprint(Base):
     is_diagonal_only = Column(Boolean, default=False)  # True if <10 windows
     created_at = Column(
         DateTime,
-        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.datetime.now(datetime.UTC),
     )
     updated_at = Column(DateTime, nullable=True)
 

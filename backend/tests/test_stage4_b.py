@@ -12,16 +12,17 @@ Covers:
   - Model creation
   - Batch cap
 """
+
 from __future__ import annotations
 
 import datetime
 import math
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 
 def _make_point(
     vessel_id: int = 1,
@@ -85,7 +86,7 @@ def _make_fingerprint(
     point_count: int = 500,
 ) -> MagicMock:
     """Create a mock VesselFingerprint."""
-    from app.modules.vessel_fingerprint import FEATURE_NAMES, _identity, _NUM_FEATURES
+    from app.modules.vessel_fingerprint import _NUM_FEATURES, FEATURE_NAMES, _identity
 
     fp = MagicMock()
     fp.vessel_id = vessel_id
@@ -99,6 +100,7 @@ def _make_fingerprint(
 
 
 # ── Model tests ───────────────────────────────────────────────────────────────
+
 
 class TestVesselFingerprintModel:
     def test_model_creation(self):
@@ -125,6 +127,7 @@ class TestVesselFingerprintModel:
 
 
 # ── Math helper tests ─────────────────────────────────────────────────────────
+
 
 class TestMathHelpers:
     def test_median_odd(self):
@@ -165,15 +168,14 @@ class TestMathHelpers:
 
 # ── Window segmentation tests ────────────────────────────────────────────────
 
+
 class TestWindowSegmentation:
     def test_segments_into_6h_windows(self):
         from app.modules.vessel_fingerprint import _segment_into_windows
 
         start = datetime.datetime(2025, 1, 1, 0, 0, 0)
         # 13h of data at 2-min intervals = 390 points → should be 2-3 windows
-        points = _make_points(
-            n=390, start_ts=start, interval_seconds=120
-        )
+        points = _make_points(n=390, start_ts=start, interval_seconds=120)
         windows = _segment_into_windows(points, window_hours=6)
         # 390 * 120s = 46800s = 13h → expect 2 or 3 windows
         assert len(windows) >= 2
@@ -196,9 +198,10 @@ class TestWindowSegmentation:
 
 # ── Feature extraction tests ─────────────────────────────────────────────────
 
+
 class TestFeatureExtraction:
     def test_extract_window_features_valid(self):
-        from app.modules.vessel_fingerprint import _extract_window_features, FEATURE_NAMES
+        from app.modules.vessel_fingerprint import FEATURE_NAMES, _extract_window_features
 
         points = _make_points(n=50, sog_base=12.0, heading_base=90.0)
         features = _extract_window_features(points)
@@ -246,28 +249,23 @@ class TestFeatureExtraction:
 
 # ── Covariance tests ─────────────────────────────────────────────────────────
 
+
 class TestCovariance:
     def test_full_covariance_with_enough_windows(self):
-        from app.modules.vessel_fingerprint import _compute_covariance, _NUM_FEATURES
+        from app.modules.vessel_fingerprint import _NUM_FEATURES, _compute_covariance
 
         # 12 windows → full covariance
-        vectors = [
-            [float(i + j * 0.5) for j in range(_NUM_FEATURES)]
-            for i in range(12)
-        ]
+        vectors = [[float(i + j * 0.5) for j in range(_NUM_FEATURES)] for i in range(12)]
         cov, is_diag = _compute_covariance(vectors)
         assert is_diag is False
         assert len(cov) == _NUM_FEATURES
         assert len(cov[0]) == _NUM_FEATURES
 
     def test_diagonal_only_with_few_windows(self):
-        from app.modules.vessel_fingerprint import _compute_covariance, _NUM_FEATURES
+        from app.modules.vessel_fingerprint import _NUM_FEATURES, _compute_covariance
 
         # 5 windows → diagonal only
-        vectors = [
-            [float(i + j * 0.5) for j in range(_NUM_FEATURES)]
-            for i in range(5)
-        ]
+        vectors = [[float(i + j * 0.5) for j in range(_NUM_FEATURES)] for i in range(5)]
         cov, is_diag = _compute_covariance(vectors)
         assert is_diag is True
         # Off-diagonals should be 0
@@ -278,16 +276,12 @@ class TestCovariance:
 
     def test_diagonal_loading_applied(self):
         from app.modules.vessel_fingerprint import (
-            _compute_covariance,
             _NUM_FEATURES,
-            _mat_trace,
+            _compute_covariance,
         )
 
         # Full covariance with 15 windows
-        vectors = [
-            [float(i * (j + 1)) for j in range(_NUM_FEATURES)]
-            for i in range(15)
-        ]
+        vectors = [[float(i * (j + 1)) for j in range(_NUM_FEATURES)] for i in range(15)]
         cov, is_diag = _compute_covariance(vectors)
         assert is_diag is False
         # Diagonal loading adds lambda * I to the diagonal
@@ -296,7 +290,7 @@ class TestCovariance:
             assert cov[i][i] > 0
 
     def test_single_window_returns_identity(self):
-        from app.modules.vessel_fingerprint import _compute_covariance, _NUM_FEATURES
+        from app.modules.vessel_fingerprint import _NUM_FEATURES, _compute_covariance
 
         vectors = [[1.0] * _NUM_FEATURES]
         cov, is_diag = _compute_covariance(vectors)
@@ -308,6 +302,7 @@ class TestCovariance:
 
 # ── Mahalanobis distance tests ───────────────────────────────────────────────
 
+
 class TestMahalanobisDistance:
     def test_identical_fingerprints_zero_distance(self):
         from app.modules.vessel_fingerprint import mahalanobis_distance
@@ -318,7 +313,7 @@ class TestMahalanobisDistance:
         assert dist == pytest.approx(0.0, abs=1e-6)
 
     def test_different_fingerprints_positive_distance(self):
-        from app.modules.vessel_fingerprint import mahalanobis_distance, FEATURE_NAMES
+        from app.modules.vessel_fingerprint import FEATURE_NAMES, mahalanobis_distance
 
         fp1 = _make_fingerprint(
             vessel_id=1,
@@ -332,7 +327,7 @@ class TestMahalanobisDistance:
         assert dist > 0
 
     def test_distance_is_symmetric(self):
-        from app.modules.vessel_fingerprint import mahalanobis_distance, FEATURE_NAMES
+        from app.modules.vessel_fingerprint import FEATURE_NAMES, mahalanobis_distance
 
         fp1 = _make_fingerprint(
             vessel_id=1,
@@ -347,7 +342,12 @@ class TestMahalanobisDistance:
         assert d1 == pytest.approx(d2, abs=1e-6)
 
     def test_diagonal_covariance_distance(self):
-        from app.modules.vessel_fingerprint import mahalanobis_distance, FEATURE_NAMES, _NUM_FEATURES, _mat_zeros
+        from app.modules.vessel_fingerprint import (
+            _NUM_FEATURES,
+            FEATURE_NAMES,
+            _mat_zeros,
+            mahalanobis_distance,
+        )
 
         # Diagonal covariance with variance = 4 on each dim
         diag_cov = _mat_zeros(_NUM_FEATURES, _NUM_FEATURES)
@@ -374,6 +374,7 @@ class TestMahalanobisDistance:
 
 # ── Compute fingerprint tests ────────────────────────────────────────────────
 
+
 class TestComputeFingerprint:
     def test_sufficient_data(self):
         """compute_fingerprint succeeds with 300+ active points spanning 24h+."""
@@ -382,9 +383,7 @@ class TestComputeFingerprint:
         db = MagicMock()
         start = datetime.datetime(2025, 1, 1, 0, 0, 0)
         # 400 points over 48h (at ~7 min intervals)
-        points = _make_points(
-            n=400, start_ts=start, interval_seconds=432, sog_base=12.0
-        )
+        points = _make_points(n=400, start_ts=start, interval_seconds=432, sog_base=12.0)
 
         # Mock query chain for AISPoint
         mock_query = MagicMock()
@@ -405,6 +404,7 @@ class TestComputeFingerprint:
         def query_side_effect(model):
             call_count[0] += 1
             from app.models.ais_point import AISPoint
+
             if model is AISPoint:
                 return mock_query
             return fp_query
@@ -475,10 +475,11 @@ class TestComputeFingerprint:
 
 # ── Candidate ranking tests ──────────────────────────────────────────────────
 
+
 class TestCandidateRanking:
     def test_eliminative_filtering(self):
         """rank_candidates filters by vessel_type, DWT, ais_class."""
-        from app.modules.vessel_fingerprint import rank_candidates, FEATURE_NAMES
+        from app.modules.vessel_fingerprint import rank_candidates
 
         db = MagicMock()
 
@@ -505,11 +506,9 @@ class TestCandidateRanking:
         vessel_filter.all.return_value = []
         vessel_query.filter.return_value = vessel_filter
 
-        call_count = [0]
-
         def query_side_effect(model):
             from app.models.vessel_fingerprint import VesselFingerprint
-            from app.models.vessel import Vessel
+
             if model is VesselFingerprint:
                 return fp_query
             return vessel_query
@@ -521,7 +520,7 @@ class TestCandidateRanking:
 
     def test_correct_ordering(self):
         """Candidates are ranked ascending by distance."""
-        from app.modules.vessel_fingerprint import rank_candidates, FEATURE_NAMES
+        from app.modules.vessel_fingerprint import FEATURE_NAMES, rank_candidates
 
         db = MagicMock()
 
@@ -577,7 +576,7 @@ class TestCandidateRanking:
 
         def query_side_effect(model):
             from app.models.vessel_fingerprint import VesselFingerprint
-            from app.models.vessel import Vessel
+
             if model is VesselFingerprint:
                 mock_q = MagicMock()
 
@@ -592,7 +591,11 @@ class TestCandidateRanking:
                         # Map to candidate fingerprints in order
                         idx = n - 1
                         if idx <= len(cand_vessels):
-                            vid = cand_vessels[idx - 1].vessel_id if idx - 1 < len(cand_vessels) else None
+                            vid = (
+                                cand_vessels[idx - 1].vessel_id
+                                if idx - 1 < len(cand_vessels)
+                                else None
+                            )
                             mock_r.first.return_value = cand_fps.get(vid)
                         else:
                             mock_r.first.return_value = None
@@ -612,7 +615,7 @@ class TestCandidateRanking:
 
     def test_batch_cap_respected(self):
         """rank_candidates applies .limit(500) to candidate query."""
-        from app.modules.vessel_fingerprint import rank_candidates, _BATCH_CAP
+        from app.modules.vessel_fingerprint import _BATCH_CAP, rank_candidates
 
         db = MagicMock()
 
@@ -639,7 +642,7 @@ class TestCandidateRanking:
 
         def query_side_effect(model):
             from app.models.vessel_fingerprint import VesselFingerprint
-            from app.models.vessel import Vessel
+
             if model is VesselFingerprint:
                 return fp_query
             return vessel_query
@@ -653,10 +656,11 @@ class TestCandidateRanking:
 
 # ── Merge bonus tests ────────────────────────────────────────────────────────
 
+
 class TestMergeBonus:
     def test_close_bonus(self):
         """Close fingerprints (distance 0) get +15."""
-        from app.modules.vessel_fingerprint import fingerprint_merge_bonus, FEATURE_NAMES
+        from app.modules.vessel_fingerprint import FEATURE_NAMES, fingerprint_merge_bonus
 
         db = MagicMock()
         fp_a = _make_fingerprint(
@@ -688,7 +692,7 @@ class TestMergeBonus:
 
     def test_different_penalty(self):
         """Very different fingerprints get -5."""
-        from app.modules.vessel_fingerprint import fingerprint_merge_bonus, FEATURE_NAMES
+        from app.modules.vessel_fingerprint import FEATURE_NAMES, fingerprint_merge_bonus
 
         db = MagicMock()
         fp_a = _make_fingerprint(
@@ -734,7 +738,11 @@ class TestMergeBonus:
 
     def test_similar_bonus(self):
         """Moderately similar fingerprints get +10."""
-        from app.modules.vessel_fingerprint import fingerprint_merge_bonus, FEATURE_NAMES, _NUM_FEATURES, _mat_zeros
+        from app.modules.vessel_fingerprint import (
+            _NUM_FEATURES,
+            FEATURE_NAMES,
+            fingerprint_merge_bonus,
+        )
 
         db = MagicMock()
 
@@ -772,6 +780,7 @@ class TestMergeBonus:
 
 
 # ── Feature flag tests ────────────────────────────────────────────────────────
+
 
 class TestFeatureFlags:
     def test_config_has_fingerprint_flags(self):
@@ -823,9 +832,10 @@ class TestFeatureFlags:
         ais_query.filter.return_value = ais_filter
 
         def query_side_effect(model):
+            from app.models.ais_point import AISPoint
             from app.models.vessel import Vessel
             from app.models.vessel_fingerprint import VesselFingerprint
-            from app.models.ais_point import AISPoint
+
             if model is Vessel:
                 return vessel_query
             if model is VesselFingerprint:
@@ -844,6 +854,7 @@ class TestFeatureFlags:
 
 
 # ── Pipeline wiring tests ────────────────────────────────────────────────────
+
 
 class TestPipelineWiring:
     def test_discover_dark_vessels_includes_fingerprint_step(self):
@@ -866,15 +877,15 @@ class TestPipelineWiring:
             mock_settings.IMO_FRAUD_DETECTION_ENABLED = False
             mock_settings.FLEET_ANALYSIS_ENABLED = False
 
-            with patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels") as mock_hunt, \
-                 patch("app.modules.dark_vessel_discovery.cluster_dark_detections") as mock_cluster:
+            with (
+                patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels") as mock_hunt,
+                patch("app.modules.dark_vessel_discovery.cluster_dark_detections") as mock_cluster,
+            ):
                 mock_hunt.return_value = {}
                 mock_cluster.return_value = []
 
                 try:
-                    result = discover_dark_vessels(
-                        db, "2025-01-01", "2025-01-31", skip_fetch=True
-                    )
+                    discover_dark_vessels(db, "2025-01-01", "2025-01-31", skip_fetch=True)
                 except Exception:
                     # Pipeline may fail at various steps; we just check the step was attempted
                     pass
@@ -898,15 +909,15 @@ class TestPipelineWiring:
             mock_settings.IMO_FRAUD_DETECTION_ENABLED = False
             mock_settings.FLEET_ANALYSIS_ENABLED = False
 
-            with patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels") as mock_hunt, \
-                 patch("app.modules.dark_vessel_discovery.cluster_dark_detections") as mock_cluster:
+            with (
+                patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels") as mock_hunt,
+                patch("app.modules.dark_vessel_discovery.cluster_dark_detections") as mock_cluster,
+            ):
                 mock_hunt.return_value = {}
                 mock_cluster.return_value = []
 
                 try:
-                    result = discover_dark_vessels(
-                        db, "2025-01-01", "2025-01-31", skip_fetch=True
-                    )
+                    result = discover_dark_vessels(db, "2025-01-01", "2025-01-31", skip_fetch=True)
                     # fingerprint_computation should NOT be in steps
                     assert "fingerprint_computation" not in result.get("steps", {})
                 except Exception:
@@ -915,10 +926,11 @@ class TestPipelineWiring:
 
 # ── Distance band tests ──────────────────────────────────────────────────────
 
+
 class TestDistanceBands:
     def test_band_assignment(self):
         """rank_candidates assigns CLOSE/SIMILAR/DIFFERENT bands."""
-        from app.modules.vessel_fingerprint import rank_candidates, FEATURE_NAMES
+        from app.modules.vessel_fingerprint import FEATURE_NAMES, rank_candidates
 
         db = MagicMock()
 
@@ -958,7 +970,7 @@ class TestDistanceBands:
 
         def query_side_effect(model):
             from app.models.vessel_fingerprint import VesselFingerprint
-            from app.models.vessel import Vessel
+
             if model is VesselFingerprint:
                 mock_q = MagicMock()
 
@@ -971,7 +983,11 @@ class TestDistanceBands:
                     else:
                         idx = n - 1
                         if idx <= len(cand_vessels):
-                            vid = cand_vessels[idx - 1].vessel_id if idx - 1 < len(cand_vessels) else None
+                            vid = (
+                                cand_vessels[idx - 1].vessel_id
+                                if idx - 1 < len(cand_vessels)
+                                else None
+                            )
                             mock_r.first.return_value = cand_fps.get(vid)
                         else:
                             mock_r.first.return_value = None

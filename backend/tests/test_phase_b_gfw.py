@@ -6,11 +6,8 @@ Covers:
   - GFW port visit import (creation, nullable port_id)
   - STSDetectionTypeEnum.GFW_ENCOUNTER existence
 """
-from datetime import datetime, timedelta
+
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,7 +31,11 @@ def _make_port(port_id, name, lat, lon, country="GR"):
 
 
 def _make_gfw_encounter_event(
-    start_iso, end_iso, lat=36.8, lon=22.5, partner_ssvid="211234567",
+    start_iso,
+    end_iso,
+    lat=36.8,
+    lon=22.5,
+    partner_ssvid="211234567",
 ):
     return {
         "event_id": f"enc-{start_iso}",
@@ -53,7 +54,11 @@ def _make_gfw_encounter_event(
 
 
 def _make_gfw_port_visit_event(
-    start_iso, end_iso=None, lat=59.9, lon=30.3, port_name="Saint Petersburg",
+    start_iso,
+    end_iso=None,
+    lat=59.9,
+    lon=30.3,
+    port_name="Saint Petersburg",
 ):
     return {
         "event_id": f"pv-{start_iso}",

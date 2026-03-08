@@ -3,10 +3,11 @@
 API docs: https://developers.planet.com/docs/orders/
 Auth: Basic auth with API key as username, empty password.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -43,9 +44,7 @@ class PlanetProvider(SatelliteProvider):
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = api_key or settings.PLANET_API_KEY
         if not self._api_key:
-            raise ValueError(
-                "PLANET_API_KEY must be set. Register at https://www.planet.com/"
-            )
+            raise ValueError("PLANET_API_KEY must be set. Register at https://www.planet.com/")
 
     @property
     def name(self) -> str:
@@ -109,11 +108,9 @@ class PlanetProvider(SatelliteProvider):
                 props = feature.get("properties", {})
                 acquired_str = props.get("acquired", "")
                 try:
-                    acquired_at = datetime.fromisoformat(
-                        acquired_str.replace("Z", "+00:00")
-                    )
+                    acquired_at = datetime.fromisoformat(acquired_str.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
-                    acquired_at = datetime.now(timezone.utc)
+                    acquired_at = datetime.now(UTC)
 
                 # Convert feature geometry back to WKT
                 feat_geom = feature.get("geometry")
@@ -149,7 +146,7 @@ class PlanetProvider(SatelliteProvider):
     ) -> OrderSubmitResult:
         """Submit an order for the given scene IDs."""
         order_body: dict[str, Any] = {
-            "name": f"radiancefleet-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+            "name": f"radiancefleet-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
             "products": [
                 {
                     "item_ids": scene_ids,

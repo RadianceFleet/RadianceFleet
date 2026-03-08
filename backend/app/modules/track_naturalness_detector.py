@@ -17,20 +17,20 @@ synthetic tracks:
 If >=3 of 5 features fall outside natural bounds the track is flagged as
 SYNTHETIC_TRACK with confidence tiers: 5/5 -> HIGH, 4/5 -> MED, 3/5 -> LOW.
 """
+
 from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.ais_point import AISPoint
-from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.base import SpoofingTypeEnum
+from app.models.spoofing_anomaly import SpoofingAnomaly
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 try:
     from app.modules.risk_scoring import load_scoring_config
+
     _cfg = load_scoring_config()
     _tn_cfg = _cfg.get("track_naturalness", {})
 except Exception:
@@ -49,25 +50,26 @@ SCORE_MEDIUM = int(_tn_cfg.get("synthetic_track_medium", 35))
 SCORE_LOW = int(_tn_cfg.get("synthetic_track_low", 25))
 
 # Processing guardrails
-BATCH_SIZE = 500       # max vessels per run
-MAX_POINTS = 500       # subsample to cap Kalman iterations
-MIN_POINTS = 15        # minimum for meaningful statistics
-WINDOW_HOURS = 48      # look-back window
+BATCH_SIZE = 500  # max vessels per run
+MAX_POINTS = 500  # subsample to cap Kalman iterations
+MIN_POINTS = 15  # minimum for meaningful statistics
+WINDOW_HOURS = 48  # look-back window
 ANCHORED_SOG_KN = 0.5  # median SOG below which vessel is anchored
 
 # Natural bounds for the 5 features (calibrated from research)
 NATURAL_BOUNDS = {
-    "mean_abs_residual_m":  (20.0, None),   # real >= 20m; synthetic < 20m
-    "residual_std_m":       (15.0, None),   # real >= 15m
-    "speed_autocorr_lag1":  (0.05, None),   # real >= 0.05; synthetic ~0
-    "heading_entropy_bits": (1.5, 4.5),     # real 1.5-4.5; synthetic outside
-    "course_kurtosis":      (3.5, None),    # real leptokurtic > 3.5
+    "mean_abs_residual_m": (20.0, None),  # real >= 20m; synthetic < 20m
+    "residual_std_m": (15.0, None),  # real >= 15m
+    "speed_autocorr_lag1": (0.05, None),  # real >= 0.05; synthetic ~0
+    "heading_entropy_bits": (1.5, 4.5),  # real 1.5-4.5; synthetic outside
+    "course_kurtosis": (3.5, None),  # real leptokurtic > 3.5
 }
 
 
 # ---------------------------------------------------------------------------
 # Core algorithm
 # ---------------------------------------------------------------------------
+
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in metres."""
@@ -133,15 +135,13 @@ def _kalman_residuals(
 def _compute_features(
     points: list[tuple[float, float, float, float]],
     residuals: list[float],
-) -> dict[str, Optional[float]]:
+) -> dict[str, float | None]:
     """Compute the 5 statistical features over Kalman residuals and track data."""
-    features: dict[str, Optional[float]] = {}
+    features: dict[str, float | None] = {}
 
     # Feature 1: Mean absolute residual
     valid_res = [r for r in residuals[2:] if r is not None]
-    features["mean_abs_residual_m"] = (
-        sum(valid_res) / len(valid_res) if valid_res else None
-    )
+    features["mean_abs_residual_m"] = sum(valid_res) / len(valid_res) if valid_res else None
 
     # Feature 2: Residual standard deviation
     if len(valid_res) >= 2:
@@ -160,8 +160,7 @@ def _compute_features(
             var_d = sum((d - mean_d) ** 2 for d in diffs)
             if var_d > 1e-12:
                 cov = sum(
-                    (diffs[i] - mean_d) * (diffs[i + 1] - mean_d)
-                    for i in range(len(diffs) - 1)
+                    (diffs[i] - mean_d) * (diffs[i + 1] - mean_d) for i in range(len(diffs) - 1)
                 )
                 features["speed_autocorr_lag1"] = cov / var_d
             else:
@@ -217,7 +216,7 @@ def _compute_features(
         var_bc = sum((bc - mean_bc) ** 2 for bc in bearing_changes) / n
         if var_bc > 1e-12:
             m4 = sum((bc - mean_bc) ** 4 for bc in bearing_changes) / n
-            features["course_kurtosis"] = m4 / (var_bc ** 2)
+            features["course_kurtosis"] = m4 / (var_bc**2)
         else:
             features["course_kurtosis"] = None
     else:
@@ -226,7 +225,7 @@ def _compute_features(
     return features
 
 
-def _count_outside_bounds(features: dict[str, Optional[float]]) -> int:
+def _count_outside_bounds(features: dict[str, float | None]) -> int:
     """Count how many of the 5 features fall outside natural bounds."""
     outside = 0
     for key, (low, high) in NATURAL_BOUNDS.items():
@@ -244,6 +243,7 @@ def _count_outside_bounds(features: dict[str, Optional[float]]) -> int:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def run_track_naturalness_detection(db: Session) -> dict:
     """Run track naturalness detection across all vessels.
 
@@ -252,7 +252,7 @@ def run_track_naturalness_detection(db: Session) -> dict:
     if not settings.TRACK_NATURALNESS_ENABLED:
         return {"status": "disabled"}
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=WINDOW_HOURS)
+    cutoff = datetime.now(UTC) - timedelta(hours=WINDOW_HOURS)
 
     # Get vessels with enough AIS data in the window
     vessel_ids = (
@@ -306,7 +306,11 @@ def run_track_naturalness_detection(db: Session) -> dict:
         # Convert to tuples for processing
         point_tuples = []
         for p in points_q:
-            ts_epoch = p.timestamp_utc.timestamp() if hasattr(p.timestamp_utc, 'timestamp') else float(p.timestamp_utc)
+            ts_epoch = (
+                p.timestamp_utc.timestamp()
+                if hasattr(p.timestamp_utc, "timestamp")
+                else float(p.timestamp_utc)
+            )
             sog_val = p.sog if p.sog is not None else 0.0
             point_tuples.append((ts_epoch, p.lat, p.lon, sog_val))
 
@@ -349,24 +353,26 @@ def run_track_naturalness_detection(db: Session) -> dict:
             if existing:
                 continue
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             anomaly = SpoofingAnomaly(
                 vessel_id=vid,
                 anomaly_type=SpoofingTypeEnum.SYNTHETIC_TRACK,
-                start_time_utc=points_q[0].timestamp_utc if hasattr(points_q[0], 'timestamp_utc') else now,
-                end_time_utc=points_q[-1].timestamp_utc if hasattr(points_q[-1], 'timestamp_utc') else now,
+                start_time_utc=points_q[0].timestamp_utc
+                if hasattr(points_q[0], "timestamp_utc")
+                else now,
+                end_time_utc=points_q[-1].timestamp_utc
+                if hasattr(points_q[-1], "timestamp_utc")
+                else now,
                 risk_score_component=score,
                 evidence_json={
                     "tier": tier,
                     "features_outside_bounds": outside_count,
                     "features": {
-                        k: round(v, 4) if v is not None else None
-                        for k, v in features.items()
+                        k: round(v, 4) if v is not None else None for k, v in features.items()
                     },
                     "points_analysed": len(point_tuples),
                     "natural_bounds": {
-                        k: {"min": lo, "max": hi}
-                        for k, (lo, hi) in NATURAL_BOUNDS.items()
+                        k: {"min": lo, "max": hi} for k, (lo, hi) in NATURAL_BOUNDS.items()
                     },
                 },
             )
@@ -378,7 +384,9 @@ def run_track_naturalness_detection(db: Session) -> dict:
 
     logger.info(
         "Track naturalness: checked=%d skipped=%d flagged=%d",
-        checked, skipped, flagged,
+        checked,
+        skipped,
+        flagged,
     )
 
     return {

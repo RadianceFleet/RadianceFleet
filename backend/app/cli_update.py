@@ -1,17 +1,21 @@
 """CLI commands: start, update, stream."""
+
 from __future__ import annotations
 
-import typer
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 
-from app.cli_app import app, console
+import typer
+
 import app.cli_helpers as _h
+from app.cli_app import app, console
 
 
 @app.command("start")
 def start(
     demo: bool = typer.Option(False, "--demo", help="Load sample data (no API keys needed)"),
-    stream_time: str = typer.Option("15m", "--stream-time", help="AIS stream duration (e.g. 30s, 5m, 1h)"),
+    stream_time: str = typer.Option(
+        "15m", "--stream-time", help="AIS stream duration (e.g. 30s, 5m, 1h)"
+    ),
 ):
     """Set up RadianceFleet for the first time."""
     if _h._is_first_run() is False:
@@ -22,8 +26,7 @@ def start(
         raise typer.Exit(0)
 
     try:
-        from app.database import init_db, SessionLocal
-        from app.config import settings
+        from app.database import SessionLocal, init_db
 
         # 1. Initialize database
         with console.status("[bold]Creating database..."):
@@ -33,10 +36,12 @@ def start(
         try:
             # 2. Seed ports
             from app.models.port import Port
+
             port_count = db.query(Port).count()
             if port_count == 0:
                 with console.status("[bold]Seeding ports..."):
                     from scripts.seed_ports import seed_ports
+
                     seed_ports(db)
 
             # 3. Import corridors (uses flush, not commit)
@@ -60,6 +65,7 @@ def start(
                 console.print("[bold]Collecting AIS data...[/bold]")
                 try:
                     from app.modules.collection_scheduler import CollectionScheduler
+
                     scheduler = CollectionScheduler(db_factory=SessionLocal)
                     scheduler.start(duration_seconds=_h._parse_duration(stream_time))
                 except Exception as e:
@@ -77,6 +83,7 @@ def start(
             start_date = end - timedelta(days=90)
             with console.status("[bold]Analyzing vessel behavior..."):
                 from app.modules.dark_vessel_discovery import discover_dark_vessels
+
                 discover_dark_vessels(
                     db,
                     start_date=start_date.isoformat(),
@@ -100,14 +107,18 @@ def start(
 
 @app.command("update")
 def update(
-    stream_time: str = typer.Option("15m", "--stream-time", help="AIS stream duration (e.g. 30s, 5m, 1h)"),
+    stream_time: str = typer.Option(
+        "15m", "--stream-time", help="AIS stream duration (e.g. 30s, 5m, 1h)"
+    ),
     offline: bool = typer.Option(False, "--offline", help="Skip all network operations"),
     days: int = typer.Option(90, "--days", help="Analysis window (days back from today)"),
-    check_identity: bool = typer.Option(False, "--check-identity", help="Show merge readiness diagnostic after detection"),
+    check_identity: bool = typer.Option(
+        False, "--check-identity", help="Show merge readiness diagnostic after detection"
+    ),
 ):
     """Refresh data and re-run analysis (daily)."""
-    from app.database import SessionLocal
     from app.config import settings
+    from app.database import SessionLocal
 
     end = date.today()
     start_date = end - timedelta(days=days)
@@ -129,6 +140,7 @@ def update(
             console.print("[bold]Collecting AIS data...[/bold]")
             try:
                 from app.modules.collection_scheduler import CollectionScheduler
+
                 scheduler = CollectionScheduler(db_factory=SessionLocal)
                 scheduler.start(duration_seconds=_h._parse_duration(stream_time))
             except Exception as e:
@@ -147,6 +159,7 @@ def update(
         with console.status("[bold]Analyzing vessel behavior..."):
             try:
                 from app.modules.dark_vessel_discovery import discover_dark_vessels
+
                 discover_dark_vessels(
                     db,
                     start_date=start_date.isoformat(),
@@ -159,6 +172,7 @@ def update(
         # Phase 3b: Purge stale AIS observations (rolling window)
         try:
             from app.models.ais_observation import AISObservation
+
             deleted = AISObservation.purge_old(db)
             if deleted:
                 db.commit()
@@ -171,6 +185,7 @@ def update(
         if check_identity:
             try:
                 from app.modules.identity_resolver import diagnose_merge_readiness
+
                 diag = diagnose_merge_readiness(db)
                 console.print("\n[bold]Merge Readiness Diagnostic[/bold]")
                 for key, val in diag.items():
@@ -181,17 +196,22 @@ def update(
         # Phase 4: Send pending email alert notifications
         with console.status("[bold]Sending alert notifications..."):
             try:
-                from datetime import datetime, timezone
-                from app.modules.email_notifier import send_alert_notification
-                from app.models.alert_subscription import AlertSubscription
-                from app.models.vessel import Vessel
-                from app.models.gap_event import AISGapEvent
+                from datetime import datetime
+
                 from sqlalchemy import select as sa_select
-                confirmed_subs = db.execute(
-                    sa_select(AlertSubscription).where(AlertSubscription.confirmed == True)
-                ).scalars().all()
+
+                from app.models.alert_subscription import AlertSubscription
+                from app.models.gap_event import AISGapEvent
+                from app.models.vessel import Vessel
+                from app.modules.email_notifier import send_alert_notification
+
+                confirmed_subs = (
+                    db.execute(sa_select(AlertSubscription).where(AlertSubscription.confirmed))
+                    .scalars()
+                    .all()
+                )
                 sent = 0
-                cutoff = datetime.now(timezone.utc) - timedelta(hours=6)
+                cutoff = datetime.now(UTC) - timedelta(hours=6)
                 for sub in confirmed_subs:
                     if not sub.mmsi:
                         continue
@@ -205,18 +225,22 @@ def update(
                         continue
                     # Find recent gap events for this vessel
                     recent_gap = db.execute(
-                        sa_select(AISGapEvent).where(
+                        sa_select(AISGapEvent)
+                        .where(
                             AISGapEvent.vessel_id == vessel.vessel_id,
                             AISGapEvent.gap_start_utc >= cutoff.replace(tzinfo=None),
-                        ).limit(1)
+                        )
+                        .limit(1)
                     ).scalar_one_or_none()
                     if recent_gap:
                         vessel_name = vessel.name or sub.mmsi
                         alert_url = f"{settings.PUBLIC_URL}/alerts/{recent_gap.gap_event_id}"
                         unsub_url = f"{settings.PUBLIC_URL}/api/v1/unsubscribe?token={sub.token}&email={sub.email}"
-                        ok = send_alert_notification(sub.email, vessel_name, "AIS Gap", alert_url, unsub_url)
+                        ok = send_alert_notification(
+                            sub.email, vessel_name, "AIS Gap", alert_url, unsub_url
+                        )
                         if ok:
-                            sub.last_notified_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                            sub.last_notified_at = datetime.now(UTC).replace(tzinfo=None)
                             sent += 1
                 if sent:
                     db.commit()
@@ -233,15 +257,18 @@ def update(
 
 @app.command("stream")
 def stream(
-    batch_interval: int = typer.Option(30, "--batch-interval", help="Seconds between batch DB writes"),
+    batch_interval: int = typer.Option(
+        30, "--batch-interval", help="Seconds between batch DB writes"
+    ),
 ):
     """Run aisstream.io WebSocket consumer continuously (dedicated worker)."""
     import asyncio
     import time as _time
-    from app.database import SessionLocal
-    from app.modules.aisstream_client import stream_ais, get_corridor_bounding_boxes
-    from app.models.ingestion_status import update_ingestion_status
+
     from app.config import settings
+    from app.database import SessionLocal
+    from app.models.ingestion_status import update_ingestion_status
+    from app.modules.aisstream_client import get_corridor_bounding_boxes, stream_ais
 
     api_key = settings.AISSTREAM_API_KEY
     if not api_key:
@@ -257,24 +284,33 @@ def stream(
     def on_batch(stats: dict):
         batch_db = SessionLocal()
         try:
-            update_ingestion_status(batch_db, source="aisstream-worker",
-                                    records=stats.get("points_stored", 0), status="running")
+            update_ingestion_status(
+                batch_db,
+                source="aisstream-worker",
+                records=stats.get("points_stored", 0),
+                status="running",
+            )
             batch_db.commit()
         except Exception:
             batch_db.rollback()
         finally:
             batch_db.close()
 
-    console.print(f"[bold]Continuous aisstream.io WebSocket consumer[/bold]")
+    console.print("[bold]Continuous aisstream.io WebSocket consumer[/bold]")
     console.print(f"  Bounding boxes: {len(boxes)}, Batch interval: {batch_interval}s")
 
     try:
         while True:  # Outer loop: survive circuit breaker trips
-            result = asyncio.run(stream_ais(
-                api_key=api_key, bounding_boxes=boxes,
-                duration_seconds=0, batch_interval=batch_interval,
-                db_factory=SessionLocal, progress_callback=on_batch,
-            ))
+            result = asyncio.run(
+                stream_ais(
+                    api_key=api_key,
+                    bounding_boxes=boxes,
+                    duration_seconds=0,
+                    batch_interval=batch_interval,
+                    db_factory=SessionLocal,
+                    progress_callback=on_batch,
+                )
+            )
             if result.get("error") == "circuit breaker open":
                 console.print("[yellow]Circuit breaker open, waiting 60s...[/yellow]")
                 _time.sleep(60)

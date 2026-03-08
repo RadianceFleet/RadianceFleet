@@ -5,21 +5,20 @@ Two detection modes:
   A. Simultaneous IMO use: same IMO on 2+ vessels both moving, >500nm apart
   B. Near-miss IMO: IMO differing by 1 digit on already-suspicious vessels
 """
+
 from __future__ import annotations
 
 import logging
-import math
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.ais_point import AISPoint
 from app.models.base import SpoofingTypeEnum
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
-from app.models.ais_point import AISPoint
-
 from app.utils.vessel_identity import validate_imo_checksum as _validate_imo_checksum
 
 logger = logging.getLogger(__name__)
@@ -28,12 +27,13 @@ logger = logging.getLogger(__name__)
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Re-export of :func:`app.utils.geo.haversine_nm`."""
     from app.utils.geo import haversine_nm
+
     return haversine_nm(lat1, lon1, lat2, lon2)
 
 
 def _has_recent_movement(db: Session, vessel_id: int, window_hours: int = 48) -> bool:
     """Check if vessel has any AIS point with SOG > 0.5kn within the window."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=window_hours)
     point = (
         db.query(AISPoint)
         .filter(
@@ -65,11 +65,7 @@ def _detect_simultaneous_imo(db: Session) -> int:
     Returns number of anomalies created.
     """
     # Find IMOs used by multiple vessels
-    vessels_with_imo = (
-        db.query(Vessel)
-        .filter(Vessel.imo.isnot(None), Vessel.imo != "")
-        .all()
-    )
+    vessels_with_imo = db.query(Vessel).filter(Vessel.imo.isnot(None), Vessel.imo != "").all()
 
     by_imo: dict[str, list[Vessel]] = defaultdict(list)
     for v in vessels_with_imo:
@@ -111,14 +107,18 @@ def _detect_simultaneous_imo(db: Session) -> int:
                     continue
 
                 # Check for existing anomaly
-                existing = db.query(SpoofingAnomaly).filter(
-                    SpoofingAnomaly.vessel_id == v1.vessel_id,
-                    SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
-                ).first()
+                existing = (
+                    db.query(SpoofingAnomaly)
+                    .filter(
+                        SpoofingAnomaly.vessel_id == v1.vessel_id,
+                        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+                    )
+                    .first()
+                )
                 if existing:
                     continue
 
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 anomaly = SpoofingAnomaly(
                     vessel_id=v1.vessel_id,
                     anomaly_type=SpoofingTypeEnum.IMO_FRAUD,
@@ -156,26 +156,16 @@ def _detect_near_miss_imo(db: Session) -> int:
     Returns number of anomalies created.
     """
     # Get vessels that are already suspicious
-    suspicious_vessel_ids = {
-        row[0]
-        for row in db.query(SpoofingAnomaly.vessel_id).distinct().all()
-    }
+    suspicious_vessel_ids = {row[0] for row in db.query(SpoofingAnomaly.vessel_id).distinct().all()}
 
     # Also include vessels with risk_score > 30 (if the column exists)
     # For safety, we just use the spoofing anomaly check
 
     # Get all vessels with IMOs
-    all_vessels_with_imo = (
-        db.query(Vessel)
-        .filter(Vessel.imo.isnot(None), Vessel.imo != "")
-        .all()
-    )
+    all_vessels_with_imo = db.query(Vessel).filter(Vessel.imo.isnot(None), Vessel.imo != "").all()
 
     # Only check suspicious vessels
-    suspicious_vessels = [
-        v for v in all_vessels_with_imo
-        if v.vessel_id in suspicious_vessel_ids
-    ]
+    suspicious_vessels = [v for v in all_vessels_with_imo if v.vessel_id in suspicious_vessel_ids]
 
     anomalies_created = 0
 
@@ -226,14 +216,18 @@ def _detect_near_miss_imo(db: Session) -> int:
                 continue
 
             # Check for existing anomaly
-            existing = db.query(SpoofingAnomaly).filter(
-                SpoofingAnomaly.vessel_id == sv.vessel_id,
-                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
-            ).first()
+            existing = (
+                db.query(SpoofingAnomaly)
+                .filter(
+                    SpoofingAnomaly.vessel_id == sv.vessel_id,
+                    SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+                )
+                .first()
+            )
             if existing:
                 continue
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             anomaly = SpoofingAnomaly(
                 vessel_id=sv.vessel_id,
                 anomaly_type=SpoofingTypeEnum.IMO_FRAUD,
@@ -269,7 +263,8 @@ def run_imo_fraud_detection(db: Session) -> dict:
 
     logger.info(
         "IMO fraud: %d simultaneous, %d near-miss anomalies",
-        simultaneous, near_miss,
+        simultaneous,
+        near_miss,
     )
     return {
         "status": "ok",

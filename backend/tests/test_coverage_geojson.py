@@ -1,14 +1,14 @@
 """Tests for GET /coverage/geojson endpoint."""
-import os
+
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock
 
-from app.main import app
 from app.database import get_db
+from app.main import app
 
 # Resolve actual coverage.yaml regardless of CWD
 _COVERAGE_YAML = str(Path(__file__).resolve().parents[2] / "config" / "coverage.yaml")
@@ -24,10 +24,12 @@ def api_client(mock_db, monkeypatch):
     monkeypatch.setenv("COVERAGE_CONFIG", _COVERAGE_YAML)
     # Patch settings object directly so the endpoint picks up the absolute path
     from app.config import settings
+
     monkeypatch.setattr(settings, "COVERAGE_CONFIG", _COVERAGE_YAML)
 
     def override_get_db():
         yield mock_db
+
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as client:
         yield client

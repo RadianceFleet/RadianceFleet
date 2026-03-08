@@ -6,16 +6,14 @@ Covers:
   - Pipeline wiring (steps present, gated by flags)
   - Integration (enums, feature flags, YAML sections, _EXPECTED_SECTIONS)
 """
+
 from __future__ import annotations
 
-import os
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, mock_open
-
-import pytest
-
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, mock_open, patch
 
 # ── Scrapped IMO detection tests ────────────────────────────────────────────
+
 
 class TestScrappedImoDisabled:
     """When SCRAPPED_REGISTRY_DETECTION_ENABLED is False, detection returns early."""
@@ -64,8 +62,10 @@ class TestScrappedImoDetection:
 
         mock_db.query.side_effect = query_side_effect
 
-        with patch("app.modules.scrapped_registry.settings") as mock_settings, \
-             patch("app.modules.scrapped_registry._load_scrapped_registry", return_value=registry):
+        with (
+            patch("app.modules.scrapped_registry.settings") as mock_settings,
+            patch("app.modules.scrapped_registry._load_scrapped_registry", return_value=registry),
+        ):
             mock_settings.SCRAPPED_REGISTRY_DETECTION_ENABLED = True
             from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
@@ -93,8 +93,10 @@ class TestScrappedImoDetection:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = [mock_vessel]
 
-        with patch("app.modules.scrapped_registry.settings") as mock_settings, \
-             patch("app.modules.scrapped_registry._load_scrapped_registry", return_value=registry):
+        with (
+            patch("app.modules.scrapped_registry.settings") as mock_settings,
+            patch("app.modules.scrapped_registry._load_scrapped_registry", return_value=registry),
+        ):
             mock_settings.SCRAPPED_REGISTRY_DETECTION_ENABLED = True
             from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
@@ -132,8 +134,10 @@ class TestScrappedImoDetection:
 
         mock_db.query.side_effect = query_side_effect
 
-        with patch("app.modules.scrapped_registry.settings") as mock_settings, \
-             patch("app.modules.scrapped_registry._load_scrapped_registry", return_value=registry):
+        with (
+            patch("app.modules.scrapped_registry.settings") as mock_settings,
+            patch("app.modules.scrapped_registry._load_scrapped_registry", return_value=registry),
+        ):
             mock_settings.SCRAPPED_REGISTRY_DETECTION_ENABLED = True
             from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
@@ -172,8 +176,10 @@ class TestScrappedImoDetection:
 
         mock_db.query.side_effect = query_side_effect
 
-        with patch("app.modules.scrapped_registry.settings") as mock_settings, \
-             patch("app.modules.scrapped_registry._load_scrapped_registry", return_value=registry):
+        with (
+            patch("app.modules.scrapped_registry.settings") as mock_settings,
+            patch("app.modules.scrapped_registry._load_scrapped_registry", return_value=registry),
+        ):
             mock_settings.SCRAPPED_REGISTRY_DETECTION_ENABLED = True
             from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
@@ -189,20 +195,23 @@ class TestScrappedYamlConfig:
     def test_yaml_config_parses_correctly(self):
         """_load_scrapped_registry parses all fields from YAML."""
         import app.modules.scrapped_registry as mod
+
         # Reset cache
         mod._SCRAPPED_REGISTRY = None
 
         yaml_content = (
             'last_updated: "2026-03-01"\n'
-            'scrapped_imos:\n'
+            "scrapped_imos:\n"
             '  - imo: "9111111"\n'
             '    name: "TEST VESSEL"\n'
-            '    scrapped_year: 2022\n'
+            "    scrapped_year: 2022\n"
             '    notes: "Test note"\n'
         )
 
-        with patch("builtins.open", mock_open(read_data=yaml_content)), \
-             patch("pathlib.Path.exists", return_value=True):
+        with (
+            patch("builtins.open", mock_open(read_data=yaml_content)),
+            patch("pathlib.Path.exists", return_value=True),
+        ):
             result = mod._load_scrapped_registry()
 
         assert "9111111" in result
@@ -216,6 +225,7 @@ class TestScrappedYamlConfig:
     def test_missing_yaml_returns_empty(self):
         """Missing YAML file returns empty registry."""
         import app.modules.scrapped_registry as mod
+
         mod._SCRAPPED_REGISTRY = None
 
         with patch("pathlib.Path.exists", return_value=False):
@@ -226,8 +236,10 @@ class TestScrappedYamlConfig:
 
     def test_empty_registry_no_queries(self):
         """Empty registry skips vessel querying entirely."""
-        with patch("app.modules.scrapped_registry.settings") as mock_settings, \
-             patch("app.modules.scrapped_registry._load_scrapped_registry", return_value={}):
+        with (
+            patch("app.modules.scrapped_registry.settings") as mock_settings,
+            patch("app.modules.scrapped_registry._load_scrapped_registry", return_value={}),
+        ):
             mock_settings.SCRAPPED_REGISTRY_DETECTION_ENABLED = True
             from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
@@ -239,6 +251,7 @@ class TestScrappedYamlConfig:
 
 
 # ── Track replay detection tests ────────────────────────────────────────────
+
 
 class TestTrackReplayDisabled:
     """When TRACK_REPLAY_DETECTION_ENABLED is False, detection returns early."""
@@ -259,18 +272,19 @@ class TestTrackReplayDetection:
 
     def test_high_correlation_creates_anomaly(self):
         """Correlation > 0.9 creates TRACK_REPLAY anomaly."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         recent_points = [
-            (50.0 + i * 0.001, 10.0 + i * 0.001, now - timedelta(hours=i))
-            for i in range(210)
+            (50.0 + i * 0.001, 10.0 + i * 0.001, now - timedelta(hours=i)) for i in range(210)
         ]
         historical_points = [
             (50.0 + i * 0.001, 10.0 + i * 0.001, now - timedelta(days=60, hours=i))
             for i in range(210)
         ]
 
-        with patch("app.modules.scrapped_registry.settings") as mock_settings, \
-             patch("app.modules.scrapped_registry._compute_track_correlation", return_value=0.95):
+        with (
+            patch("app.modules.scrapped_registry.settings") as mock_settings,
+            patch("app.modules.scrapped_registry._compute_track_correlation", return_value=0.95),
+        ):
             mock_settings.TRACK_REPLAY_DETECTION_ENABLED = True
 
             from app.modules.scrapped_registry import detect_track_replay
@@ -283,16 +297,22 @@ class TestTrackReplayDetection:
                 mock_q = MagicMock()
                 if call_count[0] == 1:
                     # vessel_ids_with_data: query().filter().group_by().having().all()
-                    mock_q.filter.return_value.group_by.return_value.having.return_value.all.return_value = [(1,)]
+                    mock_q.filter.return_value.group_by.return_value.having.return_value.all.return_value = [
+                        (1,)
+                    ]
                 elif call_count[0] == 2:
                     # avg_sog: query().filter().scalar()
                     mock_q.filter.return_value.scalar.return_value = 5.0
                 elif call_count[0] == 3:
                     # Recent points: query().filter().order_by().all()
-                    mock_q.filter.return_value.order_by.return_value.all.return_value = recent_points
+                    mock_q.filter.return_value.order_by.return_value.all.return_value = (
+                        recent_points
+                    )
                 elif call_count[0] == 4:
                     # Historical points: query().filter().order_by().all()
-                    mock_q.filter.return_value.order_by.return_value.all.return_value = historical_points
+                    mock_q.filter.return_value.order_by.return_value.all.return_value = (
+                        historical_points
+                    )
                 elif call_count[0] == 5:
                     # Existing anomaly check: query().filter().first()
                     mock_q.filter.return_value.first.return_value = None
@@ -308,18 +328,19 @@ class TestTrackReplayDetection:
 
     def test_low_correlation_no_anomaly(self):
         """Correlation <= 0.9 does not create anomaly."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         recent_points = [
-            (50.0 + i * 0.001, 10.0 + i * 0.001, now - timedelta(hours=i))
-            for i in range(210)
+            (50.0 + i * 0.001, 10.0 + i * 0.001, now - timedelta(hours=i)) for i in range(210)
         ]
         historical_points = [
             (55.0 + i * 0.002, 15.0 + i * 0.002, now - timedelta(days=60, hours=i))
             for i in range(210)
         ]
 
-        with patch("app.modules.scrapped_registry.settings") as mock_settings, \
-             patch("app.modules.scrapped_registry._compute_track_correlation", return_value=0.3):
+        with (
+            patch("app.modules.scrapped_registry.settings") as mock_settings,
+            patch("app.modules.scrapped_registry._compute_track_correlation", return_value=0.3),
+        ):
             mock_settings.TRACK_REPLAY_DETECTION_ENABLED = True
 
             from app.modules.scrapped_registry import detect_track_replay
@@ -331,13 +352,19 @@ class TestTrackReplayDetection:
                 call_count[0] += 1
                 mock_q = MagicMock()
                 if call_count[0] == 1:
-                    mock_q.filter.return_value.group_by.return_value.having.return_value.all.return_value = [(1,)]
+                    mock_q.filter.return_value.group_by.return_value.having.return_value.all.return_value = [
+                        (1,)
+                    ]
                 elif call_count[0] == 2:
                     mock_q.filter.return_value.scalar.return_value = 5.0
                 elif call_count[0] == 3:
-                    mock_q.filter.return_value.order_by.return_value.all.return_value = recent_points
+                    mock_q.filter.return_value.order_by.return_value.all.return_value = (
+                        recent_points
+                    )
                 elif call_count[0] == 4:
-                    mock_q.filter.return_value.order_by.return_value.all.return_value = historical_points
+                    mock_q.filter.return_value.order_by.return_value.all.return_value = (
+                        historical_points
+                    )
                 return mock_q
 
             mock_db.query.side_effect = query_side_effect
@@ -378,7 +405,9 @@ class TestTrackReplayDetection:
                 call_count[0] += 1
                 mock_q = MagicMock()
                 if call_count[0] == 1:
-                    mock_q.filter.return_value.group_by.return_value.having.return_value.all.return_value = [(1,)]
+                    mock_q.filter.return_value.group_by.return_value.having.return_value.all.return_value = [
+                        (1,)
+                    ]
                 elif call_count[0] == 2:
                     # Low avg SOG -> anchored
                     mock_q.filter.return_value.scalar.return_value = 0.2
@@ -429,13 +458,16 @@ class TestTrackCorrelation:
 
 # ── Pipeline wiring tests ───────────────────────────────────────────────────
 
+
 class TestPipelineWiring:
     """Pipeline steps present and gated by flags."""
 
     def test_scrapped_registry_step_present_in_source(self):
         """Scrapped registry step is wired into discover_dark_vessels."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
+
         source = inspect.getsource(discover_dark_vessels)
         assert "scrapped_registry" in source
         assert "SCRAPPED_REGISTRY_DETECTION_ENABLED" in source
@@ -443,7 +475,9 @@ class TestPipelineWiring:
     def test_track_replay_step_present_in_source(self):
         """Track replay step is wired into discover_dark_vessels."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
+
         source = inspect.getsource(discover_dark_vessels)
         assert "track_replay" in source
         assert "TRACK_REPLAY_DETECTION_ENABLED" in source
@@ -451,7 +485,9 @@ class TestPipelineWiring:
     def test_steps_gated_by_flags(self):
         """Both steps are conditional on their feature flags."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
+
         source = inspect.getsource(discover_dark_vessels)
         # Verify gating pattern: if settings.FLAG: ... import ... _run_step
         assert "settings.SCRAPPED_REGISTRY_DETECTION_ENABLED" in source
@@ -462,22 +498,26 @@ class TestPipelineWiring:
 
 # ── Integration tests ────────────────────────────────────────────────────────
 
+
 class TestIntegration:
     """Integration: enums, feature flags, YAML sections, _EXPECTED_SECTIONS."""
 
     def test_track_replay_enum_exists(self):
         from app.models.base import SpoofingTypeEnum
+
         assert hasattr(SpoofingTypeEnum, "TRACK_REPLAY")
         assert SpoofingTypeEnum.TRACK_REPLAY.value == "track_replay"
 
     def test_imo_fraud_enum_exists(self):
         """IMO_FRAUD enum (used by scrapped detection) exists."""
         from app.models.base import SpoofingTypeEnum
+
         assert hasattr(SpoofingTypeEnum, "IMO_FRAUD")
         assert SpoofingTypeEnum.IMO_FRAUD.value == "imo_fraud"
 
     def test_feature_flags_exist(self):
         from app.config import Settings
+
         s = Settings(
             SCRAPPED_REGISTRY_DETECTION_ENABLED=False,
             SCRAPPED_REGISTRY_SCORING_ENABLED=False,
@@ -491,6 +531,7 @@ class TestIntegration:
 
     def test_feature_flags_default_true(self):
         from app.config import Settings
+
         s = Settings(_env_file=None)
         assert s.SCRAPPED_REGISTRY_DETECTION_ENABLED is True
         assert s.SCRAPPED_REGISTRY_SCORING_ENABLED is True
@@ -498,8 +539,9 @@ class TestIntegration:
         assert s.TRACK_REPLAY_SCORING_ENABLED is True
 
     def test_yaml_sections_exist(self):
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         # Find the config directory (may be at project root or relative)
         config_path = Path(__file__).parent.parent.parent / "config" / "risk_scoring.yaml"
@@ -514,8 +556,9 @@ class TestIntegration:
 
     def test_scrapped_vessels_yaml_exists(self):
         """scrapped_vessels.yaml config file exists and is valid."""
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         config_path = Path(__file__).parent.parent.parent / "config" / "scrapped_vessels.yaml"
         assert config_path.exists(), f"scrapped_vessels.yaml not found at {config_path}"
@@ -530,22 +573,27 @@ class TestIntegration:
         assert "scrapped_year" in first
 
     def test_expected_sections_includes_both(self):
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
+
         assert "scrapped_registry" in _EXPECTED_SECTIONS
         assert "track_replay" in _EXPECTED_SECTIONS
 
     def test_shadow_exclusion_includes_track_replay(self):
         """track_replay shadow exclusion code exists in risk_scoring module."""
         import inspect
+
         import app.modules.risk_scoring as rs_mod
+
         source = inspect.getsource(rs_mod)
-        assert 'TRACK_REPLAY_SCORING_ENABLED' in source
+        assert "TRACK_REPLAY_SCORING_ENABLED" in source
         assert '"track_replay"' in source
-        assert 'SCRAPPED_REGISTRY_SCORING_ENABLED' in source
+        assert "SCRAPPED_REGISTRY_SCORING_ENABLED" in source
 
     def test_database_enum_migration_includes_track_replay(self):
         """track_replay is in the Postgres enum migration loop."""
-        import app.database as db_mod
         import inspect
+
+        import app.database as db_mod
+
         source = inspect.getsource(db_mod._run_migrations)
         assert "track_replay" in source

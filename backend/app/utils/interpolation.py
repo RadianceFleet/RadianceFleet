@@ -9,12 +9,12 @@ All functions return (positions_json, ellipse_wkt) where:
   positions_json: list of {"lat": float, "lon": float, "t_offset_h": float}
   ellipse_wkt:    WKT POLYGON string for the confidence ellipse (or None)
 """
+
 from __future__ import annotations
 
 import math
-from typing import Optional
 
-from app.utils.geo import initial_bearing, _EARTH_RADIUS_NM
+from app.utils.geo import _EARTH_RADIUS_NM, initial_bearing
 
 
 def _bearing_rad(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -22,7 +22,9 @@ def _bearing_rad(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return math.radians(initial_bearing(lat1, lon1, lat2, lon2))
 
 
-def _destination_point(lat: float, lon: float, bearing_rad: float, distance_nm: float) -> tuple[float, float]:
+def _destination_point(
+    lat: float, lon: float, bearing_rad: float, distance_nm: float
+) -> tuple[float, float]:
     """Compute destination point given start, bearing, and distance in nm."""
     R_nm = _EARTH_RADIUS_NM
     d = distance_nm / R_nm
@@ -40,8 +42,10 @@ def _destination_point(lat: float, lon: float, bearing_rad: float, distance_nm: 
 
 
 def interpolate_linear(
-    start_lat: float, start_lon: float,
-    end_lat: float, end_lon: float,
+    start_lat: float,
+    start_lon: float,
+    end_lat: float,
+    end_lon: float,
     duration_h: float,
 ) -> tuple[list[dict], None]:
     """Linear interpolation for gaps <2h. Returns 2-point track."""
@@ -52,13 +56,17 @@ def interpolate_linear(
 
 
 def interpolate_hermite(
-    start_lat: float, start_lon: float,
-    end_lat: float, end_lon: float,
-    start_sog: float, start_cog: float,
-    end_sog: float, end_cog: float,
+    start_lat: float,
+    start_lon: float,
+    end_lat: float,
+    end_lon: float,
+    start_sog: float,
+    start_cog: float,
+    end_sog: float,
+    end_cog: float,
     duration_h: float,
     num_points: int = 15,
-) -> tuple[list[dict], Optional[str]]:
+) -> tuple[list[dict], str | None]:
     """Cubic Hermite spline for 2-6h gaps.
 
     Uses start/end position + velocity vectors (SOG×COG) as tangent conditions.
@@ -87,17 +95,19 @@ def interpolate_hermite(
         # Hermite basis functions
         h00 = (1 + 2 * t) * (1 - t) ** 2
         h10 = t * (1 - t) ** 2
-        h01 = t ** 2 * (3 - 2 * t)
-        h11 = t ** 2 * (t - 1)
+        h01 = t**2 * (3 - 2 * t)
+        h11 = t**2 * (t - 1)
 
         lat = h00 * start_lat + h10 * m0_lat + h01 * end_lat + h11 * m1_lat
         lon = h00 * start_lon + h10 * m0_lon + h01 * end_lon + h11 * m1_lon
 
-        positions.append({
-            "lat": round(lat, 6),
-            "lon": round(lon, 6),
-            "t_offset_h": round(t * duration_h, 2),
-        })
+        positions.append(
+            {
+                "lat": round(lat, 6),
+                "lon": round(lon, 6),
+                "t_offset_h": round(t * duration_h, 2),
+            }
+        )
 
     # Build confidence ellipse around the spline path
     ellipse_wkt = _build_ellipse_wkt(positions, buffer_nm=5.0)
@@ -105,13 +115,16 @@ def interpolate_hermite(
 
 
 def interpolate_scenarios(
-    start_lat: float, start_lon: float,
-    end_lat: float, end_lon: float,
-    start_sog: float, start_cog: float,
+    start_lat: float,
+    start_lon: float,
+    end_lat: float,
+    end_lon: float,
+    start_sog: float,
+    start_cog: float,
     max_speed_kn: float,
     duration_h: float,
     num_scenarios: int = 5,
-) -> tuple[list[dict], Optional[str]]:
+) -> tuple[list[dict], str | None]:
     """Multi-scenario envelope for gaps >6h.
 
     Generates scenario paths at different speed fractions (min/max bounds),
@@ -135,7 +148,11 @@ def interpolate_scenarios(
                 dist = speed * duration_h * t
                 b = bearing + bearing_offset * (1 - t)  # bearing converges toward endpoint
                 lat, lon = _destination_point(start_lat, start_lon, b, dist)
-                pt = {"lat": round(lat, 6), "lon": round(lon, 6), "t_offset_h": round(t * duration_h, 2)}
+                pt = {
+                    "lat": round(lat, 6),
+                    "lon": round(lon, 6),
+                    "t_offset_h": round(t * duration_h, 2),
+                }
                 scenario_path.append(pt)
                 all_positions.append(pt)
             scenarios.append(scenario_path)
@@ -151,7 +168,7 @@ def interpolate_scenarios(
     return direct + [{"_scenario_count": num_scenarios}], hull_wkt
 
 
-def _build_ellipse_wkt(positions: list[dict], buffer_nm: float = 5.0) -> Optional[str]:
+def _build_ellipse_wkt(positions: list[dict], buffer_nm: float = 5.0) -> str | None:
     """Build a WKT POLYGON buffering around interpolated positions."""
     if len(positions) < 2:
         return None
@@ -173,7 +190,7 @@ def _build_ellipse_wkt(positions: list[dict], buffer_nm: float = 5.0) -> Optiona
     )
 
 
-def _convex_hull_wkt(positions: list[dict]) -> Optional[str]:
+def _convex_hull_wkt(positions: list[dict]) -> str | None:
     """Compute convex hull of positions and return as WKT POLYGON."""
     points = [(p["lon"], p["lat"]) for p in positions if "lat" in p and "lon" in p]
     if len(points) < 3:

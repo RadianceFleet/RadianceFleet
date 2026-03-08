@@ -1,12 +1,13 @@
 """Tests for Maxar satellite provider client."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import httpx
 import pybreaker
+import pytest
 
 from app.modules.satellite_providers.base import (
     ArchiveSearchResult,
@@ -14,12 +15,11 @@ from app.modules.satellite_providers.base import (
     OrderSubmitResult,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 AOI_WKT = "POLYGON((10 55, 11 55, 11 56, 10 56, 10 55))"
-START = datetime(2026, 1, 1, tzinfo=timezone.utc)
-END = datetime(2026, 1, 15, tzinfo=timezone.utc)
+START = datetime(2026, 1, 1, tzinfo=UTC)
+END = datetime(2026, 1, 15, tzinfo=UTC)
 
 
 def _make_maxar_search_response(features: list[dict] | None = None) -> dict:
@@ -91,9 +91,7 @@ def reset_maxar_breaker():
     """Reset the maxar circuit breaker between tests."""
     from app.modules.circuit_breakers import breakers
 
-    breakers["maxar"] = pybreaker.CircuitBreaker(
-        fail_max=5, reset_timeout=60, name="maxar"
-    )
+    breakers["maxar"] = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60, name="maxar")
     yield
 
 
@@ -226,7 +224,6 @@ def test_cancel_order(maxar_provider):
 
 def test_circuit_breaker_trips(maxar_provider):
     """Circuit breaker trips after repeated failures."""
-    from app.modules.circuit_breakers import breakers
 
     def _raise(*args, **kwargs):
         raise httpx.ConnectError("Connection refused")

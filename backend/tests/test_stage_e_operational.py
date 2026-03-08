@@ -9,15 +9,13 @@ Covers:
 - E6: Default config enables stable detectors
 - E7: Feed outage max_outage_ratio / anti-decoy
 """
+
 from __future__ import annotations
 
 import importlib
 import inspect
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # E2: Feed outage — anomaly-aware suppression
@@ -30,6 +28,7 @@ class TestE2FeedOutageEvasionExclusion:
     def test_has_evasion_signals_function_exists(self):
         """_has_evasion_signals helper exists in feed_outage_detector."""
         from app.modules.feed_outage_detector import _has_evasion_signals
+
         sig = inspect.signature(_has_evasion_signals)
         params = list(sig.parameters)
         assert "db" in params
@@ -139,9 +138,7 @@ class TestE4DriftWarmup:
 
     def test_discover_dark_vessels_source_has_warmup_guard(self):
         """discover_dark_vessels source references warm_up_period."""
-        source = inspect.getsource(
-            importlib.import_module("app.modules.dark_vessel_discovery")
-        )
+        source = inspect.getsource(importlib.import_module("app.modules.dark_vessel_discovery"))
         assert "warm_up_period" in source
         assert "run_count < 3" in source
 
@@ -157,6 +154,7 @@ class TestE4bRouteTemplateDedup:
     def test_find_existing_template_function_exists(self):
         """_find_existing_template helper exists in voyage_predictor."""
         from app.modules.voyage_predictor import _find_existing_template
+
         sig = inspect.signature(_find_existing_template)
         params = list(sig.parameters)
         assert "db" in params
@@ -195,9 +193,7 @@ class TestE4bRouteTemplateDedup:
 
     def test_build_route_templates_returns_templates_updated_key(self):
         """build_route_templates result includes templates_updated."""
-        source = inspect.getsource(
-            importlib.import_module("app.modules.voyage_predictor")
-        )
+        source = inspect.getsource(importlib.import_module("app.modules.voyage_predictor"))
         assert "templates_updated" in source
 
 
@@ -211,16 +207,12 @@ class TestE5OwnershipSanctionsPropagation:
 
     def test_ownership_cluster_sanctioned_in_scoring(self):
         """risk_scoring.py references ownership_cluster_sanctioned."""
-        source = inspect.getsource(
-            importlib.import_module("app.modules.risk_scoring")
-        )
+        source = inspect.getsource(importlib.import_module("app.modules.risk_scoring"))
         assert "ownership_cluster_sanctioned" in source
 
     def test_owner_cluster_import_in_scoring(self):
         """risk_scoring.py imports OwnerCluster for sanctions propagation."""
-        source = inspect.getsource(
-            importlib.import_module("app.modules.risk_scoring")
-        )
+        source = inspect.getsource(importlib.import_module("app.modules.risk_scoring"))
         assert "OwnerCluster" in source
         assert "OwnerClusterMember" in source
 
@@ -296,11 +288,13 @@ class TestE7FeedOutageAntiDecoy:
     def test_min_vessels_constant_is_8(self):
         """_MIN_VESSELS_FOR_OUTAGE constant is 8 (raised from 5 for proportional threshold)."""
         from app.modules.feed_outage_detector import _MIN_VESSELS_FOR_OUTAGE
+
         assert _MIN_VESSELS_FOR_OUTAGE == 8
 
     def test_get_high_risk_vessel_ids_function_exists(self):
         """_get_high_risk_vessel_ids helper exists."""
         from app.modules.feed_outage_detector import _get_high_risk_vessel_ids
+
         sig = inspect.signature(_get_high_risk_vessel_ids)
         assert "db" in sig.parameters
 
@@ -310,7 +304,9 @@ class TestE7FeedOutageAntiDecoy:
 
         db = MagicMock()
         db.query.return_value.filter.return_value.distinct.return_value.all.return_value = [
-            (1,), (2,), (3,),
+            (1,),
+            (2,),
+            (3,),
         ]
 
         result = _get_high_risk_vessel_ids(db)
@@ -328,9 +324,7 @@ class TestE7FeedOutageAntiDecoy:
 
     def test_feed_outage_source_has_anti_decoy_logic(self):
         """Feed outage detector source includes anti-decoy logic."""
-        source = inspect.getsource(
-            importlib.import_module("app.modules.feed_outage_detector")
-        )
+        source = inspect.getsource(importlib.import_module("app.modules.feed_outage_detector"))
         assert "max_outage_ratio" in source
         assert "decoy_rejected" in source
         assert "high_risk_vessel_ids" in source

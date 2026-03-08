@@ -1,18 +1,19 @@
 """Tests for GFW gap event import and SAR corridor sweep."""
+
 from datetime import datetime, timedelta
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from sqlalchemy import create_engine, event as sa_event
+from sqlalchemy import create_engine
+from sqlalchemy import event as sa_event
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base
-from app.models.vessel import Vessel
 from app.models.ais_point import AISPoint
-
+from app.models.vessel import Vessel
 
 # --- Helpers ---
+
 
 def _make_vessel(vessel_id, mmsi, merged_into=None):
     v = MagicMock()
@@ -54,9 +55,11 @@ def _make_gfw_event(start_iso, end_iso, off_lat=60.0, off_lon=25.0, on_lat=61.0,
 
 # --- GFW gap event type parsing ---
 
+
 class TestGFWGapEventType:
     def test_gap_dataset_constant_exists(self):
         from app.modules.gfw_client import _GAP_EVENTS_DATASET
+
         assert _GAP_EVENTS_DATASET == "public-global-gaps-events:latest"
 
     @patch("app.utils.http_retry.retry_request")
@@ -77,6 +80,7 @@ class TestGFWGapEventType:
 
 
 # --- Import idempotency ---
+
 
 class TestImportIdempotent:
     @patch("app.modules.gfw_client.get_vessel_events")
@@ -110,6 +114,7 @@ class TestImportIdempotent:
 
 # --- Partial failure and resume ---
 
+
 class TestPartialFailureResume:
     @patch("app.modules.gfw_client.search_vessel")
     @patch("time.sleep")
@@ -129,6 +134,7 @@ class TestPartialFailureResume:
 
 
 # --- SAR sweep ---
+
 
 class TestSweepCorridorsSAR:
     @patch("app.modules.gfw_client.import_sar_detections_to_db")
@@ -155,6 +161,7 @@ class TestSweepCorridorsSAR:
 
 # --- Bbox extraction ---
 
+
 class TestExtractBbox:
     def test_extract_bbox_from_wkt(self):
         from app.modules.gfw_client import _extract_bbox_from_wkt
@@ -166,6 +173,7 @@ class TestExtractBbox:
 
     def test_extract_bbox_none(self):
         from app.modules.gfw_client import _extract_bbox_from_wkt
+
         assert _extract_bbox_from_wkt(None) is None
         assert _extract_bbox_from_wkt("") is None
 
@@ -173,6 +181,7 @@ class TestExtractBbox:
 # ---------------------------------------------------------------------------
 # Real-DB fixture for anchor-point tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db_real():
@@ -200,6 +209,7 @@ def _make_real_vessel(db, mmsi="636017000", name="TEST SHIP"):
 # ---------------------------------------------------------------------------
 # Helper: build a minimal GFW gap event dict understood by import_gfw_gap_events
 # ---------------------------------------------------------------------------
+
 
 def _gfw_gap(
     start_iso="2025-12-01T00:00:00Z",
@@ -239,6 +249,7 @@ def _gfw_gap(
 # TestGapAnchorPoints
 # ---------------------------------------------------------------------------
 
+
 class TestGapAnchorPoints:
     """Verify that import_gfw_gap_events() creates AISPoint gap-anchor rows."""
 
@@ -267,31 +278,46 @@ class TestGapAnchorPoints:
             if model is vessel.__class__:
                 # vessel list query: must return our vessel
                 class _FakeQ:
-                    def filter(self, *a, **k): return self
-                    def order_by(self, *a, **k): return self
-                    def all(self): return [vessel]
-                    def first(self): return None
+                    def filter(self, *a, **k):
+                        return self
+
+                    def order_by(self, *a, **k):
+                        return self
+
+                    def all(self):
+                        return [vessel]
+
+                    def first(self):
+                        return None
+
                 return _FakeQ()
             if model is AISGapEvent:
                 # dedup query: always "no existing" so event is inserted
                 class _GapQ:
-                    def filter(self, *a, **k): return self
-                    def order_by(self, *a, **k): return self
-                    def all(self): return []
-                    def first(self): return None
+                    def filter(self, *a, **k):
+                        return self
+
+                    def order_by(self, *a, **k):
+                        return self
+
+                    def all(self):
+                        return []
+
+                    def first(self):
+                        return None
+
                 return _GapQ()
             # all other queries (AISPoint dedup) fall through to real session
             return q
 
         with patch.object(db, "query", side_effect=patched_query):
-            with patch("app.modules.gfw_client.search_vessel",
-                       return_value=[{"gfw_id": "gfw-123", "mmsi": vessel.mmsi}]):
-                with patch("app.modules.gfw_client.get_vessel_events",
-                           return_value=events):
+            with patch(
+                "app.modules.gfw_client.search_vessel",
+                return_value=[{"gfw_id": "gfw-123", "mmsi": vessel.mmsi}],
+            ):
+                with patch("app.modules.gfw_client.get_vessel_events", return_value=events):
                     with patch("time.sleep"):
-                        result = import_gfw_gap_events(
-                            db, "2025-12-01", "2025-12-31", token="test"
-                        )
+                        result = import_gfw_gap_events(db, "2025-12-01", "2025-12-31", token="test")
         return result
 
     # ------------------------------------------------------------------
@@ -299,10 +325,14 @@ class TestGapAnchorPoints:
     # ------------------------------------------------------------------
     def test_gap_anchor_points_created_with_off_and_on(self, db_real):
         vessel = _make_real_vessel(db_real)
-        events = [_gfw_gap(
-            off_lat=60.0, off_lon=25.0,
-            on_lat=61.0, on_lon=26.0,
-        )]
+        events = [
+            _gfw_gap(
+                off_lat=60.0,
+                off_lon=25.0,
+                on_lat=61.0,
+                on_lon=26.0,
+            )
+        ]
         self._run_import(db_real, vessel, events)
         db_real.expire_all()
 
@@ -335,8 +365,7 @@ class TestGapAnchorPoints:
 
         anchors = (
             db_real.query(AISPoint)
-            .filter(AISPoint.vessel_id == vessel.vessel_id,
-                    AISPoint.source == "gfw_gap_anchor")
+            .filter(AISPoint.vessel_id == vessel.vessel_id, AISPoint.source == "gfw_gap_anchor")
             .all()
         )
         # only the on-position anchor should be created
@@ -371,8 +400,7 @@ class TestGapAnchorPoints:
 
         anchors = (
             db_real.query(AISPoint)
-            .filter(AISPoint.vessel_id == vessel.vessel_id,
-                    AISPoint.source == "gfw_gap_anchor")
+            .filter(AISPoint.vessel_id == vessel.vessel_id, AISPoint.source == "gfw_gap_anchor")
             .all()
         )
         assert len(anchors) == 2, (
@@ -386,18 +414,22 @@ class TestGapAnchorPoints:
         vessel = _make_real_vessel(db_real, mmsi="636017003")
         same_ts = "2025-12-01T00:00:00Z"
         # off and on have same timestamp AND same lat/lon so they collapse to 1
-        events = [_gfw_gap(
-            start_iso=same_ts, end_iso=same_ts,
-            off_lat=60.0, off_lon=25.0,
-            on_lat=60.0, on_lon=25.0,
-        )]
+        events = [
+            _gfw_gap(
+                start_iso=same_ts,
+                end_iso=same_ts,
+                off_lat=60.0,
+                off_lon=25.0,
+                on_lat=60.0,
+                on_lon=25.0,
+            )
+        ]
         self._run_import(db_real, vessel, events)
         db_real.expire_all()
 
         anchors = (
             db_real.query(AISPoint)
-            .filter(AISPoint.vessel_id == vessel.vessel_id,
-                    AISPoint.source == "gfw_gap_anchor")
+            .filter(AISPoint.vessel_id == vessel.vessel_id, AISPoint.source == "gfw_gap_anchor")
             .all()
         )
         assert len(anchors) == 1, (

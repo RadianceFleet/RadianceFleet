@@ -6,19 +6,19 @@ Covers:
 - Fix 3: corridor multiplier capped at 1.0 for EU/NATO flags
 - Fix 4: ambiguous AIS type codes (90/96/99) soft-capped at 50 for low-risk flags
 """
+
 from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.modules.risk_scoring import compute_gap_score, load_scoring_config
 
 _CONFIG = load_scoring_config()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _make_vessel(
     flag: str | None = "SE",
@@ -136,23 +136,26 @@ def _settings_ctx(**overrides):
         "WATCHLIST_STUB_SCORING_ENABLED": False,
     }
     defaults.update(overrides)
-    with patch("app.modules.risk_scoring.settings") as mock_s, \
-         patch("app.config.settings", mock_s):
+    with patch("app.modules.risk_scoring.settings") as mock_s, patch("app.config.settings", mock_s):
         for k, v in defaults.items():
             setattr(mock_s, k, v)
         yield mock_s
 
 
-def _score(vessel, corridor=None, duration_minutes=1800, gap_start=None, db=None, **settings_overrides):
-    gap = _make_gap(vessel, corridor=corridor, duration_minutes=duration_minutes, gap_start=gap_start)
+def _score(
+    vessel, corridor=None, duration_minutes=1800, gap_start=None, db=None, **settings_overrides
+):
+    gap = _make_gap(
+        vessel, corridor=corridor, duration_minutes=duration_minutes, gap_start=gap_start
+    )
     if db is None:
         db = _minimal_db()
     with _settings_ctx(**settings_overrides):
-        return compute_gap_score(gap, _CONFIG, db=db,
-                                 scoring_date=datetime(2025, 6, 1, 12, 0))
+        return compute_gap_score(gap, _CONFIG, db=db, scoring_date=datetime(2025, 6, 1, 12, 0))
 
 
 # ── Fix 2a: new_mmsi_first_30d suppressed for low-risk flags ──────────────────
+
 
 class TestFix2NewMmsiSuppression:
     def test_low_risk_flag_suppresses_new_mmsi(self):
@@ -199,6 +202,7 @@ class TestFix2NewMmsiSuppression:
 
 # ── Fix 2b: pi_no_insurer suppressed for low-risk flags ──────────────────────
 
+
 class TestFix2PiNoInsurer:
     def test_low_risk_flag_suppresses_pi_no_insurer(self):
         """NO flag, no VesselOwner → pi_no_insurer must NOT be in breakdown."""
@@ -233,6 +237,7 @@ class TestFix2PiNoInsurer:
 
 
 # ── Fix 2c: at_sea_no_port_call suppressed for low-risk flags ─────────────────
+
 
 class TestFix2AtSeaNoPortCall:
     def test_low_risk_flag_suppresses_at_sea_365d(self):
@@ -289,6 +294,7 @@ class TestFix2AtSeaNoPortCall:
 
 
 # ── Fix 3: corridor multiplier capped at 1.0 for low-risk flags ───────────────
+
 
 class TestFix3CorridorMultiplierCap:
     def test_low_risk_flag_sts_corridor_cap(self):
@@ -350,6 +356,7 @@ class TestFix3CorridorMultiplierCap:
 
 # ── Fix 4: ambiguous AIS type cap for low-risk flags ──────────────────────────
 
+
 class TestFix4AmbiguousTypeCapLowRisk:
     def test_type_90_eu_flag_capped_at_50(self):
         """SE flag (low_risk) + Type 90 → score capped at 50."""
@@ -359,8 +366,7 @@ class TestFix4AmbiguousTypeCapLowRisk:
         score, breakdown = _score(vessel, corridor=corridor)
 
         assert score <= 50, (
-            f"SE + Type 90 should be capped at 50 by ambiguous_type_low_risk_cap; "
-            f"score={score}"
+            f"SE + Type 90 should be capped at 50 by ambiguous_type_low_risk_cap; score={score}"
         )
         assert "_ambiguous_type_low_risk_cap_applied" in breakdown
 
@@ -412,7 +418,9 @@ class TestFix4AmbiguousTypeCapLowRisk:
         score, breakdown = _score(vessel, corridor=corridor)
 
         # Type 50 is definitively non-commercial → capped at 30
-        assert score <= 30, f"Type 50 should be capped at 30 by non_commercial_score_cap; score={score}"
+        assert score <= 30, (
+            f"Type 50 should be capped at 30 by non_commercial_score_cap; score={score}"
+        )
         assert "_non_commercial_cap_applied" in breakdown
 
     def test_type_none_eu_flag_no_ambiguous_cap(self):
@@ -429,6 +437,7 @@ class TestFix4AmbiguousTypeCapLowRisk:
 
 
 # ── Combined: multi-fix score reduction for realistic vessel ──────────────────
+
 
 class TestCombinedFixImpact:
     def test_eu_research_vessel_score_reduced(self):
@@ -448,7 +457,7 @@ class TestCombinedFixImpact:
 
         assert score < 150, (
             f"SE research vessel should not be CRITICAL after suppression fixes; "
-            f"score={score}, positive signals={[k for k, v in breakdown.items() if isinstance(v, (int,float)) and v > 0 and not k.startswith('_')]}"
+            f"score={score}, positive signals={[k for k, v in breakdown.items() if isinstance(v, (int, float)) and v > 0 and not k.startswith('_')]}"
         )
         # Data-absence signals must be suppressed
         assert "new_mmsi_first_30d" not in breakdown
@@ -479,12 +488,11 @@ class TestCombinedFixImpact:
         # Corridor multiplier must NOT be capped
         assert "_low_risk_flag_corridor_cap" not in breakdown
         # Score must remain elevated (above what a fully-suppressed EU vessel gets)
-        assert score >= 100, (
-            f"RU vessel with full signals should score ≥100; score={score}"
-        )
+        assert score >= 100, f"RU vessel with full signals should score ≥100; score={score}"
 
 
 # ── Data completeness cap: under-tracked vessels capped at MEDIUM ────────────
+
 
 class TestDataCompletenessCap:
     """New vessel + high-risk flag + data absence = CRITICAL from missing data alone.
@@ -505,8 +513,10 @@ class TestDataCompletenessCap:
         """Under-tracked vessel with only data-absence signals → capped at 50."""
         recent = datetime(2025, 5, 30, 0, 0)  # 2 days before scoring_date
         vessel = _make_vessel(
-            flag="CM", flag_risk="high_risk",
-            mmsi_first_seen=recent, year_built=2003,
+            flag="CM",
+            flag_risk="high_risk",
+            mmsi_first_seen=recent,
+            year_built=2003,
         )
         corridor = _make_sts_corridor("sts_zone")
         db = self._new_vessel_db(point_count=10)
@@ -520,8 +530,10 @@ class TestDataCompletenessCap:
         """Vessel with 14+ days tracking history → no cap."""
         old = datetime(2025, 4, 1, 0, 0)  # 61 days before scoring_date
         vessel = _make_vessel(
-            flag="CM", flag_risk="high_risk",
-            mmsi_first_seen=old, year_built=2003,
+            flag="CM",
+            flag_risk="high_risk",
+            mmsi_first_seen=old,
+            year_built=2003,
         )
         corridor = _make_sts_corridor("sts_zone")
         db = self._new_vessel_db(point_count=200)
@@ -534,8 +546,10 @@ class TestDataCompletenessCap:
         """Impossible reappear signal → cap does NOT apply (high-confidence)."""
         recent = datetime(2025, 5, 30, 0, 0)
         vessel = _make_vessel(
-            flag="CM", flag_risk="high_risk",
-            mmsi_first_seen=recent, year_built=2003,
+            flag="CM",
+            flag_risk="high_risk",
+            mmsi_first_seen=recent,
+            year_built=2003,
         )
         gap = _make_gap(vessel, duration_minutes=1800)
         gap.impossible_speed_flag = True  # triggers impossible_reappear signal
@@ -544,7 +558,10 @@ class TestDataCompletenessCap:
 
         with _settings_ctx():
             score, breakdown = compute_gap_score(
-                gap, _CONFIG, db=db, scoring_date=datetime(2025, 6, 1, 12, 0),
+                gap,
+                _CONFIG,
+                db=db,
+                scoring_date=datetime(2025, 6, 1, 12, 0),
             )
 
         assert "impossible_reappear" in breakdown
@@ -554,8 +571,11 @@ class TestDataCompletenessCap:
         """Speed spoof signal → cap does NOT apply."""
         recent = datetime(2025, 5, 30, 0, 0)
         vessel = _make_vessel(
-            flag="CM", flag_risk="high_risk",
-            mmsi_first_seen=recent, year_built=2003, deadweight=250000,
+            flag="CM",
+            flag_risk="high_risk",
+            mmsi_first_seen=recent,
+            year_built=2003,
+            deadweight=250000,
         )
         gap = _make_gap(vessel, duration_minutes=1800)
         gap.pre_gap_sog = 25.0  # above spoof threshold for VLCC
@@ -563,7 +583,10 @@ class TestDataCompletenessCap:
 
         with _settings_ctx():
             score, breakdown = compute_gap_score(
-                gap, _CONFIG, db=db, scoring_date=datetime(2025, 6, 1, 12, 0),
+                gap,
+                _CONFIG,
+                db=db,
+                scoring_date=datetime(2025, 6, 1, 12, 0),
             )
 
         assert "speed_spoof_before_gap" in breakdown
@@ -573,8 +596,10 @@ class TestDataCompletenessCap:
         """Speed impossible (>30kn) → cap does NOT apply."""
         recent = datetime(2025, 5, 30, 0, 0)
         vessel = _make_vessel(
-            flag="CM", flag_risk="high_risk",
-            mmsi_first_seen=recent, year_built=2003,
+            flag="CM",
+            flag_risk="high_risk",
+            mmsi_first_seen=recent,
+            year_built=2003,
         )
         gap = _make_gap(vessel, duration_minutes=1800)
         gap.pre_gap_sog = 35.0  # >30kn triggers speed_impossible
@@ -582,7 +607,10 @@ class TestDataCompletenessCap:
 
         with _settings_ctx():
             score, breakdown = compute_gap_score(
-                gap, _CONFIG, db=db, scoring_date=datetime(2025, 6, 1, 12, 0),
+                gap,
+                _CONFIG,
+                db=db,
+                scoring_date=datetime(2025, 6, 1, 12, 0),
             )
 
         assert "speed_impossible" in breakdown
@@ -592,8 +620,10 @@ class TestDataCompletenessCap:
         """When db=None, the data completeness cap is skipped gracefully."""
         recent = datetime(2025, 5, 30, 0, 0)
         vessel = _make_vessel(
-            flag="CM", flag_risk="high_risk",
-            mmsi_first_seen=recent, year_built=2003,
+            flag="CM",
+            flag_risk="high_risk",
+            mmsi_first_seen=recent,
+            year_built=2003,
         )
         # No db → cap logic is skipped entirely
         score, breakdown = _score(vessel, db=None)
@@ -603,8 +633,10 @@ class TestDataCompletenessCap:
     def test_no_first_seen_treated_as_zero_days(self):
         """Vessel with mmsi_first_seen_utc=None → treated as 0 tracking days."""
         vessel = _make_vessel(
-            flag="CM", flag_risk="high_risk",
-            mmsi_first_seen=None, year_built=2003,
+            flag="CM",
+            flag_risk="high_risk",
+            mmsi_first_seen=None,
+            year_built=2003,
         )
         corridor = _make_sts_corridor("sts_zone")
         db = self._new_vessel_db(point_count=10)

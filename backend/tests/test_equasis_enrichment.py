@@ -8,13 +8,12 @@ Covers:
   5. _parse_vessel_page HTML parsing (all fields + no-data cases)
   6. enrich_vessels_from_equasis (disabled flag, enrichment, skipping, watchlist priority)
 """
+
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, call
-from typing import Optional
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
@@ -26,6 +25,7 @@ from app.models.vessel_watchlist import VesselWatchlist
 # ---------------------------------------------------------------------------
 # Shared HTML helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_vessel_html(**fields) -> str:
     """Build minimal Equasis-like HTML using the actual Bootstrap grid layout.
@@ -47,25 +47,25 @@ def _make_vessel_html(**fields) -> str:
 def _make_flag_html(country: str) -> str:
     """Build Equasis flag row HTML (4-div row; country in div[3] as '(Country)')."""
     return (
-        '<html><body>'
+        "<html><body>"
         '<div class="row">'
         '<div class="col-lg-4"><b>Flag</b></div>'
         '<div class="col-lg-4"></div>'
         '<div class="col-sm-6"></div>'
         f'<div class="col-lg-4">({country})</div>'
-        '</div>'
-        '</body></html>'
+        "</div>"
+        "</body></html>"
     )
 
 
 def _make_ism_html(company_name: str) -> str:
     """Build Equasis company table HTML with an ISM Manager row."""
     return (
-        '<html><body>'
-        '<table><tbody>'
-        f'<tr><td>9991001</td><td>ISM Manager</td><td>{company_name}</td><td>UK</td><td>since 01/01/2020</td></tr>'
-        '</tbody></table>'
-        '</body></html>'
+        "<html><body>"
+        "<table><tbody>"
+        f"<tr><td>9991001</td><td>ISM Manager</td><td>{company_name}</td><td>UK</td><td>since 01/01/2020</td></tr>"
+        "</tbody></table>"
+        "</body></html>"
     )
 
 
@@ -83,6 +83,7 @@ _NO_SHIP_HTML = "<html><body><p>No ship found matching your search.</p></body></
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db():
@@ -113,6 +114,7 @@ def _make_vessel(db, mmsi="211456789", name="TEST VESSEL", **kwargs):
 # Helper: create a minimal Response mock
 # ---------------------------------------------------------------------------
 
+
 def _make_response(url: str, status_code: int = 200, text: str = "") -> MagicMock:
     resp = MagicMock()
     resp.url = url
@@ -126,11 +128,12 @@ def _make_response(url: str, status_code: int = 200, text: str = "") -> MagicMoc
 # 1. EquasisClient init guards
 # ===========================================================================
 
+
 class TestEquasisClientInit:
     def test_init_raises_if_disabled(self):
         """RuntimeError when EQUASIS_SCRAPING_ENABLED is False (default)."""
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         with patch.object(settings, "EQUASIS_SCRAPING_ENABLED", False):
             with pytest.raises(RuntimeError, match="EQUASIS_SCRAPING_ENABLED"):
@@ -138,8 +141,8 @@ class TestEquasisClientInit:
 
     def test_init_raises_if_no_credentials(self):
         """RuntimeError when flag is True but USERNAME/PASSWORD are missing."""
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         with patch.object(settings, "EQUASIS_SCRAPING_ENABLED", True):
             with patch.object(settings, "EQUASIS_USERNAME", None):
@@ -149,8 +152,8 @@ class TestEquasisClientInit:
 
     def test_init_raises_if_password_missing_only(self):
         """RuntimeError when username is set but password is None."""
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         with patch.object(settings, "EQUASIS_SCRAPING_ENABLED", True):
             with patch.object(settings, "EQUASIS_USERNAME", "user@example.com"):
@@ -160,8 +163,8 @@ class TestEquasisClientInit:
 
     def test_init_succeeds_when_fully_configured(self):
         """No exception when all settings are present and enabled."""
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         with patch.object(settings, "EQUASIS_SCRAPING_ENABLED", True):
             with patch.object(settings, "EQUASIS_USERNAME", "user@example.com"):
@@ -174,10 +177,11 @@ class TestEquasisClientInit:
 # 2. _login()
 # ===========================================================================
 
+
 class TestEquasisLogin:
     def _make_client(self):
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         with patch.object(settings, "EQUASIS_SCRAPING_ENABLED", True):
             with patch.object(settings, "EQUASIS_USERNAME", "u@x.com"):
@@ -198,6 +202,7 @@ class TestEquasisLogin:
             MockSession.return_value = mock_session_instance
 
             from app.config import settings
+
             with patch.object(settings, "EQUASIS_USERNAME", "u@x.com"):
                 with patch.object(settings, "EQUASIS_PASSWORD", "pw"):
                     client._login()
@@ -219,6 +224,7 @@ class TestEquasisLogin:
             MockSession.return_value = mock_session_instance
 
             from app.config import settings
+
             with patch.object(settings, "EQUASIS_USERNAME", "bad@x.com"):
                 with patch.object(settings, "EQUASIS_PASSWORD", "wrong"):
                     with pytest.raises(RuntimeError, match="login failed"):
@@ -229,10 +235,11 @@ class TestEquasisLogin:
 # 3. _get() — lazy login, session-expiry re-login, 401 re-login
 # ===========================================================================
 
+
 class TestEquasisGet:
     def _make_client(self):
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         with patch.object(settings, "EQUASIS_SCRAPING_ENABLED", True):
             with patch.object(settings, "EQUASIS_USERNAME", "u@x.com"):
@@ -250,7 +257,6 @@ class TestEquasisGet:
         )
 
         login_called = []
-        original_login = client._login
 
         def mock_login():
             login_called.append(1)
@@ -268,8 +274,8 @@ class TestEquasisGet:
 
     def test_get_relogin_on_session_expiry(self):
         """_get() re-logins when response URL contains /public/ (session expired)."""
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         # We need to intercept requests.Session at the class level so both the initial
         # login (which creates a new Session()) and the subsequent calls go through our mock.
@@ -327,8 +333,8 @@ class TestEquasisGet:
 
     def test_get_relogin_on_401(self):
         """_get() re-logins when response has status_code=401."""
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         login_post_resp = _make_response(
             "https://www.equasis.org/EquasisWeb/authen/HomePage?fs=HomePage",
@@ -376,11 +382,12 @@ class TestEquasisGet:
 # 4. search_by_imo / search_by_mmsi
 # ===========================================================================
 
+
 class TestEquasisSearch:
     def _make_client_with_session(self, session_mock):
         """Create client with a pre-configured mock session (skips login)."""
-        from app.modules.equasis_client import EquasisClient
         from app.config import settings
+        from app.modules.equasis_client import EquasisClient
 
         with patch.object(settings, "EQUASIS_SCRAPING_ENABLED", True):
             with patch.object(settings, "EQUASIS_USERNAME", "u@x.com"):
@@ -391,7 +398,6 @@ class TestEquasisSearch:
 
     def test_search_by_imo_returns_parsed_dict(self):
         """search_by_imo() returns a populated dict when HTML has recognisable fields."""
-        from app.modules.equasis_client import _parse_vessel_page
 
         html = _make_vessel_html(DWT="65000", **{"Type of ship": "Crude Oil Tanker"})
         resp_mock = _make_response(
@@ -463,6 +469,7 @@ class TestEquasisSearch:
 # ===========================================================================
 # 5. _parse_vessel_page HTML parsing
 # ===========================================================================
+
 
 class TestParseVesselPage:
     """Tests for the module-level _parse_vessel_page() function."""
@@ -573,11 +580,12 @@ class TestParseVesselPage:
 # 6. enrich_vessels_from_equasis (integration with in-memory SQLite)
 # ===========================================================================
 
+
 class TestEnrichVesselsFromEquasis:
     def test_returns_disabled_when_flag_off(self, db):
         """Returns {"disabled": True} when EQUASIS_SCRAPING_ENABLED is False."""
-        from app.modules.vessel_enrichment import enrich_vessels_from_equasis
         from app.config import settings
+        from app.modules.vessel_enrichment import enrich_vessels_from_equasis
 
         with patch.object(settings, "EQUASIS_SCRAPING_ENABLED", False):
             result = enrich_vessels_from_equasis(db, limit=10)
@@ -594,6 +602,7 @@ class TestEnrichVesselsFromEquasis:
         mock_client.search_by_imo.return_value = {"dwt": "65000"}
 
         from app.modules.vessel_enrichment import enrich_vessels_from_equasis
+
         # EquasisClient is imported locally inside enrich_vessels_from_equasis,
         # so we patch it at its definition location.
         with patch("app.modules.equasis_client.EquasisClient", return_value=mock_client):
@@ -613,14 +622,19 @@ class TestEnrichVesselsFromEquasis:
         mock_client.search_by_imo.return_value = {"dwt": "65000"}
 
         from app.modules.vessel_enrichment import enrich_vessels_from_equasis
+
         with patch("app.modules.equasis_client.EquasisClient", return_value=mock_client):
             enrich_vessels_from_equasis(db, limit=10)
 
-        hist = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "deadweight",
-            VesselHistory.source == "equasis_enrichment",
-        ).first()
+        hist = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "deadweight",
+                VesselHistory.source == "equasis_enrichment",
+            )
+            .first()
+        )
         assert hist is not None
         assert hist.new_value == "65000.0"
 
@@ -634,6 +648,7 @@ class TestEnrichVesselsFromEquasis:
         # No mmsi set so no MMSI fallback
 
         from app.modules.vessel_enrichment import enrich_vessels_from_equasis
+
         with patch("app.modules.equasis_client.EquasisClient", return_value=mock_client):
             result = enrich_vessels_from_equasis(db, limit=10)
 
@@ -666,6 +681,7 @@ class TestEnrichVesselsFromEquasis:
         mock_client.search_by_imo.side_effect = record_imo
 
         from app.modules.vessel_enrichment import enrich_vessels_from_equasis
+
         with patch("app.modules.equasis_client.EquasisClient", return_value=mock_client):
             enrich_vessels_from_equasis(db, limit=10)
 
@@ -701,6 +717,7 @@ class TestEnrichVesselsFromEquasis:
         mock_client.search_by_mmsi.return_value = {"flag": "Liberia"}
 
         from app.modules.vessel_enrichment import enrich_vessels_from_equasis
+
         with patch("app.modules.equasis_client.EquasisClient", return_value=mock_client):
             result = enrich_vessels_from_equasis(db, limit=10)
 

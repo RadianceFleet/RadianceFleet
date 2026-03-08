@@ -18,6 +18,7 @@ Features (per 6-hour window):
   9. tx_interval_var       — variance of transmission intervals
   10. deceleration_profile — mean of negative SOG differences
 """
+
 from __future__ import annotations
 
 import datetime
@@ -58,6 +59,7 @@ _DWT_TOLERANCE = 0.30  # +/-30%
 
 
 # ── Pure-Python math helpers ──────────────────────────────────────────────────
+
 
 def _median(values: list[float]) -> float:
     if not values:
@@ -101,6 +103,7 @@ def _heading_diff(h1: float, h2: float) -> float:
 
 
 # ── Matrix helpers (pure-Python, no numpy required) ────────────────────────────
+
 
 def _mat_zeros(n: int, m: int) -> list[list[float]]:
     """Create an n x m zero matrix."""
@@ -183,9 +186,7 @@ def _solve_lower(L: list[list[float]], b: list[float]) -> list[float]:
     return x
 
 
-def _mahalanobis_from_cov(
-    diff: list[float], cov: list[list[float]], is_diagonal: bool
-) -> float:
+def _mahalanobis_from_cov(diff: list[float], cov: list[list[float]], is_diagonal: bool) -> float:
     """Compute Mahalanobis distance given a difference vector and covariance.
 
     d = sqrt(diff^T * Sigma^{-1} * diff)
@@ -208,10 +209,11 @@ def _mahalanobis_from_cov(
         return _mahalanobis_from_cov(diff, cov, True)
 
     y = _solve_lower(L, diff)
-    return math.sqrt(sum(yi ** 2 for yi in y))
+    return math.sqrt(sum(yi**2 for yi in y))
 
 
 # ── Sample covariance computation ──────────────────────────────────────────────
+
 
 def _compute_covariance(
     window_vectors: list[list[float]],
@@ -268,6 +270,7 @@ def _compute_covariance(
 
 # ── Per-window feature extraction ──────────────────────────────────────────────
 
+
 def _extract_window_features(points: list[Any]) -> dict[str, float] | None:
     """Extract 10 features from a list of AIS points in a 6h window.
 
@@ -307,8 +310,7 @@ def _extract_window_features(points: list[Any]) -> dict[str, float] | None:
     heading_diffs = []
     if len(headings) >= 2:
         heading_diffs = [
-            _heading_diff(headings[i], headings[i + 1])
-            for i in range(len(headings) - 1)
+            _heading_diff(headings[i], headings[i + 1]) for i in range(len(headings) - 1)
         ]
 
     # Transmission intervals (seconds)
@@ -316,8 +318,7 @@ def _extract_window_features(points: list[Any]) -> dict[str, float] | None:
     if len(timestamps) >= 2:
         sorted_ts = sorted(timestamps)
         intervals = [
-            (sorted_ts[i + 1] - sorted_ts[i]).total_seconds()
-            for i in range(len(sorted_ts) - 1)
+            (sorted_ts[i + 1] - sorted_ts[i]).total_seconds() for i in range(len(sorted_ts) - 1)
         ]
 
     # Draught range
@@ -341,9 +342,8 @@ def _extract_window_features(points: list[Any]) -> dict[str, float] | None:
 
 # ── Window segmentation ───────────────────────────────────────────────────────
 
-def _segment_into_windows(
-    points: list[Any], window_hours: int = _WINDOW_HOURS
-) -> list[list[Any]]:
+
+def _segment_into_windows(points: list[Any], window_hours: int = _WINDOW_HOURS) -> list[list[Any]]:
     """Segment time-ordered AIS points into fixed-duration windows."""
     if not points:
         return []
@@ -372,9 +372,8 @@ def _segment_into_windows(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def compute_fingerprint(
-    db: Session, vessel_id: int
-) -> Any | None:
+
+def compute_fingerprint(db: Session, vessel_id: int) -> Any | None:
     """Compute and store a behavioral fingerprint for a vessel.
 
     Returns the VesselFingerprint record, or None if insufficient data.
@@ -397,7 +396,9 @@ def compute_fingerprint(
     if len(points) < _MIN_POINTS:
         logger.debug(
             "Vessel %d: only %d active points (need %d), skipping fingerprint",
-            vessel_id, len(points), _MIN_POINTS,
+            vessel_id,
+            len(points),
+            _MIN_POINTS,
         )
         return None
 
@@ -408,7 +409,9 @@ def compute_fingerprint(
     if span_hours < _MIN_SPAN_HOURS:
         logger.debug(
             "Vessel %d: only %.1fh span (need %dh), skipping fingerprint",
-            vessel_id, span_hours, _MIN_SPAN_HOURS,
+            vessel_id,
+            span_hours,
+            _MIN_SPAN_HOURS,
         )
         return None
 
@@ -439,12 +442,8 @@ def compute_fingerprint(
     op_state = "unknown"
 
     # Upsert fingerprint
-    existing = (
-        db.query(VesselFingerprint)
-        .filter(VesselFingerprint.vessel_id == vessel_id)
-        .first()
-    )
-    now = datetime.datetime.now(datetime.timezone.utc)
+    existing = db.query(VesselFingerprint).filter(VesselFingerprint.vessel_id == vessel_id).first()
+    now = datetime.datetime.now(datetime.UTC)
 
     if existing:
         existing.feature_vector_json = final_features
@@ -482,22 +481,16 @@ def mahalanobis_distance(fp1: Any, fp2: Any) -> float:
     diff = [vec1[i] - vec2[i] for i in range(_NUM_FEATURES)]
 
     # d(fp1 -> fp2) uses fp1's covariance
-    d12 = _mahalanobis_from_cov(
-        diff, fp1.covariance_json, fp1.is_diagonal_only
-    )
+    d12 = _mahalanobis_from_cov(diff, fp1.covariance_json, fp1.is_diagonal_only)
 
     # d(fp2 -> fp1) uses fp2's covariance
     diff_rev = [-d for d in diff]
-    d21 = _mahalanobis_from_cov(
-        diff_rev, fp2.covariance_json, fp2.is_diagonal_only
-    )
+    d21 = _mahalanobis_from_cov(diff_rev, fp2.covariance_json, fp2.is_diagonal_only)
 
     return min(d12, d21)
 
 
-def rank_candidates(
-    db: Session, vessel_id: int, limit: int = 20
-) -> list[dict[str, Any]]:
+def rank_candidates(db: Session, vessel_id: int, limit: int = 20) -> list[dict[str, Any]]:
     """Rank candidate vessels by behavioral similarity to a target vessel.
 
     Steps:
@@ -513,11 +506,7 @@ def rank_candidates(
     from app.models.vessel_fingerprint import VesselFingerprint
 
     # Get or compute target fingerprint
-    target_fp = (
-        db.query(VesselFingerprint)
-        .filter(VesselFingerprint.vessel_id == vessel_id)
-        .first()
-    )
+    target_fp = db.query(VesselFingerprint).filter(VesselFingerprint.vessel_id == vessel_id).first()
     if target_fp is None:
         target_fp = compute_fingerprint(db, vessel_id)
     if target_fp is None:
@@ -584,7 +573,7 @@ def rank_candidates(
 
     q1_val = all_distances[q1_idx] if q1_idx < n else float("inf")
     q2_val = all_distances[q2_idx] if q2_idx < n else float("inf")
-    q3_val = all_distances[q3_idx] if q3_idx < n else float("inf")
+    all_distances[q3_idx] if q3_idx < n else float("inf")
 
     results: list[dict[str, Any]] = []
     for vid, dist in top:
@@ -594,18 +583,18 @@ def rank_candidates(
             band = "SIMILAR"
         else:
             band = "DIFFERENT"
-        results.append({
-            "vessel_id": vid,
-            "distance": round(dist, 4),
-            "band": band,
-        })
+        results.append(
+            {
+                "vessel_id": vid,
+                "distance": round(dist, 4),
+                "band": band,
+            }
+        )
 
     return results
 
 
-def fingerprint_merge_bonus(
-    db: Session, vessel_a_id: int, vessel_b_id: int
-) -> int:
+def fingerprint_merge_bonus(db: Session, vessel_a_id: int, vessel_b_id: int) -> int:
     """Compute merge confidence bonus/penalty from fingerprint similarity.
 
     Bottom quartile distance -> +15
@@ -615,16 +604,8 @@ def fingerprint_merge_bonus(
     """
     from app.models.vessel_fingerprint import VesselFingerprint
 
-    fp_a = (
-        db.query(VesselFingerprint)
-        .filter(VesselFingerprint.vessel_id == vessel_a_id)
-        .first()
-    )
-    fp_b = (
-        db.query(VesselFingerprint)
-        .filter(VesselFingerprint.vessel_id == vessel_b_id)
-        .first()
-    )
+    fp_a = db.query(VesselFingerprint).filter(VesselFingerprint.vessel_id == vessel_a_id).first()
+    fp_b = db.query(VesselFingerprint).filter(VesselFingerprint.vessel_id == vessel_b_id).first()
 
     if fp_a is None or fp_b is None:
         return 0
@@ -670,11 +651,7 @@ def run_fingerprint_computation(db: Session) -> dict[str, Any]:
         logger.info("Fingerprint computation disabled (FINGERPRINT_ENABLED=False)")
         return stats
 
-    vessels = (
-        db.query(Vessel)
-        .filter(Vessel.merged_into_vessel_id.is_(None))
-        .all()
-    )
+    vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
 
     for vessel in vessels:
         stats["vessels_processed"] += 1
@@ -696,9 +673,7 @@ def run_fingerprint_computation(db: Session) -> dict[str, Any]:
             else:
                 stats["fingerprints_created"] += 1
         except Exception as exc:
-            logger.warning(
-                "Fingerprint failed for vessel %d: %s", vessel.vessel_id, exc
-            )
+            logger.warning("Fingerprint failed for vessel %d: %s", vessel.vessel_id, exc)
             stats["errors"].append(f"vessel_{vessel.vessel_id}: {exc}")
 
     db.commit()

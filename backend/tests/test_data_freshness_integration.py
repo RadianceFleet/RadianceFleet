@@ -5,15 +5,12 @@ Data freshness is monitored via vessel updated_at timestamps.
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
-
-import pytest
 
 
 # ---------------------------------------------------------------------------
 # Health Endpoint
 # ---------------------------------------------------------------------------
+
 
 class TestHealthEndpoint:
     """GET /api/v1/health returns health info with DB status."""
@@ -43,6 +40,7 @@ class TestHealthEndpoint:
 # Root Health (non-API-v1 health)
 # ---------------------------------------------------------------------------
 
+
 class TestRootHealthEndpoint:
     """GET /health (non-prefixed) returns minimal status."""
 
@@ -60,6 +58,7 @@ class TestRootHealthEndpoint:
 # ---------------------------------------------------------------------------
 # Stats Endpoint — Freshness Proxy
 # ---------------------------------------------------------------------------
+
 
 class TestStatsDataFreshness:
     """GET /api/v1/stats includes alert_counts as freshness proxy."""
@@ -90,6 +89,7 @@ class TestStatsDataFreshness:
 # Ingestion Status — Tracks Data Flow
 # ---------------------------------------------------------------------------
 
+
 class TestIngestionStatus:
     """GET /api/v1/ingestion-status tracks whether data is flowing."""
 
@@ -109,6 +109,7 @@ class TestIngestionStatus:
 # ---------------------------------------------------------------------------
 # Vessel Model — updated_at for Freshness Tracking
 # ---------------------------------------------------------------------------
+
 
 class TestVesselUpdatedAt:
     """Vessel model has updated_at for tracking data freshness."""

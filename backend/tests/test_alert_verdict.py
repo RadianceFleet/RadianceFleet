@@ -1,6 +1,5 @@
 """Tests for POST /alerts/{alert_id}/verdict endpoint."""
-import pytest
-from datetime import datetime, timezone
+
 from unittest.mock import MagicMock
 
 

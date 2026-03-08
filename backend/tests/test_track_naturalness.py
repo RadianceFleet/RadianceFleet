@@ -1,19 +1,16 @@
 """Tests for Phase K: Track Naturalness Detector."""
+
 from __future__ import annotations
 
-import math
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.ais_point import AISPoint
-from app.models.spoofing_anomaly import SpoofingAnomaly
-from app.models.base import SpoofingTypeEnum
 from tests.conftest import make_mock_point
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_point(
     vessel_id: int,
@@ -24,14 +21,18 @@ def _make_point(
 ):
     """Create a mock AISPoint-like object using shared factory."""
     return make_mock_point(
-        vessel_id=vessel_id, lat=lat, lon=lon, ts=ts,
-        sog=sog, ais_point_id=id(object()),
+        vessel_id=vessel_id,
+        lat=lat,
+        lon=lon,
+        ts=ts,
+        sog=sog,
+        ais_point_id=id(object()),
     )
 
 
 def _straight_line_track(vessel_id: int, n: int = 30, sog: float = 12.0):
     """Generate a perfectly straight-line track (synthetic — too smooth)."""
-    base = datetime.now(timezone.utc) - timedelta(hours=24)
+    base = datetime.now(UTC) - timedelta(hours=24)
     points = []
     for i in range(n):
         ts = base + timedelta(minutes=i * 10)
@@ -44,8 +45,9 @@ def _straight_line_track(vessel_id: int, n: int = 30, sog: float = 12.0):
 def _noisy_track(vessel_id: int, n: int = 30, noise_m: float = 150.0):
     """Generate a track with realistic GPS noise and speed variation."""
     import random
+
     random.seed(42)
-    base = datetime.now(timezone.utc) - timedelta(hours=24)
+    base = datetime.now(UTC) - timedelta(hours=24)
     points = []
     for i in range(n):
         ts = base + timedelta(minutes=i * 10)
@@ -59,7 +61,7 @@ def _noisy_track(vessel_id: int, n: int = 30, noise_m: float = 150.0):
 
 def _anchored_track(vessel_id: int, n: int = 30):
     """Generate an anchored vessel track (barely moving — should be skipped)."""
-    base = datetime.now(timezone.utc) - timedelta(hours=24)
+    base = datetime.now(UTC) - timedelta(hours=24)
     points = []
     for i in range(n):
         ts = base + timedelta(minutes=i * 10)
@@ -71,6 +73,7 @@ def _anchored_track(vessel_id: int, n: int = 30):
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def mock_db():
     db = MagicMock()
@@ -81,17 +84,16 @@ def mock_db():
 
 # ── Unit tests: algorithm internals ─────────────────────────────────
 
+
 class TestKalmanResiduals:
     """Test the Kalman filter residual computation."""
 
     def test_straight_line_low_residuals(self):
         """Perfectly straight track should have near-zero residuals."""
         from app.modules.track_naturalness_detector import _kalman_residuals
+
         base_ts = 1000000.0
-        points = [
-            (base_ts + i * 600, 25.0 + i * 0.01, 55.0 + i * 0.01, 10.0)
-            for i in range(20)
-        ]
+        points = [(base_ts + i * 600, 25.0 + i * 0.01, 55.0 + i * 0.01, 10.0) for i in range(20)]
         residuals = _kalman_residuals(points)
         # After warmup, residuals should be very small for a straight line
         valid = residuals[3:]  # skip warmup
@@ -102,8 +104,10 @@ class TestKalmanResiduals:
     def test_noisy_track_higher_residuals(self):
         """Track with noise should have larger residuals."""
         import random
+
         random.seed(42)
         from app.modules.track_naturalness_detector import _kalman_residuals
+
         base_ts = 1000000.0
         points = [
             (
@@ -123,6 +127,7 @@ class TestKalmanResiduals:
     def test_too_few_points(self):
         """Less than 2 points should return empty."""
         from app.modules.track_naturalness_detector import _kalman_residuals
+
         assert _kalman_residuals([(100, 1, 1, 5)]) == []
         assert _kalman_residuals([]) == []
 
@@ -136,11 +141,9 @@ class TestFeatureComputation:
             _compute_features,
             _kalman_residuals,
         )
+
         base_ts = 1000000.0
-        points = [
-            (base_ts + i * 600, 25.0 + i * 0.01, 55.0 + i * 0.01, 10.0)
-            for i in range(20)
-        ]
+        points = [(base_ts + i * 600, 25.0 + i * 0.01, 55.0 + i * 0.01, 10.0) for i in range(20)]
         residuals = _kalman_residuals(points)
         features = _compute_features(points, residuals)
 
@@ -159,11 +162,9 @@ class TestFeatureComputation:
             _compute_features,
             _kalman_residuals,
         )
+
         base_ts = 1000000.0
-        points = [
-            (base_ts + i * 600, 25.0 + i * 0.01, 55.0 + i * 0.01, 10.0)
-            for i in range(20)
-        ]
+        points = [(base_ts + i * 600, 25.0 + i * 0.01, 55.0 + i * 0.01, 10.0) for i in range(20)]
         residuals = _kalman_residuals(points)
         features = _compute_features(points, residuals)
 
@@ -177,28 +178,31 @@ class TestBoundsChecking:
 
     def test_all_inside_returns_zero(self):
         from app.modules.track_naturalness_detector import _count_outside_bounds
+
         features = {
-            "mean_abs_residual_m": 100.0,    # above 20 -> inside
-            "residual_std_m": 50.0,          # above 15 -> inside
-            "speed_autocorr_lag1": 0.3,      # above 0.05 -> inside
-            "heading_entropy_bits": 3.0,     # 1.5-4.5 -> inside
-            "course_kurtosis": 5.0,          # above 3.5 -> inside
+            "mean_abs_residual_m": 100.0,  # above 20 -> inside
+            "residual_std_m": 50.0,  # above 15 -> inside
+            "speed_autocorr_lag1": 0.3,  # above 0.05 -> inside
+            "heading_entropy_bits": 3.0,  # 1.5-4.5 -> inside
+            "course_kurtosis": 5.0,  # above 3.5 -> inside
         }
         assert _count_outside_bounds(features) == 0
 
     def test_synthetic_features_flagged(self):
         from app.modules.track_naturalness_detector import _count_outside_bounds
+
         features = {
-            "mean_abs_residual_m": 5.0,      # below 20 -> OUTSIDE
-            "residual_std_m": 3.0,           # below 15 -> OUTSIDE
-            "speed_autocorr_lag1": 0.01,     # below 0.05 -> OUTSIDE
-            "heading_entropy_bits": 0.5,     # below 1.5 -> OUTSIDE
-            "course_kurtosis": 2.0,          # below 3.5 -> OUTSIDE
+            "mean_abs_residual_m": 5.0,  # below 20 -> OUTSIDE
+            "residual_std_m": 3.0,  # below 15 -> OUTSIDE
+            "speed_autocorr_lag1": 0.01,  # below 0.05 -> OUTSIDE
+            "heading_entropy_bits": 0.5,  # below 1.5 -> OUTSIDE
+            "course_kurtosis": 2.0,  # below 3.5 -> OUTSIDE
         }
         assert _count_outside_bounds(features) == 5
 
     def test_none_features_skipped(self):
         from app.modules.track_naturalness_detector import _count_outside_bounds
+
         features = {
             "mean_abs_residual_m": None,
             "residual_std_m": None,
@@ -210,17 +214,19 @@ class TestBoundsChecking:
 
     def test_three_outside_flags(self):
         from app.modules.track_naturalness_detector import _count_outside_bounds
+
         features = {
-            "mean_abs_residual_m": 5.0,      # OUTSIDE
-            "residual_std_m": 3.0,           # OUTSIDE
-            "speed_autocorr_lag1": 0.01,     # OUTSIDE
-            "heading_entropy_bits": 3.0,     # inside
-            "course_kurtosis": 5.0,          # inside
+            "mean_abs_residual_m": 5.0,  # OUTSIDE
+            "residual_std_m": 3.0,  # OUTSIDE
+            "speed_autocorr_lag1": 0.01,  # OUTSIDE
+            "heading_entropy_bits": 3.0,  # inside
+            "course_kurtosis": 5.0,  # inside
         }
         assert _count_outside_bounds(features) == 3
 
 
 # ── Integration tests: full detector ─────────────────────────────────
+
 
 class TestDetectorDisabled:
     """Feature flag off -> no-op."""
@@ -229,6 +235,7 @@ class TestDetectorDisabled:
     def test_disabled_returns_status(self, mock_settings, mock_db):
         mock_settings.TRACK_NATURALNESS_ENABLED = False
         from app.modules.track_naturalness_detector import run_track_naturalness_detection
+
         result = run_track_naturalness_detection(mock_db)
         assert result == {"status": "disabled"}
         mock_db.query.assert_not_called()
@@ -265,6 +272,7 @@ class TestDetectorStraightLine:
 
         # Track call count to return different queries
         call_count = [0]
+
         def side_effect(model_or_cols, *args):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -277,6 +285,7 @@ class TestDetectorStraightLine:
         mock_db.query.side_effect = side_effect
 
         from app.modules.track_naturalness_detector import run_track_naturalness_detection
+
         result = run_track_naturalness_detection(mock_db)
 
         assert result["status"] == "ok"
@@ -307,6 +316,7 @@ class TestDetectorAnchored:
         points_query.all.return_value = points
 
         call_count = [0]
+
         def side_effect(model_or_cols, *args):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -317,6 +327,7 @@ class TestDetectorAnchored:
         mock_db.query.side_effect = side_effect
 
         from app.modules.track_naturalness_detector import run_track_naturalness_detection
+
         result = run_track_naturalness_detection(mock_db)
 
         assert result["status"] == "ok"
@@ -348,6 +359,7 @@ class TestDetectorShortTrack:
         points_query.all.return_value = points
 
         call_count = [0]
+
         def side_effect(model_or_cols, *args):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -358,6 +370,7 @@ class TestDetectorShortTrack:
         mock_db.query.side_effect = side_effect
 
         from app.modules.track_naturalness_detector import run_track_naturalness_detection
+
         result = run_track_naturalness_detection(mock_db)
 
         assert result["status"] == "ok"
@@ -382,6 +395,7 @@ class TestDetectorNoVessels:
         mock_db.query.return_value = vessel_query
 
         from app.modules.track_naturalness_detector import run_track_naturalness_detection
+
         result = run_track_naturalness_detection(mock_db)
 
         assert result == {
@@ -409,7 +423,8 @@ class TestDetectorBatchLimit:
         mock_db.query.return_value = vessel_query
 
         from app.modules.track_naturalness_detector import run_track_naturalness_detection
-        result = run_track_naturalness_detection(mock_db)
+
+        run_track_naturalness_detection(mock_db)
 
         # Verify limit was called on the vessel query
         vessel_query.limit.assert_called_once_with(500)
@@ -423,7 +438,7 @@ class TestDetectorDedup:
         mock_settings.TRACK_NATURALNESS_ENABLED = True
 
         # Use a track with very predictable synthetic features
-        base = datetime.now(timezone.utc) - timedelta(hours=24)
+        base = datetime.now(UTC) - timedelta(hours=24)
         points = []
         for i in range(30):
             ts = base + timedelta(minutes=i * 10)
@@ -449,6 +464,7 @@ class TestDetectorDedup:
         dedup_query.first.return_value = existing
 
         call_count = [0]
+
         def side_effect(model_or_cols, *args):
             call_count[0] += 1
             if call_count[0] == 1:
@@ -461,6 +477,7 @@ class TestDetectorDedup:
         mock_db.query.side_effect = side_effect
 
         from app.modules.track_naturalness_detector import run_track_naturalness_detection
+
         result = run_track_naturalness_detection(mock_db)
 
         # Even if track would be flagged, dedup prevents db.add
@@ -472,13 +489,15 @@ class TestDetectorScoring:
     """Scoring tiers should match feature count."""
 
     def test_score_high_5_of_5(self):
-        from app.modules.track_naturalness_detector import SCORE_HIGH, SCORE_MEDIUM, SCORE_LOW
+        from app.modules.track_naturalness_detector import SCORE_HIGH, SCORE_LOW, SCORE_MEDIUM
+
         assert SCORE_HIGH == 45
         assert SCORE_MEDIUM == 35
         assert SCORE_LOW == 25
 
     def test_score_tiers_ordered(self):
-        from app.modules.track_naturalness_detector import SCORE_HIGH, SCORE_MEDIUM, SCORE_LOW
+        from app.modules.track_naturalness_detector import SCORE_HIGH, SCORE_LOW, SCORE_MEDIUM
+
         assert SCORE_HIGH > SCORE_MEDIUM > SCORE_LOW
 
 
@@ -487,10 +506,12 @@ class TestHaversine:
 
     def test_same_point_zero(self):
         from app.modules.track_naturalness_detector import _haversine_m
+
         assert _haversine_m(25.0, 55.0, 25.0, 55.0) == 0.0
 
     def test_known_distance(self):
         from app.modules.track_naturalness_detector import _haversine_m
+
         # ~111 km per degree of latitude
         d = _haversine_m(0.0, 0.0, 1.0, 0.0)
         assert 110_000 < d < 112_000

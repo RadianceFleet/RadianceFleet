@@ -1,6 +1,5 @@
 import hmac
 import logging
-import sys
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import FileResponse
 from starlette.staticfiles import StaticFiles
+
 from app.api.routes import router
 from app.config import settings
 from app.logging_config import setup_logging
@@ -71,13 +71,24 @@ async def lifespan(app: FastAPI):
     else:
         with open(config_path) as f:
             config = yaml.safe_load(f) or {}
-        required_sections = ["gap_duration", "spoofing", "metadata", "legitimacy", "dark_zone", "corridor"]
+        required_sections = [
+            "gap_duration",
+            "spoofing",
+            "metadata",
+            "legitimacy",
+            "dark_zone",
+            "corridor",
+        ]
         for section in required_sections:
             if section not in config:
-                logger.warning("Missing config section '%s' in risk_scoring.yaml — scoring may use defaults", section)
+                logger.warning(
+                    "Missing config section '%s' in risk_scoring.yaml — scoring may use defaults",
+                    section,
+                )
 
     # Create tables if they don't exist (essential for fresh deployments)
     from app.database import init_db
+
     init_db()
     logger.info("Database tables verified")
 
@@ -116,7 +127,10 @@ app = FastAPI(
     openapi_tags=[
         {"name": "alerts", "description": "AIS gap alerts, scoring, and triage"},
         {"name": "vessels", "description": "Vessel search, detail, and ownership"},
-        {"name": "detection", "description": "Gap, spoofing, loitering, STS detection triggers and results"},
+        {
+            "name": "detection",
+            "description": "Gap, spoofing, loitering, STS detection triggers and results",
+        },
         {"name": "corridors", "description": "Corridor management and activity analysis"},
         {"name": "fleet", "description": "Fleet-level owner clusters and alerts"},
         {"name": "merge", "description": "Merge candidates and identity resolution"},
@@ -171,8 +185,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         if settings.RADIANCEFLEET_API_KEY is not None:
-            # Allow health check and OpenAPI docs without auth
-            if request.url.path not in ("/health", "/docs", "/openapi.json", "/redoc"):
+            path = request.url.path
+            # Only require API key for /api/* endpoints.
+            # Exempt: SPA frontend, static assets, health, docs, metrics.
+            if path.startswith("/api/"):
                 api_key = request.headers.get("X-API-Key")
                 if not hmac.compare_digest(api_key or "", settings.RADIANCEFLEET_API_KEY):
                     return JSONResponse(
@@ -217,6 +233,7 @@ def health() -> dict:
 
 # ── Structured error handlers ─────────────────────────────────────────────────
 
+
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     return JSONResponse(status_code=422, content={"error": "Validation error", "detail": str(exc)})
@@ -225,13 +242,24 @@ async def value_error_handler(request: Request, exc: ValueError):
 @app.exception_handler(IntegrityError)
 async def integrity_error_handler(request: Request, exc: IntegrityError):
     logger.warning("IntegrityError on %s %s: %s", request.method, request.url.path, exc.orig)
-    return JSONResponse(status_code=409, content={"error": "Conflict", "detail": "Conflict: the record may already exist"})
+    return JSONResponse(
+        status_code=409,
+        content={"error": "Conflict", "detail": "Conflict: the record may already exist"},
+    )
 
 
 @app.exception_handler(Exception)
 async def general_error_handler(request: Request, exc: Exception):
-    logger.error("Unhandled exception on %s %s:\n%s", request.method, request.url.path, traceback.format_exc())
-    return JSONResponse(status_code=500, content={"error": "Internal server error", "detail": "An unexpected error occurred."})
+    logger.error(
+        "Unhandled exception on %s %s:\n%s",
+        request.method,
+        request.url.path,
+        traceback.format_exc(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "detail": "An unexpected error occurred."},
+    )
 
 
 # ── Static files + SPA fallback ──────────────────────────────────────────────

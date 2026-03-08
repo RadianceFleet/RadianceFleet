@@ -12,6 +12,7 @@ Baltic/North Sea routes constantly cross EEZ boundaries. This signal MUST only
 fire when the gap vessel is already flagged as high-risk AND gap_duration ≥4h.
 Without this guard, ferry routes and supply vessels generate 85-90% false positives.
 """
+
 from __future__ import annotations
 
 import math
@@ -59,6 +60,7 @@ EEZ_BOUNDARY_LINES: list[tuple[str, list[tuple[float, float]]]] = [
 def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Re-export of :func:`app.utils.geo.haversine_nm`."""
     from app.utils.geo import haversine_nm
+
     return haversine_nm(lat1, lon1, lat2, lon2)
 
 
@@ -117,7 +119,7 @@ def distance_to_nearest_eez_boundary_nm(lat: float, lon: float) -> tuple[float, 
 
     for name, points in EEZ_BOUNDARY_LINES:
         for i in range(len(points) - 1):
-            ay, ax = points[i]       # segment start (lat, lon)
+            ay, ax = points[i]  # segment start (lat, lon)
             by, bx = points[i + 1]  # segment end (lat, lon)
             d = _point_to_segment_distance_nm(lon, lat, ax, ay, bx, by)
             if d < min_dist:

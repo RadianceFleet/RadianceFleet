@@ -12,8 +12,8 @@ Verifies that:
 
 Uses in-memory SQLite with real ORM models.
 """
+
 import csv
-import io
 import json
 import os
 import tempfile
@@ -26,21 +26,20 @@ from sqlalchemy.orm import sessionmaker
 from app.models import Base  # noqa: F401 -- registers all models
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
-from app.models.vessel_watchlist import VesselWatchlist
+from app.modules.ingest import _track_field_change
 from app.modules.watchlist_loader import (
-    load_ofac_sdn,
-    load_kse_list,
-    load_opensanctions,
     load_fleetleaks,
     load_gur_list,
+    load_kse_list,
+    load_ofac_sdn,
+    load_opensanctions,
 )
-from app.modules.ingest import _track_field_change
 from app.utils.vessel_identity import validate_imo_checksum
-
 
 # ---------------------------------------------------------------------------
 # Shared fixture: in-memory SQLite session
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db():
@@ -64,6 +63,7 @@ def db():
 # Helper: create vessel
 # ---------------------------------------------------------------------------
 
+
 def _make_vessel(db, mmsi="211456789", name="TEST VESSEL", **kwargs):
     v = Vessel(mmsi=mmsi, name=name, **kwargs)
     db.add(v)
@@ -75,15 +75,29 @@ def _make_vessel(db, mmsi="211456789", name="TEST VESSEL", **kwargs):
 # Helper: write temp CSV for OFAC
 # ---------------------------------------------------------------------------
 
+
 def _write_ofac_csv(rows):
     """Write OFAC SDN CSV with header row. Returns path to temp file."""
     fd, path = tempfile.mkstemp(suffix=".csv")
     with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=[
-            "ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-            "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-            "Vess_owner", "REMARKS", "VESSEL_ID",
-        ])
+        writer = csv.DictWriter(
+            fh,
+            fieldnames=[
+                "ent_num",
+                "SDN_NAME",
+                "SDN_TYPE",
+                "Program",
+                "Title",
+                "Call_Sign",
+                "Vess_type",
+                "Tonnage",
+                "GRT",
+                "Vess_flag",
+                "Vess_owner",
+                "REMARKS",
+                "VESSEL_ID",
+            ],
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -144,6 +158,7 @@ ZERO_IMO = "0000000"
 # OFAC backfill tests
 # ===========================================================================
 
+
 class TestOfacBackfill:
     """OFAC loader identity backfill tests."""
 
@@ -153,16 +168,25 @@ class TestOfacBackfill:
         assert vessel.imo is None
 
         # OFAC loader reads MMSI and IMO from the REMARKS field via regex patterns
-        path = _write_ofac_csv([{
-            "ent_num": "1",
-            "SDN_NAME": "SHADOW TANKER",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "",
-            "Call_Sign": "",
-            "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": f"MMSI 211456789; IMO {VALID_IMO}; Sanctioned tanker",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": "1",
+                    "SDN_NAME": "SHADOW TANKER",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "",
+                    "Call_Sign": "",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": f"MMSI 211456789; IMO {VALID_IMO}; Sanctioned tanker",
+                }
+            ]
+        )
         try:
             result = load_ofac_sdn(db, path)
         finally:
@@ -174,11 +198,15 @@ class TestOfacBackfill:
         assert vessel.imo == VALID_IMO
 
         # VesselHistory provenance should exist
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "watchlist_backfill:ofac",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "watchlist_backfill:ofac",
+            )
+            .all()
+        )
         assert len(history) == 1
         assert history[0].old_value == ""
         assert history[0].new_value == VALID_IMO
@@ -187,16 +215,25 @@ class TestOfacBackfill:
         """Re-running on same vessel does NOT create duplicate provenance."""
         vessel = _make_vessel(db, mmsi="211456789", name="SHADOW TANKER")
 
-        path = _write_ofac_csv([{
-            "ent_num": "1",
-            "SDN_NAME": "SHADOW TANKER",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "",
-            "Call_Sign": "UBCD",
-            "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": f"MMSI 211456789; IMO {VALID_IMO}; Sanctioned tanker",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": "1",
+                    "SDN_NAME": "SHADOW TANKER",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "",
+                    "Call_Sign": "UBCD",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": f"MMSI 211456789; IMO {VALID_IMO}; Sanctioned tanker",
+                }
+            ]
+        )
         try:
             load_ofac_sdn(db, path)
             # Run again -- vessel now has IMO, so backfill won't fire (fill-if-empty)
@@ -206,18 +243,26 @@ class TestOfacBackfill:
             os.unlink(path)
 
         # Only 1 IMO history + 1 callsign history entry
-        imo_history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "watchlist_backfill:ofac",
-        ).all()
+        imo_history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "watchlist_backfill:ofac",
+            )
+            .all()
+        )
         assert len(imo_history) == 1
 
-        callsign_history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "callsign",
-            VesselHistory.source == "watchlist_backfill:ofac",
-        ).all()
+        callsign_history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "callsign",
+                VesselHistory.source == "watchlist_backfill:ofac",
+            )
+            .all()
+        )
         assert len(callsign_history) == 1
 
     def test_fuzzy_name_match_does_not_backfill(self, db):
@@ -226,16 +271,25 @@ class TestOfacBackfill:
 
         # No VESSEL_ID (MMSI) and ent_num won't match any vessel IMO
         # The vessel will be matched by fuzzy name only
-        path = _write_ofac_csv([{
-            "ent_num": VALID_IMO,
-            "SDN_NAME": "SHADOW TANKER",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "",  # No MMSI -> forces fuzzy name match
-            "Call_Sign": "UBCD",
-            "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "Sanctioned",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": VALID_IMO,
+                    "SDN_NAME": "SHADOW TANKER",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "",  # No MMSI -> forces fuzzy name match
+                    "Call_Sign": "UBCD",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "Sanctioned",
+                }
+            ]
+        )
         try:
             result = load_ofac_sdn(db, path)
         finally:
@@ -246,10 +300,14 @@ class TestOfacBackfill:
         # IMO should NOT be backfilled for fuzzy matches
         assert vessel.imo is None
         # No VesselHistory
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "watchlist_backfill:ofac",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "watchlist_backfill:ofac",
+            )
+            .all()
+        )
         assert len(history) == 0
 
     def test_zero_imo_rejected(self, db):
@@ -257,16 +315,25 @@ class TestOfacBackfill:
         assert validate_imo_checksum(ZERO_IMO) is False
 
         vessel = _make_vessel(db, mmsi="211456789", name="SHADOW TANKER")
-        path = _write_ofac_csv([{
-            "ent_num": ZERO_IMO,
-            "SDN_NAME": "SHADOW TANKER",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "211456789",
-            "Call_Sign": "",
-            "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "Sanctioned",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": ZERO_IMO,
+                    "SDN_NAME": "SHADOW TANKER",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "211456789",
+                    "Call_Sign": "",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "Sanctioned",
+                }
+            ]
+        )
         try:
             load_ofac_sdn(db, path)
         finally:
@@ -280,16 +347,25 @@ class TestOfacBackfill:
         assert validate_imo_checksum(INVALID_IMO_CHECKSUM) is False
 
         vessel = _make_vessel(db, mmsi="211456789", name="SHADOW TANKER")
-        path = _write_ofac_csv([{
-            "ent_num": INVALID_IMO_CHECKSUM,
-            "SDN_NAME": "SHADOW TANKER",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "211456789",
-            "Call_Sign": "",
-            "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "Sanctioned",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": INVALID_IMO_CHECKSUM,
+                    "SDN_NAME": "SHADOW TANKER",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "211456789",
+                    "Call_Sign": "",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "Sanctioned",
+                }
+            ]
+        )
         try:
             load_ofac_sdn(db, path)
         finally:
@@ -304,16 +380,25 @@ class TestOfacBackfill:
         # 9999999 checksum: 9*7+9*6+9*5+9*4+9*3+9*2 = 63+54+45+36+27+18 = 243 -> 243%10=3, not 9
         # Doesn't matter -- we just need it to be non-empty
 
-        path = _write_ofac_csv([{
-            "ent_num": VALID_IMO,
-            "SDN_NAME": "SHADOW TANKER",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "211456789",
-            "Call_Sign": "",
-            "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "Sanctioned",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": VALID_IMO,
+                    "SDN_NAME": "SHADOW TANKER",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "211456789",
+                    "Call_Sign": "",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "Sanctioned",
+                }
+            ]
+        )
         try:
             load_ofac_sdn(db, path)
         finally:
@@ -328,16 +413,25 @@ class TestOfacBackfill:
         assert vessel.callsign is None
 
         # MMSI in REMARKS for exact_mmsi match; callsign from Call_Sign column
-        path = _write_ofac_csv([{
-            "ent_num": "1",
-            "SDN_NAME": "SHADOW TANKER",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "",
-            "Call_Sign": "UBCD5",
-            "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "MMSI 211456789; Sanctioned tanker",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": "1",
+                    "SDN_NAME": "SHADOW TANKER",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "",
+                    "Call_Sign": "UBCD5",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "MMSI 211456789; Sanctioned tanker",
+                }
+            ]
+        )
         try:
             load_ofac_sdn(db, path)
         finally:
@@ -347,11 +441,15 @@ class TestOfacBackfill:
         assert vessel.callsign == "UBCD5"
 
         # VesselHistory for callsign
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "callsign",
-            VesselHistory.source == "watchlist_backfill:ofac",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "callsign",
+                VesselHistory.source == "watchlist_backfill:ofac",
+            )
+            .all()
+        )
         assert len(history) == 1
         assert history[0].new_value == "UBCD5"
 
@@ -359,6 +457,7 @@ class TestOfacBackfill:
 # ===========================================================================
 # KSE backfill tests
 # ===========================================================================
+
 
 class TestKseBackfill:
     """KSE loader identity backfill tests."""
@@ -368,12 +467,16 @@ class TestKseBackfill:
         vessel = _make_vessel(db, mmsi="211456789", name="DARK TRADER")
         assert vessel.imo is None
 
-        path = _write_kse_csv([{
-            "vessel_name": "DARK TRADER",
-            "flag": "RU",
-            "imo": VALID_IMO,
-            "mmsi": "211456789",
-        }])
+        path = _write_kse_csv(
+            [
+                {
+                    "vessel_name": "DARK TRADER",
+                    "flag": "RU",
+                    "imo": VALID_IMO,
+                    "mmsi": "211456789",
+                }
+            ]
+        )
         try:
             result = load_kse_list(db, path)
         finally:
@@ -383,23 +486,31 @@ class TestKseBackfill:
         db.refresh(vessel)
         assert vessel.imo == VALID_IMO
 
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "watchlist_backfill:kse",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "watchlist_backfill:kse",
+            )
+            .all()
+        )
         assert len(history) == 1
 
     def test_kse_invalid_imo_not_backfilled(self, db):
         """KSE: invalid checksum IMO is not backfilled."""
         vessel = _make_vessel(db, mmsi="211456789", name="DARK TRADER")
 
-        path = _write_kse_csv([{
-            "vessel_name": "DARK TRADER",
-            "flag": "RU",
-            "imo": INVALID_IMO_CHECKSUM,
-            "mmsi": "211456789",
-        }])
+        path = _write_kse_csv(
+            [
+                {
+                    "vessel_name": "DARK TRADER",
+                    "flag": "RU",
+                    "imo": INVALID_IMO_CHECKSUM,
+                    "mmsi": "211456789",
+                }
+            ]
+        )
         try:
             load_kse_list(db, path)
         finally:
@@ -413,6 +524,7 @@ class TestKseBackfill:
 # OpenSanctions backfill tests
 # ===========================================================================
 
+
 class TestOpenSanctionsBackfill:
     """OpenSanctions loader identity backfill tests."""
 
@@ -421,17 +533,19 @@ class TestOpenSanctionsBackfill:
         vessel = _make_vessel(db, mmsi="211456789", name="SANCTIONED CARRIER")
         assert vessel.imo is None
 
-        entities = [{
-            "schema": "Vessel",
-            "caption": "SANCTIONED CARRIER",
-            "properties": {
-                "name": "SANCTIONED CARRIER",
-                "mmsi": "211456789",
-                "imoNumber": VALID_IMO,
-                "flag": "RU",
-            },
-            "datasets": ["us_ofac_sdn"],
-        }]
+        entities = [
+            {
+                "schema": "Vessel",
+                "caption": "SANCTIONED CARRIER",
+                "properties": {
+                    "name": "SANCTIONED CARRIER",
+                    "mmsi": "211456789",
+                    "imoNumber": VALID_IMO,
+                    "flag": "RU",
+                },
+                "datasets": ["us_ofac_sdn"],
+            }
+        ]
         path = _write_opensanctions_json(entities)
         try:
             result = load_opensanctions(db, path)
@@ -442,28 +556,34 @@ class TestOpenSanctionsBackfill:
         db.refresh(vessel)
         assert vessel.imo == VALID_IMO
 
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "watchlist_backfill:opensanctions",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "watchlist_backfill:opensanctions",
+            )
+            .all()
+        )
         assert len(history) == 1
 
     def test_opensanctions_fuzzy_match_no_backfill(self, db):
         """OpenSanctions: fuzzy name match does not backfill IMO."""
         vessel = _make_vessel(db, mmsi="211456789", name="SANCTIONED CARRIER")
 
-        entities = [{
-            "schema": "Vessel",
-            "caption": "SANCTIONED CARRIER",
-            "properties": {
-                "name": "SANCTIONED CARRIER",
-                # No MMSI, no IMO in DB -> fuzzy match
-                "imoNumber": VALID_IMO,
-                "flag": "RU",
-            },
-            "datasets": ["opensanctions"],
-        }]
+        entities = [
+            {
+                "schema": "Vessel",
+                "caption": "SANCTIONED CARRIER",
+                "properties": {
+                    "name": "SANCTIONED CARRIER",
+                    # No MMSI, no IMO in DB -> fuzzy match
+                    "imoNumber": VALID_IMO,
+                    "flag": "RU",
+                },
+                "datasets": ["opensanctions"],
+            }
+        ]
         path = _write_opensanctions_json(entities)
         try:
             load_opensanctions(db, path)
@@ -478,6 +598,7 @@ class TestOpenSanctionsBackfill:
 # FleetLeaks backfill tests
 # ===========================================================================
 
+
 class TestFleetLeaksBackfill:
     """FleetLeaks loader identity backfill tests."""
 
@@ -486,12 +607,14 @@ class TestFleetLeaksBackfill:
         vessel = _make_vessel(db, mmsi="211456789", name="LEAKED VESSEL")
         assert vessel.imo is None
 
-        data = [{
-            "name": "LEAKED VESSEL",
-            "mmsi": "211456789",
-            "imo": VALID_IMO,
-            "flag": "RU",
-        }]
+        data = [
+            {
+                "name": "LEAKED VESSEL",
+                "mmsi": "211456789",
+                "imo": VALID_IMO,
+                "flag": "RU",
+            }
+        ]
         path = _write_fleetleaks_json(data)
         try:
             result = load_fleetleaks(db, path)
@@ -502,23 +625,29 @@ class TestFleetLeaksBackfill:
         db.refresh(vessel)
         assert vessel.imo == VALID_IMO
 
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "watchlist_backfill:fleetleaks",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "watchlist_backfill:fleetleaks",
+            )
+            .all()
+        )
         assert len(history) == 1
 
     def test_fleetleaks_existing_imo_not_overwritten(self, db):
         """FleetLeaks: existing IMO never overwritten."""
         vessel = _make_vessel(db, mmsi="211456789", name="LEAKED VESSEL", imo="7654321")
 
-        data = [{
-            "name": "LEAKED VESSEL",
-            "mmsi": "211456789",
-            "imo": VALID_IMO,
-            "flag": "RU",
-        }]
+        data = [
+            {
+                "name": "LEAKED VESSEL",
+                "mmsi": "211456789",
+                "imo": VALID_IMO,
+                "flag": "RU",
+            }
+        ]
         path = _write_fleetleaks_json(data)
         try:
             load_fleetleaks(db, path)
@@ -533,6 +662,7 @@ class TestFleetLeaksBackfill:
 # GUR backfill tests
 # ===========================================================================
 
+
 class TestGurBackfill:
     """GUR loader identity backfill tests."""
 
@@ -541,12 +671,16 @@ class TestGurBackfill:
         vessel = _make_vessel(db, mmsi="211456789", name="SHADOW FLEET TANKER")
         assert vessel.imo is None
 
-        path = _write_gur_csv([{
-            "name": "SHADOW FLEET TANKER",
-            "flag": "RU",
-            "imo": VALID_IMO,
-            "mmsi": "211456789",
-        }])
+        path = _write_gur_csv(
+            [
+                {
+                    "name": "SHADOW FLEET TANKER",
+                    "flag": "RU",
+                    "imo": VALID_IMO,
+                    "mmsi": "211456789",
+                }
+            ]
+        )
         try:
             result = load_gur_list(db, path)
         finally:
@@ -556,23 +690,31 @@ class TestGurBackfill:
         db.refresh(vessel)
         assert vessel.imo == VALID_IMO
 
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "watchlist_backfill:gur",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "watchlist_backfill:gur",
+            )
+            .all()
+        )
         assert len(history) == 1
 
     def test_gur_fuzzy_match_no_backfill(self, db):
         """GUR: fuzzy name match does not backfill."""
         vessel = _make_vessel(db, mmsi="211456789", name="SHADOW FLEET TANKER")
 
-        path = _write_gur_csv([{
-            "name": "SHADOW FLEET TANKER",
-            "flag": "",
-            "imo": VALID_IMO,
-            "mmsi": "",  # No MMSI -> fuzzy name match
-        }])
+        path = _write_gur_csv(
+            [
+                {
+                    "name": "SHADOW FLEET TANKER",
+                    "flag": "",
+                    "imo": VALID_IMO,
+                    "mmsi": "",  # No MMSI -> fuzzy name match
+                }
+            ]
+        )
         try:
             load_gur_list(db, path)
         finally:
@@ -586,6 +728,7 @@ class TestGurBackfill:
 # DMA history tracking tests (via _track_field_change)
 # ===========================================================================
 
+
 class TestDmaHistoryTracking:
     """DMA identity change creates VesselHistory; initial population does not."""
 
@@ -597,9 +740,11 @@ class TestDmaHistoryTracking:
         # Need an AIS point for _track_field_change internal logic
         pt = AISPoint(
             vessel_id=vessel.vessel_id,
-            lat=55.0, lon=10.0,
+            lat=55.0,
+            lon=10.0,
             timestamp_utc=datetime.utcnow() - timedelta(hours=2),
-            sog=5.0, cog=90.0,
+            sog=5.0,
+            cog=90.0,
         )
         db.add(pt)
         db.flush()
@@ -608,11 +753,15 @@ class TestDmaHistoryTracking:
         _track_field_change(db, vessel, "imo", "1234567", "7654321", ts, "dma")
         db.flush()
 
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "dma",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "dma",
+            )
+            .all()
+        )
         assert len(history) == 1
         assert history[0].old_value == "1234567"
         assert history[0].new_value == "7654321"
@@ -626,17 +775,22 @@ class TestDmaHistoryTracking:
         _track_field_change(db, vessel, "imo", None, "1234567", ts, "dma")
         db.flush()
 
-        history = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "dma",
-        ).all()
+        history = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "dma",
+            )
+            .all()
+        )
         assert len(history) == 0
 
 
 # ===========================================================================
 # validate_imo_checksum unit tests
 # ===========================================================================
+
 
 class TestValidateImoChecksum:
     """Unit tests for the IMO checksum validator."""

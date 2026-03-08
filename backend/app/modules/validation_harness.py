@@ -4,6 +4,7 @@ Ground truth sources (KSE shadow fleet list, OFAC SDN) are *proxy* labels,
 not a gold-standard maritime anomaly benchmark.  Results should be interpreted
 as directional guidance for tuning, not as absolute accuracy metrics.
 """
+
 from __future__ import annotations
 
 import json
@@ -54,18 +55,10 @@ def _pr_auc(precisions: list[float], recalls: list[float]) -> float:
 
 def _gather_vessel_scores(db: Session) -> list[dict]:
     """Fetch ground truth vessels with their 75th-percentile gap scores."""
-    gt_records = (
-        db.query(GroundTruthVessel)
-        .filter(GroundTruthVessel.vessel_id.isnot(None))
-        .all()
-    )
+    gt_records = db.query(GroundTruthVessel).filter(GroundTruthVessel.vessel_id.isnot(None)).all()
     results = []
     for gt in gt_records:
-        gaps = (
-            db.query(AISGapEvent)
-            .filter(AISGapEvent.vessel_id == gt.vessel_id)
-            .all()
-        )
+        gaps = db.query(AISGapEvent).filter(AISGapEvent.vessel_id == gt.vessel_id).all()
         if not gaps:
             logger.warning(
                 "Ground truth vessel %s (vessel_id=%s) has no gap events — skipping",
@@ -89,20 +82,22 @@ def _gather_vessel_scores(db: Session) -> list[dict]:
             if isinstance(bd, dict):
                 breakdown_keys.update(bd.keys())
 
-        results.append({
-            "vessel_id": gt.vessel_id,
-            "vessel_name": gt.vessel_name,
-            "imo": gt.imo,
-            "source": gt.source,
-            "expected_band": gt.expected_band,
-            "is_shadow_fleet": gt.is_shadow_fleet,
-            "p75_score": p75,
-            "predicted_band": _score_band(int(p75)),
-            "breakdown_keys": breakdown_keys,
-            "gap_count": len(gaps),
-            "score_mean": sum(scores) / len(scores),
-            "score_max": max(scores),
-        })
+        results.append(
+            {
+                "vessel_id": gt.vessel_id,
+                "vessel_name": gt.vessel_name,
+                "imo": gt.imo,
+                "source": gt.source,
+                "expected_band": gt.expected_band,
+                "is_shadow_fleet": gt.is_shadow_fleet,
+                "p75_score": p75,
+                "predicted_band": _score_band(int(p75)),
+                "breakdown_keys": breakdown_keys,
+                "gap_count": len(gaps),
+                "score_mean": sum(scores) / len(scores),
+                "score_max": max(scores),
+            }
+        )
     return results
 
 
@@ -121,7 +116,9 @@ def run_validation(db: Session, threshold_band: str = "high") -> dict:
     threshold_rank = _BAND_ORDER.get(threshold_band, 2)
 
     tp = fp = tn = fn = 0
-    source_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0, "tn": 0, "fn": 0})
+    source_counts: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"tp": 0, "fp": 0, "tn": 0, "fn": 0}
+    )
     pos_scores: list[float] = []
     neg_scores: list[float] = []
 
@@ -222,15 +219,19 @@ def signal_effectiveness_report(db: Session) -> list[dict]:
         tp_freq = tp_keys.get(k, 0) / total_tp
         fp_freq = fp_keys.get(k, 0) / total_fp
         lift = tp_freq / fp_freq if fp_freq > 0 else float("inf") if tp_freq > 0 else 0.0
-        report.append({
-            "signal": k,
-            "tp_freq": round(tp_freq, 4),
-            "fp_freq": round(fp_freq, 4),
-            "lift": round(lift, 4) if lift != float("inf") else "inf",
-            "spurious": lift < 1.0,
-        })
+        report.append(
+            {
+                "signal": k,
+                "tp_freq": round(tp_freq, 4),
+                "fp_freq": round(fp_freq, 4),
+                "lift": round(lift, 4) if lift != float("inf") else "inf",
+                "spurious": lift < 1.0,
+            }
+        )
 
-    report.sort(key=lambda x: x["lift"] if isinstance(x["lift"], (int, float)) else 9999, reverse=True)
+    report.sort(
+        key=lambda x: x["lift"] if isinstance(x["lift"], (int, float)) else 9999, reverse=True
+    )
     return report
 
 
@@ -240,11 +241,7 @@ def analyst_feedback_metrics(db: Session) -> dict:
     Returns total reviewed, confirmed TP/FP counts, FP rate,
     and breakdowns by score band and corridor.
     """
-    reviewed = (
-        db.query(AISGapEvent)
-        .filter(AISGapEvent.is_false_positive.isnot(None))
-        .all()
-    )
+    reviewed = db.query(AISGapEvent).filter(AISGapEvent.is_false_positive.isnot(None)).all()
 
     total_reviewed = len(reviewed)
     confirmed_fp = sum(1 for r in reviewed if r.is_false_positive)
@@ -277,11 +274,7 @@ def detector_correlation_report(db: Session) -> list[dict]:
     For analyst-reviewed alerts, extracts active signal categories from
     risk_breakdown_json and computes FP rates for each category pair.
     """
-    reviewed = (
-        db.query(AISGapEvent)
-        .filter(AISGapEvent.is_false_positive.isnot(None))
-        .all()
-    )
+    reviewed = db.query(AISGapEvent).filter(AISGapEvent.is_false_positive.isnot(None)).all()
 
     pair_counts: dict[tuple[str, str], dict[str, int]] = defaultdict(lambda: {"count": 0, "fp": 0})
 
@@ -308,13 +301,15 @@ def detector_correlation_report(db: Session) -> list[dict]:
     results = []
     for (cat_a, cat_b), counts in pair_counts.items():
         fp_rate = counts["fp"] / counts["count"] if counts["count"] > 0 else 0.0
-        results.append({
-            "category_a": cat_a,
-            "category_b": cat_b,
-            "co_occurrence_count": counts["count"],
-            "fp_count": counts["fp"],
-            "fp_rate": round(fp_rate, 4),
-        })
+        results.append(
+            {
+                "category_a": cat_a,
+                "category_b": cat_b,
+                "co_occurrence_count": counts["count"],
+                "fp_count": counts["fp"],
+                "fp_rate": round(fp_rate, 4),
+            }
+        )
 
     results.sort(key=lambda x: x["co_occurrence_count"], reverse=True)
     return results
@@ -329,9 +324,13 @@ def live_signal_effectiveness(db: Session) -> list[dict]:
     from app.models.gap_event import AISGapEvent
 
     # Get all alerts with verdicts
-    reviewed = db.query(AISGapEvent).filter(
-        AISGapEvent.is_false_positive != None  # noqa: E711
-    ).all()
+    reviewed = (
+        db.query(AISGapEvent)
+        .filter(
+            AISGapEvent.is_false_positive != None  # noqa: E711
+        )
+        .all()
+    )
 
     if not reviewed:
         return []
@@ -369,14 +368,16 @@ def live_signal_effectiveness(db: Session) -> list[dict]:
         fp_freq = fp_count / max(1, total_fp)
         # Lift = TP frequency / FP frequency (higher = more predictive of true positives)
         lift = tp_freq / fp_freq if fp_freq > 0 else ("inf" if tp_freq > 0 else 0)
-        results.append({
-            "signal": signal,
-            "tp_count": tp_count,
-            "fp_count": fp_count,
-            "tp_freq": round(tp_freq, 4),
-            "fp_freq": round(fp_freq, 4),
-            "lift": round(lift, 2) if isinstance(lift, float) else lift,
-        })
+        results.append(
+            {
+                "signal": signal,
+                "tp_count": tp_count,
+                "fp_count": fp_count,
+                "tp_freq": round(tp_freq, 4),
+                "fp_freq": round(fp_freq, 4),
+                "lift": round(lift, 2) if isinstance(lift, float) else lift,
+            }
+        )
 
     return results
 
@@ -408,11 +409,13 @@ def sweep_thresholds(db: Session) -> list[dict]:
         recall = tp / (tp + fn) if (tp + fn) > 0 else None
         f2 = _f_beta(precision or 0, recall or 0, beta=2.0)
 
-        results.append({
-            "threshold": threshold,
-            "precision": round(precision, 4) if precision is not None else None,
-            "recall": round(recall, 4) if recall is not None else None,
-            "f2_score": round(f2, 4),
-        })
+        results.append(
+            {
+                "threshold": threshold,
+                "precision": round(precision, 4) if precision is not None else None,
+                "recall": round(recall, 4) if recall is not None else None,
+                "f2_score": round(f2, 4),
+            }
+        )
 
     return results

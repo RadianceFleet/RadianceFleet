@@ -2,13 +2,12 @@
 
 Ensures satellite AIS (30-60min old) never overwrites newer terrestrial positions.
 """
+
 from __future__ import annotations
 
 import io
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, call
-
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 
 def _make_mock_vessel(vessel_id=1, mmsi="211234567", last_ais=None):
@@ -41,8 +40,8 @@ class TestSourceTimestampPriority:
         """Newer terrestrial data should update vessel.last_ais_received_utc."""
         from app.modules.ingest import ingest_ais_csv
 
-        old_ts = datetime(2026, 3, 1, 10, 0, 0, tzinfo=timezone.utc)
-        new_ts = datetime(2026, 3, 1, 11, 0, 0, tzinfo=timezone.utc)
+        old_ts = datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC)
+        new_ts = datetime(2026, 3, 1, 11, 0, 0, tzinfo=UTC)
 
         vessel = _make_mock_vessel(last_ais=old_ts)
         db = _make_mock_db(vessel)
@@ -59,8 +58,8 @@ class TestSourceTimestampPriority:
         """Satellite data with older source_timestamp must NOT update vessel.last_ais_received_utc."""
         from app.modules.ingest import ingest_ais_csv
 
-        newer_ts = datetime(2026, 3, 1, 11, 0, 0, tzinfo=timezone.utc)
-        older_source_ts = datetime(2026, 3, 1, 10, 0, 0, tzinfo=timezone.utc)
+        newer_ts = datetime(2026, 3, 1, 11, 0, 0, tzinfo=UTC)
+        datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC)
 
         vessel = _make_mock_vessel(last_ais=newer_ts)
         db = _make_mock_db(vessel)
@@ -79,7 +78,7 @@ class TestSourceTimestampPriority:
         """AISPoint record should always be created for historical track, even with stale data."""
         from app.modules.ingest import ingest_ais_csv
 
-        newer_ts = datetime(2026, 3, 1, 11, 0, 0, tzinfo=timezone.utc)
+        newer_ts = datetime(2026, 3, 1, 11, 0, 0, tzinfo=UTC)
 
         vessel = _make_mock_vessel(last_ais=newer_ts)
         db = _make_mock_db(vessel)
@@ -98,8 +97,8 @@ class TestSourceTimestampPriority:
         """When source_timestamp is absent, use point timestamp (backwards compatible)."""
         from app.modules.ingest import ingest_ais_csv
 
-        old_ts = datetime(2026, 3, 1, 9, 0, 0, tzinfo=timezone.utc)
-        point_ts = datetime(2026, 3, 1, 11, 0, 0, tzinfo=timezone.utc)
+        old_ts = datetime(2026, 3, 1, 9, 0, 0, tzinfo=UTC)
+        point_ts = datetime(2026, 3, 1, 11, 0, 0, tzinfo=UTC)
 
         vessel = _make_mock_vessel(last_ais=old_ts)
         db = _make_mock_db(vessel)
@@ -118,7 +117,7 @@ class TestSourceTimestampOnAISPoint:
         """source_timestamp_utc should be stored on the created AISPoint."""
         from app.modules.ingest import _create_ais_point
 
-        source_ts = datetime(2026, 3, 1, 10, 0, 0, tzinfo=timezone.utc)
+        source_ts = datetime(2026, 3, 1, 10, 0, 0, tzinfo=UTC)
         vessel = _make_mock_vessel()
         db = _make_mock_db(vessel)
         # No near_dup

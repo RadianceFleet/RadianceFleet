@@ -1,8 +1,7 @@
 """Tests for AIS class inference from transmission intervals."""
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
-
-import pytest
 
 from app.modules.vessel_enrichment import infer_ais_class
 

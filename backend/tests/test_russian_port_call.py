@@ -1,10 +1,9 @@
 """Tests for Russian port call scoring signal."""
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from app.modules.risk_scoring import compute_gap_score, _had_russian_port_call
+from app.modules.risk_scoring import compute_gap_score
 
 
 def _make_gap(vessel_id=1, duration_minutes=1560, corridor=None, corridor_type=None):
@@ -69,13 +68,18 @@ class TestRussianPortCall:
             db.query.return_value.filter.return_value.all.return_value = []
             db.query.return_value.filter.return_value.first.return_value = None
             db.query.return_value.filter.return_value.count.return_value = 0
-            db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+            db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+                None
+            )
             db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
             db.query.return_value.join.return_value.filter.return_value.count.return_value = 0
             db.query.return_value.get.return_value = None
 
             score, breakdown = compute_gap_score(
-                gap, {}, db=db, scoring_date=datetime(2026, 2, 20),
+                gap,
+                {},
+                db=db,
+                scoring_date=datetime(2026, 2, 20),
             )
 
         assert "russian_port_recent" in breakdown
@@ -92,13 +96,18 @@ class TestRussianPortCall:
             db.query.return_value.filter.return_value.all.return_value = []
             db.query.return_value.filter.return_value.first.return_value = None
             db.query.return_value.filter.return_value.count.return_value = 0
-            db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+            db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+                None
+            )
             db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
             db.query.return_value.join.return_value.filter.return_value.count.return_value = 0
             db.query.return_value.get.return_value = None
 
             score, breakdown = compute_gap_score(
-                gap, {}, db=db, scoring_date=datetime(2026, 2, 20),
+                gap,
+                {},
+                db=db,
+                scoring_date=datetime(2026, 2, 20),
             )
 
         assert "russian_port_recent" not in breakdown
@@ -115,13 +124,18 @@ class TestRussianPortCall:
             db.query.return_value.filter.return_value.all.return_value = []
             db.query.return_value.filter.return_value.first.return_value = None
             db.query.return_value.filter.return_value.count.return_value = 0
-            db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+            db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+                None
+            )
             db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
             db.query.return_value.join.return_value.filter.return_value.count.return_value = 0
             db.query.return_value.get.return_value = None
 
             score, breakdown = compute_gap_score(
-                gap, {}, db=db, scoring_date=datetime(2026, 2, 20),
+                gap,
+                {},
+                db=db,
+                scoring_date=datetime(2026, 2, 20),
             )
 
         assert "russian_port_gap_sts" in breakdown

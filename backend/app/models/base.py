@@ -1,7 +1,9 @@
 """Shared declarative base and enums for all models."""
+
 from __future__ import annotations
 
 import enum
+
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -9,26 +11,26 @@ class Base(DeclarativeBase):
     pass
 
 
-class AISClassEnum(str, enum.Enum):
+class AISClassEnum(enum.StrEnum):
     A = "A"
     B = "B"
     UNKNOWN = "unknown"
 
 
-class FlagRiskEnum(str, enum.Enum):
+class FlagRiskEnum(enum.StrEnum):
     HIGH_RISK = "high_risk"
     MEDIUM_RISK = "medium_risk"
     LOW_RISK = "low_risk"
     UNKNOWN = "unknown"
 
 
-class PIStatusEnum(str, enum.Enum):
+class PIStatusEnum(enum.StrEnum):
     ACTIVE = "active"
     LAPSED = "lapsed"
     UNKNOWN = "unknown"
 
 
-class CorridorTypeEnum(str, enum.Enum):
+class CorridorTypeEnum(enum.StrEnum):
     EXPORT_ROUTE = "export_route"
     STS_ZONE = "sts_zone"
     IMPORT_ROUTE = "import_route"
@@ -41,7 +43,7 @@ class CorridorTypeEnum(str, enum.Enum):
     # explicitly tagged LEGITIMATE_TRADE_ROUTE by an analyst get the reduction.
 
 
-class AlertStatusEnum(str, enum.Enum):
+class AlertStatusEnum(enum.StrEnum):
     NEW = "new"
     UNDER_REVIEW = "under_review"
     NEEDS_SATELLITE_CHECK = "needs_satellite_check"
@@ -51,7 +53,7 @@ class AlertStatusEnum(str, enum.Enum):
     CONFIRMED_TP = "confirmed_tp"
 
 
-class SpoofingTypeEnum(str, enum.Enum):
+class SpoofingTypeEnum(enum.StrEnum):
     ANCHOR_SPOOF = "anchor_spoof"
     CIRCLE_SPOOF = "circle_spoof"
     SLOW_ROLL = "slow_roll"
@@ -82,7 +84,7 @@ class SpoofingTypeEnum(str, enum.Enum):
     # in evidence_json["subtype"] on an ERRATIC_NAV_STATUS anomaly record.
 
 
-class STSDetectionTypeEnum(str, enum.Enum):
+class STSDetectionTypeEnum(enum.StrEnum):
     VISIBLE_VISIBLE = "visible_visible"
     VISIBLE_DARK = "visible_dark"
     DARK_DARK = "dark_dark"
@@ -90,31 +92,31 @@ class STSDetectionTypeEnum(str, enum.Enum):
     GFW_ENCOUNTER = "gfw_encounter"
 
 
-class EstimatedMethodEnum(str, enum.Enum):
+class EstimatedMethodEnum(enum.StrEnum):
     LINEAR = "linear"
     SPLINE = "spline"
     KALMAN = "kalman"
 
 
-class SatelliteReviewStatusEnum(str, enum.Enum):
+class SatelliteReviewStatusEnum(enum.StrEnum):
     NOT_CHECKED = "not_checked"
     CANDIDATE_SCENES_FOUND = "candidate_scenes_found"
     REVIEWED = "reviewed"
 
 
-class DarkZoneTypeEnum(str, enum.Enum):
+class DarkZoneTypeEnum(enum.StrEnum):
     ACTIVE_JAMMING = "active_jamming"
     HISTORICAL_GAP_CLUSTER = "historical_gap_cluster"
     STS_HOTSPOT = "sts_hotspot"
 
 
-class AnalystRoleEnum(str, enum.Enum):
+class AnalystRoleEnum(enum.StrEnum):
     ANALYST = "analyst"
     SENIOR_ANALYST = "senior_analyst"
     ADMIN = "admin"
 
 
-class MergeCandidateStatusEnum(str, enum.Enum):
+class MergeCandidateStatusEnum(enum.StrEnum):
     PENDING = "pending"
     AUTO_MERGED = "auto_merged"
     ANALYST_MERGED = "analyst_merged"

@@ -1,11 +1,11 @@
 """CLI commands for database backup and restore."""
+
 from __future__ import annotations
 
 import os
 import shutil
 import subprocess
-import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -28,7 +28,7 @@ def backup(
             typer.echo(f"ERROR: SQLite database not found at {db_path}", err=True)
             raise typer.Exit(1)
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         out_path = output or f"radiancefleet_backup_{timestamp}.db"
         shutil.copy2(db_path, out_path)
         size_mb = Path(out_path).stat().st_size / (1024 * 1024)
@@ -40,12 +40,13 @@ def backup(
             typer.echo("ERROR: pg_dump not found. Install PostgreSQL client tools.", err=True)
             raise typer.Exit(1)
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         out_path = output or f"radiancefleet_backup_{timestamp}.sql.gz"
 
         # Parse DATABASE_URL for pg_dump
         # Format: postgresql+psycopg2://user:pass@host:port/dbname
         import urllib.parse
+
         url = db_url.replace("postgresql+psycopg2://", "postgresql://")
         parsed = urllib.parse.urlparse(url)
 
@@ -74,7 +75,7 @@ def backup(
             typer.echo(f"ERROR: Backup failed: {e}", err=True)
             raise typer.Exit(1)
     else:
-        typer.echo(f"ERROR: Unsupported database type in DATABASE_URL", err=True)
+        typer.echo("ERROR: Unsupported database type in DATABASE_URL", err=True)
         raise typer.Exit(1)
 
 
@@ -112,6 +113,7 @@ def restore(
             raise typer.Exit(1)
 
         import urllib.parse
+
         url = db_url.replace("postgresql+psycopg2://", "postgresql://")
         parsed = urllib.parse.urlparse(url)
 
@@ -140,5 +142,5 @@ def restore(
         else:
             typer.echo(f"Restored from {backup_path}")
     else:
-        typer.echo(f"ERROR: Unsupported database type", err=True)
+        typer.echo("ERROR: Unsupported database type", err=True)
         raise typer.Exit(1)

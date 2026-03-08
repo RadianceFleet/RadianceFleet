@@ -6,12 +6,12 @@ for AIS handshake (identity swap) and fake port call spoofing.
 
 Requires multi-source AIS data in the ais_observations table.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, date, timedelta, timezone
-from typing import Optional
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -28,8 +28,8 @@ def detect_cross_receiver_anomalies(
     db: Session,
     time_window_minutes: int = 10,
     distance_threshold_nm: float = 5.0,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> dict:
     """Detect position disagreements across AIS sources.
 
@@ -41,9 +41,7 @@ def detect_cross_receiver_anomalies(
         {"anomalies_created": N, "mmsis_checked": M}
     """
     # Load observations within date range
-    query = db.query(AISObservation).order_by(
-        AISObservation.mmsi, AISObservation.timestamp_utc
-    )
+    query = db.query(AISObservation).order_by(AISObservation.mmsi, AISObservation.timestamp_utc)
     query = query.filter(
         AISObservation.timestamp_utc.isnot(None),
         AISObservation.lat.isnot(None),
@@ -101,11 +99,16 @@ def detect_cross_receiver_anomalies(
 
                 # Position disagreement detected!
                 # Check if already reported
-                existing = db.query(SpoofingAnomaly).filter(
-                    SpoofingAnomaly.vessel_id == vessel.vessel_id,
-                    SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.CROSS_RECEIVER_DISAGREEMENT,
-                    SpoofingAnomaly.start_time_utc == min(o1.timestamp_utc, o2.timestamp_utc),
-                ).first()
+                existing = (
+                    db.query(SpoofingAnomaly)
+                    .filter(
+                        SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                        SpoofingAnomaly.anomaly_type
+                        == SpoofingTypeEnum.CROSS_RECEIVER_DISAGREEMENT,
+                        SpoofingAnomaly.start_time_utc == min(o1.timestamp_utc, o2.timestamp_utc),
+                    )
+                    .first()
+                )
                 if existing:
                     continue
 
@@ -132,6 +135,7 @@ def detect_cross_receiver_anomalies(
     db.commit()
     logger.info(
         "Cross-receiver: %d anomalies from %d MMSIs checked",
-        anomalies_created, len(by_mmsi),
+        anomalies_created,
+        len(by_mmsi),
     )
     return {"anomalies_created": anomalies_created, "mmsis_checked": len(by_mmsi)}

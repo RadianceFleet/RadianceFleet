@@ -8,18 +8,18 @@ Covers:
   - New vessel age bracket: 15-20y scores +5
   - Age 10-15y scores 0 (split from old 10-20y)
 """
+
 import pathlib
 from datetime import datetime
 from unittest.mock import MagicMock
 
-import pytest
 import yaml
 
 from app.models.base import FlagRiskEnum
 from app.modules.risk_scoring import compute_gap_score, load_scoring_config
 from app.utils.vessel_identity import (
-    RUSSIAN_ORIGIN_FLAGS,
     MID_TO_FLAG,
+    RUSSIAN_ORIGIN_FLAGS,
     flag_to_risk_category,
     mmsi_to_flag,
 )
@@ -108,6 +108,7 @@ def test_corridors_yaml_has_new_sts_zones():
 
 # ── Test: BB and GN in RUSSIAN_ORIGIN_FLAGS ──────────────────────────────────
 
+
 def test_bb_gn_in_russian_origin_flags():
     """BB (Barbados) and GN (Guinea) must be in RUSSIAN_ORIGIN_FLAGS."""
     assert "BB" in RUSSIAN_ORIGIN_FLAGS
@@ -115,6 +116,7 @@ def test_bb_gn_in_russian_origin_flags():
 
 
 # ── Test: MID-to-flag mapping for BB and GN ──────────────────────────────────
+
 
 def test_mid_to_flag_bb_gn():
     """MID 314 maps to BB, MID 632 maps to GN."""
@@ -130,6 +132,7 @@ def test_mid_to_flag_dict_entries():
 
 # ── Test: BB and GN classify as HIGH_RISK ────────────────────────────────────
 
+
 def test_bb_gn_flag_risk_high():
     """BB and GN must classify as HIGH_RISK."""
     assert flag_to_risk_category("BB") == FlagRiskEnum.HIGH_RISK
@@ -137,6 +140,7 @@ def test_bb_gn_flag_risk_high():
 
 
 # ── Test: vessel age 15-20y scores +5 ────────────────────────────────────────
+
 
 def test_vessel_age_15_20y_scores():
     """Vessel age 17 (year_built giving age 17) should produce vessel_age_15_20y: 12."""

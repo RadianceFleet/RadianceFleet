@@ -4,11 +4,12 @@ Validates, normalizes, and persists AIS records from CSV input.
 Rejects and logs invalid records (never silently drops).
 See PRD §7.2 for validation rules.
 """
+
 from __future__ import annotations
 
 import io
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from io import IOBase
 from typing import Any
 
@@ -16,8 +17,8 @@ import polars as pl
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.vessel import Vessel
 from app.models.ais_point import AISPoint
+from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
 
 logger = logging.getLogger(__name__)
@@ -43,10 +44,10 @@ _SOURCE_QUALITY = {
 # PRD §7.2: class-specific SOG thresholds for ingestion-time flagging
 _CLASS_SOG_LIMITS: list[tuple[float, float | None, float, str]] = [
     # (min_dwt, max_dwt_or_None, max_sog_kn, label)
-    (200_000, None,    18, "VLCC"),
+    (200_000, None, 18, "VLCC"),
     (120_000, 200_000, 19, "Suezmax"),
-    (80_000,  120_000, 20, "Aframax"),
-    (60_000,  80_000,  20, "Panamax"),
+    (80_000, 120_000, 20, "Aframax"),
+    (60_000, 80_000, 20, "Panamax"),
 ]
 
 
@@ -65,14 +66,22 @@ def _check_sog_class_limit(vessel: Vessel, sog: float | None) -> None:
             if sog > max_sog:
                 logger.warning(
                     "SOG %.1f kn exceeds %s limit (%d kn) for MMSI %s (DWT=%d)",
-                    sog, label, max_sog, vessel.mmsi, dwt,
+                    sog,
+                    label,
+                    max_sog,
+                    vessel.mmsi,
+                    dwt,
                 )
             return
         if max_dwt is not None and min_dwt <= dwt < max_dwt:
             if sog > max_sog:
                 logger.warning(
                     "SOG %.1f kn exceeds %s limit (%d kn) for MMSI %s (DWT=%d)",
-                    sog, label, max_sog, vessel.mmsi, dwt,
+                    sog,
+                    label,
+                    max_sog,
+                    vessel.mmsi,
+                    dwt,
                 )
             return
 
@@ -158,7 +167,11 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
     duplicates = replaced_count + ignored_count
     logger.info(
         "Ingestion complete: %d accepted, %d rejected, %d duplicates (replaced=%d, ignored=%d)",
-        accepted, rejected, duplicates, replaced_count, ignored_count,
+        accepted,
+        rejected,
+        duplicates,
+        replaced_count,
+        ignored_count,
     )
     return {
         "accepted": accepted,
@@ -183,15 +196,19 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
         ts = _parse_timestamp(row)
         if ts is None:
             return None
-        from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+        from app.utils.vessel_identity import flag_to_risk_category, mmsi_to_flag
+
         csv_flag = row.get("flag") or row.get("country")
         flag = csv_flag or mmsi_to_flag(mmsi)
         # Parse AIS cargo type from numeric ship_type code (5B)
         _cargo_type_val = None
-        _ship_type_raw = row.get("ship_type") or row.get("vessel_type_code") or row.get("cargo_type")
+        _ship_type_raw = (
+            row.get("ship_type") or row.get("vessel_type_code") or row.get("cargo_type")
+        )
         if _ship_type_raw is not None:
             try:
                 from app.modules.cargo_inference import parse_ais_cargo_type
+
                 _cargo_type_val = parse_ais_cargo_type(int(_ship_type_raw))
             except (TypeError, ValueError):
                 pass
@@ -222,18 +239,22 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
     ts = _parse_timestamp(row)
     if ts is None:
         return None
-    _track_field_change(db, vessel, "name",
-                        vessel.name, row.get("vessel_name") or row.get("shipname"),
-                        ts, "ais_csv")
-    _track_field_change(db, vessel, "flag",
-                        vessel.flag, row.get("flag") or row.get("country"),
-                        ts, "ais_csv")
-    _track_field_change(db, vessel, "ais_class",
-                        vessel.ais_class, row.get("ais_class"),
-                        ts, "ais_csv")
-    _track_field_change(db, vessel, "callsign",
-                        vessel.callsign, row.get("callsign"),
-                        ts, "ais_csv")
+    _track_field_change(
+        db,
+        vessel,
+        "name",
+        vessel.name,
+        row.get("vessel_name") or row.get("shipname"),
+        ts,
+        "ais_csv",
+    )
+    _track_field_change(
+        db, vessel, "flag", vessel.flag, row.get("flag") or row.get("country"), ts, "ais_csv"
+    )
+    _track_field_change(
+        db, vessel, "ais_class", vessel.ais_class, row.get("ais_class"), ts, "ais_csv"
+    )
+    _track_field_change(db, vessel, "callsign", vessel.callsign, row.get("callsign"), ts, "ais_csv")
 
     # Update mutable fields
     new_name = row.get("vessel_name") or row.get("shipname")
@@ -259,6 +280,7 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
     if ship_type_raw is not None:
         try:
             from app.modules.cargo_inference import parse_ais_cargo_type
+
             parsed_cargo = parse_ais_cargo_type(int(ship_type_raw))
             if parsed_cargo and not vessel.ais_cargo_type:
                 vessel.ais_cargo_type = parsed_cargo
@@ -267,13 +289,15 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
 
     # Backfill flag from MMSI if still missing
     if not vessel.flag:
-        from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+        from app.utils.vessel_identity import flag_to_risk_category, mmsi_to_flag
+
         derived = mmsi_to_flag(vessel.mmsi)
         if derived:
             vessel.flag = derived
             vessel.flag_risk_category = flag_to_risk_category(derived)
     elif vessel.flag_risk_category is None or str(vessel.flag_risk_category) == "unknown":
         from app.utils.vessel_identity import flag_to_risk_category
+
         vessel.flag_risk_category = flag_to_risk_category(vessel.flag)
 
     return vessel
@@ -282,6 +306,7 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
 def _try_parse_ts(value) -> datetime | None:
     """Try to parse a timestamp value, returning None on failure."""
     from app.modules.normalize import parse_timestamp_flexible
+
     return parse_timestamp_flexible(value)
 
 
@@ -324,42 +349,58 @@ def _track_field_change(
         )
         if last_point:
             change_window_h = (
-                observed_at - last_point.timestamp_utc
-            ).total_seconds() / 3600 if hasattr(observed_at, 'total_seconds') else 0
-            if hasattr(observed_at, '__sub__') and hasattr(last_point.timestamp_utc, '__sub__'):
+                (observed_at - last_point.timestamp_utc).total_seconds() / 3600
+                if hasattr(observed_at, "total_seconds")
+                else 0
+            )
+            if hasattr(observed_at, "__sub__") and hasattr(last_point.timestamp_utc, "__sub__"):
                 try:
-                    change_window_h = (observed_at - last_point.timestamp_utc).total_seconds() / 3600
+                    change_window_h = (
+                        observed_at - last_point.timestamp_utc
+                    ).total_seconds() / 3600
                     if change_window_h < 24:
                         logger.warning(
                             "MMSI %s: %s changed within %.1fh (%s → %s)",
-                            vessel.mmsi, field, change_window_h, old_str, new_str
+                            vessel.mmsi,
+                            field,
+                            change_window_h,
+                            old_str,
+                            new_str,
                         )
                 except TypeError:
                     pass
 
         # Dedup: skip if an identical record exists within 24h (prevents re-import inflation)
-        existing = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == field,
-            VesselHistory.old_value == old_str,
-            VesselHistory.new_value == new_str,
-            VesselHistory.observed_at >= observed_at - timedelta(hours=24),
-            VesselHistory.observed_at <= observed_at + timedelta(hours=24),
-        ).first()
+        existing = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == field,
+                VesselHistory.old_value == old_str,
+                VesselHistory.new_value == new_str,
+                VesselHistory.observed_at >= observed_at - timedelta(hours=24),
+                VesselHistory.observed_at <= observed_at + timedelta(hours=24),
+            )
+            .first()
+        )
         if existing:
             return
 
-        db.add(VesselHistory(
-            vessel_id=vessel.vessel_id,
-            field_changed=field,
-            old_value=old_str,
-            new_value=new_str,
-            observed_at=observed_at,
-            source=source,
-        ))
+        db.add(
+            VesselHistory(
+                vessel_id=vessel.vessel_id,
+                field_changed=field,
+                old_value=old_str,
+                new_value=new_str,
+                observed_at=observed_at,
+                source=source,
+            )
+        )
 
 
-def _create_ais_point(db: Session, vessel: Vessel, row: dict, *, source_timestamp: datetime | None = None) -> AISPoint | str | None:
+def _create_ais_point(
+    db: Session, vessel: Vessel, row: dict, *, source_timestamp: datetime | None = None
+) -> AISPoint | str | None:
     """Create or replace an AIS point.
 
     Returns:
@@ -382,6 +423,7 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict, *, source_timestam
     # Dual-write: raw observation for cross-receiver comparison (no dedup)
     try:
         from app.models.ais_observation import AISObservation
+
         obs = AISObservation(
             mmsi=str(vessel.mmsi),
             source=row.get("source", "csv_import") or "unknown",
@@ -395,7 +437,12 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict, *, source_timestam
         )
         db.add(obs)
     except Exception as e:
-        logger.warning("AIS observation dual-write failed for vessel %s (MMSI %s): %s", vessel.vessel_id, vessel.mmsi, e)
+        logger.warning(
+            "AIS observation dual-write failed for vessel %s (MMSI %s): %s",
+            vessel.vessel_id,
+            vessel.mmsi,
+            e,
+        )
 
     # 1.2: SOG/COG default to None (not 0) when missing
     sog_raw = row.get("sog")
@@ -443,8 +490,13 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict, *, source_timestam
                     near_dup.destination = destination_val
                 old_source = near_dup.source
                 near_dup.source = new_source
-                logger.debug("Replaced AIS point (vessel=%s, ts=%s): %s > %s",
-                             vessel.mmsi, ts, new_source, old_source)
+                logger.debug(
+                    "Replaced AIS point (vessel=%s, ts=%s): %s > %s",
+                    vessel.mmsi,
+                    ts,
+                    new_source,
+                    old_source,
+                )
                 return "replaced"
         return None  # multi-receiver dedup
 
@@ -484,7 +536,7 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict, *, source_timestam
         cog_delta=cog_delta,
         draught=draught_val,
         destination=destination_val,
-        ingested_at=datetime.now(timezone.utc),
+        ingested_at=datetime.now(UTC),
         source_timestamp_utc=source_timestamp,
     )
     db.add(point)
@@ -497,9 +549,14 @@ def _create_ais_point(db: Session, vessel: Vessel, row: dict, *, source_timestam
 
 
 def _write_ais_observation(
-    db: Session, vessel: Vessel, row: dict,
-    ts: datetime, sog_val: float | None, cog_val: float | None,
-    heading_val: float | None, draught_val: float | None = None,
+    db: Session,
+    vessel: Vessel,
+    row: dict,
+    ts: datetime,
+    sog_val: float | None,
+    cog_val: float | None,
+    heading_val: float | None,
+    draught_val: float | None = None,
 ) -> None:
     """Dual-write AIS observation for cross-receiver detection (Phase C).
 
@@ -507,11 +564,15 @@ def _write_ais_observation(
     """
     global _ais_observation_errors
     if ts is None:
-        logger.warning("Skipping AIS observation for MMSI %s: timestamp is None", str(row.get("mmsi", "unknown")))
+        logger.warning(
+            "Skipping AIS observation for MMSI %s: timestamp is None",
+            str(row.get("mmsi", "unknown")),
+        )
         return
     mmsi = str(row["mmsi"]).strip().zfill(9)
     try:
         from app.models.ais_observation import AISObservation
+
         obs = AISObservation(
             mmsi=mmsi,
             timestamp_utc=ts,

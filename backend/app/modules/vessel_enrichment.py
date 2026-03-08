@@ -5,6 +5,7 @@ fields (DWT, year_built, IMO) must be looked up from external registries.
 This module batch-enriches vessels that are missing metadata using GFW's
 vessel search endpoint.
 """
+
 from __future__ import annotations
 
 import logging
@@ -26,7 +27,13 @@ _REQUEST_DELAY_S = 1.0
 def _is_likely_tanker(vessel) -> bool:
     """Check if vessel is likely a tanker based on vessel_type."""
     vtype = (getattr(vessel, "vessel_type", None) or "").lower()
-    return "tanker" in vtype or "oil" in vtype or "chemical" in vtype or "lng" in vtype or "lpg" in vtype
+    return (
+        "tanker" in vtype
+        or "oil" in vtype
+        or "chemical" in vtype
+        or "lng" in vtype
+        or "lpg" in vtype
+    )
 
 
 def enrich_vessels_from_gfw(
@@ -56,8 +63,6 @@ def enrich_vessels_from_gfw(
     token = token or settings.GFW_API_TOKEN
     if not token:
         raise ValueError("GFW_API_TOKEN not configured")
-
-    from sqlalchemy import or_
 
     vessels = (
         db.query(Vessel)
@@ -109,16 +114,25 @@ def enrich_vessels_from_gfw(
             vessel.imo = str(match["imo"])
             changed = True
             # Provenance for rollback
-            if not db.query(VesselHistory).filter(
-                VesselHistory.vessel_id == vessel.vessel_id,
-                VesselHistory.field_changed == "imo",
-                VesselHistory.source == "gfw_enrichment_fill",
-            ).first():
-                db.add(VesselHistory(
-                    vessel_id=vessel.vessel_id, field_changed="imo",
-                    old_value="", new_value=str(match["imo"]),
-                    observed_at=datetime.utcnow(), source="gfw_enrichment_fill",
-                ))
+            if (
+                not db.query(VesselHistory)
+                .filter(
+                    VesselHistory.vessel_id == vessel.vessel_id,
+                    VesselHistory.field_changed == "imo",
+                    VesselHistory.source == "gfw_enrichment_fill",
+                )
+                .first()
+            ):
+                db.add(
+                    VesselHistory(
+                        vessel_id=vessel.vessel_id,
+                        field_changed="imo",
+                        old_value="",
+                        new_value=str(match["imo"]),
+                        observed_at=datetime.utcnow(),
+                        source="gfw_enrichment_fill",
+                    )
+                )
 
         # Store vessel_type BEFORE DWT computation so _is_likely_tanker() sees
         # the correct type when GFW is the first source for vessel_type.
@@ -128,7 +142,9 @@ def enrich_vessels_from_gfw(
 
         # GFW returns tonnage_gt (Gross Tonnage), not DWT.
         # DWT ≈ 1.5× GT for tankers. For non-tankers, GT is a reasonable proxy.
-        if match.get("tonnage_gt") and (vessel.deadweight is None or getattr(vessel, "is_heuristic_dwt", False)):
+        if match.get("tonnage_gt") and (
+            vessel.deadweight is None or getattr(vessel, "is_heuristic_dwt", False)
+        ):
             gt = float(match["tonnage_gt"])
             vessel.deadweight = gt * 1.5 if _is_likely_tanker(vessel) else gt
             vessel.is_heuristic_dwt = True  # Mark as derived from GT heuristic
@@ -148,19 +164,29 @@ def enrich_vessels_from_gfw(
         if match.get("callsign") and not vessel.callsign:
             vessel.callsign = match["callsign"]
             changed = True
-            if not db.query(VesselHistory).filter(
-                VesselHistory.vessel_id == vessel.vessel_id,
-                VesselHistory.field_changed == "callsign",
-                VesselHistory.source == "gfw_enrichment_fill",
-            ).first():
-                db.add(VesselHistory(
-                    vessel_id=vessel.vessel_id, field_changed="callsign",
-                    old_value="", new_value=match["callsign"],
-                    observed_at=datetime.utcnow(), source="gfw_enrichment_fill",
-                ))
+            if (
+                not db.query(VesselHistory)
+                .filter(
+                    VesselHistory.vessel_id == vessel.vessel_id,
+                    VesselHistory.field_changed == "callsign",
+                    VesselHistory.source == "gfw_enrichment_fill",
+                )
+                .first()
+            ):
+                db.add(
+                    VesselHistory(
+                        vessel_id=vessel.vessel_id,
+                        field_changed="callsign",
+                        old_value="",
+                        new_value=match["callsign"],
+                        observed_at=datetime.utcnow(),
+                        source="gfw_enrichment_fill",
+                    )
+                )
 
         # Populate VesselHistory from GFW identity_history
         from sqlalchemy.exc import IntegrityError
+
         for hist in match.get("identity_history", []):
             try:
                 _obs_at = datetime.fromisoformat(hist["date_from"].replace("Z", "+00:00"))
@@ -168,17 +194,27 @@ def enrich_vessels_from_gfw(
             except (ValueError, AttributeError):
                 continue
 
-            for field, hist_key in [("imo", "imo"), ("name", "name"), ("callsign", "callsign"), ("flag", "flag")]:
+            for field, hist_key in [
+                ("imo", "imo"),
+                ("name", "name"),
+                ("callsign", "callsign"),
+                ("flag", "flag"),
+            ]:
                 hist_val = hist.get(hist_key)
                 if not hist_val or not str(hist_val).strip():
                     continue
                 sp = db.begin_nested()
                 try:
-                    db.add(VesselHistory(
-                        vessel_id=vessel.vessel_id, field_changed=field,
-                        old_value="", new_value=str(hist_val).strip(),
-                        observed_at=_obs_at, source="gfw_enrichment_history",
-                    ))
+                    db.add(
+                        VesselHistory(
+                            vessel_id=vessel.vessel_id,
+                            field_changed=field,
+                            old_value="",
+                            new_value=str(hist_val).strip(),
+                            observed_at=_obs_at,
+                            source="gfw_enrichment_history",
+                        )
+                    )
                     sp.commit()
                 except IntegrityError:
                     sp.rollback()
@@ -220,10 +256,11 @@ def populate_gfw_identity_history(
           skipped   — vessels skipped because NOT EXISTS check found existing history rows
           failed    — vessels where search_vessel raised an exception
     """
+    from sqlalchemy import exists, not_
+    from sqlalchemy.exc import IntegrityError
+
     from app.models.vessel import Vessel
     from app.modules.gfw_client import search_vessel
-    from sqlalchemy import not_, exists
-    from sqlalchemy.exc import IntegrityError
 
     history_exists = exists().where(
         VesselHistory.vessel_id == Vessel.vessel_id,
@@ -284,17 +321,27 @@ def populate_gfw_identity_history(
             except (ValueError, AttributeError):
                 continue
 
-            for field, hist_key in [("imo", "imo"), ("name", "name"), ("callsign", "callsign"), ("flag", "flag")]:
+            for field, hist_key in [
+                ("imo", "imo"),
+                ("name", "name"),
+                ("callsign", "callsign"),
+                ("flag", "flag"),
+            ]:
                 hist_val = hist.get(hist_key)
                 if not hist_val or not str(hist_val).strip():
                     continue
                 sp = db.begin_nested()
                 try:
-                    db.add(VesselHistory(
-                        vessel_id=vessel.vessel_id, field_changed=field,
-                        old_value="", new_value=str(hist_val).strip(),
-                        observed_at=_obs_at, source="gfw_enrichment_history",
-                    ))
+                    db.add(
+                        VesselHistory(
+                            vessel_id=vessel.vessel_id,
+                            field_changed=field,
+                            old_value="",
+                            new_value=str(hist_val).strip(),
+                            observed_at=_obs_at,
+                            source="gfw_enrichment_history",
+                        )
+                    )
                     sp.commit()
                     stats["written"] += 1
                 except IntegrityError:
@@ -348,14 +395,10 @@ def infer_ais_class_batch(db: Session) -> dict[str, int]:
 
     Returns {"updated": int, "skipped": int}.
     """
-    from app.models.vessel import Vessel
     from app.models.base import AISClassEnum
+    from app.models.vessel import Vessel
 
-    vessels = (
-        db.query(Vessel)
-        .filter(Vessel.ais_class.in_([AISClassEnum.UNKNOWN, None]))
-        .all()
-    )
+    vessels = db.query(Vessel).filter(Vessel.ais_class.in_([AISClassEnum.UNKNOWN, None])).all()
 
     stats = {"updated": 0, "skipped": 0}
     for vessel in vessels:
@@ -411,9 +454,8 @@ def enrich_vessels_from_equasis(
     """
     from app.models.vessel import Vessel
     from app.models.vessel_watchlist import VesselWatchlist
-    from app.utils.vessel_identity import flag_to_risk_category
     from app.modules.equasis_client import EquasisClient
-    from sqlalchemy import or_
+    from app.utils.vessel_identity import flag_to_risk_category
 
     try:
         client = EquasisClient()
@@ -423,20 +465,19 @@ def enrich_vessels_from_equasis(
 
     # Watchlisted vessel IDs (always loaded for sorting; also used as filter when watchlist_only)
     watchlisted_ids = {
-        row.vessel_id for row in db.query(VesselWatchlist.vessel_id)
-        .filter(VesselWatchlist.is_active == True).all()  # noqa: E712
+        row.vessel_id
+        for row in db.query(VesselWatchlist.vessel_id)
+        .filter(VesselWatchlist.is_active)
+        .all()  # noqa: E712
     }
 
     # Select vessels that need enrichment
-    q = (
-        db.query(Vessel)
-        .filter(
-            or_(
-                Vessel.deadweight == None,  # noqa: E711
-                Vessel.is_heuristic_dwt == True,  # noqa: E712
-            ),
-            Vessel.imo != None,  # noqa: E711  — Equasis requires IMO
-        )
+    q = db.query(Vessel).filter(
+        or_(
+            Vessel.deadweight == None,  # noqa: E711
+            Vessel.is_heuristic_dwt == True,  # noqa: E712
+        ),
+        Vessel.imo != None,  # noqa: E711  — Equasis requires IMO
     )
     if watchlist_only:
         q = q.filter(Vessel.vessel_id.in_(watchlisted_ids))
@@ -468,12 +509,16 @@ def enrich_vessels_from_equasis(
                 if old_dwt != new_dwt:
                     vessel.deadweight = new_dwt
                     vessel.is_heuristic_dwt = False  # Authoritative source
-                    db.add(VesselHistory(
-                        vessel_id=vessel.vessel_id, field_changed="deadweight",
-                        old_value=str(old_dwt) if old_dwt is not None else "",
-                        new_value=str(new_dwt),
-                        observed_at=datetime.utcnow(), source=_SOURCE,
-                    ))
+                    db.add(
+                        VesselHistory(
+                            vessel_id=vessel.vessel_id,
+                            field_changed="deadweight",
+                            old_value=str(old_dwt) if old_dwt is not None else "",
+                            new_value=str(new_dwt),
+                            observed_at=datetime.utcnow(),
+                            source=_SOURCE,
+                        )
+                    )
                     changed = True
             except (ValueError, AttributeError):
                 pass
@@ -481,22 +526,32 @@ def enrich_vessels_from_equasis(
         # vessel_type
         if "vessel_type" in data and data["vessel_type"] and not vessel.vessel_type:
             vessel.vessel_type = data["vessel_type"]
-            db.add(VesselHistory(
-                vessel_id=vessel.vessel_id, field_changed="vessel_type",
-                old_value="", new_value=data["vessel_type"],
-                observed_at=datetime.utcnow(), source=_SOURCE,
-            ))
+            db.add(
+                VesselHistory(
+                    vessel_id=vessel.vessel_id,
+                    field_changed="vessel_type",
+                    old_value="",
+                    new_value=data["vessel_type"],
+                    observed_at=datetime.utcnow(),
+                    source=_SOURCE,
+                )
+            )
             changed = True
 
         # year_built
         if "year_built" in data and data["year_built"] and vessel.year_built is None:
             try:
                 vessel.year_built = int(data["year_built"])
-                db.add(VesselHistory(
-                    vessel_id=vessel.vessel_id, field_changed="year_built",
-                    old_value="", new_value=data["year_built"],
-                    observed_at=datetime.utcnow(), source=_SOURCE,
-                ))
+                db.add(
+                    VesselHistory(
+                        vessel_id=vessel.vessel_id,
+                        field_changed="year_built",
+                        old_value="",
+                        new_value=data["year_built"],
+                        observed_at=datetime.utcnow(),
+                        source=_SOURCE,
+                    )
+                )
                 changed = True
             except ValueError:
                 pass
@@ -517,7 +572,9 @@ def enrich_vessels_from_equasis(
 
     logger.info(
         "Equasis enrichment complete: enriched=%d failed=%d skipped=%d",
-        stats["enriched"], stats["failed"], stats["skipped"],
+        stats["enriched"],
+        stats["failed"],
+        stats["skipped"],
     )
     return stats
 
@@ -557,10 +614,14 @@ def apply_class_median_dwt(db: Session) -> dict:
 
     stats = {"filled": 0, "skipped": 0}
 
-    vessels_without_dwt = db.query(Vessel).filter(
-        Vessel.deadweight.is_(None),
-        Vessel.vessel_type.isnot(None),
-    ).all()
+    vessels_without_dwt = (
+        db.query(Vessel)
+        .filter(
+            Vessel.deadweight.is_(None),
+            Vessel.vessel_type.isnot(None),
+        )
+        .all()
+    )
 
     for vessel in vessels_without_dwt:
         median = _VESSEL_TYPE_MEDIAN_DWT.get(vessel.vessel_type)
@@ -576,6 +637,7 @@ def apply_class_median_dwt(db: Session) -> dict:
 
     logger.info(
         "Class-median DWT fallback: filled=%d skipped=%d",
-        stats["filled"], stats["skipped"],
+        stats["filled"],
+        stats["skipped"],
     )
     return stats

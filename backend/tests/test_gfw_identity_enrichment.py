@@ -8,19 +8,19 @@ Covers:
 Uses in-memory SQLite for enrichment tests requiring real SQL (provenance dedup),
 mocks for GFW HTTP parsing, and typer.testing.CliRunner for CLI.
 """
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base  # registers all models
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -85,7 +85,14 @@ class TestGFWParsing:
             "id": "gfw-1",
             "ssvid": "123456789",
             "combinedSourcesInfo": [{"shipsData": [{"imo": "IMO_SHIPS", "shipname": "ALPHA"}]}],
-            "selfReportedInfo": [{"id": "sr-1", "imo": "IMO_SR", "callsign": "CALL1", "transmissionDateFrom": "2024-01-01T00:00:00Z"}],
+            "selfReportedInfo": [
+                {
+                    "id": "sr-1",
+                    "imo": "IMO_SR",
+                    "callsign": "CALL1",
+                    "transmissionDateFrom": "2024-01-01T00:00:00Z",
+                }
+            ],
         }
         results = self._call_search(entry)
         assert results[0]["imo"] == "IMO_SHIPS"
@@ -95,7 +102,14 @@ class TestGFWParsing:
             "id": "gfw-2",
             "ssvid": "123456789",
             "combinedSourcesInfo": [{"shipsData": [{"shipname": "ALPHA"}]}],
-            "selfReportedInfo": [{"id": "sr-2", "imo": "IMO_FALLBACK", "callsign": "C2", "transmissionDateFrom": "2024-01-01T00:00:00Z"}],
+            "selfReportedInfo": [
+                {
+                    "id": "sr-2",
+                    "imo": "IMO_FALLBACK",
+                    "callsign": "C2",
+                    "transmissionDateFrom": "2024-01-01T00:00:00Z",
+                }
+            ],
         }
         results2 = self._call_search(entry2)
         assert results2[0]["imo"] == "IMO_FALLBACK"
@@ -106,7 +120,9 @@ class TestGFWParsing:
             "id": "gfw-1",
             "ssvid": "123456789",
             "combinedSourcesInfo": [{"shipsData": [{"shipname": "VESSEL"}]}],
-            "selfReportedInfo": [{"id": "sr-1", "callsign": "D5BX7", "transmissionDateFrom": "2024-01-01T00:00:00Z"}],
+            "selfReportedInfo": [
+                {"id": "sr-1", "callsign": "D5BX7", "transmissionDateFrom": "2024-01-01T00:00:00Z"}
+            ],
         }
         results = self._call_search(entry)
         assert results[0]["callsign"] == "D5BX7"
@@ -118,10 +134,26 @@ class TestGFWParsing:
             "ssvid": "123456789",
             "combinedSourcesInfo": [{"shipsData": [{"shipname": "CURRENT"}]}],
             "selfReportedInfo": [
-                {"id": "sr-1", "shipname": "NAME_A", "flag": "PA", "callsign": "C1", "imo": "1111111",
-                 "ssvid": "123456789", "transmissionDateFrom": "2023-01-01T00:00:00Z", "transmissionDateTo": "2023-06-01T00:00:00Z"},
-                {"id": "sr-2", "shipname": "NAME_B", "flag": "LR", "callsign": "C2", "imo": "2222222",
-                 "ssvid": "123456789", "transmissionDateFrom": "2023-06-01T00:00:00Z", "transmissionDateTo": "2024-01-01T00:00:00Z"},
+                {
+                    "id": "sr-1",
+                    "shipname": "NAME_A",
+                    "flag": "PA",
+                    "callsign": "C1",
+                    "imo": "1111111",
+                    "ssvid": "123456789",
+                    "transmissionDateFrom": "2023-01-01T00:00:00Z",
+                    "transmissionDateTo": "2023-06-01T00:00:00Z",
+                },
+                {
+                    "id": "sr-2",
+                    "shipname": "NAME_B",
+                    "flag": "LR",
+                    "callsign": "C2",
+                    "imo": "2222222",
+                    "ssvid": "123456789",
+                    "transmissionDateFrom": "2023-06-01T00:00:00Z",
+                    "transmissionDateTo": "2024-01-01T00:00:00Z",
+                },
             ],
         }
         results = self._call_search(entry)
@@ -140,7 +172,11 @@ class TestGFWParsing:
             "ssvid": "123456789",
             "combinedSourcesInfo": [{"shipsData": [{"shipname": "V"}]}],
             "selfReportedInfo": [
-                {"id": "sr-1", "shipname": "HAS_DATE", "transmissionDateFrom": "2024-01-01T00:00:00Z"},
+                {
+                    "id": "sr-1",
+                    "shipname": "HAS_DATE",
+                    "transmissionDateFrom": "2024-01-01T00:00:00Z",
+                },
                 {"id": "sr-2", "shipname": "NO_DATE"},  # no transmissionDateFrom
             ],
         }
@@ -154,7 +190,19 @@ class TestGFWParsing:
             "id": "gfw-vessel-1",
             "ssvid": "123456789",
             "combinedSourcesInfo": [
-                {"shipsData": [{"shipname": "TEST VESSEL", "imo": "IMO1234567", "flag": "PA", "vesselType": "tanker", "lengthM": 250.0, "tonnageGt": 80000, "builtYear": 2005}]}
+                {
+                    "shipsData": [
+                        {
+                            "shipname": "TEST VESSEL",
+                            "imo": "IMO1234567",
+                            "flag": "PA",
+                            "vesselType": "tanker",
+                            "lengthM": 250.0,
+                            "tonnageGt": 80000,
+                            "builtYear": 2005,
+                        }
+                    ]
+                }
             ],
         }
         results = self._call_search(entry)
@@ -188,14 +236,17 @@ class TestEnrichmentProvenance:
         vessel = _make_vessel(db, "273123456", deadweight=50000.0)
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273123456",
-            "imo": "9876543",
-            "callsign": "D5BX",
-            "identity_history": [],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273123456",
+                "imo": "9876543",
+                "callsign": "D5BX",
+                "identity_history": [],
+            }
+        ]
 
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
         with patch("app.modules.vessel_enrichment.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = "test-token"
             result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
@@ -211,22 +262,29 @@ class TestEnrichmentProvenance:
         vessel = _make_vessel(db, "273123456")
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273123456",
-            "imo": "9876543",
-            "identity_history": [],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273123456",
+                "imo": "9876543",
+                "identity_history": [],
+            }
+        ]
 
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
         with patch("app.modules.vessel_enrichment.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = "test-token"
             enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
-        hist = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "imo",
-            VesselHistory.source == "gfw_enrichment_fill",
-        ).first()
+        hist = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "imo",
+                VesselHistory.source == "gfw_enrichment_fill",
+            )
+            .first()
+        )
         assert hist is not None
         assert hist.old_value == ""
         assert hist.new_value == "9876543"
@@ -238,22 +296,29 @@ class TestEnrichmentProvenance:
         vessel = _make_vessel(db, "273123456")
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273123456",
-            "callsign": "D5BX7",
-            "identity_history": [],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273123456",
+                "callsign": "D5BX7",
+                "identity_history": [],
+            }
+        ]
 
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
         with patch("app.modules.vessel_enrichment.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = "test-token"
             enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
-        hist = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.field_changed == "callsign",
-            VesselHistory.source == "gfw_enrichment_fill",
-        ).first()
+        hist = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.field_changed == "callsign",
+                VesselHistory.source == "gfw_enrichment_fill",
+            )
+            .first()
+        )
         assert hist is not None
         assert hist.old_value == ""
         assert hist.new_value == "D5BX7"
@@ -265,24 +330,31 @@ class TestEnrichmentProvenance:
         vessel = _make_vessel(db, "273123456")
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273123456",
-            "flag": "PA",
-            "year_built": 2005,
-            "tonnage_gt": 80000,
-            "identity_history": [],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273123456",
+                "flag": "PA",
+                "year_built": 2005,
+                "tonnage_gt": 80000,
+                "identity_history": [],
+            }
+        ]
 
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
         with patch("app.modules.vessel_enrichment.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = "test-token"
             enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
         # Only gfw_enrichment_fill entries should be for imo/callsign, not flag/year/dwt
-        fill_records = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_fill",
-        ).all()
+        fill_records = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_fill",
+            )
+            .all()
+        )
         assert len(fill_records) == 0
 
     @patch("app.modules.vessel_enrichment.time.sleep")
@@ -292,23 +364,30 @@ class TestEnrichmentProvenance:
         vessel = _make_vessel(db, "273123456")
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273123456",
-            "imo": "9876543",
-            "callsign": "D5BX",
-            "identity_history": [],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273123456",
+                "imo": "9876543",
+                "callsign": "D5BX",
+                "identity_history": [],
+            }
+        ]
 
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
         with patch("app.modules.vessel_enrichment.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = "test-token"
             enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
         # First run: should have created provenance
-        count1 = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_fill",
-        ).count()
+        count1 = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_fill",
+            )
+            .count()
+        )
         assert count1 == 2  # imo + callsign
 
         # Vessel now has imo and callsign set; enrichment should skip fill
@@ -319,10 +398,14 @@ class TestEnrichmentProvenance:
 
         enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
-        count2 = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_fill",
-        ).count()
+        count2 = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_fill",
+            )
+            .count()
+        )
         # Should still be 2 because the dedup query prevents duplicates
         assert count2 == 2
 
@@ -333,29 +416,36 @@ class TestEnrichmentProvenance:
         vessel = _make_vessel(db, "273123456")
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273123456",
-            "identity_history": [
-                {
-                    "name": "OLD NAME",
-                    "flag": "PA",
-                    "imo": "1111111",
-                    "callsign": "ABC",
-                    "date_from": "2023-06-15T12:00:00Z",
-                    "date_to": "2024-01-01T00:00:00Z",
-                },
-            ],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273123456",
+                "identity_history": [
+                    {
+                        "name": "OLD NAME",
+                        "flag": "PA",
+                        "imo": "1111111",
+                        "callsign": "ABC",
+                        "date_from": "2023-06-15T12:00:00Z",
+                        "date_to": "2024-01-01T00:00:00Z",
+                    },
+                ],
+            }
+        ]
 
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
         with patch("app.modules.vessel_enrichment.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = "test-token"
             enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
-        history_records = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_history",
-        ).all()
+        history_records = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_history",
+            )
+            .all()
+        )
 
         # 4 records: imo, name, callsign, flag
         assert len(history_records) == 4
@@ -379,21 +469,28 @@ class TestEnrichmentProvenance:
             "date_from": "2023-06-15T12:00:00Z",
             "date_to": "2024-01-01T00:00:00Z",
         }
-        mock_search.return_value = [{
-            "mmsi": "273123456",
-            "identity_history": [history_entry],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273123456",
+                "identity_history": [history_entry],
+            }
+        ]
 
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
         with patch("app.modules.vessel_enrichment.settings") as mock_settings:
             mock_settings.GFW_API_TOKEN = "test-token"
             # First run
             enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
-        count1 = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_history",
-        ).count()
+        count1 = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_history",
+            )
+            .count()
+        )
         assert count1 == 1  # only "name" has a value
 
         # Second run with same data
@@ -401,10 +498,14 @@ class TestEnrichmentProvenance:
             mock_settings.GFW_API_TOKEN = "test-token"
             enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
-        count2 = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_history",
-        ).count()
+        count2 = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_history",
+            )
+            .count()
+        )
         assert count2 == 1  # no duplicate
 
 
@@ -423,27 +524,34 @@ class TestPopulateGFWIdentityHistory:
         vessel = _make_vessel(db, "273111111")
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273111111",
-            "identity_history": [
-                {
-                    "name": "OLD NAME",
-                    "flag": "PA",
-                    "imo": "1111111",
-                    "callsign": "ABCD",
-                    "date_from": "2022-01-01T00:00:00Z",
-                    "date_to": "2023-01-01T00:00:00Z",
-                }
-            ],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273111111",
+                "identity_history": [
+                    {
+                        "name": "OLD NAME",
+                        "flag": "PA",
+                        "imo": "1111111",
+                        "callsign": "ABCD",
+                        "date_from": "2022-01-01T00:00:00Z",
+                        "date_to": "2023-01-01T00:00:00Z",
+                    }
+                ],
+            }
+        ]
 
         from app.modules.vessel_enrichment import populate_gfw_identity_history
+
         result = populate_gfw_identity_history(db, limit=10, token="test-token")
 
-        history_rows = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_history",
-        ).all()
+        history_rows = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_history",
+            )
+            .all()
+        )
         assert len(history_rows) == 4  # imo, name, callsign, flag
         assert result["written"] == 4
 
@@ -453,17 +561,20 @@ class TestPopulateGFWIdentityHistory:
         """Vessel already having gfw_enrichment_history rows is in skipped count."""
         vessel = _make_vessel(db, "273222222")
         # Pre-insert a history row with source='gfw_enrichment_history'
-        db.add(VesselHistory(
-            vessel_id=vessel.vessel_id,
-            field_changed="name",
-            old_value="",
-            new_value="PRIOR",
-            observed_at=datetime(2022, 1, 1),
-            source="gfw_enrichment_history",
-        ))
+        db.add(
+            VesselHistory(
+                vessel_id=vessel.vessel_id,
+                field_changed="name",
+                old_value="",
+                new_value="PRIOR",
+                observed_at=datetime(2022, 1, 1),
+                source="gfw_enrichment_history",
+            )
+        )
         db.commit()
 
         from app.modules.vessel_enrichment import populate_gfw_identity_history
+
         result = populate_gfw_identity_history(db, limit=10, token="test-token")
 
         # search_vessel should NOT be called for this vessel (NOT EXISTS skips it)
@@ -478,21 +589,24 @@ class TestPopulateGFWIdentityHistory:
         vessel = _make_vessel(db, "273333333", imo=None, flag=None)
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273333333",
-            "imo": "9999999",
-            "flag": "LR",
-            "tonnage_gt": 50000,
-            "identity_history": [
-                {
-                    "name": "HISTORY VESSEL",
-                    "flag": "LR",
-                    "date_from": "2021-06-01T00:00:00Z",
-                }
-            ],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273333333",
+                "imo": "9999999",
+                "flag": "LR",
+                "tonnage_gt": 50000,
+                "identity_history": [
+                    {
+                        "name": "HISTORY VESSEL",
+                        "flag": "LR",
+                        "date_from": "2021-06-01T00:00:00Z",
+                    }
+                ],
+            }
+        ]
 
         from app.modules.vessel_enrichment import populate_gfw_identity_history
+
         populate_gfw_identity_history(db, limit=10, token="test-token")
 
         # Metadata fields must NOT be updated
@@ -505,20 +619,23 @@ class TestPopulateGFWIdentityHistory:
     @patch("app.modules.gfw_client.search_vessel")
     def test_returns_processed_written_skipped_counts(self, mock_search, mock_sleep, db):
         """Return dict has keys processed, written, skipped with correct values."""
-        vessel = _make_vessel(db, "273444444")
+        _make_vessel(db, "273444444")
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273444444",
-            "identity_history": [
-                {
-                    "name": "NAME ONE",
-                    "date_from": "2020-01-01T00:00:00Z",
-                }
-            ],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273444444",
+                "identity_history": [
+                    {
+                        "name": "NAME ONE",
+                        "date_from": "2020-01-01T00:00:00Z",
+                    }
+                ],
+            }
+        ]
 
         from app.modules.vessel_enrichment import populate_gfw_identity_history
+
         result = populate_gfw_identity_history(db, limit=10, token="test-token")
 
         assert "processed" in result
@@ -532,7 +649,7 @@ class TestPopulateGFWIdentityHistory:
     @patch("app.modules.gfw_client.search_vessel")
     def test_error_handling_continues_to_next_vessel(self, mock_search, mock_sleep, db):
         """If search_vessel raises on first vessel, processing continues to second."""
-        vessel1 = _make_vessel(db, "273555551")
+        _make_vessel(db, "273555551")
         vessel2 = _make_vessel(db, "273555552")
         db.commit()
 
@@ -543,16 +660,19 @@ class TestPopulateGFWIdentityHistory:
             call_count += 1
             if mmsi == "273555551":
                 raise RuntimeError("API error")
-            return [{
-                "mmsi": "273555552",
-                "identity_history": [
-                    {"name": "SECOND VESSEL", "date_from": "2021-01-01T00:00:00Z"}
-                ],
-            }]
+            return [
+                {
+                    "mmsi": "273555552",
+                    "identity_history": [
+                        {"name": "SECOND VESSEL", "date_from": "2021-01-01T00:00:00Z"}
+                    ],
+                }
+            ]
 
         mock_search.side_effect = side_effect
 
         from app.modules.vessel_enrichment import populate_gfw_identity_history
+
         result = populate_gfw_identity_history(db, limit=10, token="test-token")
 
         # Both vessels were attempted
@@ -562,10 +682,14 @@ class TestPopulateGFWIdentityHistory:
         assert result["failed"] == 1
 
         # vessel2 should have history rows
-        rows = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel2.vessel_id,
-            VesselHistory.source == "gfw_enrichment_history",
-        ).all()
+        rows = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel2.vessel_id,
+                VesselHistory.source == "gfw_enrichment_history",
+            )
+            .all()
+        )
         assert len(rows) == 1
 
     @patch("app.modules.vessel_enrichment.time.sleep")
@@ -575,31 +699,38 @@ class TestPopulateGFWIdentityHistory:
         vessel = _make_vessel(db, "273666666")
         db.commit()
 
-        mock_search.return_value = [{
-            "mmsi": "273666666",
-            "identity_history": [
-                {"name": "SAME NAME", "date_from": "2022-06-01T00:00:00Z"}
-            ],
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "273666666",
+                "identity_history": [{"name": "SAME NAME", "date_from": "2022-06-01T00:00:00Z"}],
+            }
+        ]
 
         from app.modules.vessel_enrichment import populate_gfw_identity_history
 
         # First run — writes history
         result1 = populate_gfw_identity_history(db, limit=10, token="test-token")
-        count1 = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_history",
-        ).count()
+        count1 = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_history",
+            )
+            .count()
+        )
         assert count1 == 1
         assert result1["written"] == 1
 
         # Second run — vessel now has history so NOT EXISTS skips it
         result2 = populate_gfw_identity_history(db, limit=10, token="test-token")
-        count2 = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vessel.vessel_id,
-            VesselHistory.source == "gfw_enrichment_history",
-        ).count()
+        count2 = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vessel.vessel_id,
+                VesselHistory.source == "gfw_enrichment_history",
+            )
+            .count()
+        )
         assert count2 == 1  # no new rows
         assert result2["skipped"] == 1
         assert result2["processed"] == 0
-

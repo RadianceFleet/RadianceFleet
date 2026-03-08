@@ -2,28 +2,40 @@
 
 Uses pytest + MagicMock to test draught change detection logic.
 """
-import pytest
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, call
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 from app.models.draught_event import DraughtChangeEvent
 from app.modules.draught_detector import (
-    run_draught_detection,
     _get_class_threshold,
     _is_valid_draught,
+    run_draught_detection,
 )
-from app.utils.geo import haversine_nm as _haversine_nm, parse_wkt_point as _parse_port_coords
+from app.utils.geo import parse_wkt_point as _parse_port_coords
 from tests.conftest import (
-    make_mock_vessel as _mock_vessel,
-    make_mock_point as _mock_point,
-    make_mock_port as _mock_port,
     make_mock_gap as _mock_gap,
 )
+from tests.conftest import (
+    make_mock_point as _mock_point,
+)
+from tests.conftest import (
+    make_mock_port as _mock_port,
+)
+from tests.conftest import (
+    make_mock_vessel as _mock_vessel,
+)
 
 
-def _setup_db_mock(vessels=None, ports=None, points_by_vessel=None,
-                   gaps_by_vessel=None, pre_gap_point=None, post_gap_point=None,
-                   sts_result=None):
+def _setup_db_mock(
+    vessels=None,
+    ports=None,
+    points_by_vessel=None,
+    gaps_by_vessel=None,
+    pre_gap_point=None,
+    post_gap_point=None,
+    sts_result=None,
+):
     """Build a MagicMock db session with chained query support."""
     db = MagicMock()
 
@@ -42,11 +54,11 @@ def _setup_db_mock(vessels=None, ports=None, points_by_vessel=None,
     ap_first_counter = {"count": 0}
 
     def query_side_effect(model_class):
-        from app.models.vessel import Vessel as V
-        from app.models.port import Port as P
         from app.models.ais_point import AISPoint as AP
         from app.models.gap_event import AISGapEvent as GE
+        from app.models.port import Port as P
         from app.models.sts_transfer import StsTransferEvent as STS
+        from app.models.vessel import Vessel as V
 
         if model_class is V:
             return vessel_mock
@@ -64,12 +76,14 @@ def _setup_db_mock(vessels=None, ports=None, points_by_vessel=None,
                 order_chain.all.return_value = pts
             else:
                 order_chain.all.return_value = []
+
             # For gap analysis: .first() returns pre/post gap points
             def first_fn():
                 ap_first_counter["count"] += 1
                 if ap_first_counter["count"] % 2 == 1:
                     return pre_gap_point
                 return post_gap_point
+
             order_chain.first.side_effect = first_fn
             return chain
         elif model_class is GE:
@@ -96,6 +110,7 @@ def _setup_db_mock(vessels=None, ports=None, points_by_vessel=None,
 
 
 # ── Test: _get_class_threshold ───────────────────────────────────────────────
+
 
 def test_class_threshold_vlcc():
     """VLCC (>200k DWT) should have 3.0m threshold."""
@@ -124,6 +139,7 @@ def test_class_threshold_none_dwt():
 
 # ── Test: disabled flag ──────────────────────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_disabled_returns_status(mock_settings):
     """DRAUGHT_DETECTION_ENABLED=False should return disabled status."""
@@ -137,11 +153,12 @@ def test_disabled_returns_status(mock_settings):
 
 # ── Test: VLCC below threshold not flagged ───────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_vlcc_below_threshold_not_flagged(mock_settings):
     """VLCC with 2.5m change (below 3.0m threshold) should NOT be flagged."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=250000.0)  # VLCC
     points = [
@@ -163,11 +180,12 @@ def test_vlcc_below_threshold_not_flagged(mock_settings):
 
 # ── Test: Aframax offshore flagged ───────────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_aframax_offshore_flagged(mock_settings):
     """Aframax with 2.0m change offshore (above 1.5m) should be flagged."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=100000.0)  # Aframax
     points = [
@@ -191,11 +209,12 @@ def test_aframax_offshore_flagged(mock_settings):
 
 # ── Test: near offshore terminal not flagged ─────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_near_offshore_terminal_not_flagged(mock_settings):
     """Change near offshore terminal (is_offshore_terminal=True, <25nm) should NOT be flagged."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=100000.0)  # Aframax, 1.5m threshold
     # Position very close to port: 25.0, 55.0
@@ -223,11 +242,12 @@ def test_near_offshore_terminal_not_flagged(mock_settings):
 
 # ── Test: near regular port not flagged ──────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_near_regular_port_not_flagged(mock_settings):
     """Change near regular port (<10nm) should NOT be flagged."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=50000.0)  # Panamax, 1.0m threshold
     points = [
@@ -254,11 +274,12 @@ def test_near_regular_port_not_flagged(mock_settings):
 
 # ── Test: draught delta across gap ───────────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_draught_delta_across_gap(mock_settings):
     """Draught change across AIS gap should create corroborating event with linked_gap_id."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=100000.0)  # Aframax, 1.5m threshold
 
@@ -287,8 +308,9 @@ def test_draught_delta_across_gap(mock_settings):
     assert result["events_created"] >= 1
 
     # Verify the add call contains a DraughtChangeEvent with linked_gap_id
-    added_objects = [c.args[0] for c in db.add.call_args_list
-                     if hasattr(c.args[0], 'linked_gap_id')]
+    added_objects = [
+        c.args[0] for c in db.add.call_args_list if hasattr(c.args[0], "linked_gap_id")
+    ]
     assert len(added_objects) >= 1
     gap_event = added_objects[0]
     assert gap_event.linked_gap_id == 42
@@ -297,18 +319,18 @@ def test_draught_delta_across_gap(mock_settings):
 
 # ── Test: stale draught no alert ─────────────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_stale_draught_no_alert(mock_settings):
     """Same draught value for 30 days should NOT create an alert."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=50000.0)
 
     # All points have same draught
     points = [
-        _mock_point(1, 25.0, 55.0, ts_base + timedelta(days=d), draught=10.0)
-        for d in range(30)
+        _mock_point(1, 25.0, 55.0, ts_base + timedelta(days=d), draught=10.0) for d in range(30)
     ]
 
     db = _setup_db_mock(
@@ -323,11 +345,12 @@ def test_stale_draught_no_alert(mock_settings):
 
 # ── Test: draught out of bounds rejected ─────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_draught_out_of_bounds_rejected(mock_settings):
     """Draught >25m should be rejected as physically impossible."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=50000.0)
     points = [
@@ -348,11 +371,12 @@ def test_draught_out_of_bounds_rejected(mock_settings):
 
 # ── Test: negative draught rejected ──────────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_negative_draught_rejected(mock_settings):
     """Draught <0 should be rejected."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=50000.0)
     points = [
@@ -373,11 +397,12 @@ def test_negative_draught_rejected(mock_settings):
 
 # ── Test: single reading not confirmed ───────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_single_reading_not_confirmed(mock_settings):
     """Only 1 reading at new draught (needs >=2) should NOT be flagged."""
     mock_settings.DRAUGHT_DETECTION_ENABLED = True
-    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    ts_base = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
 
     vessel = _mock_vessel(deadweight=50000.0)  # Panamax, 1.0m threshold
     points = [
@@ -399,13 +424,22 @@ def test_single_reading_not_confirmed(mock_settings):
 
 # ── Test: event record structure ─────────────────────────────────────────────
 
+
 def test_event_record_structure():
     """DraughtChangeEvent should have all expected fields."""
     expected_fields = [
-        "event_id", "vessel_id", "timestamp_utc",
-        "old_draught_m", "new_draught_m", "delta_m",
-        "nearest_port_id", "distance_to_port_nm", "is_offshore",
-        "linked_gap_id", "linked_sts_id", "risk_score_component",
+        "event_id",
+        "vessel_id",
+        "timestamp_utc",
+        "old_draught_m",
+        "new_draught_m",
+        "delta_m",
+        "nearest_port_id",
+        "distance_to_port_nm",
+        "is_offshore",
+        "linked_gap_id",
+        "linked_sts_id",
+        "risk_score_component",
     ]
     # Check that the model class has these as mapped columns
     mapper = DraughtChangeEvent.__table__
@@ -415,6 +449,7 @@ def test_event_record_structure():
 
 
 # ── Test: no draught points skipped ──────────────────────────────────────────
+
 
 @patch("app.modules.draught_detector.settings")
 def test_no_draught_points_skipped(mock_settings):
@@ -437,6 +472,7 @@ def test_no_draught_points_skipped(mock_settings):
 
 # ── Test: return dict structure ──────────────────────────────────────────────
 
+
 @patch("app.modules.draught_detector.settings")
 def test_return_dict_structure(mock_settings):
     """Return dict should have keys: events_created, vessels_processed, vessels_skipped."""
@@ -452,17 +488,19 @@ def test_return_dict_structure(mock_settings):
 
 # ── Test: _is_valid_draught helper ───────────────────────────────────────────
 
+
 def test_valid_draught_bounds():
     """_is_valid_draught should reject out-of-bounds values."""
     assert _is_valid_draught(10.0) is True
-    assert _is_valid_draught(0.0) is False    # exactly 0 is invalid (no draught)
-    assert _is_valid_draught(25.0) is True    # exactly 25 is valid
-    assert _is_valid_draught(25.1) is False   # >25 invalid
+    assert _is_valid_draught(0.0) is False  # exactly 0 is invalid (no draught)
+    assert _is_valid_draught(25.0) is True  # exactly 25 is valid
+    assert _is_valid_draught(25.1) is False  # >25 invalid
     assert _is_valid_draught(-1.0) is False
     assert _is_valid_draught(None) is False
 
 
 # ── Test: _parse_port_coords helper ──────────────────────────────────────────
+
 
 def test_parse_port_coords():
     """_parse_port_coords should extract (lat, lon) from WKT POINT."""

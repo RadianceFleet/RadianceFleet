@@ -1,10 +1,11 @@
 """Tests for analyst_feedback_metrics and detector_correlation_report."""
-import pytest
+
 from unittest.mock import MagicMock, patch
 
 
-def _make_reviewed_alert(gap_event_id=1, is_false_positive=False, risk_score=80,
-                         corridor_id=1, risk_breakdown_json=None):
+def _make_reviewed_alert(
+    gap_event_id=1, is_false_positive=False, risk_score=80, corridor_id=1, risk_breakdown_json=None
+):
     alert = MagicMock()
     alert.gap_event_id = gap_event_id
     alert.is_false_positive = is_false_positive
@@ -18,6 +19,7 @@ class TestAnalystFeedbackMetrics:
     @patch("app.modules.validation_harness.AISGapEvent")
     def test_empty_reviewed(self, MockGapEvent):
         from app.modules.validation_harness import analyst_feedback_metrics
+
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = []
 
@@ -30,6 +32,7 @@ class TestAnalystFeedbackMetrics:
     @patch("app.modules.validation_harness.AISGapEvent")
     def test_mixed_reviews(self, MockGapEvent):
         from app.modules.validation_harness import analyst_feedback_metrics
+
         db = MagicMock()
 
         alerts = [
@@ -51,6 +54,7 @@ class TestAnalystFeedbackMetrics:
     @patch("app.modules.validation_harness.AISGapEvent")
     def test_all_tp(self, MockGapEvent):
         from app.modules.validation_harness import analyst_feedback_metrics
+
         db = MagicMock()
 
         alerts = [
@@ -68,6 +72,7 @@ class TestDetectorCorrelationReport:
     @patch("app.modules.validation_harness.AISGapEvent")
     def test_empty_reviewed(self, MockGapEvent):
         from app.modules.validation_harness import detector_correlation_report
+
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = []
 
@@ -77,19 +82,23 @@ class TestDetectorCorrelationReport:
     @patch("app.modules.validation_harness.AISGapEvent")
     def test_co_occurrence_calculation(self, MockGapEvent):
         from app.modules.validation_harness import detector_correlation_report
+
         db = MagicMock()
 
         alerts = [
             _make_reviewed_alert(
-                1, is_false_positive=False,
+                1,
+                is_false_positive=False,
                 risk_breakdown_json={"dark_zone": 10, "speed_anomaly": 5},
             ),
             _make_reviewed_alert(
-                2, is_false_positive=True,
+                2,
+                is_false_positive=True,
                 risk_breakdown_json={"dark_zone": 10, "speed_anomaly": 5},
             ),
             _make_reviewed_alert(
-                3, is_false_positive=False,
+                3,
+                is_false_positive=False,
                 risk_breakdown_json={"dark_zone": 10, "flag_risk": 15},
             ),
         ]
@@ -99,8 +108,11 @@ class TestDetectorCorrelationReport:
         assert len(result) > 0
         # dark_zone+speed_anomaly should appear twice (alerts 1 and 2)
         dz_sa = next(
-            (r for r in result
-             if {r["category_a"], r["category_b"]} == {"dark_zone", "speed_anomaly"}),
+            (
+                r
+                for r in result
+                if {r["category_a"], r["category_b"]} == {"dark_zone", "speed_anomaly"}
+            ),
             None,
         )
         assert dz_sa is not None
@@ -111,13 +123,16 @@ class TestDetectorCorrelationReport:
     @patch("app.modules.validation_harness.AISGapEvent")
     def test_string_json_breakdown(self, MockGapEvent):
         """risk_breakdown_json stored as a JSON string should still work."""
-        from app.modules.validation_harness import detector_correlation_report
         import json
+
+        from app.modules.validation_harness import detector_correlation_report
+
         db = MagicMock()
 
         alerts = [
             _make_reviewed_alert(
-                1, is_false_positive=False,
+                1,
+                is_false_positive=False,
                 risk_breakdown_json=json.dumps({"a": 1, "b": 2}),
             ),
         ]

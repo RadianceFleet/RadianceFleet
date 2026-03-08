@@ -1,24 +1,31 @@
 """Admin, audit, ingestion, tips, subscriptions, data coverage, API key, and webhook endpoints."""
+
 from __future__ import annotations
 
 import csv
 import io
 import logging
 import secrets
-from datetime import date, datetime, timezone
-from typing import Optional
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.config import settings
+from app.api._helpers import _audit_log, _check_upload_size, _validate_date_range, limiter
 from app.auth import (
-    create_admin_token, create_token, verify_admin_password, verify_password,
-    hash_password, require_auth, require_admin as require_admin_role,
+    create_admin_token,
+    create_token,
+    hash_password,
+    require_auth,
+    verify_admin_password,
+    verify_password,
 )
-from app.api._helpers import _audit_log, _validate_date_range, _check_upload_size, limiter
+from app.auth import (
+    require_admin as require_admin_role,
+)
+from app.config import settings
+from app.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +52,9 @@ def _validate_csv_upload(file: UploadFile) -> None:
     # Check that first line has comma or tab delimiters (i.e., is tabular)
     first_line = first_text.split("\n", 1)[0]
     if "," not in first_line and "\t" not in first_line:
-        raise HTTPException(status_code=400, detail="File does not appear to be CSV (no comma or tab delimiters)")
+        raise HTTPException(
+            status_code=400, detail="File does not appear to be CSV (no comma or tab delimiters)"
+        )
     # Verify CSV is parseable
     try:
         reader = csv.reader(io.StringIO(first_text))
@@ -60,6 +69,7 @@ def _validate_csv_upload(file: UploadFile) -> None:
 # AIS Ingestion
 # ---------------------------------------------------------------------------
 
+
 @router.post("/ais/import", tags=["ingestion"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def import_ais(
@@ -68,8 +78,8 @@ def import_ais(
     db: Session = Depends(get_db),
 ):
     """Ingest AIS records from CSV. Persists ingestion status to database."""
-    from app.modules.ingest import ingest_ais_csv
     from app.models.ingestion_status import update_ingestion_status
+    from app.modules.ingest import ingest_ais_csv
 
     _check_upload_size(file)
     _validate_csv_upload(file)
@@ -77,11 +87,17 @@ def import_ais(
     try:
         result = ingest_ais_csv(file.file, db)
         update_ingestion_status(db, "csv_import", records=result.get("accepted", 0))
-        _audit_log(db, "ais_import", "ingestion", details={
-            "file_name": file.filename,
-            "accepted": result.get("accepted", 0),
-            "rejected": result.get("rejected", 0),
-        }, request=request)
+        _audit_log(
+            db,
+            "ais_import",
+            "ingestion",
+            details={
+                "file_name": file.filename,
+                "accepted": result.get("accepted", 0),
+                "rejected": result.get("rejected", 0),
+            },
+            request=request,
+        )
         db.commit()
         return result
     except Exception as e:
@@ -124,7 +140,6 @@ def ingestion_status(db: Session = Depends(get_db)):
     }
 
 
-
 @router.post("/gfw/import", tags=["ingestion"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 async def import_gfw_detections(
@@ -135,9 +150,10 @@ async def import_gfw_detections(
     """Import pre-computed GFW vessel detection CSV (FR8)."""
     _check_upload_size(file)
     _validate_csv_upload(file)
-    from app.modules.gfw_import import ingest_gfw_csv
-    import tempfile
     import os
+    import tempfile
+
+    from app.modules.gfw_import import ingest_gfw_csv
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
         tmp.write(await file.read())
@@ -152,16 +168,18 @@ async def import_gfw_detections(
 # Audit Log
 # ---------------------------------------------------------------------------
 
+
 @router.get("/audit-log", tags=["admin"])
 def list_audit_logs(
-    action: Optional[str] = None,
-    entity_type: Optional[str] = None,
+    action: str | None = None,
+    entity_type: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """List audit log entries (PRD NFR5)."""
     from app.models.audit_log import AuditLog
+
     q = db.query(AuditLog).order_by(AuditLog.created_at.desc())
     if action:
         q = q.filter(AuditLog.action == action)
@@ -180,7 +198,7 @@ def list_audit_logs(
                 "details": l.details,
                 "created_at": l.created_at.isoformat() if l.created_at else None,
             }
-            for l in logs
+            for l in logs  # noqa: E741
         ],
     }
 
@@ -189,13 +207,15 @@ def list_audit_logs(
 # Admin Auth
 # ---------------------------------------------------------------------------
 
+
 @router.post("/admin/login", tags=["admin"])
 @limiter.limit("5/hour")
 def admin_login(request: Request, body: dict, db: Session = Depends(get_db)):
     """Rate-limited login. Supports analyst DB login (username+password) and legacy admin login."""
-    from app.schemas.analyst import AnalystLoginRequest, AnalystLoginResponse, AnalystRead
+    from datetime import datetime as _dt
+
     from app.models.analyst import Analyst
-    from datetime import datetime as _dt, timezone as _tz
+    from app.schemas.analyst import AnalystLoginRequest, AnalystLoginResponse, AnalystRead
 
     parsed = AnalystLoginRequest(**body)
 
@@ -206,7 +226,7 @@ def admin_login(request: Request, body: dict, db: Session = Depends(get_db)):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         if not verify_password(parsed.password, analyst.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        analyst.last_login_at = _dt.now(_tz.utc)
+        analyst.last_login_at = _dt.now(UTC)
         db.commit()
         role_val = analyst.role.value if hasattr(analyst.role, "value") else str(analyst.role)
         token = create_token(analyst.analyst_id, analyst.username, role_val)
@@ -232,6 +252,7 @@ def admin_refresh(request: Request, auth: dict = Depends(require_auth)):
 # Analyst Management (admin-only)
 # ---------------------------------------------------------------------------
 
+
 @router.post("/admin/analysts", tags=["admin"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def create_analyst(
@@ -241,14 +262,16 @@ def create_analyst(
     _admin=Depends(require_admin_role),
 ):
     """Admin: create a new analyst account."""
-    from app.schemas.analyst import AnalystCreate, AnalystRead
     from app.models.analyst import Analyst
     from app.models.base import AnalystRoleEnum
+    from app.schemas.analyst import AnalystCreate, AnalystRead
 
     parsed = AnalystCreate(**body)
     valid_roles = {e.value for e in AnalystRoleEnum}
     if parsed.role not in valid_roles:
-        raise HTTPException(status_code=422, detail=f"Invalid role. Must be one of: {sorted(valid_roles)}")
+        raise HTTPException(
+            status_code=422, detail=f"Invalid role. Must be one of: {sorted(valid_roles)}"
+        )
 
     existing = db.query(Analyst).filter(Analyst.username == parsed.username).first()
     if existing:
@@ -275,8 +298,8 @@ def list_analysts(
     _admin=Depends(require_admin_role),
 ):
     """Admin: list all analyst accounts."""
-    from app.schemas.analyst import AnalystRead
     from app.models.analyst import Analyst
+    from app.schemas.analyst import AnalystRead
 
     analysts = db.query(Analyst).order_by(Analyst.analyst_id).all()
     return [AnalystRead.model_validate(a).model_dump() for a in analysts]
@@ -302,7 +325,9 @@ def update_analyst(
     if "role" in body:
         valid_roles = {e.value for e in AnalystRoleEnum}
         if body["role"] not in valid_roles:
-            raise HTTPException(status_code=422, detail=f"Invalid role. Must be one of: {sorted(valid_roles)}")
+            raise HTTPException(
+                status_code=422, detail=f"Invalid role. Must be one of: {sorted(valid_roles)}"
+            )
         analyst.role = body["role"]
     if "display_name" in body:
         analyst.display_name = body["display_name"]
@@ -342,6 +367,7 @@ def reset_analyst_password(
 # Validation Harness
 # ---------------------------------------------------------------------------
 
+
 @router.get("/admin/validate", tags=["admin"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def admin_validate(
@@ -352,6 +378,7 @@ def admin_validate(
 ):
     """Run validation harness against ground truth."""
     from app.modules.validation_harness import run_validation
+
     return run_validation(db, threshold_band=threshold_band)
 
 
@@ -364,6 +391,7 @@ def admin_validate_signals(
 ):
     """Signal effectiveness report — lift ratios for each risk signal."""
     from app.modules.validation_harness import signal_effectiveness_report
+
     return signal_effectiveness_report(db)
 
 
@@ -376,6 +404,7 @@ def admin_validate_sweep(
 ):
     """Sweep score thresholds — precision/recall/F2 at each threshold."""
     from app.modules.validation_harness import sweep_thresholds
+
     return sweep_thresholds(db)
 
 
@@ -388,6 +417,7 @@ def admin_analyst_metrics(
 ):
     """Analyst feedback metrics — FP rates by score band and corridor."""
     from app.modules.validation_harness import analyst_feedback_metrics
+
     return analyst_feedback_metrics(db)
 
 
@@ -400,6 +430,7 @@ def admin_purge_observations(
 ):
     """Admin: purge AIS observations older than the configured retention window."""
     from app.models.ais_observation import AISObservation
+
     deleted = AISObservation.purge_old(db)
     db.commit()
     return {"deleted": deleted}
@@ -409,14 +440,15 @@ def admin_purge_observations(
 # Tip Submission
 # ---------------------------------------------------------------------------
 
+
 class TipRequest(BaseModel):
     mmsi: str
-    imo: Optional[str] = None
+    imo: str | None = None
     behavior_type: str
     detail_text: str
-    source_url: Optional[str] = None
-    submitter_email: Optional[str] = None
-    website: Optional[str] = None  # honeypot — reject if non-empty
+    source_url: str | None = None
+    submitter_email: str | None = None
+    website: str | None = None  # honeypot — reject if non-empty
 
 
 @router.post("/tips/vessel", tags=["public"])
@@ -424,6 +456,7 @@ class TipRequest(BaseModel):
 def submit_tip(request: Request, body: TipRequest, db: Session = Depends(get_db)):
     """Public tip submission. Rate-limited 3/hour per IP."""
     from app.models.tip_submission import TipSubmission, validate_source_url
+
     if body.website:
         raise HTTPException(status_code=422, detail="Invalid submission")
     if len(body.detail_text) < 50:
@@ -456,15 +489,17 @@ def submit_tip(request: Request, body: TipRequest, db: Session = Depends(get_db)
 @router.get("/admin/tips", tags=["admin"])
 def get_tips(
     request: Request,
-    status: Optional[str] = None,
+    status: str | None = None,
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_role),
 ):
     """Admin: list tip submissions, paginated."""
-    from app.models.tip_submission import TipSubmission
     from sqlalchemy import select
+
+    from app.models.tip_submission import TipSubmission
+
     q = select(TipSubmission)
     if status:
         q = q.where(TipSubmission.status == status.upper())
@@ -472,10 +507,16 @@ def get_tips(
     tips = db.execute(q).scalars().all()
     return [
         {
-            "id": t.id, "mmsi": t.mmsi, "imo": t.imo, "behavior_type": t.behavior_type,
-            "detail_text": t.detail_text, "source_url": t.source_url,
-            "submitter_email": t.submitter_email, "status": t.status,
-            "submitter_ip": t.submitter_ip, "created_at": str(t.created_at),
+            "id": t.id,
+            "mmsi": t.mmsi,
+            "imo": t.imo,
+            "behavior_type": t.behavior_type,
+            "detail_text": t.detail_text,
+            "source_url": t.source_url,
+            "submitter_email": t.submitter_email,
+            "status": t.status,
+            "submitter_ip": t.submitter_ip,
+            "created_at": str(t.created_at),
             "analyst_note": t.analyst_note,
         }
         for t in tips
@@ -483,8 +524,8 @@ def get_tips(
 
 
 class TipUpdateRequest(BaseModel):
-    status: Optional[str] = None
-    analyst_note: Optional[str] = None
+    status: str | None = None
+    analyst_note: str | None = None
 
 
 @router.patch("/admin/tips/{tip_id}", tags=["admin"])
@@ -497,6 +538,7 @@ def update_tip(
 ):
     """Admin: update tip status and/or analyst note."""
     from app.models.tip_submission import TipSubmission
+
     tip = db.query(TipSubmission).filter(TipSubmission.id == tip_id).first()
     if not tip:
         raise HTTPException(status_code=404, detail="Tip not found")
@@ -512,11 +554,12 @@ def update_tip(
 # Email Subscriptions
 # ---------------------------------------------------------------------------
 
+
 class SubscribeRequest(BaseModel):
     email: str
-    mmsi: Optional[str] = None
-    corridor_id: Optional[int] = None
-    alert_type: Optional[str] = None
+    mmsi: str | None = None
+    corridor_id: int | None = None
+    alert_type: str | None = None
 
 
 class ResendRequest(BaseModel):
@@ -529,9 +572,11 @@ def subscribe(request: Request, body: SubscribeRequest, db: Session = Depends(ge
     """Public: subscribe to vessel/corridor email alerts (double opt-in)."""
     from app.models.alert_subscription import AlertSubscription, generate_subscription_token
     from app.modules.email_notifier import send_confirmation_email
+
     if not settings.ADMIN_JWT_SECRET:
         raise HTTPException(status_code=503, detail="Email subscriptions not configured")
     from sqlalchemy import select
+
     existing = db.execute(
         select(AlertSubscription).where(
             AlertSubscription.email == body.email,
@@ -552,7 +597,7 @@ def subscribe(request: Request, body: SubscribeRequest, db: Session = Depends(ge
             alert_type=body.alert_type,
             token=token,
             consent_ip=request.client.host if request.client else None,
-            consent_timestamp=datetime.now(timezone.utc),
+            consent_timestamp=datetime.now(UTC),
         )
         db.add(sub)
     db.commit()
@@ -565,13 +610,17 @@ def subscribe(request: Request, body: SubscribeRequest, db: Session = Depends(ge
 @limiter.limit("3/hour")
 def resend_confirmation(request: Request, body: ResendRequest, db: Session = Depends(get_db)):
     """Resend confirmation email (rate-limited)."""
+    from sqlalchemy import select
+
     from app.models.alert_subscription import AlertSubscription, generate_subscription_token
     from app.modules.email_notifier import send_confirmation_email
-    from sqlalchemy import select
+
     if not settings.ADMIN_JWT_SECRET:
         raise HTTPException(status_code=503, detail="Email subscriptions not configured")
     sub = db.execute(
-        select(AlertSubscription).where(AlertSubscription.email == body.email, AlertSubscription.confirmed == False)
+        select(AlertSubscription).where(
+            AlertSubscription.email == body.email, AlertSubscription.confirmed == False  # noqa: E712
+        )
     ).scalar_one_or_none()
     if not sub:
         return {"status": "not_found"}
@@ -586,13 +635,19 @@ def resend_confirmation(request: Request, body: ResendRequest, db: Session = Dep
 @router.get("/unsubscribe", tags=["public"])
 def unsubscribe(token: str = Query(...), email: str = Query(...), db: Session = Depends(get_db)):
     """One-click unsubscribe via token link."""
-    from app.models.alert_subscription import AlertSubscription, verify_subscription_token
     from sqlalchemy import select
+
+    from app.models.alert_subscription import AlertSubscription, verify_subscription_token
+
     if not settings.ADMIN_JWT_SECRET:
         raise HTTPException(status_code=503, detail="Not configured")
     if not verify_subscription_token(token, email, settings.ADMIN_JWT_SECRET):
         raise HTTPException(status_code=400, detail="Invalid or expired unsubscribe token")
-    subs = db.execute(select(AlertSubscription).where(AlertSubscription.email == email)).scalars().all()
+    subs = (
+        db.execute(select(AlertSubscription).where(AlertSubscription.email == email))
+        .scalars()
+        .all()
+    )
     for s in subs:
         db.delete(s)
     db.commit()
@@ -600,16 +655,22 @@ def unsubscribe(token: str = Query(...), email: str = Query(...), db: Session = 
 
 
 @router.get("/subscribe/confirm", tags=["public"])
-def confirm_subscription(token: str = Query(...), email: str = Query(...), db: Session = Depends(get_db)):
+def confirm_subscription(
+    token: str = Query(...), email: str = Query(...), db: Session = Depends(get_db)
+):
     """Confirm email subscription via token link."""
-    from app.models.alert_subscription import AlertSubscription, verify_subscription_token
     from sqlalchemy import select
+
+    from app.models.alert_subscription import AlertSubscription, verify_subscription_token
+
     if not settings.ADMIN_JWT_SECRET:
         raise HTTPException(status_code=503, detail="Not configured")
     if not verify_subscription_token(token, email, settings.ADMIN_JWT_SECRET):
         raise HTTPException(status_code=400, detail="Invalid or expired confirmation token")
     sub = db.execute(
-        select(AlertSubscription).where(AlertSubscription.email == email, AlertSubscription.token == token)
+        select(AlertSubscription).where(
+            AlertSubscription.email == email, AlertSubscription.token == token
+        )
     ).scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found")
@@ -622,11 +683,13 @@ def confirm_subscription(token: str = Query(...), email: str = Query(...), db: S
 # Data Coverage
 # ---------------------------------------------------------------------------
 
+
 @router.get("/data/coverage", tags=["data"])
 def get_data_coverage(db: Session = Depends(get_db)):
     """Per-source data coverage summary."""
     try:
         from app.modules.coverage_tracker import coverage_summary
+
         return coverage_summary(db)
     except ImportError:
         return {"status": "coverage_tracker not available", "sources": []}
@@ -636,12 +699,13 @@ def get_data_coverage(db: Session = Depends(get_db)):
 
 @router.get("/data/coverage/gaps", tags=["data"])
 def get_coverage_gaps(
-    source: Optional[str] = None,
+    source: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Find uncovered date ranges for a data source."""
     try:
         from app.modules.coverage_tracker import find_coverage_gaps
+
         return find_coverage_gaps(db, source=source)
     except ImportError:
         return {"status": "coverage_tracker not available", "gaps": []}
@@ -654,20 +718,27 @@ def get_coverage_gaps(
 def trigger_backfill(
     request: Request,
     source: str = Query(..., description="Data source name"),
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Trigger manual backfill for a data source and date range."""
     _validate_date_range(date_from, date_to)
     try:
         from app.modules.coverage_tracker import trigger_backfill as _do_backfill
+
         result = _do_backfill(db, source=source, date_from=date_from, date_to=date_to)
-        _audit_log(db, "backfill_trigger", "data_source", details={
-            "source": source,
-            "date_from": date_from.isoformat() if date_from else None,
-            "date_to": date_to.isoformat() if date_to else None,
-        }, request=request)
+        _audit_log(
+            db,
+            "backfill_trigger",
+            "data_source",
+            details={
+                "source": source,
+                "date_from": date_from.isoformat() if date_from else None,
+                "date_to": date_to.isoformat() if date_to else None,
+            },
+            request=request,
+        )
         db.commit()
         return result
     except ImportError:
@@ -679,6 +750,7 @@ def trigger_backfill(
 # ---------------------------------------------------------------------------
 # API Key Management
 # ---------------------------------------------------------------------------
+
 
 class ApiKeyCreateRequest(BaseModel):
     name: str
@@ -708,8 +780,15 @@ def create_api_key(
     db.add(api_key)
     db.commit()
     db.refresh(api_key)
-    _audit_log(db, "api_key_create", "api_key", api_key.key_id,
-               {"name": body.name}, request, analyst_id=_admin["analyst_id"])
+    _audit_log(
+        db,
+        "api_key_create",
+        "api_key",
+        api_key.key_id,
+        {"name": body.name},
+        request,
+        analyst_id=_admin["analyst_id"],
+    )
     db.commit()
     return {
         "key_id": api_key.key_id,
@@ -761,8 +840,15 @@ def deactivate_api_key(
     if not api_key:
         raise HTTPException(status_code=404, detail="API key not found")
     api_key.is_active = False
-    _audit_log(db, "api_key_deactivate", "api_key", key_id,
-               {"name": api_key.name}, request, analyst_id=_admin["analyst_id"])
+    _audit_log(
+        db,
+        "api_key_deactivate",
+        "api_key",
+        key_id,
+        {"name": api_key.name},
+        request,
+        analyst_id=_admin["analyst_id"],
+    )
     db.commit()
     return {"status": "deactivated", "key_id": key_id}
 
@@ -771,10 +857,11 @@ def deactivate_api_key(
 # Webhook Management
 # ---------------------------------------------------------------------------
 
+
 class WebhookCreateRequest(BaseModel):
     url: str
-    events: Optional[str] = "critical_alert"
-    secret: Optional[str] = None
+    events: str | None = "critical_alert"
+    secret: str | None = None
 
 
 @router.post("/admin/webhooks", tags=["admin"])
@@ -797,7 +884,12 @@ def create_webhook(
     db.add(wh)
     db.commit()
     db.refresh(wh)
-    return {"webhook_id": wh.webhook_id, "url": wh.url, "events": wh.events, "is_active": wh.is_active}
+    return {
+        "webhook_id": wh.webhook_id,
+        "url": wh.url,
+        "events": wh.events,
+        "is_active": wh.is_active,
+    }
 
 
 @router.get("/admin/webhooks", tags=["admin"])

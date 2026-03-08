@@ -7,14 +7,13 @@ Covers:
   - Pipeline wiring for stale AIS step
   - Integration: _EXPECTED_SECTIONS, feature flags, Postgres enum migration
 """
+
 import inspect
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _make_vessel(vessel_id=1, mmsi="241001234"):
     v = MagicMock()
@@ -90,20 +89,24 @@ def _make_gap(vessel_id=1, duration_minutes=480, corridor=None, vessel=None):
 
 # ── TestStaleAISEnum ─────────────────────────────────────────────────────────
 
+
 class TestStaleAISEnum:
     def test_stale_ais_data_in_enum(self):
         from app.models.base import SpoofingTypeEnum
+
         assert hasattr(SpoofingTypeEnum, "STALE_AIS_DATA")
         assert SpoofingTypeEnum.STALE_AIS_DATA.value == "stale_ais_data"
 
     def test_stale_ais_data_is_last_before_comment(self):
         """STALE_AIS_DATA should exist in enum values."""
         from app.models.base import SpoofingTypeEnum
+
         values = [e.value for e in SpoofingTypeEnum]
         assert "stale_ais_data" in values
 
 
 # ── TestStaleAISDetection ────────────────────────────────────────────────────
+
 
 class TestStaleAISDetection:
     """Tests for detect_stale_ais_data in gap_detector.py."""
@@ -114,14 +117,16 @@ class TestStaleAISDetection:
         interval = timedelta(hours=span_hours / max(count - 1, 1))
         points = []
         for i in range(count):
-            points.append(_make_ais_point(
-                vessel_id=vessel_id,
-                timestamp=base_time + interval * i,
-                heading=180.0,
-                sog=12.0,
-                cog=180.0,
-                point_id=i + 1,
-            ))
+            points.append(
+                _make_ais_point(
+                    vessel_id=vessel_id,
+                    timestamp=base_time + interval * i,
+                    heading=180.0,
+                    sog=12.0,
+                    cog=180.0,
+                    point_id=i + 1,
+                )
+            )
         return points
 
     @patch("app.modules.gap_detector.settings")
@@ -143,7 +148,6 @@ class TestStaleAISDetection:
 
         # Need to differentiate between Vessel query and AISPoint query
         call_count = [0]
-        original_query = db.query
 
         def side_effect_query(model):
             call_count[0] += 1
@@ -165,6 +169,7 @@ class TestStaleAISDetection:
         db.query.side_effect = side_effect_query
 
         from app.modules.gap_detector import detect_stale_ais_data
+
         result = detect_stale_ais_data(db)
 
         assert result["stale_ais_anomalies"] >= 1
@@ -199,6 +204,7 @@ class TestStaleAISDetection:
         db.query.side_effect = side_effect_query
 
         from app.modules.gap_detector import detect_stale_ais_data
+
         result = detect_stale_ais_data(db)
 
         assert result["stale_ais_anomalies"] == 0
@@ -213,14 +219,16 @@ class TestStaleAISDetection:
         base_time = datetime(2025, 6, 1, 0, 0)
         points = []
         for i in range(15):
-            points.append(_make_ais_point(
-                vessel_id=1,
-                timestamp=base_time + timedelta(minutes=i * 15),
-                heading=180.0,
-                sog=0.3,  # below 0.5 threshold
-                cog=180.0,
-                point_id=i + 1,
-            ))
+            points.append(
+                _make_ais_point(
+                    vessel_id=1,
+                    timestamp=base_time + timedelta(minutes=i * 15),
+                    heading=180.0,
+                    sog=0.3,  # below 0.5 threshold
+                    cog=180.0,
+                    point_id=i + 1,
+                )
+            )
 
         db = MagicMock()
         call_count = [0]
@@ -242,6 +250,7 @@ class TestStaleAISDetection:
         db.query.side_effect = side_effect_query
 
         from app.modules.gap_detector import detect_stale_ais_data
+
         result = detect_stale_ais_data(db)
 
         assert result["stale_ais_anomalies"] == 0
@@ -254,6 +263,7 @@ class TestStaleAISDetection:
         db = MagicMock()
 
         from app.modules.gap_detector import detect_stale_ais_data
+
         result = detect_stale_ais_data(db)
 
         assert result["stale_ais_anomalies"] == 0
@@ -262,6 +272,7 @@ class TestStaleAISDetection:
 
 
 # ── TestAtSeaOperations ──────────────────────────────────────────────────────
+
 
 class TestAtSeaOperations:
     """Tests for at-sea operations scoring in compute_gap_score."""
@@ -307,10 +318,9 @@ class TestAtSeaOperations:
             port_call = None
 
         # We need to intercept the specific PortCall query
-        original_query = db.query
 
         def query_side_effect(model, *args):
-            model_name = getattr(model, "__name__", "") or getattr(model, "__tablename__", "")
+            getattr(model, "__name__", "") or getattr(model, "__tablename__", "")
             mock_q = MagicMock()
             mock_q.filter.return_value = mock_q
             mock_q.order_by.return_value = mock_q
@@ -326,8 +336,10 @@ class TestAtSeaOperations:
 
         db.query.side_effect = query_side_effect
 
-        with patch("app.modules.risk_scoring.settings") as mock_settings, \
-             patch("app.config.settings") as mock_config_settings:
+        with (
+            patch("app.modules.risk_scoring.settings") as mock_settings,
+            patch("app.config.settings") as mock_config_settings,
+        ):
             # Set all scoring flags
             mock_settings.AT_SEA_OPERATIONS_SCORING_ENABLED = scoring_enabled
             mock_settings.STALE_AIS_SCORING_ENABLED = False
@@ -347,7 +359,9 @@ class TestAtSeaOperations:
             mock_config_settings.FLEET_SCORING_ENABLED = False
 
             score, breakdown = compute_gap_score(
-                gap, config, db=db,
+                gap,
+                config,
+                db=db,
                 scoring_date=datetime(2025, 6, 1, 12, 0),
             )
         return score, breakdown
@@ -382,12 +396,14 @@ class TestAtSeaOperations:
 
 # ── TestPipelineWiring ───────────────────────────────────────────────────────
 
+
 class TestPipelineWiring:
     """Verify stale AIS step is wired into the discovery pipeline."""
 
     def test_stale_ais_step_in_pipeline(self):
         """discover_dark_vessels source should reference stale AIS detection."""
         from app.modules import dark_vessel_discovery
+
         source = inspect.getsource(dark_vessel_discovery.discover_dark_vessels)
         assert "stale_ais_detection" in source
         assert "detect_stale_ais_data" in source
@@ -395,25 +411,30 @@ class TestPipelineWiring:
     def test_stale_ais_gated_by_flag(self):
         """Pipeline should gate stale AIS behind STALE_AIS_DETECTION_ENABLED."""
         from app.modules import dark_vessel_discovery
+
         source = inspect.getsource(dark_vessel_discovery.discover_dark_vessels)
         assert "STALE_AIS_DETECTION_ENABLED" in source
 
 
 # ── TestIntegration ──────────────────────────────────────────────────────────
 
+
 class TestIntegration:
     """Integration checks for expected sections, flags, and migration."""
 
     def test_expected_sections_includes_stale_ais(self):
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
+
         assert "stale_ais" in _EXPECTED_SECTIONS
 
     def test_expected_sections_includes_at_sea_operations(self):
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
+
         assert "at_sea_operations" in _EXPECTED_SECTIONS
 
     def test_feature_flags_exist(self):
         from app.config import Settings
+
         s = Settings()
         assert hasattr(s, "STALE_AIS_DETECTION_ENABLED")
         assert hasattr(s, "STALE_AIS_SCORING_ENABLED")
@@ -426,12 +447,14 @@ class TestIntegration:
     def test_postgres_enum_migration_has_stale_ais_data(self):
         """database.py Postgres migration should include 'stale_ais_data'."""
         from app import database
+
         source = inspect.getsource(database._run_migrations)
         assert "stale_ais_data" in source
 
     def test_shadow_mode_excludes_stale_ais(self):
         """risk_scoring.py should exclude stale_ais_data when scoring disabled."""
         from app.modules import risk_scoring
+
         source = inspect.getsource(risk_scoring.compute_gap_score)
         assert "stale_ais_data" in source
         assert "STALE_AIS_SCORING_ENABLED" in source

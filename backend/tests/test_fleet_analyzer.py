@@ -1,13 +1,12 @@
 """Tests for fleet-level behavioural analysis."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from unittest.mock import MagicMock, patch
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_vessel(vessel_id, flag="PA", owner_name=None, pi_coverage_status=None):
     v = MagicMock()
@@ -47,6 +46,7 @@ def _make_gap_event(vessel_id, gap_start, risk_score=0, corridor_id=None, source
 
 
 # ── Tests: _check_flag_diversity ─────────────────────────────────────
+
 
 class TestCheckFlagDiversity:
     def test_triggers_with_4_flags(self):
@@ -95,6 +95,7 @@ class TestCheckFlagDiversity:
 
 # ── Tests: _check_sts_concentration ──────────────────────────────────
 
+
 class TestCheckStsConcentration:
     def test_no_trigger_too_few_vessels(self):
         from app.modules.fleet_analyzer import _check_sts_concentration
@@ -129,6 +130,7 @@ class TestCheckStsConcentration:
 
 
 # ── Tests: _check_dark_coordination ──────────────────────────────────
+
 
 class TestCheckDarkCoordination:
     def test_no_trigger_too_few_vessels(self):
@@ -183,6 +185,7 @@ class TestCheckDarkCoordination:
 
 # ── Tests: _check_high_risk_average ──────────────────────────────────
 
+
 class TestCheckHighRiskAverage:
     def test_triggers_above_threshold(self):
         from app.modules.fleet_analyzer import _check_high_risk_average
@@ -229,6 +232,7 @@ class TestCheckHighRiskAverage:
 
 # ── Tests: _check_shared_pi_club ─────────────────────────────────────
 
+
 class TestCheckSharedPiClub:
     def test_triggers_sanctioned_cluster(self):
         from app.modules.fleet_analyzer import _check_shared_pi_club
@@ -260,6 +264,7 @@ class TestCheckSharedPiClub:
 
 # ── Tests: _geo_bin_key ──────────────────────────────────────────────
 
+
 class TestGeoBinKey:
     def test_returns_correct_bin(self):
         from app.modules.fleet_analyzer import _geo_bin_key
@@ -276,6 +281,7 @@ class TestGeoBinKey:
 
 
 # ── Tests: run_fleet_analysis ────────────────────────────────────────
+
 
 class TestRunFleetAnalysis:
     @patch.object(MagicMock, "FLEET_ANALYSIS_ENABLED", False, create=True)

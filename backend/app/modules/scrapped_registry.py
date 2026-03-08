@@ -10,11 +10,12 @@ Part 2 — Historical track replay:
   historical track (30-90 days ago), indicating pre-programmed route replay
   spoofing. Scored at +45 points when correlation > 0.9.
 """
+
 from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,10 +23,10 @@ import yaml
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.ais_point import AISPoint
 from app.models.base import SpoofingTypeEnum
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
-from app.models.ais_point import AISPoint
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ def reload_scrapped_registry() -> dict[str, dict]:
 
 # ── Part 1: Scrapped IMO reuse detection ────────────────────────────────────
 
+
 def detect_scrapped_imo_reuse(
     db: Session,
     date_from: Any = None,
@@ -99,11 +101,7 @@ def detect_scrapped_imo_reuse(
         return {"status": "ok", "matches": 0, "anomalies_created": 0}
 
     # Query all vessels with non-null IMO
-    vessels = (
-        db.query(Vessel)
-        .filter(Vessel.imo.isnot(None), Vessel.imo != "")
-        .all()
-    )
+    vessels = db.query(Vessel).filter(Vessel.imo.isnot(None), Vessel.imo != "").all()
 
     matches = 0
     anomalies_created = 0
@@ -121,19 +119,22 @@ def detect_scrapped_imo_reuse(
         scrapped_info = registry[imo]
 
         # Check for existing anomaly with subtype scrapped_imo
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == vessel.vessel_id,
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
-        ).all()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+            )
+            .all()
+        )
 
         already_flagged = any(
-            (a.evidence_json or {}).get("subtype") == "scrapped_imo"
-            for a in existing
+            (a.evidence_json or {}).get("subtype") == "scrapped_imo" for a in existing
         )
         if already_flagged:
             continue
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         anomaly = SpoofingAnomaly(
             vessel_id=vessel.vessel_id,
             anomaly_type=SpoofingTypeEnum.IMO_FRAUD,
@@ -155,7 +156,8 @@ def detect_scrapped_imo_reuse(
 
     logger.info(
         "Scrapped IMO detection: %d matches, %d anomalies created",
-        matches, anomalies_created,
+        matches,
+        anomalies_created,
     )
     return {
         "status": "ok",
@@ -165,6 +167,7 @@ def detect_scrapped_imo_reuse(
 
 
 # ── Part 2: Historical track replay detection ──────────────────────────────
+
 
 def _compute_track_correlation(
     recent_points: list[tuple[float, float, float]],
@@ -244,7 +247,7 @@ def detect_track_replay(
     if not settings.TRACK_REPLAY_DETECTION_ENABLED:
         return {"status": "disabled"}
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     recent_start = now - timedelta(days=7)
     historical_start = now - timedelta(days=90)
     historical_end = now - timedelta(days=30)
@@ -324,10 +327,14 @@ def detect_track_replay(
             continue
 
         # Check for existing anomaly
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == vessel_id,
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.TRACK_REPLAY,
-        ).first()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.TRACK_REPLAY,
+            )
+            .first()
+        )
         if existing:
             continue
 
@@ -352,7 +359,8 @@ def detect_track_replay(
 
     logger.info(
         "Track replay detection: %d vessels checked, %d anomalies created",
-        vessels_checked, anomalies_created,
+        vessels_checked,
+        anomalies_created,
     )
     return {
         "status": "ok",

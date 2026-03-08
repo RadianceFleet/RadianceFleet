@@ -1,7 +1,7 @@
 """Tests for FR10 gov alert package export."""
+
 from datetime import datetime
-from unittest.mock import MagicMock, patch
-import pytest
+from unittest.mock import MagicMock
 
 
 class TestExportGovPackage:
@@ -60,7 +60,11 @@ class TestExportGovPackage:
             model_name = getattr(model, "__name__", str(model))
             if "AISGapEvent" in model_name:
                 m.filter.return_value.first.return_value = gap
-            elif "Vessel" in model_name and "Target" not in model_name and "Watchlist" not in model_name:
+            elif (
+                "Vessel" in model_name
+                and "Target" not in model_name
+                and "Watchlist" not in model_name
+            ):
                 m.filter.return_value.first.return_value = vessel
             elif "VesselTargetProfile" in model_name:
                 m.filter.return_value.first.return_value = None
@@ -113,7 +117,11 @@ class TestExportGovPackage:
             model_name = getattr(model, "__name__", str(model))
             if "AISGapEvent" in model_name:
                 m.filter.return_value.first.return_value = gap
-            elif "Vessel" in model_name and "Target" not in model_name and "Watchlist" not in model_name:
+            elif (
+                "Vessel" in model_name
+                and "Target" not in model_name
+                and "Watchlist" not in model_name
+            ):
                 m.filter.return_value.first.return_value = vessel
             else:
                 m.filter.return_value.first.return_value = None
@@ -146,7 +154,6 @@ class TestBuildHuntContext:
         profile = MagicMock()
         profile.profile_id = 1
 
-        call_count = [0]
         def query_side_effect(model):
             m = MagicMock()
             model_name = getattr(model, "__name__", str(model))

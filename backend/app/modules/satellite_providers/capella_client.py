@@ -4,12 +4,13 @@ API docs: https://docs.capellaspace.com/
 Auth: OAuth2 client credentials (API key exchange for bearer token).
 STAC-compliant catalog search.
 """
+
 from __future__ import annotations
 
 import logging
 import time as _time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from shapely import wkt as shapely_wkt
@@ -59,9 +60,7 @@ def _get_access_token(
 
     key = api_key or settings.CAPELLA_API_KEY
     if not key:
-        raise ValueError(
-            "CAPELLA_API_KEY must be set. Register at https://www.capellaspace.com/"
-        )
+        raise ValueError("CAPELLA_API_KEY must be set. Register at https://www.capellaspace.com/")
 
     with httpx.Client(timeout=_TIMEOUT) as client:
         resp = breakers["capella"].call(
@@ -94,7 +93,7 @@ class CapellaProvider(SatelliteProvider):
     def name(self) -> str:
         return "capella"
 
-    def _headers(self, token: Optional[str] = None) -> dict[str, str]:
+    def _headers(self, token: str | None = None) -> dict[str, str]:
         if token is None:
             token = _get_access_token(api_key=self._api_key)
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -156,20 +155,16 @@ class CapellaProvider(SatelliteProvider):
 
         results: list[ArchiveSearchResult] = []
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = self._request_with_retry_on_401(
-                "post", _CATALOG_URL, client, json=stac_body
-            )
+            resp = self._request_with_retry_on_401("post", _CATALOG_URL, client, json=stac_body)
             data = resp.json()
 
             for feature in data.get("features", []):
                 props = feature.get("properties", {})
                 acquired_str = props.get("datetime", "")
                 try:
-                    acquired_at = datetime.fromisoformat(
-                        acquired_str.replace("Z", "+00:00")
-                    )
+                    acquired_at = datetime.fromisoformat(acquired_str.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
-                    acquired_at = datetime.now(timezone.utc)
+                    acquired_at = datetime.now(UTC)
 
                 # Convert feature geometry to WKT
                 feat_geom = feature.get("geometry")
@@ -218,9 +213,7 @@ class CapellaProvider(SatelliteProvider):
         }
 
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = self._request_with_retry_on_401(
-                "post", _ORDERS_URL, client, json=order_body
-            )
+            resp = self._request_with_retry_on_401("post", _ORDERS_URL, client, json=order_body)
             data = resp.json()
 
         return OrderSubmitResult(

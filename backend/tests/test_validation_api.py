@@ -1,6 +1,8 @@
 """Tests for validation admin endpoints."""
+
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from app.auth import require_admin
 from app.main import app

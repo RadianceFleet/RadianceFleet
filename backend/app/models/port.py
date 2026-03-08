@@ -1,8 +1,10 @@
 """Port entity — major ports for anchor spoof validation."""
+
 from __future__ import annotations
 
-from sqlalchemy import Integer, String, Boolean, Text
+from sqlalchemy import Boolean, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.models.base import Base
 
 

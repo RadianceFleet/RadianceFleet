@@ -4,14 +4,15 @@ audit log, and error scenarios.
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
+
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
-
 
 # ---------------------------------------------------------------------------
 # Detection Triggers
 # ---------------------------------------------------------------------------
+
 
 class TestGapDetection:
     def test_detect_gaps_returns_200(self, api_client, mock_db):
@@ -22,15 +23,15 @@ class TestGapDetection:
 
     def test_detect_gaps_with_date_range(self, api_client, mock_db):
         with patch("app.modules.gap_detector.run_gap_detection", return_value={"detected": 2}):
-            resp = api_client.post(
-                "/api/v1/gaps/detect?date_from=2026-01-01&date_to=2026-01-31"
-            )
+            resp = api_client.post("/api/v1/gaps/detect?date_from=2026-01-01&date_to=2026-01-31")
             assert resp.status_code == 200
 
 
 class TestSpoofingDetection:
     def test_detect_spoofing_returns_200(self, api_client, mock_db):
-        with patch("app.modules.gap_detector.run_spoofing_detection", return_value={"anomalies": 3}):
+        with patch(
+            "app.modules.gap_detector.run_spoofing_detection", return_value={"anomalies": 3}
+        ):
             resp = api_client.post("/api/v1/spoofing/detect")
             assert resp.status_code == 200
             assert resp.json()["anomalies"] == 3
@@ -45,8 +46,14 @@ class TestSpoofingDetection:
 
 class TestLoiteringDetection:
     def test_detect_loitering_returns_200(self, api_client, mock_db):
-        with patch("app.modules.loitering_detector.run_loitering_detection", return_value={"loitering_events": 2}):
-            with patch("app.modules.loitering_detector.detect_laid_up_vessels", return_value={"laid_up_updated": 1}):
+        with patch(
+            "app.modules.loitering_detector.run_loitering_detection",
+            return_value={"loitering_events": 2},
+        ):
+            with patch(
+                "app.modules.loitering_detector.detect_laid_up_vessels",
+                return_value={"laid_up_updated": 1},
+            ):
                 resp = api_client.post("/api/v1/loitering/detect")
                 assert resp.status_code == 200
 
@@ -78,6 +85,7 @@ class TestStsDetection:
 # Scoring
 # ---------------------------------------------------------------------------
 
+
 class TestScoring:
     def test_score_alerts_returns_200(self, api_client, mock_db):
         with patch("app.modules.risk_scoring.score_all_alerts", return_value={"scored": 10}):
@@ -95,24 +103,34 @@ class TestScoring:
 # Evidence Export
 # ---------------------------------------------------------------------------
 
+
 class TestEvidenceExport:
     def test_export_json_returns_200(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_evidence_card", return_value={"evidence": "card"}):
+        with patch(
+            "app.modules.evidence_export.export_evidence_card", return_value={"evidence": "card"}
+        ):
             resp = api_client.post("/api/v1/alerts/1/export?format=json")
             assert resp.status_code == 200
 
     def test_export_markdown_returns_200(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_evidence_card", return_value={"markdown": "# Card"}):
+        with patch(
+            "app.modules.evidence_export.export_evidence_card", return_value={"markdown": "# Card"}
+        ):
             resp = api_client.post("/api/v1/alerts/1/export?format=md")
             assert resp.status_code == 200
 
     def test_export_csv_returns_200(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_evidence_card", return_value={"csv": "col1,col2"}):
+        with patch(
+            "app.modules.evidence_export.export_evidence_card", return_value={"csv": "col1,col2"}
+        ):
             resp = api_client.post("/api/v1/alerts/1/export?format=csv")
             assert resp.status_code == 200
 
     def test_export_returns_400_on_error(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_evidence_card", return_value={"error": "Status is new"}):
+        with patch(
+            "app.modules.evidence_export.export_evidence_card",
+            return_value={"error": "Status is new"},
+        ):
             resp = api_client.post("/api/v1/alerts/1/export?format=json")
             assert resp.status_code == 400
             assert "Status is new" in resp.json()["detail"]
@@ -121,6 +139,7 @@ class TestEvidenceExport:
 # ---------------------------------------------------------------------------
 # Alert Status & Notes
 # ---------------------------------------------------------------------------
+
 
 class TestAlertStatusUpdate:
     def _make_mock_alert(self, mock_db):
@@ -183,6 +202,7 @@ class TestAlertNotes:
 # Bulk Status
 # ---------------------------------------------------------------------------
 
+
 class TestBulkStatus:
     def test_bulk_status_update(self, api_client, mock_db):
         mock_db.query.return_value.filter.return_value.update.return_value = 3
@@ -212,12 +232,15 @@ class TestBulkStatus:
 # Corridor CRUD
 # ---------------------------------------------------------------------------
 
+
 class TestCorridorCRUD:
     def test_create_corridor_ok(self, api_client, mock_db):
         mock_db.add = MagicMock()
         mock_db.commit = MagicMock()
+
         def set_id(obj):
             obj.corridor_id = 42
+
         mock_db.add.side_effect = set_id
         resp = api_client.post(
             "/api/v1/corridors",
@@ -278,6 +301,7 @@ class TestCorridorCRUD:
     def test_delete_corridor_409_with_linked_gaps(self, api_client, mock_db):
         corridor = MagicMock()
         call_count = [0]
+
         def filter_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -286,6 +310,7 @@ class TestCorridorCRUD:
             else:
                 result.count.return_value = 5
             return result
+
         mock_db.query.return_value.filter.side_effect = filter_side_effect
         resp = api_client.delete("/api/v1/corridors/1")
         assert resp.status_code == 409
@@ -301,13 +326,16 @@ class TestCorridorCRUD:
 # Watchlist Management
 # ---------------------------------------------------------------------------
 
+
 class TestWatchlistManagement:
     def test_add_to_watchlist_ok(self, api_client, mock_db):
         vessel = MagicMock()
         vessel.vessel_id = 1
         mock_db.query.return_value.filter.return_value.first.return_value = vessel
+
         def set_id(obj):
             obj.watchlist_entry_id = 10
+
         mock_db.add.side_effect = set_id
         resp = api_client.post(
             "/api/v1/watchlist",
@@ -342,6 +370,7 @@ class TestWatchlistManagement:
 # ---------------------------------------------------------------------------
 # Watchlist Import
 # ---------------------------------------------------------------------------
+
 
 class TestWatchlistImport:
     def test_import_ofac_returns_200(self, api_client, mock_db):
@@ -387,6 +416,7 @@ class TestWatchlistImport:
 # Alert Map & CSV Export
 # ---------------------------------------------------------------------------
 
+
 class TestAlertMap:
     def test_alert_map_returns_200(self, api_client, mock_db):
         mock_db.query.return_value.options.return_value.order_by.return_value.limit.return_value.all.return_value = []
@@ -404,6 +434,7 @@ class TestAlertMap:
 # ---------------------------------------------------------------------------
 # Dark Vessels
 # ---------------------------------------------------------------------------
+
 
 class TestDarkVessels:
     def test_list_dark_vessels_empty(self, api_client, mock_db):
@@ -425,9 +456,13 @@ class TestDarkVessels:
 # Satellite Check
 # ---------------------------------------------------------------------------
 
+
 class TestSatelliteCheck:
     def test_prepare_satellite_check_returns_200(self, api_client, mock_db):
-        with patch("app.modules.satellite_query.prepare_satellite_check", return_value={"status": "prepared"}):
+        with patch(
+            "app.modules.satellite_query.prepare_satellite_check",
+            return_value={"status": "prepared"},
+        ):
             resp = api_client.post("/api/v1/alerts/1/satellite-check")
             assert resp.status_code == 200
 
@@ -435,6 +470,7 @@ class TestSatelliteCheck:
 # ---------------------------------------------------------------------------
 # Vessel Detail & Related
 # ---------------------------------------------------------------------------
+
 
 class TestVesselDetail:
     def _mock_vessel(self, mock_db):
@@ -451,7 +487,7 @@ class TestVesselDetail:
         vessel.flag_risk_category = MagicMock(value="high")
         vessel.pi_coverage_status = MagicMock(value="unknown")
         vessel.psc_detained_last_12m = False
-        vessel.mmsi_first_seen_utc = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        vessel.mmsi_first_seen_utc = datetime(2020, 1, 1, tzinfo=UTC)
         vessel.vessel_laid_up_30d = False
         vessel.vessel_laid_up_60d = False
         vessel.vessel_laid_up_in_sts_zone = False
@@ -487,6 +523,7 @@ class TestVesselDetail:
 # Ingestion Status
 # ---------------------------------------------------------------------------
 
+
 class TestIngestionStatus:
     def test_ingestion_status_idle(self, api_client, mock_db):
         resp = api_client.get("/api/v1/ingestion-status")
@@ -499,6 +536,7 @@ class TestIngestionStatus:
 # ---------------------------------------------------------------------------
 # Audit Log
 # ---------------------------------------------------------------------------
+
 
 class TestAuditLog:
     def test_audit_log_empty(self, api_client, mock_db):
@@ -521,14 +559,19 @@ class TestAuditLog:
 # Gov Package Export
 # ---------------------------------------------------------------------------
 
+
 class TestGovPackage:
     def test_export_gov_package_ok(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_gov_package", return_value={"package": "data"}):
+        with patch(
+            "app.modules.evidence_export.export_gov_package", return_value={"package": "data"}
+        ):
             resp = api_client.post("/api/v1/alerts/1/export/gov-package")
             assert resp.status_code == 200
 
     def test_export_gov_package_error(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_gov_package", return_value={"error": "Not reviewed"}):
+        with patch(
+            "app.modules.evidence_export.export_gov_package", return_value={"error": "Not reviewed"}
+        ):
             resp = api_client.post("/api/v1/alerts/1/export/gov-package")
             assert resp.status_code == 400
 
@@ -536,6 +579,7 @@ class TestGovPackage:
 # ---------------------------------------------------------------------------
 # Hunt Endpoints
 # ---------------------------------------------------------------------------
+
 
 class TestHuntEndpoints:
     def test_list_hunt_targets_empty(self, api_client, mock_db):
@@ -558,6 +602,7 @@ class TestHuntEndpoints:
 # ---------------------------------------------------------------------------
 # Input Validation & Edge Cases
 # ---------------------------------------------------------------------------
+
 
 class TestInputValidation:
     def test_alerts_limit_over_500_returns_422(self, api_client, mock_db):

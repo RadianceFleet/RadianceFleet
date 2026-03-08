@@ -1,13 +1,13 @@
 """Tests for alert edit lock endpoints."""
+
 from __future__ import annotations
 
-import jwt
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from app.config import settings
+import jwt
 
+from app.config import settings
 
 JWT_SECRET = "test-secret-key-1234567890abcdef"
 
@@ -27,7 +27,7 @@ def _make_mock_alert(**kwargs):
 
 def _make_mock_lock(**kwargs):
     lock = MagicMock()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     defaults = {
         "lock_id": 1,
         "alert_id": 1,
@@ -58,6 +58,7 @@ class TestEditLocks:
                 # Second call: check existing lock
                 q.filter.return_value.first.return_value = None
             return q
+
         mock_db.query.side_effect = side_effect
 
         token = _make_token(analyst_id=1)
@@ -84,6 +85,7 @@ class TestEditLocks:
                 q.filter.return_value.delete.return_value = 0
                 q.filter.return_value.first.return_value = existing_lock
             return q
+
         mock_db.query.side_effect = side_effect
 
         token = _make_token(analyst_id=1, username="alice")
@@ -109,6 +111,7 @@ class TestEditLocks:
                 # No existing lock after cleanup
                 q.filter.return_value.first.return_value = None
             return q
+
         mock_db.query.side_effect = side_effect
 
         token = _make_token(analyst_id=1, username="test_admin")

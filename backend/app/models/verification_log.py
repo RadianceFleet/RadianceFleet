@@ -2,12 +2,12 @@
 
 Tracks every paid API call for budget management and audit trail.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
-from sqlalchemy import Integer, String, Float, DateTime, Text, ForeignKey
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -20,11 +20,11 @@ class VerificationLog(Base):
     vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     request_time_utc: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+        DateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
     response_status: Mapped[str] = mapped_column(String(20), nullable=False)
-    cost_usd: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    result_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    result_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # result_json stores json.dumps(result.data) — full untruncated payload for audit trail
     # result_summary (above) is the human-readable truncated label (both fields coexist)

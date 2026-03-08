@@ -9,11 +9,11 @@ WARNING: Equasis ToS prohibits automated access. This module is DISABLED by
 default (EQUASIS_SCRAPING_ENABLED=false). Enable only with explicit consent.
 See https://www.equasis.org for ToS.
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
@@ -43,7 +43,7 @@ class EquasisClient:
             raise RuntimeError(
                 "EQUASIS_USERNAME and EQUASIS_PASSWORD must be set when scraping is enabled."
             )
-        self._session: Optional[requests.Session] = None
+        self._session: requests.Session | None = None
 
     def _login(self) -> None:
         """POST /authen/HomePage and persist session cookie.
@@ -67,7 +67,9 @@ class EquasisClient:
         # Success: response body contains "Logout" (authenticated state)
         # Failure: no Logout link — still showing the login form
         if "Logout" not in resp.text:
-            raise RuntimeError("Equasis login failed — check EQUASIS_USERNAME and EQUASIS_PASSWORD.")
+            raise RuntimeError(
+                "Equasis login failed — check EQUASIS_USERNAME and EQUASIS_PASSWORD."
+            )
         self._session = session
         logger.debug("Equasis login successful")
 
@@ -88,7 +90,7 @@ class EquasisClient:
         resp.raise_for_status()
         return resp
 
-    def search_by_imo(self, imo: str) -> Optional[dict]:
+    def search_by_imo(self, imo: str) -> dict | None:
         """Search Equasis by IMO number. Returns enrichment dict or None."""
         try:
             resp = self._get("/restricted/ShipInfo", {"P_IMO": imo})
@@ -97,7 +99,7 @@ class EquasisClient:
             logger.warning("Equasis search_by_imo(%s) failed: %s", imo, exc)
             return None
 
-    def search_by_mmsi(self, mmsi: str) -> Optional[dict]:
+    def search_by_mmsi(self, mmsi: str) -> dict | None:
         """Fallback search by MMSI when IMO is unavailable."""
         try:
             resp = self._get("/restricted/Search", {"P_MMSI": mmsi})
@@ -107,7 +109,7 @@ class EquasisClient:
             return None
 
 
-def _parse_vessel_page(html: str) -> Optional[dict]:
+def _parse_vessel_page(html: str) -> dict | None:
     """Parse Equasis vessel info page HTML. Returns enrichment dict or None.
 
     Equasis uses a Bootstrap grid layout: each field is a <div class="row"> where

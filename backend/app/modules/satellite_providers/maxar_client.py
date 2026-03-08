@@ -4,13 +4,14 @@ API docs: https://docs.maxar.com/
 Auth: OAuth2 ROPC flow with API key fallback.
 Discovery API (STAC-compliant) + Ordering API v1.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 import time as _time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from shapely import wkt as shapely_wkt
@@ -71,9 +72,7 @@ def _get_access_token(
     """
     key = api_key or settings.MAXAR_API_KEY
     if not key:
-        raise ValueError(
-            "MAXAR_API_KEY must be set. Register at https://www.maxar.com/"
-        )
+        raise ValueError("MAXAR_API_KEY must be set. Register at https://www.maxar.com/")
 
     # API key mode — no token exchange needed
     if _is_api_key(key):
@@ -86,9 +85,7 @@ def _get_access_token(
 
     uname = username or settings.MAXAR_USERNAME
     if not uname:
-        raise ValueError(
-            "MAXAR_USERNAME must be set for OAuth2 ROPC authentication."
-        )
+        raise ValueError("MAXAR_USERNAME must be set for OAuth2 ROPC authentication.")
 
     with httpx.Client(timeout=_TIMEOUT) as client:
         resp = breakers["maxar"].call(
@@ -122,21 +119,17 @@ class MaxarProvider(SatelliteProvider):
     ) -> None:
         self._api_key = api_key or settings.MAXAR_API_KEY
         if not self._api_key:
-            raise ValueError(
-                "MAXAR_API_KEY must be set. Register at https://www.maxar.com/"
-            )
+            raise ValueError("MAXAR_API_KEY must be set. Register at https://www.maxar.com/")
         self._username = username or settings.MAXAR_USERNAME
 
     @property
     def name(self) -> str:
         return "maxar"
 
-    def _headers(self, token: Optional[str] = None) -> dict[str, str]:
+    def _headers(self, token: str | None = None) -> dict[str, str]:
         """Build auth headers — Bearer token or X-API-Key depending on key format."""
         if token is None:
-            token = _get_access_token(
-                api_key=self._api_key, username=self._username
-            )
+            token = _get_access_token(api_key=self._api_key, username=self._username)
         if _is_api_key(self._api_key):
             return {
                 "X-API-Key": self._api_key,
@@ -155,9 +148,7 @@ class MaxarProvider(SatelliteProvider):
         **kwargs: Any,
     ) -> httpx.Response:
         """Make a request, refreshing the token on 401."""
-        token = _get_access_token(
-            api_key=self._api_key, username=self._username
-        )
+        token = _get_access_token(api_key=self._api_key, username=self._username)
         kwargs["headers"] = self._headers(token)
 
         request_fn = getattr(client, method)
@@ -221,20 +212,16 @@ class MaxarProvider(SatelliteProvider):
 
         results: list[ArchiveSearchResult] = []
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = self._request_with_retry_on_401(
-                "post", _DISCOVERY_URL, client, json=stac_body
-            )
+            resp = self._request_with_retry_on_401("post", _DISCOVERY_URL, client, json=stac_body)
             data = resp.json()
 
             for feature in data.get("features", []):
                 props = feature.get("properties", {})
                 acquired_str = props.get("datetime", "")
                 try:
-                    acquired_at = datetime.fromisoformat(
-                        acquired_str.replace("Z", "+00:00")
-                    )
+                    acquired_at = datetime.fromisoformat(acquired_str.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
-                    acquired_at = datetime.now(timezone.utc)
+                    acquired_at = datetime.now(UTC)
 
                 # Convert feature geometry to WKT
                 feat_geom = feature.get("geometry")

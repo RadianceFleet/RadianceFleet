@@ -1,12 +1,13 @@
 """Tests for Capella Space satellite provider client."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import httpx
 import pybreaker
+import pytest
 
 from app.modules.satellite_providers.base import (
     ArchiveSearchResult,
@@ -14,12 +15,11 @@ from app.modules.satellite_providers.base import (
     OrderSubmitResult,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 AOI_WKT = "POLYGON((10 55, 11 55, 11 56, 10 56, 10 55))"
-START = datetime(2026, 1, 1, tzinfo=timezone.utc)
-END = datetime(2026, 1, 15, tzinfo=timezone.utc)
+START = datetime(2026, 1, 1, tzinfo=UTC)
+END = datetime(2026, 1, 15, tzinfo=UTC)
 
 
 def _make_stac_response(features: list[dict] | None = None) -> dict:
@@ -52,9 +52,7 @@ def _make_token_response() -> dict:
     return {"accessToken": "test-bearer-token", "expiresIn": 3600}
 
 
-def _make_order_response(
-    order_id: str = "capella-order-123", status: str = "submitted"
-) -> dict:
+def _make_order_response(order_id: str = "capella-order-123", status: str = "submitted") -> dict:
     return {
         "orderId": order_id,
         "status": status,
@@ -75,11 +73,11 @@ def _mock_response(status_code: int, json_data: dict) -> httpx.Response:
 def reset_capella_state():
     """Reset Capella circuit breaker and token cache between tests."""
     from app.modules.circuit_breakers import breakers
-    breakers["capella"] = pybreaker.CircuitBreaker(
-        fail_max=5, reset_timeout=60, name="capella"
-    )
+
+    breakers["capella"] = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60, name="capella")
     # Clear token cache
     import app.modules.satellite_providers.capella_client as capella_mod
+
     capella_mod._token_cache.clear()
     yield
 
@@ -88,6 +86,7 @@ def reset_capella_state():
 def capella_provider():
     """Create a CapellaProvider with a test API key."""
     from app.modules.satellite_providers.capella_client import CapellaProvider
+
     return CapellaProvider(api_key="test-capella-key")
 
 
@@ -106,7 +105,9 @@ def test_token_exchange(capella_provider):
             return token_resp
         return search_resp
 
-    with patch("app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry):
+    with patch(
+        "app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry
+    ):
         results = capella_provider.search_archive(AOI_WKT, START, END)
 
     assert len(results) >= 0  # just verify no exception
@@ -126,7 +127,9 @@ def test_search_archive_success(capella_provider):
             return token_resp
         return search_resp
 
-    with patch("app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry):
+    with patch(
+        "app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry
+    ):
         results = capella_provider.search_archive(AOI_WKT, START, END)
 
     assert len(results) == 1
@@ -150,7 +153,9 @@ def test_submit_order_success(capella_provider):
             return token_resp
         return order_resp
 
-    with patch("app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry):
+    with patch(
+        "app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry
+    ):
         result = capella_provider.submit_order(["scene-1"])
 
     assert isinstance(result, OrderSubmitResult)
@@ -161,9 +166,7 @@ def test_check_order_status(capella_provider):
     """check_order_status returns OrderStatusResult with mapped status."""
     token_resp = _mock_response(200, _make_token_response())
     status_data = _make_order_response(status="completed")
-    status_data["items"] = [
-        {"assets": {"data": {"href": "https://capella.com/scene.tif"}}}
-    ]
+    status_data["items"] = [{"assets": {"data": {"href": "https://capella.com/scene.tif"}}}]
     status_resp = _mock_response(200, status_data)
 
     call_count = 0
@@ -175,7 +178,9 @@ def test_check_order_status(capella_provider):
             return token_resp
         return status_resp
 
-    with patch("app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry):
+    with patch(
+        "app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry
+    ):
         result = capella_provider.check_order_status("capella-order-123")
 
     assert isinstance(result, OrderStatusResult)
@@ -197,7 +202,9 @@ def test_cancel_order(capella_provider):
             return token_resp
         return cancel_resp
 
-    with patch("app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry):
+    with patch(
+        "app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry
+    ):
         assert capella_provider.cancel_order("capella-order-123") is True
 
 
@@ -222,7 +229,9 @@ def test_token_refresh_on_401(capella_provider):
             return token_resp
         return search_resp
 
-    with patch("app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry):
+    with patch(
+        "app.modules.satellite_providers.capella_client.retry_request", side_effect=_mock_retry
+    ):
         results = capella_provider.search_archive(AOI_WKT, START, END)
 
     assert results == []
@@ -232,11 +241,12 @@ def test_token_refresh_on_401(capella_provider):
 
 def test_circuit_breaker_protection(capella_provider):
     """Circuit breaker trips after repeated connection failures."""
-    from app.modules.circuit_breakers import breakers
 
     # Token cache needs to be set so we get past token exchange
-    import app.modules.satellite_providers.capella_client as capella_mod
     import time
+
+    import app.modules.satellite_providers.capella_client as capella_mod
+
     capella_mod._token_cache["token"] = "test-token"
     capella_mod._token_cache["expires_at"] = time.monotonic() + 3600
 

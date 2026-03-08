@@ -7,21 +7,18 @@ Covers:
   B5: AISPoint model has destination column
   B6: Null destination does NOT trigger blank-destination anomaly
 """
+
 from __future__ import annotations
 
 import inspect
 import math
-import textwrap
-from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # B1: Track naturalness bearings computation
 # ---------------------------------------------------------------------------
+
 
 class TestB1TrackNaturalnessBearings:
     """Verify bearings are computed once, before both Feature 4 and Feature 5."""
@@ -51,9 +48,7 @@ class TestB1TrackNaturalnessBearings:
         from app.modules.track_naturalness_detector import _compute_features
 
         source = inspect.getsource(_compute_features)
-        assert "dir()" not in source, (
-            "dir() guard should be removed from Feature 5 block"
-        )
+        assert "dir()" not in source, "dir() guard should be removed from Feature 5 block"
 
     def test_bearing_changes_computed_once(self):
         """bearing_changes should be computed once and reused, not recomputed
@@ -92,6 +87,7 @@ class TestB1TrackNaturalnessBearings:
 # B3: Merge chain BFS excludes PENDING + chain invalidation
 # ---------------------------------------------------------------------------
 
+
 class TestB3MergeChainBFS:
     """Verify BFS chain detection uses only confirmed statuses."""
 
@@ -115,6 +111,7 @@ class TestB3MergeChainBFS:
     def test_invalidate_chains_function_exists(self):
         """The invalidate_chains_for_rejected_candidate function should exist."""
         from app.modules.identity_resolver import invalidate_chains_for_rejected_candidate
+
         assert callable(invalidate_chains_for_rejected_candidate)
 
     def test_invalidate_chains_removes_matching_chains(self):
@@ -161,12 +158,14 @@ class TestB3MergeChainBFS:
 # B4: Dark coordination requires geographic proximity
 # ---------------------------------------------------------------------------
 
+
 class TestB4DarkCoordinationProximity:
     """Verify dark coordination groups gaps geographically."""
 
     def test_geo_bin_key_function_exists(self):
         """The _geo_bin_key helper should exist."""
         from app.modules.fleet_analyzer import _geo_bin_key
+
         assert callable(_geo_bin_key)
 
     def test_geo_bin_key_returns_tuple(self):
@@ -190,9 +189,7 @@ class TestB4DarkCoordinationProximity:
         from app.modules.fleet_analyzer import _check_dark_coordination
 
         source = inspect.getsource(_check_dark_coordination)
-        assert "corridor_id" in source, (
-            "Dark coordination should group by corridor_id"
-        )
+        assert "corridor_id" in source, "Dark coordination should group by corridor_id"
         assert "geo_bin" in source or "_geo_bin_key" in source, (
             "Dark coordination should use geographic binning for gaps without corridors"
         )
@@ -208,14 +205,14 @@ class TestB4DarkCoordinationProximity:
         # 3 vessels
         vessels = [MagicMock(vessel_id=i) for i in range(1, 4)]
 
-        now = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        now = datetime(2025, 1, 1, tzinfo=UTC)
 
         # Create 3 gaps — each in a wildly different location (different 5-deg bin)
         gap1 = MagicMock()
         gap1.vessel_id = 1
         gap1.gap_start_utc = now
         gap1.corridor_id = None
-        gap1.gap_off_lat = 60.0   # Nordic
+        gap1.gap_off_lat = 60.0  # Nordic
         gap1.gap_off_lon = 20.0
 
         gap2 = MagicMock()
@@ -229,12 +226,14 @@ class TestB4DarkCoordinationProximity:
         gap3.vessel_id = 3
         gap3.gap_start_utc = now + timedelta(hours=2)
         gap3.corridor_id = None
-        gap3.gap_off_lat = 5.0    # Gulf of Guinea
+        gap3.gap_off_lat = 5.0  # Gulf of Guinea
         gap3.gap_off_lon = 0.0
 
         db = MagicMock()
         db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            gap1, gap2, gap3,
+            gap1,
+            gap2,
+            gap3,
         ]
 
         result = _check_dark_coordination(db, cluster, vessels)
@@ -251,7 +250,7 @@ class TestB4DarkCoordinationProximity:
 
         vessels = [MagicMock(vessel_id=i) for i in range(1, 4)]
 
-        now = datetime(2025, 1, 1, tzinfo=timezone.utc)
+        now = datetime(2025, 1, 1, tzinfo=UTC)
 
         gap1 = MagicMock()
         gap1.vessel_id = 1
@@ -276,19 +275,20 @@ class TestB4DarkCoordinationProximity:
 
         db = MagicMock()
         db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
-            gap1, gap2, gap3,
+            gap1,
+            gap2,
+            gap3,
         ]
 
         result = _check_dark_coordination(db, cluster, vessels)
-        assert result is not None, (
-            "3 gaps in same corridor within 48h should trigger alert"
-        )
+        assert result is not None, "3 gaps in same corridor within 48h should trigger alert"
         assert result.alert_type == "fleet_dark_coordination"
 
 
 # ---------------------------------------------------------------------------
 # B5: AISPoint model has destination column
 # ---------------------------------------------------------------------------
+
 
 class TestB5AISPointDestination:
     """Verify AISPoint model includes the destination column."""
@@ -320,8 +320,7 @@ class TestB5AISPointDestination:
         import app.database as db_mod
 
         source = inspect.getsource(db_mod._run_migrations)
-        assert '"ais_points", "destination"' in source or \
-               "\"ais_points\", \"destination\"" in source, (
+        assert '"ais_points", "destination"' in source or '"ais_points", "destination"' in source, (
             "destination migration should be in _run_migrations"
         )
 
@@ -338,6 +337,7 @@ class TestB5AISPointDestination:
 # ---------------------------------------------------------------------------
 # B6: Null destination does NOT trigger blank-destination anomaly
 # ---------------------------------------------------------------------------
+
 
 class TestB6DestinationFalsePositive:
     """Verify that null/missing destinations don't produce false positives."""
@@ -380,10 +380,13 @@ class TestB6DestinationFalsePositive:
 
         source = inspect.getsource(detect_destination_anomalies)
         # Should reference the destination attribute, not raw_payload_ref
-        assert '"destination"' in source or "'destination'" in source or \
-               'getattr(latest_point, "destination"' in source or \
-               "destination" in source
+        assert (
+            '"destination"' in source
+            or "'destination'" in source
+            or 'getattr(latest_point, "destination"' in source
+            or "destination" in source
+        )
         # Should NOT use raw_payload_ref for destination lookup
-        assert 'raw_payload_ref' not in source, (
+        assert "raw_payload_ref" not in source, (
             "Detector should use 'destination' column, not 'raw_payload_ref'"
         )

@@ -1,8 +1,10 @@
 """Email notification via Resend API with SMTP fallback."""
+
 import logging
 import smtplib
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -57,14 +59,17 @@ def _send_email(to_email: str, subject: str, html_body: str) -> bool:
 
 def _send_via_resend(to_email: str, subject: str, html_body: str) -> bool:
     import resend
+
     resend.api_key = settings.RESEND_API_KEY
     try:
-        resend.Emails.send({
-            "from": f"RadianceFleet <noreply@{settings.EMAIL_FROM_DOMAIN}>",
-            "to": [to_email],
-            "subject": subject,
-            "html": html_body,
-        })
+        resend.Emails.send(
+            {
+                "from": f"RadianceFleet <noreply@{settings.EMAIL_FROM_DOMAIN}>",
+                "to": [to_email],
+                "subject": subject,
+                "html": html_body,
+            }
+        )
         return True
     except Exception as e:
         logger.error("Resend API error: %s", e)

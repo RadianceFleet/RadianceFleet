@@ -4,22 +4,19 @@ Verifies that merge-candidates, corridors, and stats endpoints
 return correct data after optimization from per-row queries to
 batched/aggregated SQL queries.
 """
-from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
 
-import pytest
-
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Merge Candidates — batch vessel lookup via IN query
 # ---------------------------------------------------------------------------
 
+
 class TestMergeCandidatesOptimized:
     def test_merge_candidates_returns_vessel_info(self, api_client, mock_db):
         """Merge candidates endpoint returns correct vessel MMSI/name
         after switching from per-candidate queries to a single IN query."""
-        from app.models.merge_candidate import MergeCandidate
-        from app.models.vessel import Vessel
 
         # Create mock candidates
         c1 = MagicMock()
@@ -32,7 +29,7 @@ class TestMergeCandidatesOptimized:
         c1.match_reasons_json = {"imo": True}
         c1.satellite_corroboration_json = None
         c1.status = "pending"
-        c1.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        c1.created_at = datetime(2026, 1, 1, tzinfo=UTC)
         c1.resolved_at = None
         c1.resolved_by = None
 
@@ -46,7 +43,7 @@ class TestMergeCandidatesOptimized:
         c2.match_reasons_json = {"name": True}
         c2.satellite_corroboration_json = None
         c2.status = "pending"
-        c2.created_at = datetime(2026, 1, 2, tzinfo=timezone.utc)
+        c2.created_at = datetime(2026, 1, 2, tzinfo=UTC)
         c2.resolved_at = None
         c2.resolved_by = None
 
@@ -127,7 +124,7 @@ class TestMergeCandidatesOptimized:
         c1.match_reasons_json = {}
         c1.satellite_corroboration_json = None
         c1.status = "pending"
-        c1.created_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        c1.created_at = datetime(2026, 1, 1, tzinfo=UTC)
         c1.resolved_at = None
         c1.resolved_by = None
 
@@ -171,10 +168,10 @@ class TestMergeCandidatesOptimized:
 # Corridors — aggregated stats via GROUP BY
 # ---------------------------------------------------------------------------
 
+
 class TestCorridorStatsOptimized:
     def test_corridor_stats_aggregated(self, api_client, mock_db):
         """Corridor stats are computed via single GROUP BY query."""
-        from app.models.corridor import Corridor
 
         c1 = MagicMock()
         c1.corridor_id = 1
@@ -211,7 +208,10 @@ class TestCorridorStatsOptimized:
                 return m
             elif call_count[0] == 2:
                 # AISGapEvent aggregation query (multi-arg: corridor_id, sum, sum, avg)
-                m.filter.return_value.group_by.return_value.all.return_value = [stats_row_1, stats_row_2]
+                m.filter.return_value.group_by.return_value.all.return_value = [
+                    stats_row_1,
+                    stats_row_2,
+                ]
                 return m
             return m
 
@@ -270,6 +270,7 @@ class TestCorridorStatsOptimized:
 # ---------------------------------------------------------------------------
 # Stats — SQL aggregation instead of loading all rows
 # ---------------------------------------------------------------------------
+
 
 class TestStatsOptimized:
     def test_stats_returns_correct_counts(self, api_client, mock_db):

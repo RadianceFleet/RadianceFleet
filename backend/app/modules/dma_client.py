@@ -13,13 +13,13 @@ CAVEATS:
 - Timestamp format: DD/MM/YYYY HH:MM:SS (dayfirst=True)
 - Column names differ from standard: "Name" not "vessel_name", "Ship type" not "vessel_type", etc.
 """
+
 from __future__ import annotations
 
 import csv
 import io
 import logging
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -98,7 +98,7 @@ def _parse_dma_timestamp(ts_str: str) -> datetime | None:
     if not ts_str:
         return None
     try:
-        return datetime.strptime(ts_str, "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+        return datetime.strptime(ts_str, "%d/%m/%Y %H:%M:%S").replace(tzinfo=UTC)
     except ValueError:
         return None
 
@@ -148,13 +148,13 @@ def fetch_and_import_dma(
     if vessel_types:
         type_filter = {t.lower() for t in vessel_types}
 
-    from datetime import datetime as _dt, timezone as _tz
+    from datetime import datetime as _dt
 
     current = start_date
     while current <= end_date:
         url = _build_url(current, gzip=True)
         logger.info("DMA: fetching %s", url)
-        day_started_at = _dt.now(_tz.utc)
+        day_started_at = _dt.now(UTC)
 
         try:
             with httpx.Client(timeout=120) as client:
@@ -172,6 +172,7 @@ def fetch_and_import_dma(
 
             if url.endswith(".gz"):
                 import gzip as gz_mod
+
                 lines = gz_mod.open(io.BytesIO(resp.content), "rt", encoding="utf-8")
             else:
                 lines = resp.text.splitlines()
@@ -258,12 +259,15 @@ def fetch_and_import_dma(
                     # Update vessel metadata if we have better data
                     # Track identity changes (both old and new must be non-None)
                     from app.modules.ingest import _track_field_change
+
                     _new_name = row.get("vessel_name") or None
                     _new_callsign = row.get("callsign") or None
                     if imo and vessel.imo and imo != vessel.imo:
                         _track_field_change(db, vessel, "imo", vessel.imo, imo, ts, "dma")
                     if _new_callsign and vessel.callsign and _new_callsign != vessel.callsign:
-                        _track_field_change(db, vessel, "callsign", vessel.callsign, _new_callsign, ts, "dma")
+                        _track_field_change(
+                            db, vessel, "callsign", vessel.callsign, _new_callsign, ts, "dma"
+                        )
                     if _new_name and vessel.name and _new_name != vessel.name:
                         _track_field_change(db, vessel, "name", vessel.name, _new_name, ts, "dma")
                     updated = False
@@ -318,6 +322,7 @@ def fetch_and_import_dma(
                 # Dual-write to AIS observations for cross-receiver detection
                 try:
                     from app.models.ais_observation import AISObservation
+
                     obs = AISObservation(
                         mmsi=mmsi,
                         timestamp_utc=ts,
@@ -345,13 +350,17 @@ def fetch_and_import_dma(
             # Record coverage window — completed
             try:
                 from app.modules.coverage_tracker import record_coverage_window
+
                 record_coverage_window(
-                    db, "dma", current, current,
+                    db,
+                    "dma",
+                    current,
+                    current,
                     status="completed",
                     points_imported=day_points,
                     vessels_queried=0,
                     started_at=day_started_at,
-                    finished_at=_dt.now(_tz.utc),
+                    finished_at=_dt.now(UTC),
                 )
                 db.commit()
             except Exception as cov_exc:
@@ -363,13 +372,17 @@ def fetch_and_import_dma(
             # Record coverage window — failed
             try:
                 from app.modules.coverage_tracker import record_coverage_window
+
                 record_coverage_window(
-                    db, "dma", current, current,
+                    db,
+                    "dma",
+                    current,
+                    current,
                     status="failed",
                     points_imported=0,
                     errors=1,
                     started_at=day_started_at,
-                    finished_at=_dt.now(_tz.utc),
+                    finished_at=_dt.now(UTC),
                     notes=str(e)[:500],
                 )
                 db.commit()
@@ -387,7 +400,7 @@ def fetch_and_import_dma(
     return stats
 
 
-def _safe_float(val: Optional[str]) -> Optional[float]:
+def _safe_float(val: str | None) -> float | None:
     """Parse a string to float, returning None on failure."""
     if val is None or val == "":
         return None

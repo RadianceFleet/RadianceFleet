@@ -3,12 +3,13 @@
 Generates structured evidence cards in JSON and Markdown formats.
 See PRD §7.7 for evidence card specification.
 """
+
 from __future__ import annotations
 
 import functools
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -22,11 +23,14 @@ logger = logging.getLogger(__name__)
 # PRD §4.12, NFR7: honest regional AIS coverage displayed in every evidence card
 # Loaded from config/coverage.yaml; fallback to hardcoded dict if YAML missing.
 
+
 @functools.lru_cache(maxsize=1)
 def _load_regional_coverage() -> dict[str, tuple[str, str]]:
     """Load regional coverage from YAML config, with hardcoded fallback."""
     from pathlib import Path
+
     import yaml
+
     from app.config import settings
 
     config_path = Path(settings.COVERAGE_CONFIG)
@@ -43,10 +47,16 @@ def _load_regional_coverage() -> dict[str, tuple[str, str]]:
         result = {
             "Baltic": ("GOOD", "DMA CSV + aisstream.io — good terrestrial coverage"),
             "Turkish Straits": ("GOOD", "aisstream.io — well-monitored chokepoint"),
-            "Black Sea": ("POOR", "No adequate free source; AIS heavily falsified in Russian-controlled areas"),
+            "Black Sea": (
+                "POOR",
+                "No adequate free source; AIS heavily falsified in Russian-controlled areas",
+            ),
             "Persian Gulf": ("NONE", "No free AIS source; commercial subscription required"),
             "Singapore": ("PARTIAL", "aisstream.io partial — gaps in outer anchorage areas"),
-            "Mediterranean": ("MODERATE", "aisstream.io partial — good near ports, sparse open sea"),
+            "Mediterranean": (
+                "MODERATE",
+                "aisstream.io partial — good near ports, sparse open sea",
+            ),
             "Far East": ("PARTIAL", "aisstream.io — limited coverage outside port approaches"),
             "Nakhodka": ("PARTIAL", "aisstream.io — limited coverage outside port approaches"),
         }
@@ -86,21 +96,26 @@ def export_evidence_card(alert_id: int, format: str, db: Session) -> dict[str, A
     if gap.status == "new":
         return {
             "error": "Evidence card cannot be exported without analyst review. "
-                     "Set alert status before exporting."
+            "Set alert status before exporting."
         }
 
     vessel = db.query(Vessel).filter(Vessel.vessel_id == gap.vessel_id).first()
     from app.models.corridor import Corridor
+
     corridor = (
         db.query(Corridor).filter(Corridor.corridor_id == gap.corridor_id).first()
-        if gap.corridor_id else None
+        if gap.corridor_id
+        else None
     )
     card_data = _build_card(gap, vessel, corridor=corridor, db=db)
 
     # Chain of custody metadata
-    card_record = db.query(EvidenceCard).filter(
-        EvidenceCard.gap_event_id == alert_id
-    ).order_by(EvidenceCard.created_at.desc()).first()
+    card_record = (
+        db.query(EvidenceCard)
+        .filter(EvidenceCard.gap_event_id == alert_id)
+        .order_by(EvidenceCard.created_at.desc())
+        .first()
+    )
     if card_record:
         card_data["chain_of_custody"] = {
             "exported_by": card_record.exported_by,
@@ -127,7 +142,7 @@ def export_evidence_card(alert_id: int, format: str, db: Session) -> dict[str, A
         gap_event_id=alert_id,
         version=1,
         export_format=format,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         score_snapshot=gap.risk_score,
         breakdown_snapshot=gap.risk_breakdown_json,
     )
@@ -137,7 +152,9 @@ def export_evidence_card(alert_id: int, format: str, db: Session) -> dict[str, A
     return {"content": content, "media_type": media_type, "evidence_card_id": card.evidence_card_id}
 
 
-def _build_card(gap: AISGapEvent, vessel: Vessel | None, corridor=None, db: Session = None) -> dict[str, Any]:
+def _build_card(
+    gap: AISGapEvent, vessel: Vessel | None, corridor=None, db: Session = None
+) -> dict[str, Any]:
     # PRD §7.7 mandatory fields: last/first AIS points + satellite check status
     last_point = None
     first_point_after = None
@@ -202,27 +219,38 @@ def _build_card(gap: AISGapEvent, vessel: Vessel | None, corridor=None, db: Sess
             "timestamp_utc": last_point.timestamp_utc.isoformat(),
             "sog": last_point.sog,
             "cog": last_point.cog,
-        } if last_point else None,
+        }
+        if last_point
+        else None,
         "first_position_after_gap": {
             "lat": first_point_after.lat,
             "lon": first_point_after.lon,
             "timestamp_utc": first_point_after.timestamp_utc.isoformat(),
             "sog": first_point_after.sog,
             "cog": first_point_after.cog,
-        } if first_point_after else None,
+        }
+        if first_point_after
+        else None,
         "satellite_check_status": sat_check.review_status if sat_check else "not_checked",
         "satellite_scene_refs": sat_check.scene_refs_json if sat_check else [],
         "data_sources": {
-            "ais_source": (vessel.ais_source if vessel and hasattr(vessel, "ais_source") else None) or "unknown",
+            "ais_source": (vessel.ais_source if vessel and hasattr(vessel, "ais_source") else None)
+            or "unknown",
             "satellite_scene_refs": sat_check.scene_refs_json if sat_check else [],
             "provider": sat_check.provider if sat_check else None,
         },
         "analyst_notes": gap.analyst_notes,
         "status": gap.status,
-        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "exported_at": datetime.now(UTC).isoformat(),
         "disclaimer": DISCLAIMER,
         "corridor_name": corridor.name if corridor else None,
-        "corridor_type": str(corridor.corridor_type.value if hasattr(corridor.corridor_type, "value") else corridor.corridor_type) if corridor else None,
+        "corridor_type": str(
+            corridor.corridor_type.value
+            if hasattr(corridor.corridor_type, "value")
+            else corridor.corridor_type
+        )
+        if corridor
+        else None,
         "coverage": _corridor_coverage(corridor.name if corridor else None),
     }
 
@@ -249,7 +277,7 @@ def _render_markdown(card: dict[str, Any]) -> str:
         "## AIS Gap",
         f"- **Start:** {g['start_utc']}",
         f"- **End:** {g['end_utc']}",
-        f"- **Duration:** {g['duration_minutes']} minutes ({g['duration_minutes']/60:.1f}h)",
+        f"- **Duration:** {g['duration_minutes']} minutes ({g['duration_minutes'] / 60:.1f}h)",
         "",
         "## Risk Score",
         f"**Total:** {r['score']}",
@@ -265,8 +293,12 @@ def _render_markdown(card: dict[str, Any]) -> str:
     lines += [
         "",
         "## Movement Envelope",
-        f"- Max plausible distance: {max_d:.1f} nm" if max_d is not None else "- Max plausible distance: N/A",
-        f"- Actual gap distance: {act_d:.1f} nm" if act_d is not None else "- Actual gap distance: N/A",
+        f"- Max plausible distance: {max_d:.1f} nm"
+        if max_d is not None
+        else "- Max plausible distance: N/A",
+        f"- Actual gap distance: {act_d:.1f} nm"
+        if act_d is not None
+        else "- Actual gap distance: N/A",
         f"- Velocity ratio: {vel_r:.2f}" if vel_r is not None else "- Velocity ratio: N/A",
         f"- Impossible speed flag: {env['impossible_speed_flag']}",
         "",
@@ -274,7 +306,7 @@ def _render_markdown(card: dict[str, Any]) -> str:
     ]
     lkp = card.get("last_known_position")
     if lkp:
-        lines.append(f"**Last known position** (before gap):")
+        lines.append("**Last known position** (before gap):")
         lines.append(f"- Lat/Lon: {lkp['lat']}, {lkp['lon']}")
         lines.append(f"- Timestamp: {lkp['timestamp_utc']}")
         lines.append(f"- SOG: {lkp['sog']} kn  COG: {lkp['cog']}°")
@@ -283,7 +315,7 @@ def _render_markdown(card: dict[str, Any]) -> str:
 
     fpa = card.get("first_position_after_gap")
     if fpa:
-        lines.append(f"**First position after gap**:")
+        lines.append("**First position after gap**:")
         lines.append(f"- Lat/Lon: {fpa['lat']}, {fpa['lon']}")
         lines.append(f"- Timestamp: {fpa['timestamp_utc']}")
         lines.append(f"- SOG: {fpa['sog']} kn  COG: {fpa['cog']}°")
@@ -344,14 +376,16 @@ def export_gov_package(
     if gap.status == "new":
         return {
             "error": "Package cannot be exported without analyst review. "
-                     "Set alert status before exporting."
+            "Set alert status before exporting."
         }
 
     vessel = db.query(Vessel).filter(Vessel.vessel_id == gap.vessel_id).first()
     from app.models.corridor import Corridor
+
     corridor = (
         db.query(Corridor).filter(Corridor.corridor_id == gap.corridor_id).first()
-        if gap.corridor_id else None
+        if gap.corridor_id
+        else None
     )
     card_data = _build_card(gap, vessel, corridor=corridor, db=db)
 
@@ -364,7 +398,7 @@ def export_gov_package(
         "hunt_context": hunt_context,
         "package_metadata": {
             "package_version": "1.0",
-            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_at": datetime.now(UTC).isoformat(),
             "alert_id": alert_id,
             "vessel_mmsi": vessel.mmsi if vessel else None,
             "disclaimer": DISCLAIMER,
@@ -374,12 +408,10 @@ def export_gov_package(
 
 def _build_hunt_context(vessel_id: int, db: Session) -> dict[str, Any] | None:
     """Gather hunt mission/candidate data for a vessel, if any exists."""
-    from app.models.stubs import VesselTargetProfile, SearchMission, HuntCandidate
+    from app.models.stubs import HuntCandidate, SearchMission, VesselTargetProfile
 
     profile = (
-        db.query(VesselTargetProfile)
-        .filter(VesselTargetProfile.vessel_id == vessel_id)
-        .first()
+        db.query(VesselTargetProfile).filter(VesselTargetProfile.vessel_id == vessel_id).first()
     )
     if not profile:
         return None
@@ -395,11 +427,7 @@ def _build_hunt_context(vessel_id: int, db: Session) -> dict[str, Any] | None:
 
     mission_data = []
     for m in missions:
-        candidates = (
-            db.query(HuntCandidate)
-            .filter(HuntCandidate.mission_id == m.mission_id)
-            .all()
-        )
+        candidates = db.query(HuntCandidate).filter(HuntCandidate.mission_id == m.mission_id).all()
         cand_list = [
             {
                 "candidate_id": c.candidate_id,
@@ -411,15 +439,17 @@ def _build_hunt_context(vessel_id: int, db: Session) -> dict[str, Any] | None:
             }
             for c in candidates
         ]
-        mission_data.append({
-            "mission_id": m.mission_id,
-            "status": m.status,
-            "max_radius_nm": m.max_radius_nm,
-            "elapsed_hours": m.elapsed_hours,
-            "center_lat": m.center_lat,
-            "center_lon": m.center_lon,
-            "candidates": cand_list,
-        })
+        mission_data.append(
+            {
+                "mission_id": m.mission_id,
+                "status": m.status,
+                "max_radius_nm": m.max_radius_nm,
+                "elapsed_hours": m.elapsed_hours,
+                "center_lat": m.center_lat,
+                "center_lon": m.center_lon,
+                "candidates": cand_list,
+            }
+        )
 
     return {
         "profile_id": profile.profile_id,
@@ -441,31 +471,65 @@ def _render_csv(card: dict[str, Any]) -> str:
     quality, coverage_desc = card.get("coverage", ("UNKNOWN", ""))
 
     headers = [
-        "alert_id", "mmsi", "imo", "vessel_name", "flag", "vessel_type",
-        "gap_start_utc", "gap_end_utc", "duration_minutes", "duration_hours",
-        "risk_score", "status",
-        "max_plausible_distance_nm", "actual_gap_distance_nm",
-        "velocity_plausibility_ratio", "impossible_speed_flag",
-        "last_position_lat", "last_position_lon", "last_position_sog",
-        "first_after_lat", "first_after_lon", "first_after_sog",
-        "corridor_name", "corridor_type",
-        "ais_coverage_quality", "satellite_check_status",
-        "analyst_notes", "exported_at",
+        "alert_id",
+        "mmsi",
+        "imo",
+        "vessel_name",
+        "flag",
+        "vessel_type",
+        "gap_start_utc",
+        "gap_end_utc",
+        "duration_minutes",
+        "duration_hours",
+        "risk_score",
+        "status",
+        "max_plausible_distance_nm",
+        "actual_gap_distance_nm",
+        "velocity_plausibility_ratio",
+        "impossible_speed_flag",
+        "last_position_lat",
+        "last_position_lon",
+        "last_position_sog",
+        "first_after_lat",
+        "first_after_lon",
+        "first_after_sog",
+        "corridor_name",
+        "corridor_type",
+        "ais_coverage_quality",
+        "satellite_check_status",
+        "analyst_notes",
+        "exported_at",
     ]
     duration_min = g.get("duration_minutes", 0)
     row = [
         card.get("alert_id"),
-        v.get("mmsi"), v.get("imo"), v.get("name"), v.get("flag"), v.get("vessel_type"),
-        g.get("start_utc"), g.get("end_utc"), duration_min,
+        v.get("mmsi"),
+        v.get("imo"),
+        v.get("name"),
+        v.get("flag"),
+        v.get("vessel_type"),
+        g.get("start_utc"),
+        g.get("end_utc"),
+        duration_min,
         round(duration_min / 60, 1) if duration_min else 0,
-        r.get("score"), card.get("status"),
-        env.get("max_plausible_distance_nm"), env.get("actual_gap_distance_nm"),
-        env.get("velocity_plausibility_ratio"), env.get("impossible_speed_flag"),
-        lkp.get("lat"), lkp.get("lon"), lkp.get("sog"),
-        fpa.get("lat"), fpa.get("lon"), fpa.get("sog"),
-        card.get("corridor_name"), card.get("corridor_type"),
-        quality, card.get("satellite_check_status"),
-        card.get("analyst_notes"), card.get("exported_at"),
+        r.get("score"),
+        card.get("status"),
+        env.get("max_plausible_distance_nm"),
+        env.get("actual_gap_distance_nm"),
+        env.get("velocity_plausibility_ratio"),
+        env.get("impossible_speed_flag"),
+        lkp.get("lat"),
+        lkp.get("lon"),
+        lkp.get("sog"),
+        fpa.get("lat"),
+        fpa.get("lon"),
+        fpa.get("sog"),
+        card.get("corridor_name"),
+        card.get("corridor_type"),
+        quality,
+        card.get("satellite_check_status"),
+        card.get("analyst_notes"),
+        card.get("exported_at"),
     ]
 
     buf = io.StringIO()

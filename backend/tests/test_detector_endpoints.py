@@ -1,5 +1,6 @@
 """Tests for detector API exposure endpoints."""
-from unittest.mock import MagicMock, patch
+
+from unittest.mock import MagicMock
 
 
 class TestPortCallEndpoint:
@@ -25,6 +26,7 @@ class TestPortCallEndpoint:
         port.name = "Helsinki"
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -35,6 +37,7 @@ class TestPortCallEndpoint:
             elif call_count[0] == 3:
                 result.filter.return_value.first.return_value = port
             return result
+
         mock_db.query.side_effect = query_side_effect
 
         resp = api_client.get("/api/v1/port-calls/1")
@@ -48,6 +51,7 @@ class TestPortCallEndpoint:
         vessel.vessel_id = 1
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -56,6 +60,7 @@ class TestPortCallEndpoint:
             else:
                 result.filter.return_value.order_by.return_value.all.return_value = []
             return result
+
         mock_db.query.side_effect = query_side_effect
 
         resp = api_client.get("/api/v1/port-calls/1")

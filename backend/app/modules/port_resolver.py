@@ -6,10 +6,10 @@ Strategy (in order):
 3. Fuzzy name match via rapidfuzz with threshold 80 (if port_name provided)
 4. Return None if no match (caller creates PortCall with port_id=NULL)
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -25,8 +25,8 @@ def resolve_port(
     db: Session,
     lat: float,
     lon: float,
-    port_name: Optional[str] = None,
-) -> Optional[Port]:
+    port_name: str | None = None,
+) -> Port | None:
     """Resolve coordinates + optional name to an internal Port record.
 
     Args:

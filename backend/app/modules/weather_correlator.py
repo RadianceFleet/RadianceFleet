@@ -10,21 +10,19 @@ Provides:
   - compute_weather_deduction — scoring deduction logic
   - correlate_weather()       — check if speed anomaly coincides with weather conditions
 """
+
 from __future__ import annotations
 
+import json as _json
 import logging
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any
 from urllib.error import URLError
-from urllib.request import urlopen, Request
-
-import json as _json
+from urllib.request import Request, urlopen
 
 from sqlalchemy.orm import Session
-
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +112,7 @@ def get_weather(
         dict with wind_speed_kn, wind_gust_kn, source, etc. or empty dict.
     """
     if timestamp is None:
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
 
     lat_grid = _round_coord(lat)
     lon_grid = _round_coord(lon)
@@ -219,9 +217,9 @@ def correlate_weather(
     result: dict[str, Any] = {}
 
     if date_from is None:
-        date_from = datetime.now(timezone.utc) - timedelta(days=7)
+        date_from = datetime.now(UTC) - timedelta(days=7)
     if date_to is None:
-        date_to = datetime.now(timezone.utc)
+        date_to = datetime.now(UTC)
 
     # Strip timezone info for SQLite compatibility
     if date_from.tzinfo:
@@ -254,16 +252,18 @@ def correlate_weather(
 
         deduction, reason = compute_weather_deduction(weather)
         if deduction != 0:
-            correlations.append({
-                "ais_point_id": pt.ais_point_id,
-                "lat": pt.lat,
-                "lon": pt.lon,
-                "timestamp": pt.timestamp_utc.isoformat() if pt.timestamp_utc else None,
-                "wind_speed_kn": weather.get("wind_speed_kn"),
-                "wind_gust_kn": weather.get("wind_gust_kn"),
-                "deduction": deduction,
-                "reason": reason,
-            })
+            correlations.append(
+                {
+                    "ais_point_id": pt.ais_point_id,
+                    "lat": pt.lat,
+                    "lon": pt.lon,
+                    "timestamp": pt.timestamp_utc.isoformat() if pt.timestamp_utc else None,
+                    "wind_speed_kn": weather.get("wind_speed_kn"),
+                    "wind_gust_kn": weather.get("wind_gust_kn"),
+                    "deduction": deduction,
+                    "reason": reason,
+                }
+            )
             total_deduction += deduction
 
     if not correlations:

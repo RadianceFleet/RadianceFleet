@@ -1,7 +1,8 @@
 """Tests for FR9 vessel hunt: drift ellipse, candidate scoring, mission lifecycle."""
-import math
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+
+from datetime import datetime
+from unittest.mock import MagicMock
+
 import pytest
 
 
@@ -9,6 +10,7 @@ class TestDriftEllipse:
     def test_radius_scales_with_elapsed_hours(self):
         """Drift radius = max_speed_kn * elapsed_hours."""
         from app.modules.gap_detector import compute_max_distance_nm
+
         # For a 50,000 DWT vessel (tanker, ~17 kn max for <60k DWT), 24h -> 408 nm
         radius = compute_max_distance_nm(50000, 24)
         assert radius == pytest.approx(17.0 * 24, rel=0.01)
@@ -111,6 +113,7 @@ class TestHuntScoring:
     def test_visual_similarity_is_none_in_v11(self):
         """visual_similarity_score is None in v1.1 (no ML inference)."""
         from app.modules.vessel_hunt import _compute_hunt_score
+
         det = MagicMock()
         det.length_estimate_m = None
         det.vessel_type_inferred = None
@@ -180,6 +183,7 @@ class TestMissionLifecycle:
     def test_create_target_raises_for_missing_vessel(self):
         """create_target_profile raises ValueError if vessel not found."""
         from app.modules.vessel_hunt import create_target_profile
+
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = None
         with pytest.raises(ValueError, match="not found"):
@@ -202,6 +206,7 @@ class TestMissionLifecycle:
     def test_finalize_mission_sets_status_reviewed(self):
         """finalize_mission sets mission.status to 'reviewed'."""
         from app.modules.vessel_hunt import finalize_mission
+
         mock_db = MagicMock()
         mission = MagicMock()
         mission.mission_id = 1
@@ -209,13 +214,14 @@ class TestMissionLifecycle:
         candidate = MagicMock()
         candidate.candidate_id = 1
         mock_db.query.return_value.filter.return_value.first.side_effect = [mission, candidate]
-        result = finalize_mission(1, 1, mock_db)
+        finalize_mission(1, 1, mock_db)
         assert mission.status == "reviewed"
         assert candidate.analyst_review_status == "confirmed"
 
     def test_finalize_mission_raises_for_missing_mission(self):
         """finalize_mission raises ValueError if mission not found."""
         from app.modules.vessel_hunt import finalize_mission
+
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = None
         with pytest.raises(ValueError, match="Mission.*not found"):
@@ -224,6 +230,7 @@ class TestMissionLifecycle:
     def test_finalize_mission_raises_for_missing_candidate(self):
         """finalize_mission raises ValueError if candidate not found."""
         from app.modules.vessel_hunt import finalize_mission
+
         mock_db = MagicMock()
         mission = MagicMock()
         mission.mission_id = 1

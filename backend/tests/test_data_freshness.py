@@ -1,6 +1,6 @@
 """Tests for H1: Data freshness monitoring endpoint."""
-from unittest.mock import MagicMock
-from datetime import datetime, timezone, timedelta
+
+from datetime import UTC, datetime, timedelta
 
 
 class TestDataFreshness:
@@ -26,17 +26,19 @@ class TestDataFreshness:
 
     def test_staleness_computation(self, api_client, mock_db):
         # Mock: latest AIS was 120 minutes ago
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         latest = now - timedelta(minutes=120)
         # Remove tzinfo for the mock (DB returns naive datetime)
         latest_naive = latest.replace(tzinfo=None)
 
         call_count = [0]
+
         def scalar_side_effect(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return latest_naive
             return 5
+
         mock_db.query.return_value.scalar.side_effect = scalar_side_effect
         mock_db.query.return_value.filter.return_value.scalar.return_value = 5
 

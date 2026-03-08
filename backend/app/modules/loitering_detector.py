@@ -14,11 +14,11 @@ Scoring (risk_score_component):
   ≥12 hours in a corridor  → 20 pts
   ≥ 4 hours (baseline)     →  8 pts
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
-from typing import Optional
 
 import polars as pl
 from sqlalchemy.orm import Session
@@ -33,14 +33,17 @@ logger = logging.getLogger(__name__)
 
 # ── Constants (loaded from config/risk_scoring.yaml with hardcoded fallbacks) ──
 
+
 def _load_loiter_thresholds() -> dict:
     """Load loitering detection thresholds from YAML config, falling back to defaults."""
     try:
         from app.modules.risk_scoring import load_scoring_config
+
         cfg = load_scoring_config()
         return cfg.get("detection_thresholds", {}).get("loitering", {})
     except Exception:
         return {}
+
 
 _LOITER_CFG = _load_loiter_thresholds()
 
@@ -51,6 +54,7 @@ _RISK_BASELINE: int = _LOITER_CFG.get("risk_baseline", 8)
 _RISK_SUSTAINED: int = _LOITER_CFG.get("risk_sustained", 20)
 
 from app.config import settings as _settings
+
 _GAP_LINK_WINDOW_HOURS: int = _settings.LOITER_GAP_LINKAGE_HOURS
 
 _MIN_POINTS: int = 4
@@ -63,12 +67,14 @@ _LAID_UP_BBOX_DEG: float = _LOITER_CFG.get("laid_up_bbox_deg", 0.033)
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
-def _parse_corridor_bbox(corridor: Corridor) -> Optional[tuple[float, float, float, float]]:
+
+def _parse_corridor_bbox(corridor: Corridor) -> tuple[float, float, float, float] | None:
     """Extract (min_lat, max_lat, min_lon, max_lon) from a corridor's WKT geometry.
 
     Returns None if the geometry is unavailable or cannot be parsed.
     """
     from app.utils.geo import load_geometry
+
     try:
         shape = load_geometry(corridor.geometry)
         if shape is None:
@@ -86,17 +92,16 @@ def _point_in_corridor(lat: float, lon: float, corridor: Corridor) -> bool:
         return False
     min_lat, max_lat, min_lon, max_lon = bbox
     # Expand by tolerance to account for vessels just outside the polygon edge
-    return (
-        (min_lat - _BBOX_TOLERANCE_DEG) <= lat <= (max_lat + _BBOX_TOLERANCE_DEG)
-        and (min_lon - _BBOX_TOLERANCE_DEG) <= lon <= (max_lon + _BBOX_TOLERANCE_DEG)
-    )
+    return (min_lat - _BBOX_TOLERANCE_DEG) <= lat <= (max_lat + _BBOX_TOLERANCE_DEG) and (
+        min_lon - _BBOX_TOLERANCE_DEG
+    ) <= lon <= (max_lon + _BBOX_TOLERANCE_DEG)
 
 
 def _find_corridor_for_position(
     lat: float,
     lon: float,
     corridors: list[Corridor],
-) -> Optional[Corridor]:
+) -> Corridor | None:
     """Return the first corridor whose bounding box contains (lat, lon), or None."""
     for corridor in corridors:
         if _point_in_corridor(lat, lon, corridor):
@@ -108,7 +113,7 @@ def _find_preceding_gap(
     db: Session,
     vessel_id: int,
     loiter_start: datetime,
-) -> Optional[AISGapEvent]:
+) -> AISGapEvent | None:
     """Return the most recent gap event ending within _GAP_LINK_WINDOW_HOURS before loiter_start."""
     window_start = loiter_start - timedelta(hours=_GAP_LINK_WINDOW_HOURS)
     return (
@@ -127,7 +132,7 @@ def _find_following_gap(
     db: Session,
     vessel_id: int,
     loiter_end: datetime,
-) -> Optional[AISGapEvent]:
+) -> AISGapEvent | None:
     """Return the earliest gap event starting within _GAP_LINK_WINDOW_HOURS after loiter_end."""
     window_end = loiter_end + timedelta(hours=_GAP_LINK_WINDOW_HOURS)
     return (
@@ -144,11 +149,12 @@ def _find_following_gap(
 
 # ── Run detection per vessel ───────────────────────────────────────────────────
 
+
 def detect_loitering_for_vessel(
     db: Session,
     vessel: Vessel,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> int:
     """Detect loitering events for a single vessel.
 
@@ -270,7 +276,11 @@ def detect_loitering_for_vessel(
 
         duration_hours = (end_time - start_time).total_seconds() / 3600
 
-        sog_values = [r["median_sog"] for r in run_rows if r["median_sog"] is not None and r["median_sog"] == r["median_sog"]]
+        sog_values = [
+            r["median_sog"]
+            for r in run_rows
+            if r["median_sog"] is not None and r["median_sog"] == r["median_sog"]
+        ]
         median_sog = float(pl.Series(sog_values).median()) if sog_values else None
 
         mean_lat = sum(r["bucket_mean_lat"] for r in run_rows) / len(run_rows)
@@ -294,14 +304,23 @@ def detect_loitering_for_vessel(
             continue
 
         # ── 5b. Corridor linkage (bounding-box point-in-corridor) ──────────────
-        matched_corridor: Optional[Corridor] = None
+        matched_corridor: Corridor | None = None
         try:
             matched_corridor = _find_corridor_for_position(mean_lat, mean_lon, corridors)
         except (ValueError, TypeError, AttributeError) as exc:
             logger.warning("Corridor lookup failed for vessel %d: %s", vessel.vessel_id, exc)
 
         # ── 5c. Risk score component ───────────────────────────────────────────
-        if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor is not None and str(matched_corridor.corridor_type.value if hasattr(matched_corridor.corridor_type, "value") else matched_corridor.corridor_type) == "sts_zone":
+        if (
+            run_length_hours >= _SUSTAINED_LOITER_HOURS
+            and matched_corridor is not None
+            and str(
+                matched_corridor.corridor_type.value
+                if hasattr(matched_corridor.corridor_type, "value")
+                else matched_corridor.corridor_type
+            )
+            == "sts_zone"
+        ):
             risk_score_component = _RISK_SUSTAINED
         else:
             risk_score_component = _RISK_BASELINE
@@ -345,10 +364,11 @@ def detect_loitering_for_vessel(
 
 # ── Batch runner ───────────────────────────────────────────────────────────────
 
+
 def run_loitering_detection(
     db: Session,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> dict:
     """Run loitering detection across all vessels.
 
@@ -388,6 +408,7 @@ def run_loitering_detection(
 
 # ── Laid-up vessel detection ───────────────────────────────────────────────────
 
+
 def detect_laid_up_vessels(db: Session) -> dict:
     """Detect vessels that have been stationary for 30 or 60 consecutive days.
 
@@ -408,6 +429,7 @@ def detect_laid_up_vessels(db: Session) -> dict:
     try:
         all_corridors: list[Corridor] = db.query(Corridor).all()
         from app.models.base import CorridorTypeEnum
+
         sts_corridors = [c for c in all_corridors if c.corridor_type == CorridorTypeEnum.STS_ZONE]
     except Exception as exc:
         logger.warning("Could not load corridors for laid-up STS check: %s", exc)
@@ -454,8 +476,8 @@ def detect_laid_up_vessels(db: Session) -> dict:
 
         # ── 3. Sliding window: find longest consecutive stationary run ──────────
         max_run_days = 0
-        run_lat: Optional[float] = None
-        run_lon: Optional[float] = None
+        run_lat: float | None = None
+        run_lon: float | None = None
 
         run_start_idx = 0
         run_length = 1
@@ -483,16 +505,22 @@ def detect_laid_up_vessels(db: Session) -> dict:
                 if run_length > max_run_days:
                     max_run_days = run_length
                     # Mean position over this run
-                    run_lat = sum(
-                        r["day_lat"]
-                        for r in day_rows[run_start_idx : run_start_idx + run_length]
-                        if r["day_lat"] is not None
-                    ) / run_length
-                    run_lon = sum(
-                        r["day_lon"]
-                        for r in day_rows[run_start_idx : run_start_idx + run_length]
-                        if r["day_lon"] is not None
-                    ) / run_length
+                    run_lat = (
+                        sum(
+                            r["day_lat"]
+                            for r in day_rows[run_start_idx : run_start_idx + run_length]
+                            if r["day_lat"] is not None
+                        )
+                        / run_length
+                    )
+                    run_lon = (
+                        sum(
+                            r["day_lon"]
+                            for r in day_rows[run_start_idx : run_start_idx + run_length]
+                            if r["day_lon"] is not None
+                        )
+                        / run_length
+                    )
                 # Start a new run from this day
                 run_start_idx = j
                 run_length = 1
@@ -502,16 +530,22 @@ def detect_laid_up_vessels(db: Session) -> dict:
         # Final run check
         if run_length > max_run_days:
             max_run_days = run_length
-            run_lat = sum(
-                r["day_lat"]
-                for r in day_rows[run_start_idx : run_start_idx + run_length]
-                if r["day_lat"] is not None
-            ) / run_length
-            run_lon = sum(
-                r["day_lon"]
-                for r in day_rows[run_start_idx : run_start_idx + run_length]
-                if r["day_lon"] is not None
-            ) / run_length
+            run_lat = (
+                sum(
+                    r["day_lat"]
+                    for r in day_rows[run_start_idx : run_start_idx + run_length]
+                    if r["day_lat"] is not None
+                )
+                / run_length
+            )
+            run_lon = (
+                sum(
+                    r["day_lon"]
+                    for r in day_rows[run_start_idx : run_start_idx + run_length]
+                    if r["day_lon"] is not None
+                )
+                / run_length
+            )
 
         if max_run_days < _LAID_UP_30D_DAYS:
             continue

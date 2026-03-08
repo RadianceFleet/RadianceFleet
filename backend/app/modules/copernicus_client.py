@@ -7,10 +7,11 @@ existing satellite_query.py by checking actual scene availability.
 Catalog API: https://catalogue.dataspace.copernicus.eu/odata/v1/Products
 Auth: OAuth2 via https://identity.dataspace.copernicus.eu/
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 import httpx
@@ -22,7 +23,9 @@ from app.modules.circuit_breakers import breakers
 logger = logging.getLogger(__name__)
 
 _CATALOG_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
-_TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+_TOKEN_URL = (
+    "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+)
 _TIMEOUT = 30.0
 
 # Module-level token cache (sync single-process — fine for CLI/API)
@@ -163,15 +166,17 @@ def find_sentinel1_scenes(
                     f"/Nodes(quick-look.png)/$value"
                 )
 
-                scenes.append({
-                    "scene_id": scene_id,
-                    "name": name,
-                    "acquisition_time": start_time,
-                    "footprint": product.get("GeoFootprint", {}).get("coordinates"),
-                    "preview_url": preview_url,
-                    "download_url": f"https://zipper.dataspace.copernicus.eu/odata/v1/Products({scene_id})/$value",
-                    "size_mb": round(product.get("ContentLength", 0) / 1_048_576, 1),
-                })
+                scenes.append(
+                    {
+                        "scene_id": scene_id,
+                        "name": name,
+                        "acquisition_time": start_time,
+                        "footprint": product.get("GeoFootprint", {}).get("coordinates"),
+                        "preview_url": preview_url,
+                        "download_url": f"https://zipper.dataspace.copernicus.eu/odata/v1/Products({scene_id})/$value",
+                        "size_mb": round(product.get("ContentLength", 0) / 1_048_576, 1),
+                    }
+                )
 
     except httpx.HTTPStatusError as exc:
         logger.error("Copernicus catalog query failed: HTTP %d", exc.response.status_code)
@@ -277,16 +282,18 @@ def find_sentinel2_scenes(
                     f"/Nodes(quick-look.png)/$value"
                 )
 
-                scenes.append({
-                    "scene_id": scene_id,
-                    "name": name,
-                    "acquisition_time": start_time,
-                    "cloud_cover_pct": cloud_cover,
-                    "footprint": product.get("GeoFootprint", {}).get("coordinates"),
-                    "preview_url": preview_url,
-                    "download_url": f"https://zipper.dataspace.copernicus.eu/odata/v1/Products({scene_id})/$value",
-                    "size_mb": round(product.get("ContentLength", 0) / 1_048_576, 1),
-                })
+                scenes.append(
+                    {
+                        "scene_id": scene_id,
+                        "name": name,
+                        "acquisition_time": start_time,
+                        "cloud_cover_pct": cloud_cover,
+                        "footprint": product.get("GeoFootprint", {}).get("coordinates"),
+                        "preview_url": preview_url,
+                        "download_url": f"https://zipper.dataspace.copernicus.eu/odata/v1/Products({scene_id})/$value",
+                        "size_mb": round(product.get("ContentLength", 0) / 1_048_576, 1),
+                    }
+                )
 
     except httpx.HTTPStatusError as exc:
         logger.error("Copernicus Sentinel-2 query failed: HTTP %d", exc.response.status_code)
@@ -313,7 +320,7 @@ def enhance_satellite_check(
     """
     from app.models.gap_event import AISGapEvent
     from app.models.satellite_check import SatelliteCheck
-    from app.modules.satellite_query import compute_bounding_box, _get_gap_center
+    from app.modules.satellite_query import _get_gap_center, compute_bounding_box
 
     gap = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
     if not gap:

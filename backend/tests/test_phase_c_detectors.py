@@ -3,22 +3,23 @@
 Uses in-memory SQLite for tests requiring real SQL queries (observation storage,
 cross-receiver comparison, handshake detection, fake position detection).
 """
-import pytest
-from datetime import datetime, timedelta, timezone
 
+from datetime import UTC, datetime, timedelta
+
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base  # noqa: F401 — registers all models with metadata
-from app.models.base import SpoofingTypeEnum
-from app.models.vessel import Vessel
-from app.models.ais_point import AISPoint
 from app.models.ais_observation import AISObservation
-from app.models.vessel_history import VesselHistory
+from app.models.ais_point import AISPoint
+from app.models.base import SpoofingTypeEnum
 from app.models.spoofing_anomaly import SpoofingAnomaly
-
+from app.models.vessel import Vessel
+from app.models.vessel_history import VesselHistory
 
 # ── Shared fixture: in-memory SQLite session ─────────────────────────────────
+
 
 @pytest.fixture
 def db():
@@ -39,6 +40,7 @@ def db():
 
 
 # ── Helper factories ─────────────────────────────────────────────────────────
+
 
 def _make_vessel(db, mmsi="123456789", name="TEST VESSEL", **kwargs):
     v = Vessel(mmsi=mmsi, name=name, **kwargs)
@@ -116,9 +118,9 @@ class TestAISObservationModel:
 
     def test_ais_observation_purge(self, db):
         """Insert old records, verify purge deletes them."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old_time = now - timedelta(hours=100)  # Well beyond 72h
-        recent_time = now - timedelta(hours=1)   # Within window
+        recent_time = now - timedelta(hours=1)  # Within window
 
         # Create old observation
         old_obs = AISObservation(
@@ -168,8 +170,7 @@ class TestCrossReceiverDetector:
         # Source A: vessel at position 1
         _make_observation(db, mmsi, "aisstream", lat=55.0, lon=25.0, ts=ts)
         # Source B: vessel at position 2 (>5nm away) within 5 minutes
-        _make_observation(db, mmsi, "aishub", lat=56.0, lon=25.0,
-                          ts=ts + timedelta(minutes=5))
+        _make_observation(db, mmsi, "aishub", lat=56.0, lon=25.0, ts=ts + timedelta(minutes=5))
         db.commit()
 
         result = detect_cross_receiver_anomalies(db)
@@ -196,8 +197,7 @@ class TestCrossReceiverDetector:
 
         # Both sources report very close positions (<5nm)
         _make_observation(db, mmsi, "aisstream", lat=55.0, lon=25.0, ts=ts)
-        _make_observation(db, mmsi, "aishub", lat=55.001, lon=25.001,
-                          ts=ts + timedelta(minutes=1))
+        _make_observation(db, mmsi, "aishub", lat=55.001, lon=25.001, ts=ts + timedelta(minutes=1))
         db.commit()
 
         result = detect_cross_receiver_anomalies(db)
@@ -212,8 +212,7 @@ class TestCrossReceiverDetector:
         ts = datetime(2026, 2, 1, 12, 0, 0)
 
         _make_observation(db, mmsi, "aisstream", lat=55.0, lon=25.0, ts=ts)
-        _make_observation(db, mmsi, "aisstream", lat=56.0, lon=25.0,
-                          ts=ts + timedelta(minutes=5))
+        _make_observation(db, mmsi, "aisstream", lat=56.0, lon=25.0, ts=ts + timedelta(minutes=5))
         db.commit()
 
         result = detect_cross_receiver_anomalies(db)
@@ -228,8 +227,7 @@ class TestCrossReceiverDetector:
 
         # No vessel record for this MMSI
         _make_observation(db, mmsi, "aisstream", lat=55.0, lon=25.0, ts=ts)
-        _make_observation(db, mmsi, "aishub", lat=56.0, lon=25.0,
-                          ts=ts + timedelta(minutes=5))
+        _make_observation(db, mmsi, "aishub", lat=56.0, lon=25.0, ts=ts + timedelta(minutes=5))
         db.commit()
 
         result = detect_cross_receiver_anomalies(db)
@@ -244,8 +242,9 @@ class TestCrossReceiverDetector:
         ts = datetime(2026, 2, 1, 12, 0, 0)
 
         _make_observation(db, mmsi, "aisstream", lat=55.0, lon=25.0, ts=ts)
-        _make_observation(db, mmsi, "aishub", lat=56.0, lon=25.0,
-                          ts=ts + timedelta(hours=2))  # Well beyond 10min window
+        _make_observation(
+            db, mmsi, "aishub", lat=56.0, lon=25.0, ts=ts + timedelta(hours=2)
+        )  # Well beyond 10min window
         db.commit()
 
         result = detect_cross_receiver_anomalies(db)
@@ -273,22 +272,26 @@ class TestHandshakeDetector:
 
         # Identity swap: A was ALPHA, becomes BRAVO; B was BRAVO, becomes ALPHA
         swap_time = meet_time + timedelta(minutes=30)
-        db.add(VesselHistory(
-            vessel_id=vessel_a.vessel_id,
-            field_changed="name",
-            old_value="ALPHA",
-            new_value="BRAVO",
-            observed_at=swap_time,
-            source="aisstream",
-        ))
-        db.add(VesselHistory(
-            vessel_id=vessel_b.vessel_id,
-            field_changed="name",
-            old_value="BRAVO",
-            new_value="ALPHA",
-            observed_at=swap_time,
-            source="aisstream",
-        ))
+        db.add(
+            VesselHistory(
+                vessel_id=vessel_a.vessel_id,
+                field_changed="name",
+                old_value="ALPHA",
+                new_value="BRAVO",
+                observed_at=swap_time,
+                source="aisstream",
+            )
+        )
+        db.add(
+            VesselHistory(
+                vessel_id=vessel_b.vessel_id,
+                field_changed="name",
+                old_value="BRAVO",
+                new_value="ALPHA",
+                observed_at=swap_time,
+                source="aisstream",
+            )
+        )
         db.commit()
 
         result = detect_handshakes(db)
@@ -297,9 +300,11 @@ class TestHandshakeDetector:
         assert result["pairs_checked"] >= 1
 
         # Should create 2 anomalies (one per vessel)
-        anomalies = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IDENTITY_SWAP
-        ).all()
+        anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IDENTITY_SWAP)
+            .all()
+        )
         assert len(anomalies) == 2
         vessel_ids = {a.vessel_id for a in anomalies}
         assert vessel_a.vessel_id in vessel_ids
@@ -337,22 +342,26 @@ class TestHandshakeDetector:
         _make_ais_point(db, vessel_b, lat=57.0, lon=27.0, ts=meet_time)
 
         swap_time = meet_time + timedelta(minutes=30)
-        db.add(VesselHistory(
-            vessel_id=vessel_a.vessel_id,
-            field_changed="name",
-            old_value="ALPHA",
-            new_value="BRAVO",
-            observed_at=swap_time,
-            source="aisstream",
-        ))
-        db.add(VesselHistory(
-            vessel_id=vessel_b.vessel_id,
-            field_changed="name",
-            old_value="BRAVO",
-            new_value="ALPHA",
-            observed_at=swap_time,
-            source="aisstream",
-        ))
+        db.add(
+            VesselHistory(
+                vessel_id=vessel_a.vessel_id,
+                field_changed="name",
+                old_value="ALPHA",
+                new_value="BRAVO",
+                observed_at=swap_time,
+                source="aisstream",
+            )
+        )
+        db.add(
+            VesselHistory(
+                vessel_id=vessel_b.vessel_id,
+                field_changed="name",
+                old_value="BRAVO",
+                new_value="ALPHA",
+                observed_at=swap_time,
+                source="aisstream",
+            )
+        )
         db.commit()
 
         result = detect_handshakes(db)

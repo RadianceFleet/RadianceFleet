@@ -10,8 +10,9 @@ Tests:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
+
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
 
 
 class TestExportEvidenceCardJSON:
@@ -21,8 +22,8 @@ class TestExportEvidenceCardJSON:
         gap = MagicMock()
         gap.gap_event_id = 1
         gap.vessel_id = 10
-        gap.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        gap.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=timezone.utc)
+        gap.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+        gap.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=UTC)
         gap.duration_minutes = 360
         gap.corridor_id = 5
         gap.risk_score = 72
@@ -80,8 +81,9 @@ class TestExportEvidenceCardJSON:
         assert result["media_type"] == "application/json"
 
     def test_json_export_contains_vessel_info(self):
-        from app.modules.evidence_export import export_evidence_card
         import json
+
+        from app.modules.evidence_export import export_evidence_card
 
         db = MagicMock()
         self._mock_gap_and_vessel(db)
@@ -93,8 +95,9 @@ class TestExportEvidenceCardJSON:
         assert "risk" in content
 
     def test_json_export_has_disclaimer(self):
-        from app.modules.evidence_export import export_evidence_card
         import json
+
+        from app.modules.evidence_export import export_evidence_card
 
         db = MagicMock()
         self._mock_gap_and_vessel(db)
@@ -112,8 +115,8 @@ class TestExportEvidenceCardMarkdown:
         gap = MagicMock()
         gap.gap_event_id = 1
         gap.vessel_id = 10
-        gap.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        gap.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=timezone.utc)
+        gap.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+        gap.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=UTC)
         gap.duration_minutes = 360
         gap.corridor_id = None
         gap.risk_score = 50
@@ -180,8 +183,8 @@ class TestExportEvidenceCardCSV:
         gap = MagicMock()
         gap.gap_event_id = 1
         gap.vessel_id = 10
-        gap.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        gap.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=timezone.utc)
+        gap.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+        gap.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=UTC)
         gap.duration_minutes = 360
         gap.corridor_id = None
         gap.risk_score = 40
@@ -273,17 +276,24 @@ class TestExportEndpoints:
     """API endpoints for evidence export."""
 
     def test_export_json_endpoint(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_evidence_card", return_value={"evidence": "card"}):
+        with patch(
+            "app.modules.evidence_export.export_evidence_card", return_value={"evidence": "card"}
+        ):
             resp = api_client.post("/api/v1/alerts/1/export?format=json")
             assert resp.status_code == 200
 
     def test_export_markdown_endpoint(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_evidence_card", return_value={"markdown": "# Card"}):
+        with patch(
+            "app.modules.evidence_export.export_evidence_card", return_value={"markdown": "# Card"}
+        ):
             resp = api_client.post("/api/v1/alerts/1/export?format=md")
             assert resp.status_code == 200
 
     def test_export_error_returns_400(self, api_client, mock_db):
-        with patch("app.modules.evidence_export.export_evidence_card", return_value={"error": "Status is new"}):
+        with patch(
+            "app.modules.evidence_export.export_evidence_card",
+            return_value={"error": "Status is new"},
+        ):
             resp = api_client.post("/api/v1/alerts/1/export?format=json")
             assert resp.status_code == 400
 

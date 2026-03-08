@@ -1,4 +1,5 @@
 """Tests for circuit breaker integration."""
+
 import pybreaker
 import pytest
 
@@ -12,7 +13,23 @@ class TestCircuitBreakerModule:
             cb.close()
 
     def test_all_breakers_exist(self):
-        expected = {"gfw", "aisstream", "barentswatch", "digitraffic", "kystverket", "equasis", "noaa", "aishub", "dma", "crea", "copernicus", "planet", "capella", "maxar", "umbra"}
+        expected = {
+            "gfw",
+            "aisstream",
+            "barentswatch",
+            "digitraffic",
+            "kystverket",
+            "equasis",
+            "noaa",
+            "aishub",
+            "dma",
+            "crea",
+            "copernicus",
+            "planet",
+            "capella",
+            "maxar",
+            "umbra",
+        }
         assert set(breakers.keys()) == expected
 
     def test_breaker_defaults(self):
@@ -64,17 +81,22 @@ class TestCircuitBreakerModule:
 
     def test_logging_listener(self):
         listener = LoggingListener()
+
         # Just verify it's callable without error
         class FakeCB:
             name = "test"
+
         class FakeState:
             name = "closed"
+
         class FakeState2:
             name = "open"
+
         listener.state_change(FakeCB(), FakeState(), FakeState2())
 
     def test_independent_breakers(self):
         """Failures in one breaker don't affect others."""
+
         def failing():
             raise ConnectionError("timeout")
 

@@ -1,7 +1,6 @@
 """Tests for IngestionStatus persistence (task 5D)."""
-from __future__ import annotations
 
-from datetime import datetime, timezone
+from __future__ import annotations
 
 import pytest
 from sqlalchemy import create_engine
@@ -41,9 +40,7 @@ class TestIngestionStatusModel:
         update_ingestion_status(db, "kystverket", records=25)
         db.commit()
 
-        rows = db.query(IngestionStatus).filter(
-            IngestionStatus.source == "kystverket"
-        ).all()
+        rows = db.query(IngestionStatus).filter(IngestionStatus.source == "kystverket").all()
         assert len(rows) == 1
         assert rows[0].records_ingested == 25
 
@@ -55,9 +52,7 @@ class TestIngestionStatusModel:
         update_ingestion_status(db, "aisstream", error="Connection timeout")
         db.commit()
 
-        row = db.query(IngestionStatus).filter(
-            IngestionStatus.source == "aisstream"
-        ).one()
+        row = db.query(IngestionStatus).filter(IngestionStatus.source == "aisstream").one()
         assert row.status == "error"
         assert row.errors == 1
         assert row.last_error_message == "Connection timeout"
@@ -71,9 +66,7 @@ class TestIngestionStatusModel:
         update_ingestion_status(db, "dma", error="fail 2")
         db.commit()
 
-        row = db.query(IngestionStatus).filter(
-            IngestionStatus.source == "dma"
-        ).one()
+        row = db.query(IngestionStatus).filter(IngestionStatus.source == "dma").one()
         assert row.errors == 2
         assert row.last_error_message == "fail 2"
 
@@ -85,9 +78,7 @@ class TestIngestionStatusModel:
         update_ingestion_status(db, "barentswatch", records=50)
         db.commit()
 
-        row = db.query(IngestionStatus).filter(
-            IngestionStatus.source == "barentswatch"
-        ).one()
+        row = db.query(IngestionStatus).filter(IngestionStatus.source == "barentswatch").one()
         assert row.status == "completed"
         assert row.last_error_message is None
 
@@ -117,7 +108,9 @@ class TestIngestionStatusAPI:
     @pytest.fixture()
     def client(self):
         from fastapi.testclient import TestClient
+
         from app.main import app
+
         return TestClient(app)
 
     def test_ingestion_status_empty(self, client):
@@ -126,4 +119,3 @@ class TestIngestionStatusAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] in ("idle", "ok")
-

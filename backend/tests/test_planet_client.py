@@ -1,12 +1,13 @@
 """Tests for Planet Labs satellite provider client."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import httpx
 import pybreaker
+import pytest
 
 from app.modules.satellite_providers.base import (
     ArchiveSearchResult,
@@ -14,12 +15,11 @@ from app.modules.satellite_providers.base import (
     OrderSubmitResult,
 )
 
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 AOI_WKT = "POLYGON((10 55, 11 55, 11 56, 10 56, 10 55))"
-START = datetime(2026, 1, 1, tzinfo=timezone.utc)
-END = datetime(2026, 1, 15, tzinfo=timezone.utc)
+START = datetime(2026, 1, 1, tzinfo=UTC)
+END = datetime(2026, 1, 15, tzinfo=UTC)
 
 
 def _make_planet_search_response(features: list[dict] | None = None) -> dict:
@@ -68,9 +68,8 @@ def _mock_response(status_code: int, json_data: dict) -> httpx.Response:
 def reset_planet_breaker():
     """Reset the planet circuit breaker between tests."""
     from app.modules.circuit_breakers import breakers
-    breakers["planet"] = pybreaker.CircuitBreaker(
-        fail_max=5, reset_timeout=60, name="planet"
-    )
+
+    breakers["planet"] = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60, name="planet")
     yield
 
 
@@ -78,6 +77,7 @@ def reset_planet_breaker():
 def planet_provider():
     """Create a PlanetProvider with a test API key."""
     from app.modules.satellite_providers.planet_client import PlanetProvider
+
     return PlanetProvider(api_key="test-planet-key")
 
 
@@ -88,7 +88,9 @@ def test_search_archive_success(planet_provider):
     """search_archive returns parsed ArchiveSearchResult list on success."""
     mock_resp = _mock_response(200, _make_planet_search_response())
 
-    with patch("app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp):
+    with patch(
+        "app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp
+    ):
         results = planet_provider.search_archive(AOI_WKT, START, END)
 
     assert len(results) == 1
@@ -103,7 +105,9 @@ def test_search_archive_no_results(planet_provider):
     """search_archive returns empty list when no scenes found."""
     mock_resp = _mock_response(200, _make_planet_search_response(features=[]))
 
-    with patch("app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp):
+    with patch(
+        "app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp
+    ):
         results = planet_provider.search_archive(AOI_WKT, START, END)
 
     assert results == []
@@ -113,7 +117,9 @@ def test_submit_order_success(planet_provider):
     """submit_order returns OrderSubmitResult on success."""
     mock_resp = _mock_response(200, _make_planet_order_response())
 
-    with patch("app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp):
+    with patch(
+        "app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp
+    ):
         result = planet_provider.submit_order(["scene-1", "scene-2"])
 
     assert isinstance(result, OrderSubmitResult)
@@ -130,7 +136,9 @@ def test_check_order_status_delivered(planet_provider):
     ]
     mock_resp = _mock_response(200, resp_data)
 
-    with patch("app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp):
+    with patch(
+        "app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp
+    ):
         result = planet_provider.check_order_status("order-abc")
 
     assert isinstance(result, OrderStatusResult)
@@ -142,7 +150,9 @@ def test_check_order_status_processing(planet_provider):
     """check_order_status maps 'running' to 'processing'."""
     mock_resp = _mock_response(200, _make_planet_order_response(state="running"))
 
-    with patch("app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp):
+    with patch(
+        "app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp
+    ):
         result = planet_provider.check_order_status("order-abc")
 
     assert result.status == "processing"
@@ -152,7 +162,9 @@ def test_check_order_status_failed(planet_provider):
     """check_order_status maps 'failed' correctly."""
     mock_resp = _mock_response(200, _make_planet_order_response(state="failed"))
 
-    with patch("app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp):
+    with patch(
+        "app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp
+    ):
         result = planet_provider.check_order_status("order-abc")
 
     assert result.status == "failed"
@@ -162,13 +174,14 @@ def test_cancel_order(planet_provider):
     """cancel_order returns True on 200 response."""
     mock_resp = _mock_response(200, {"state": "cancelled"})
 
-    with patch("app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp):
+    with patch(
+        "app.modules.satellite_providers.planet_client.retry_request", return_value=mock_resp
+    ):
         assert planet_provider.cancel_order("order-abc") is True
 
 
 def test_circuit_breaker_trips(planet_provider):
     """Circuit breaker trips after repeated failures."""
-    from app.modules.circuit_breakers import breakers
 
     def _raise(*args, **kwargs):
         raise httpx.ConnectError("Connection refused")

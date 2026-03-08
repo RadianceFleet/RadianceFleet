@@ -1,14 +1,11 @@
 """Tests for Phase B8-10: Nordic AIS clients, watchlists, and CREA integration."""
+
 from __future__ import annotations
 
 import json
 import os
 import tempfile
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from unittest.mock import MagicMock, patch
 
 # ── Kystverket Tests ──────────────────────────────────────────────────────────
 
@@ -33,6 +30,7 @@ class TestKystverketDisabled:
         mock_settings.KYSTVERKET_ENABLED = True
 
         import builtins
+
         real_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
@@ -221,9 +219,7 @@ class TestFleetLeaks:
             {"name": "DARK VESSEL", "mmsi": "987654321", "imo": "1234567", "flag": "MT"},
         ]
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(vessels_data, f)
             f.flush()
             tmp_path = f.name
@@ -274,9 +270,7 @@ class TestFleetLeaks:
             {"name": "UNKNOWN VESSEL", "mmsi": "000000000", "imo": "0000000"},
         ]
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(vessels_data, f)
             f.flush()
             tmp_path = f.name
@@ -297,9 +291,7 @@ class TestFleetLeaks:
         """Verify graceful handling of invalid JSON."""
         from app.modules.watchlist_loader import load_fleetleaks
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             f.write("not valid json {{{")
             f.flush()
             tmp_path = f.name
@@ -323,11 +315,11 @@ class TestGURList:
         """Create test CSV and verify watchlist entries created."""
         from app.modules.watchlist_loader import load_gur_list
 
-        csv_content = "name,mmsi,imo,flag\nSHADOW ONE,111222333,9111222,PA\nSHADOW TWO,444555666,9333444,LR\n"
+        csv_content = (
+            "name,mmsi,imo,flag\nSHADOW ONE,111222333,9111222,PA\nSHADOW TWO,444555666,9333444,LR\n"
+        )
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             f.write(csv_content)
             f.flush()
             tmp_path = f.name
@@ -354,9 +346,7 @@ class TestGURList:
 
         csv_content = "name,mmsi,imo,flag\nUNKNOWN,000000000,,\n"
 
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".csv", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             f.write(csv_content)
             f.flush()
             tmp_path = f.name

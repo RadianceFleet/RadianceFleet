@@ -7,18 +7,18 @@ Covers:
   - Phase A applies stricter thresholds (12 windows, SOG < 0.5kn) in exclusion zones
   - Normal STS detection is NOT suppressed (events still created with enough windows)
 """
+
 import pathlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
 import yaml
 
 from app.modules.sts_detector import (
-    _build_anchorage_exclusion_bboxes,
-    _in_any_anchorage_exclusion,
     _MIN_CONSECUTIVE_WINDOWS_STRICT,
     _SOG_STATIONARY_STRICT,
+    _build_anchorage_exclusion_bboxes,
+    _in_any_anchorage_exclusion,
 )
 
 CORRIDORS_YAML = pathlib.Path(__file__).resolve().parents[2] / "config" / "corridors.yaml"
@@ -39,8 +39,7 @@ class TestAnchorageExclusionYAML:
     def test_exclusion_zones_exist(self):
         corridors = _load_corridors()
         exclusion_names = [
-            c["name"] for c in corridors
-            if "anchorage_exclusion" in (c.get("tags") or [])
+            c["name"] for c in corridors if "anchorage_exclusion" in (c.get("tags") or [])
         ]
         assert "Ceuta Anchorage Exclusion" in exclusion_names
         assert "Laconian Gulf Anchorage Exclusion" in exclusion_names
@@ -59,9 +58,7 @@ class TestAnchorageExclusionYAML:
         corridors = _load_corridors()
         for c in corridors:
             if "anchorage_exclusion" in (c.get("tags") or []):
-                assert "med_fp_reduction" in c["tags"], (
-                    f"{c['name']} missing med_fp_reduction tag"
-                )
+                assert "med_fp_reduction" in c["tags"], f"{c['name']} missing med_fp_reduction tag"
 
     def test_laconian_gulf_has_sts_waiting_zone_tag(self):
         """Laconian Gulf is both an anchorage and a real STS waiting zone."""
@@ -90,8 +87,10 @@ class TestAnchorageExclusionYAML:
 
         for exclusion_prefix, parent_name in parent_zones.items():
             exclusion = [
-                c for c in corridors
-                if c["name"].startswith(exclusion_prefix) and "anchorage_exclusion" in (c.get("tags") or [])
+                c
+                for c in corridors
+                if c["name"].startswith(exclusion_prefix)
+                and "anchorage_exclusion" in (c.get("tags") or [])
             ]
             parent = [c for c in corridors if c["name"] == parent_name]
             assert len(exclusion) == 1, f"Expected 1 exclusion zone for {exclusion_prefix}"
@@ -122,7 +121,10 @@ def _make_corridor_mock(tags, geometry_wkt):
 class TestBuildAnchorageExclusionBboxes:
     def test_filters_by_tag(self):
         corridors = [
-            _make_corridor_mock(["anchorage_exclusion", "med_fp_reduction"], "POLYGON((10 20, 11 20, 11 21, 10 21, 10 20))"),
+            _make_corridor_mock(
+                ["anchorage_exclusion", "med_fp_reduction"],
+                "POLYGON((10 20, 11 20, 11 21, 10 21, 10 20))",
+            ),
             _make_corridor_mock(["ship_to_ship"], "POLYGON((30 40, 31 40, 31 41, 30 41, 30 40))"),
         ]
         bboxes = _build_anchorage_exclusion_bboxes(corridors)
@@ -144,7 +146,10 @@ class TestBuildAnchorageExclusionBboxes:
     def test_handles_string_tags(self):
         """Tags stored as comma-separated string should still work."""
         corridors = [
-            _make_corridor_mock("anchorage_exclusion, med_fp_reduction", "POLYGON((10 20, 11 20, 11 21, 10 21, 10 20))"),
+            _make_corridor_mock(
+                "anchorage_exclusion, med_fp_reduction",
+                "POLYGON((10 20, 11 20, 11 21, 10 21, 10 20))",
+            ),
         ]
         bboxes = _build_anchorage_exclusion_bboxes(corridors)
         assert len(bboxes) == 1
@@ -181,11 +186,13 @@ class TestInAnyAnchorageExclusion:
 class TestStricterThresholdConstants:
     def test_strict_window_count_higher_than_default(self):
         from app.modules.sts_detector import _MIN_CONSECUTIVE_WINDOWS
+
         assert _MIN_CONSECUTIVE_WINDOWS_STRICT > _MIN_CONSECUTIVE_WINDOWS
         assert _MIN_CONSECUTIVE_WINDOWS_STRICT == 12
 
     def test_strict_sog_lower_than_default(self):
         from app.modules.sts_detector import _SOG_STATIONARY
+
         assert _SOG_STATIONARY_STRICT < _SOG_STATIONARY
         assert _SOG_STATIONARY_STRICT == 0.5
 
@@ -210,7 +217,7 @@ class TestPhaseAExclusionIntegration:
     def _make_points_for_pair(self, vid1, vid2, lat, lon, n_windows, sog=0.3, start=None):
         """Generate AIS points for two vessels near each other for n_windows 15-min buckets."""
         if start is None:
-            start = datetime(2025, 6, 1, 12, 0, tzinfo=timezone.utc)
+            start = datetime(2025, 6, 1, 12, 0, tzinfo=UTC)
         points = []
         for i in range(n_windows):
             ts = start + timedelta(minutes=15 * i)

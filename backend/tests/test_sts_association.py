@@ -1,7 +1,6 @@
 """Tests for STS network association scoring signal."""
-from unittest.mock import MagicMock
 
-import pytest
+from unittest.mock import MagicMock
 
 from app.modules.risk_scoring import _sts_with_watchlisted_vessel
 
@@ -40,8 +39,8 @@ class TestSTSAssociation:
         db = MagicMock()
         # First query: STSEvents for our vessel
         db.query.return_value.filter.return_value.all.side_effect = [
-            [sts],      # STS events
-            [watchlist], # Watchlist entries for partner
+            [sts],  # STS events
+            [watchlist],  # Watchlist entries for partner
         ]
 
         pts, source = _sts_with_watchlisted_vessel(db, vessel)
@@ -60,7 +59,7 @@ class TestSTSAssociation:
         # First query returns STS events, second returns empty watchlist
         db.query.return_value.filter.return_value.all.side_effect = [
             [sts],  # STS events
-            [],     # No watchlist entries for partner
+            [],  # No watchlist entries for partner
         ]
 
         pts, source = _sts_with_watchlisted_vessel(db, vessel)

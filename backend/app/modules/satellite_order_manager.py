@@ -1,30 +1,33 @@
 """Satellite imagery order management."""
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, extract
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.satellite_order import SatelliteOrder
 from app.models.satellite_order_log import SatelliteOrderLog
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 def get_satellite_budget_status(db: Session) -> dict:
     """Monthly spend vs budget."""
-    now = datetime.now(timezone.utc)
-    monthly_spend = db.query(
-        func.coalesce(func.sum(SatelliteOrder.cost_usd), 0.0)
-    ).filter(
-        SatelliteOrder.status.notin_(["cancelled", "failed", "draft"]),
-        extract("year", SatelliteOrder.created_utc) == now.year,
-        extract("month", SatelliteOrder.created_utc) == now.month,
-    ).scalar() or 0.0
+    now = datetime.now(UTC)
+    monthly_spend = (
+        db.query(func.coalesce(func.sum(SatelliteOrder.cost_usd), 0.0))
+        .filter(
+            SatelliteOrder.status.notin_(["cancelled", "failed", "draft"]),
+            extract("year", SatelliteOrder.created_utc) == now.year,
+            extract("month", SatelliteOrder.created_utc) == now.month,
+        )
+        .scalar()
+        or 0.0
+    )
     return {
         "budget_usd": settings.SATELLITE_MONTHLY_BUDGET_USD,
         "spent_usd": round(float(monthly_spend), 2),
@@ -84,9 +87,7 @@ def search_archive_for_alert(db: Session, alert_id: int, provider_name: str) -> 
     # Link to sat_check if exists
     from app.models.satellite_check import SatelliteCheck
 
-    sat_check = db.query(SatelliteCheck).filter(
-        SatelliteCheck.gap_event_id == alert_id
-    ).first()
+    sat_check = db.query(SatelliteCheck).filter(SatelliteCheck.gap_event_id == alert_id).first()
     if sat_check:
         order.sat_check_id = sat_check.sat_check_id
 
@@ -115,9 +116,7 @@ def search_archive_for_alert(db: Session, alert_id: int, provider_name: str) -> 
 
 def submit_order(db: Session, order_id: int, scene_ids: list[str]) -> dict:
     """Submit a draft order after budget check."""
-    order = db.query(SatelliteOrder).filter(
-        SatelliteOrder.satellite_order_id == order_id
-    ).first()
+    order = db.query(SatelliteOrder).filter(SatelliteOrder.satellite_order_id == order_id).first()
     if not order:
         raise ValueError(f"Order {order_id} not found")
     if order.status != "draft":
@@ -194,16 +193,20 @@ def poll_order_status(db: Session, order_id: int = None) -> list[dict]:
                 response_summary=f"status={status_result.status}",
             )
             db.add(log)
-            results.append({
-                "order_id": order.satellite_order_id,
-                "status": status_result.status,
-            })
+            results.append(
+                {
+                    "order_id": order.satellite_order_id,
+                    "status": status_result.status,
+                }
+            )
         except Exception as e:
             logger.warning("Failed to poll order %s: %s", order.satellite_order_id, e)
-            results.append({
-                "order_id": order.satellite_order_id,
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "order_id": order.satellite_order_id,
+                    "error": str(e),
+                }
+            )
 
     db.commit()
     return results
@@ -211,9 +214,7 @@ def poll_order_status(db: Session, order_id: int = None) -> list[dict]:
 
 def cancel_order(db: Session, order_id: int) -> dict:
     """Cancel a submitted order."""
-    order = db.query(SatelliteOrder).filter(
-        SatelliteOrder.satellite_order_id == order_id
-    ).first()
+    order = db.query(SatelliteOrder).filter(SatelliteOrder.satellite_order_id == order_id).first()
     if not order:
         raise ValueError(f"Order {order_id} not found")
 

@@ -4,11 +4,12 @@ with suspicious frequency or to shadow fleet registries.
 Frequent flag changes are a key indicator of sanctions evasion, especially
 when the new flag is a shadow fleet convenience registry.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -16,25 +17,49 @@ from app.config import settings
 from app.models.base import SpoofingTypeEnum
 from app.models.gap_event import AISGapEvent
 from app.models.spoofing_anomaly import SpoofingAnomaly
-from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
 
 logger = logging.getLogger(__name__)
 
 # Shadow fleet registries -- flag changes TO these countries get 2x score
-HIGH_RISK_REGISTRIES: frozenset[str] = frozenset({
-    "Cameroon", "Gabon", "Comoros", "Gambia", "Palau",
-    "Sierra Leone", "Tanzania", "Honduras",
-    # Also match ISO codes
-    "CM", "GA", "KM", "GM", "PW", "SL", "TZ", "HN",
-})
+HIGH_RISK_REGISTRIES: frozenset[str] = frozenset(
+    {
+        "Cameroon",
+        "Gabon",
+        "Comoros",
+        "Gambia",
+        "Palau",
+        "Sierra Leone",
+        "Tanzania",
+        "Honduras",
+        # Also match ISO codes
+        "CM",
+        "GA",
+        "KM",
+        "GM",
+        "PW",
+        "SL",
+        "TZ",
+        "HN",
+    }
+)
 
 # Well-regulated registries -- flag changes TO these get 0.5x score
-WHITE_LIST_REGISTRIES: frozenset[str] = frozenset({
-    "Norway", "Denmark", "Germany", "Japan", "Netherlands",
-    # Also match ISO codes
-    "NO", "DK", "DE", "JP", "NL",
-})
+WHITE_LIST_REGISTRIES: frozenset[str] = frozenset(
+    {
+        "Norway",
+        "Denmark",
+        "Germany",
+        "Japan",
+        "Netherlands",
+        # Also match ISO codes
+        "NO",
+        "DK",
+        "DE",
+        "JP",
+        "NL",
+    }
+)
 
 
 def run_flag_hopping_detection(db: Session) -> dict:
@@ -75,9 +100,7 @@ def run_flag_hopping_detection(db: Session) -> dict:
 
     # Get all ownership changes for discount check
     owner_changes = (
-        db.query(VesselHistory)
-        .filter(VesselHistory.field_changed == "owner_name")
-        .all()
+        db.query(VesselHistory).filter(VesselHistory.field_changed == "owner_name").all()
     )
     owner_change_dates: dict[int, list[datetime]] = defaultdict(list)
     for oc in owner_changes:
@@ -91,14 +114,8 @@ def run_flag_hopping_detection(db: Session) -> dict:
             continue
 
         # Count changes in time windows
-        changes_90d = [
-            c for c in changes
-            if (now - c.observed_at).days <= 90
-        ]
-        changes_365d = [
-            c for c in changes
-            if (now - c.observed_at).days <= 365
-        ]
+        changes_90d = [c for c in changes if (now - c.observed_at).days <= 90]
+        changes_365d = [c for c in changes if (now - c.observed_at).days <= 365]
 
         # Determine base score
         base_score = 0
@@ -139,10 +156,14 @@ def run_flag_hopping_detection(db: Session) -> dict:
             continue
 
         # Check for existing FLAG_HOPPING anomaly for this vessel
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == vessel_id,
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING,
-        ).first()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING,
+            )
+            .first()
+        )
         if existing:
             continue
 
@@ -181,18 +202,27 @@ def run_flag_hopping_detection(db: Session) -> dict:
                 continue
             gap_window_start = fc.observed_at - timedelta(hours=6)
             gap_window_end = fc.observed_at + timedelta(hours=6)
-            overlapping_gap = db.query(AISGapEvent).filter(
-                AISGapEvent.vessel_id == vessel_id,
-                AISGapEvent.gap_start_utc <= gap_window_end,
-                AISGapEvent.gap_end_utc >= gap_window_start,
-            ).first()
+            overlapping_gap = (
+                db.query(AISGapEvent)
+                .filter(
+                    AISGapEvent.vessel_id == vessel_id,
+                    AISGapEvent.gap_start_utc <= gap_window_end,
+                    AISGapEvent.gap_end_utc >= gap_window_start,
+                )
+                .first()
+            )
             if overlapping_gap:
                 # Create a sub-type anomaly for dark-period flag change
-                dark_flag_existing = db.query(SpoofingAnomaly).filter(
-                    SpoofingAnomaly.vessel_id == vessel_id,
-                    SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING,
-                    SpoofingAnomaly.evidence_json["sub_type"].as_string() == "dark_period_flag_change",
-                ).first()
+                dark_flag_existing = (
+                    db.query(SpoofingAnomaly)
+                    .filter(
+                        SpoofingAnomaly.vessel_id == vessel_id,
+                        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING,
+                        SpoofingAnomaly.evidence_json["sub_type"].as_string()
+                        == "dark_period_flag_change",
+                    )
+                    .first()
+                )
                 if not dark_flag_existing:
                     dark_anomaly = SpoofingAnomaly(
                         vessel_id=vessel_id,
@@ -206,8 +236,12 @@ def run_flag_hopping_detection(db: Session) -> dict:
                             "old_flag": fc.old_value,
                             "new_flag": fc.new_value,
                             "gap_event_id": overlapping_gap.gap_event_id,
-                            "gap_start": overlapping_gap.gap_start_utc.isoformat() if overlapping_gap.gap_start_utc else None,
-                            "gap_end": overlapping_gap.gap_end_utc.isoformat() if overlapping_gap.gap_end_utc else None,
+                            "gap_start": overlapping_gap.gap_start_utc.isoformat()
+                            if overlapping_gap.gap_start_utc
+                            else None,
+                            "gap_end": overlapping_gap.gap_end_utc.isoformat()
+                            if overlapping_gap.gap_end_utc
+                            else None,
                         },
                     )
                     db.add(dark_anomaly)
@@ -217,7 +251,8 @@ def run_flag_hopping_detection(db: Session) -> dict:
     db.commit()
     logger.info(
         "Flag hopping: %d anomalies from %d vessels checked",
-        anomalies_created, len(by_vessel),
+        anomalies_created,
+        len(by_vessel),
     )
     return {
         "status": "ok",

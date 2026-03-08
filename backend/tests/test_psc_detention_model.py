@@ -1,19 +1,20 @@
 """Tests for PscDetention model, upsert, and sync logic."""
-import pytest
+
 from datetime import date, timedelta
 
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base  # noqa: F401 -- registers all models
-from app.models.vessel import Vessel
 from app.models.psc_detention import PscDetention
+from app.models.vessel import Vessel
 from app.modules.psc_loader import _upsert_detention, sync_vessel_psc_summary
-
 
 # ---------------------------------------------------------------------------
 # Shared fixture: in-memory SQLite session
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db():
@@ -46,6 +47,7 @@ def vessel(db):
 # ---------------------------------------------------------------------------
 # 1. PscDetention CRUD — create and read
 # ---------------------------------------------------------------------------
+
 
 class TestPscDetentionCRUD:
     def test_create_and_read(self, db, vessel):
@@ -97,6 +99,7 @@ class TestPscDetentionCRUD:
 # 2. Unique constraint enforcement
 # ---------------------------------------------------------------------------
 
+
 class TestUniqueConstraint:
     def test_duplicate_raises_integrity_error(self, db, vessel):
         """Same vessel+date+mou+entity_id combination violates unique constraint."""
@@ -129,6 +132,7 @@ class TestUniqueConstraint:
 # 3. Relationship: vessel.psc_detentions
 # ---------------------------------------------------------------------------
 
+
 class TestRelationship:
     def test_vessel_psc_detentions_returns_list(self, db, vessel):
         """vessel.psc_detentions returns related detention records."""
@@ -157,6 +161,7 @@ class TestRelationship:
 # ---------------------------------------------------------------------------
 # 4-5. _upsert_detention creates and skips duplicates
 # ---------------------------------------------------------------------------
+
 
 class TestUpsertDetention:
     def test_creates_new_record(self, db, vessel):
@@ -200,6 +205,7 @@ class TestUpsertDetention:
 # ---------------------------------------------------------------------------
 # 6-8. sync_vessel_psc_summary
 # ---------------------------------------------------------------------------
+
 
 class TestSyncVesselPscSummary:
     def test_no_detentions_resets_flags(self, db, vessel):

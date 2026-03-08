@@ -2,6 +2,7 @@
 
 Uses mock objects (no database) following patterns from test_risk_scoring_complete.py.
 """
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -64,6 +65,7 @@ def test_pipeline_detect_then_score():
     added_objects = [call.args[0] for call in mock_db.add.call_args_list]
     # AISGapEvent is the one with duration_minutes and vessel_id as real attrs
     from app.models.gap_event import AISGapEvent
+
     gap_events = [obj for obj in added_objects if isinstance(obj, AISGapEvent)]
 
     assert len(gap_events) >= 1, "Expected at least one AISGapEvent created"
@@ -105,7 +107,9 @@ def test_pipeline_detect_then_score():
     mock_gap.corridor = None
 
     score, breakdown = compute_gap_score(
-        mock_gap, config, pre_gap_sog=gap.pre_gap_sog,
+        mock_gap,
+        config,
+        pre_gap_sog=gap.pre_gap_sog,
     )
 
     # ── Step 5: Verify score > 0 and breakdown has expected keys ───────────

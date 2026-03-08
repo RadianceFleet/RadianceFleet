@@ -4,16 +4,16 @@ Canonical implementations of haversine distance used across gap_detector,
 sts_detector, and other modules.  Also provides WKT ↔ Shapely helpers for
 the SQLite-backed geometry columns (plain Text storing WKT).
 """
+
 from __future__ import annotations
 
 import math
 import re
-from typing import Optional
 
 import shapely.wkt
 from shapely.geometry.base import BaseGeometry
 
-_EARTH_RADIUS_NM: float = 3440.065   # Earth mean radius in nautical miles
+_EARTH_RADIUS_NM: float = 3440.065  # Earth mean radius in nautical miles
 _EARTH_RADIUS_M: float = 6_371_000.0  # Earth mean radius in metres
 
 
@@ -31,16 +31,14 @@ def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlam = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dphi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    )
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
     return _EARTH_RADIUS_M * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 # ── WKT ↔ Shapely helpers ────────────────────────────────────────────────────
 
-def load_geometry(wkt_str: Optional[str]) -> Optional[BaseGeometry]:
+
+def load_geometry(wkt_str: str | None) -> BaseGeometry | None:
     """Load a WKT text string (from DB) into a Shapely geometry object."""
     if not wkt_str:
         return None
@@ -53,6 +51,7 @@ def dump_geometry(shape: BaseGeometry) -> str:
 
 
 # ── Coordinate extraction helpers ────────────────────────────────────────────
+
 
 def parse_wkt_bbox(wkt: str) -> tuple[float, float, float, float] | None:
     """Return (min_lon, min_lat, max_lon, max_lat) from any WKT string.
@@ -91,8 +90,7 @@ def initial_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float
     phi2 = math.radians(lat2)
     d_lambda = math.radians(lon2 - lon1)
     x = math.sin(d_lambda) * math.cos(phi2)
-    y = (math.cos(phi1) * math.sin(phi2)
-         - math.sin(phi1) * math.cos(phi2) * math.cos(d_lambda))
+    y = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(d_lambda)
     return math.degrees(math.atan2(x, y)) % 360
 
 

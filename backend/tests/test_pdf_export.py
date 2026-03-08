@@ -1,12 +1,13 @@
 """Tests for PDF evidence card export."""
-import pytest
-from unittest.mock import MagicMock
-from datetime import datetime, timezone
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
+
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.database import get_db
+from app.main import app
 
 
 def _make_gap(gap_event_id=1, vessel_id=1, status="under_review"):
@@ -14,8 +15,8 @@ def _make_gap(gap_event_id=1, vessel_id=1, status="under_review"):
     g = MagicMock()
     g.gap_event_id = gap_event_id
     g.vessel_id = vessel_id
-    g.gap_start_utc = datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
-    g.gap_end_utc = datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    g.gap_start_utc = datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
+    g.gap_end_utc = datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
     g.duration_minutes = 720
     g.corridor_id = None
     g.risk_score = 85
@@ -44,11 +45,11 @@ def _make_vessel(vessel_id=1):
 
 def _setup_db(mock_db, gap=None, vessel=None):
     """Wire up mock_db.query().filter().first() to return gap/vessel/corridor."""
-    from app.models.gap_event import AISGapEvent
-    from app.models.vessel import Vessel
-    from app.models.corridor import Corridor
     from app.models.ais_point import AISPoint
+    from app.models.corridor import Corridor
+    from app.models.gap_event import AISGapEvent
     from app.models.satellite_check import SatelliteCheck
+    from app.models.vessel import Vessel
 
     def query_side_effect(model):
         q = MagicMock()

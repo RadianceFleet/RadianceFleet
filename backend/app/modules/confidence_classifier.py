@@ -16,6 +16,7 @@ Evidence categories:
   FLEET_PATTERN    — fleet-level analysis, owner clusters
   WATCHLIST        — sanctions list matches, OFAC/EU/KSE
 """
+
 from __future__ import annotations
 
 import json
@@ -34,40 +35,74 @@ logger = logging.getLogger(__name__)
 _CATEGORY_MAP: dict[str, str] = {}
 
 _AIS_GAP_PREFIXES = (
-    "gap_duration", "gap_frequency", "impossible_reappear",
-    "near_impossible_reappear", "dark_zone", "selective_dark_zone",
-    "movement_envelope", "speed_impossible", "speed_spike",
-    "speed_spoof", "feed_outage", "gap_reactivation",
-    "at_sea_no_port_call", "transmission_frequency",
+    "gap_duration",
+    "gap_frequency",
+    "impossible_reappear",
+    "near_impossible_reappear",
+    "dark_zone",
+    "selective_dark_zone",
+    "movement_envelope",
+    "speed_impossible",
+    "speed_spike",
+    "speed_spoof",
+    "feed_outage",
+    "gap_reactivation",
+    "at_sea_no_port_call",
+    "transmission_frequency",
 )
 _SPOOFING_PREFIXES = (
-    "spoofing_", "track_naturalness", "stale_ais",
-    "stateless_mmsi", "imo_fraud", "imo_fabricated",
-    "cross_receiver", "identity_swap", "fake_",
-    "scrapped_imo", "track_replay",
+    "spoofing_",
+    "track_naturalness",
+    "stale_ais",
+    "stateless_mmsi",
+    "imo_fraud",
+    "imo_fabricated",
+    "cross_receiver",
+    "identity_swap",
+    "fake_",
+    "scrapped_imo",
+    "track_replay",
 )
 _STS_PREFIXES = (
-    "sts_event", "sts_", "gap_in_sts_tagged_corridor",
-    "repeat_sts", "dark_dark_sts", "draught_",
-    "russian_port", "voyage_cycle",
+    "sts_event",
+    "sts_",
+    "gap_in_sts_tagged_corridor",
+    "repeat_sts",
+    "dark_dark_sts",
+    "draught_",
+    "russian_port",
+    "voyage_cycle",
     "laden_from_russian",
 )
 _IDENTITY_PREFIXES = (
-    "flag_change", "flag_AND_name", "callsign_change",
-    "class_switching", "flag_hopping", "rename_velocity",
-    "invalid_metadata", "ais_class_mismatch",
-    "fraudulent_registry", "pi_known_fraudulent", "pi_unknown_insurer",
+    "flag_change",
+    "flag_AND_name",
+    "callsign_change",
+    "class_switching",
+    "flag_hopping",
+    "rename_velocity",
+    "invalid_metadata",
+    "ais_class_mismatch",
+    "fraudulent_registry",
+    "pi_known_fraudulent",
+    "pi_unknown_insurer",
     "pi_no_insurer",
 )
 _LOITERING_PREFIXES = (
-    "loiter_", "vessel_laid_up",
+    "loiter_",
+    "vessel_laid_up",
 )
 _FLEET_PREFIXES = (
-    "fleet_", "owner_cluster", "shared_manager", "shared_pi",
-    "convoy_", "ownership_",
+    "fleet_",
+    "owner_cluster",
+    "shared_manager",
+    "shared_pi",
+    "convoy_",
+    "ownership_",
 )
 _WATCHLIST_PREFIXES = (
-    "watchlist_", "owner_or_manager_on_sanctions",
+    "watchlist_",
+    "owner_or_manager_on_sanctions",
 )
 
 
@@ -175,9 +210,7 @@ def classify_all_vessels(db: Session) -> dict:
     )
 
     # Pre-load watchlist presence
-    watchlist_vessel_ids = {
-        row[0] for row in db.query(VesselWatchlist.vessel_id).distinct().all()
-    }
+    watchlist_vessel_ids = {row[0] for row in db.query(VesselWatchlist.vessel_id).distinct().all()}
 
     classified = 0
     by_level: dict[str, int] = defaultdict(int)

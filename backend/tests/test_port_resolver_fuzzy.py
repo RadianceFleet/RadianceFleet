@@ -5,11 +5,10 @@ Validates the 3-step resolution strategy:
 2. Exact name match
 3. Fuzzy name match via rapidfuzz (threshold > 80)
 """
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 def _make_port(port_id: int, name: str, lat: float = 0.0, lon: float = 0.0):
@@ -73,8 +72,9 @@ class TestFuzzyNameMatch:
     @patch("app.modules.port_resolver.load_geometry")
     def test_fuzzy_match_slight_misspelling(self, mock_load_geom):
         """Fuzzy matching should match 'FUJAIRA' to 'FUJAIRAH' (score > 80)."""
-        from app.modules.port_resolver import resolve_port
         from shapely.geometry import Point
+
+        from app.modules.port_resolver import resolve_port
 
         port = _make_port(20, "FUJAIRAH", lat=0.0, lon=0.0)
         mock_load_geom.return_value = Point(0.0, 0.0)
@@ -89,8 +89,9 @@ class TestFuzzyNameMatch:
     @patch("app.modules.port_resolver.load_geometry")
     def test_fuzzy_match_cyrillic_transliteration(self, mock_load_geom):
         """Cyrillic name should transliterate and fuzzy match to latin equivalent."""
-        from app.modules.port_resolver import resolve_port
         from shapely.geometry import Point
+
+        from app.modules.port_resolver import resolve_port
 
         port = _make_port(30, "NOVOROSSIYSK", lat=0.0, lon=0.0)
         mock_load_geom.return_value = Point(0.0, 0.0)
@@ -106,9 +107,11 @@ class TestFuzzyNameMatch:
     @patch("app.modules.port_resolver.load_geometry")
     def test_fuzzy_threshold_score_80_does_not_match(self, mock_load_geom):
         """A score of exactly 80 should NOT match (threshold is strictly greater than 80)."""
-        from app.modules.port_resolver import resolve_port
-        from shapely.geometry import Point
         from unittest.mock import patch as inner_patch
+
+        from shapely.geometry import Point
+
+        from app.modules.port_resolver import resolve_port
 
         port = _make_port(40, "TESTPORT", lat=0.0, lon=0.0)
         mock_load_geom.return_value = Point(0.0, 0.0)
@@ -124,9 +127,11 @@ class TestFuzzyNameMatch:
     @patch("app.modules.port_resolver.load_geometry")
     def test_fuzzy_threshold_score_81_matches(self, mock_load_geom):
         """A score of 81 should match (above threshold)."""
-        from app.modules.port_resolver import resolve_port
-        from shapely.geometry import Point
         from unittest.mock import patch as inner_patch
+
+        from shapely.geometry import Point
+
+        from app.modules.port_resolver import resolve_port
 
         port = _make_port(41, "TESTPORT", lat=0.0, lon=0.0)
         mock_load_geom.return_value = Point(0.0, 0.0)
@@ -154,8 +159,9 @@ class TestFuzzyNameMatch:
     @patch("app.modules.port_resolver.load_geometry")
     def test_port_name_none_skips_fuzzy(self, mock_load_geom):
         """When port_name is None, fuzzy step is skipped entirely."""
-        from app.modules.port_resolver import resolve_port
         from shapely.geometry import Point
+
+        from app.modules.port_resolver import resolve_port
 
         port = _make_port(50, "FUJAIRAH", lat=0.0, lon=0.0)
         mock_load_geom.return_value = Point(0.0, 0.0)
@@ -170,8 +176,9 @@ class TestFuzzyNameMatch:
     @patch("app.modules.port_resolver.load_geometry")
     def test_fuzzy_picks_best_match(self, mock_load_geom):
         """When multiple ports have fuzzy matches, the best score wins."""
-        from app.modules.port_resolver import resolve_port
         from shapely.geometry import Point
+
+        from app.modules.port_resolver import resolve_port
 
         port_a = _make_port(60, "FUJAIRA PORT", lat=0.0, lon=0.0)
         port_b = _make_port(61, "FUJAIRAH", lat=0.0, lon=0.0)
@@ -187,8 +194,9 @@ class TestFuzzyNameMatch:
     @patch("app.modules.port_resolver.load_geometry")
     def test_port_with_none_name_skipped_in_fuzzy(self, mock_load_geom):
         """Ports with name=None are skipped in fuzzy matching."""
-        from app.modules.port_resolver import resolve_port
         from shapely.geometry import Point
+
+        from app.modules.port_resolver import resolve_port
 
         port_no_name = _make_port(70, None, lat=0.0, lon=0.0)
         port_no_name.name = None
@@ -205,8 +213,9 @@ class TestFuzzyNameMatch:
     @patch("app.modules.port_resolver.load_geometry")
     def test_very_different_name_no_match(self, mock_load_geom):
         """A very different name should not fuzzy match (score well below 80)."""
-        from app.modules.port_resolver import resolve_port
         from shapely.geometry import Point
+
+        from app.modules.port_resolver import resolve_port
 
         port = _make_port(80, "SINGAPORE", lat=0.0, lon=0.0)
         mock_load_geom.return_value = Point(0.0, 0.0)

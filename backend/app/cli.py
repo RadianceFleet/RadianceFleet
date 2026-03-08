@@ -16,38 +16,25 @@ Commands:
   history backfill   — backfill a specific source and date range
   history schedule   — run or preview the history scheduler
 """
+
 from __future__ import annotations
+
+import app.cli_db as _cli_db  # noqa: F401,E402
+import app.cli_history as _cli_history  # noqa: F401,E402
+import app.cli_psc as _cli_psc  # noqa: F401,E402
+
+# ---------------------------------------------------------------------------
+# Import sub-command modules — registers commands on `app` / `history_app`
+# ---------------------------------------------------------------------------
+import app.cli_update as _cli_update  # noqa: F401,E402
+import app.cli_vessels as _cli_vessels  # noqa: F401,E402
 
 # ---------------------------------------------------------------------------
 # Core objects — shared by all sub-command modules
 # ---------------------------------------------------------------------------
-
 from app.cli_app import app, console, history_app  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Re-export helpers for backward compatibility (tests patch "app.cli._*")
 # ---------------------------------------------------------------------------
-
 from app.cli_helpers import *  # noqa: F401,F403
-from app.cli_helpers import (
-    _is_interactive,
-    _is_first_run,
-    _import_corridors,
-    _load_sample_data,
-    _enrich_vessels,
-    _print_summary,
-    _print_next_steps,
-    _print_candidates_table,
-    _update_fetch_watchlists,
-    _parse_duration,
-)
-
-# ---------------------------------------------------------------------------
-# Import sub-command modules — registers commands on `app` / `history_app`
-# ---------------------------------------------------------------------------
-
-import app.cli_update as _cli_update  # noqa: F401,E402
-import app.cli_vessels as _cli_vessels  # noqa: F401,E402
-import app.cli_history as _cli_history  # noqa: F401,E402
-import app.cli_psc as _cli_psc  # noqa: F401,E402
-import app.cli_db as _cli_db  # noqa: F401,E402

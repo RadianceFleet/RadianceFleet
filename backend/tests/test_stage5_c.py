@@ -17,19 +17,20 @@
   - RouteTemplate model creation
   - Empty data handling
 """
+
 from __future__ import annotations
 
 import datetime
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from unittest.mock import MagicMock, patch
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────────────────────────────────────
 
-def _make_mock_port_call(vessel_id: int, port_id: int, arrival_utc: datetime.datetime, departure_utc=None):
+
+def _make_mock_port_call(
+    vessel_id: int, port_id: int, arrival_utc: datetime.datetime, departure_utc=None
+):
     """Create a mock PortCall with explicit numeric attributes."""
     pc = MagicMock()
     pc.vessel_id = vessel_id
@@ -42,8 +43,13 @@ def _make_mock_port_call(vessel_id: int, port_id: int, arrival_utc: datetime.dat
     return pc
 
 
-def _make_mock_vessel(vessel_id: int, vessel_type: str = "tanker", deadweight: float = 100000.0,
-                      flag: str = "PA", mmsi: str = "123456789"):
+def _make_mock_vessel(
+    vessel_id: int,
+    vessel_type: str = "tanker",
+    deadweight: float = 100000.0,
+    flag: str = "PA",
+    mmsi: str = "123456789",
+):
     """Create a mock Vessel with explicit numeric attributes."""
     v = MagicMock()
     v.vessel_id = vessel_id
@@ -65,8 +71,14 @@ def _make_mock_vessel(vessel_id: int, vessel_type: str = "tanker", deadweight: f
     return v
 
 
-def _make_mock_ais_point(vessel_id: int, lat: float, lon: float, sog: float = 10.0,
-                         draught: float | None = None, timestamp_utc=None):
+def _make_mock_ais_point(
+    vessel_id: int,
+    lat: float,
+    lon: float,
+    sog: float = 10.0,
+    draught: float | None = None,
+    timestamp_utc=None,
+):
     """Create a mock AISPoint with explicit attributes."""
     pt = MagicMock()
     pt.vessel_id = vessel_id
@@ -83,37 +95,44 @@ def _make_mock_ais_point(vessel_id: int, lat: float, lon: float, sog: float = 10
 # Jaccard similarity
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestJaccardSimilarity:
 
+class TestJaccardSimilarity:
     def test_identical_sets(self):
         from app.modules.voyage_predictor import jaccard_similarity
+
         assert jaccard_similarity({1, 2, 3}, {1, 2, 3}) == 1.0
 
     def test_completely_disjoint_sets(self):
         from app.modules.voyage_predictor import jaccard_similarity
+
         assert jaccard_similarity({1, 2, 3}, {4, 5, 6}) == 0.0
 
     def test_partial_overlap(self):
         from app.modules.voyage_predictor import jaccard_similarity
+
         # {1,2,3} & {2,3,4} = {2,3}, union = {1,2,3,4} -> 2/4 = 0.5
         assert jaccard_similarity({1, 2, 3}, {2, 3, 4}) == 0.5
 
     def test_empty_sets(self):
         from app.modules.voyage_predictor import jaccard_similarity
+
         assert jaccard_similarity(set(), set()) == 0.0
 
     def test_one_empty_set(self):
         from app.modules.voyage_predictor import jaccard_similarity
+
         assert jaccard_similarity({1, 2, 3}, set()) == 0.0
 
     def test_high_overlap_above_threshold(self):
         from app.modules.voyage_predictor import jaccard_similarity
+
         # {1,2,3,4,5} & {1,2,3,4,6} = {1,2,3,4}, union = {1,2,3,4,5,6} -> 4/6 ≈ 0.667
         sim = jaccard_similarity({1, 2, 3, 4, 5}, {1, 2, 3, 4, 6})
         assert 0.66 < sim < 0.67
 
     def test_superset(self):
         from app.modules.voyage_predictor import jaccard_similarity
+
         # {1,2,3} & {1,2,3,4,5} -> 3/5 = 0.6
         assert jaccard_similarity({1, 2, 3}, {1, 2, 3, 4, 5}) == 0.6
 
@@ -122,8 +141,8 @@ class TestJaccardSimilarity:
 # Route template building
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestBuildRouteTemplates:
 
+class TestBuildRouteTemplates:
     def test_build_templates_basic(self):
         """Build templates from two vessels sharing a common 3-port sequence."""
         from app.modules.voyage_predictor import build_route_templates
@@ -156,10 +175,10 @@ class TestBuildRouteTemplates:
         vessel_query.filter.return_value.all.return_value = [v1, v2]
 
         def side_effect(model):
-            model_name = getattr(model, '__tablename__', getattr(model, '__name__', str(model)))
-            if 'port_call' in str(model_name).lower():
+            model_name = getattr(model, "__tablename__", getattr(model, "__name__", str(model)))
+            if "port_call" in str(model_name).lower():
                 return port_call_query
-            elif 'vessel' in str(model_name).lower():
+            elif "vessel" in str(model_name).lower():
                 return vessel_query
             return MagicMock()
 
@@ -208,10 +227,10 @@ class TestBuildRouteTemplates:
         vessel_query.filter.return_value.all.return_value = [_make_mock_vessel(1)]
 
         def side_effect(model):
-            model_name = str(getattr(model, '__tablename__', ''))
-            if 'port_call' in model_name:
+            model_name = str(getattr(model, "__tablename__", ""))
+            if "port_call" in model_name:
                 return port_call_query
-            elif 'vessel' in model_name:
+            elif "vessel" in model_name:
                 return vessel_query
             return MagicMock()
 
@@ -227,8 +246,8 @@ class TestBuildRouteTemplates:
 # Destination prediction
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestPredictNextDestination:
 
+class TestPredictNextDestination:
     def test_predict_with_matching_template(self):
         """Predict next port when there's a matching template."""
         from app.modules.voyage_predictor import predict_next_destination
@@ -266,16 +285,15 @@ class TestPredictNextDestination:
         corridor_query = MagicMock()
         corridor_query.filter.return_value.all.return_value = []
 
-        call_count = [0]
         def side_effect(model):
-            model_name = str(getattr(model, '__tablename__', ''))
-            if 'port_call' in model_name:
+            model_name = str(getattr(model, "__tablename__", ""))
+            if "port_call" in model_name:
                 return port_call_query
-            elif 'route_template' in model_name:
+            elif "route_template" in model_name:
                 return template_query
-            elif 'ais_point' in model_name:
+            elif "ais_point" in model_name:
                 return ais_query
-            elif 'corridor' in model_name:
+            elif "corridor" in model_name:
                 return corridor_query
             return MagicMock()
 
@@ -319,10 +337,10 @@ class TestPredictNextDestination:
         template_query.all.return_value = []
 
         def side_effect(model):
-            model_name = str(getattr(model, '__tablename__', ''))
-            if 'port_call' in model_name:
+            model_name = str(getattr(model, "__tablename__", ""))
+            if "port_call" in model_name:
                 return port_call_query
-            elif 'route_template' in model_name:
+            elif "route_template" in model_name:
                 return template_query
             return MagicMock()
 
@@ -336,8 +354,8 @@ class TestPredictNextDestination:
 # Cargo inference
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestCargoInference:
 
+class TestCargoInference:
     def test_laden_state_high_draught(self):
         """High draught relative to max => laden."""
         from app.modules.cargo_inference import infer_cargo_state
@@ -353,10 +371,10 @@ class TestCargoInference:
         ais_query.filter.return_value.order_by.return_value.first.return_value = ais_point
 
         def side_effect(model):
-            model_name = str(getattr(model, '__tablename__', ''))
-            if 'vessel' in model_name:
+            model_name = str(getattr(model, "__tablename__", ""))
+            if "vessel" in model_name:
                 return vessel_query
-            elif 'ais_point' in model_name:
+            elif "ais_point" in model_name:
                 return ais_query
             return MagicMock()
 
@@ -382,10 +400,10 @@ class TestCargoInference:
         ais_query.filter.return_value.order_by.return_value.first.return_value = ais_point
 
         def side_effect(model):
-            model_name = str(getattr(model, '__tablename__', ''))
-            if 'vessel' in model_name:
+            model_name = str(getattr(model, "__tablename__", ""))
+            if "vessel" in model_name:
                 return vessel_query
-            elif 'ais_point' in model_name:
+            elif "ais_point" in model_name:
                 return ais_query
             return MagicMock()
 
@@ -410,10 +428,10 @@ class TestCargoInference:
         ais_query.filter.return_value.order_by.return_value.first.return_value = None
 
         def side_effect(model):
-            model_name = str(getattr(model, '__tablename__', ''))
-            if 'vessel' in model_name:
+            model_name = str(getattr(model, "__tablename__", ""))
+            if "vessel" in model_name:
                 return vessel_query
-            elif 'ais_point' in model_name:
+            elif "ais_point" in model_name:
                 return ais_query
             return MagicMock()
 
@@ -463,14 +481,14 @@ class TestCargoInference:
         sts_query.filter.return_value.first.return_value = sts_event
 
         def side_effect(model):
-            model_name = str(getattr(model, '__tablename__', ''))
-            if 'vessel' in model_name and 'owner' not in model_name:
+            model_name = str(getattr(model, "__tablename__", ""))
+            if "vessel" in model_name and "owner" not in model_name:
                 return vessel_query
-            elif 'ais_point' in model_name:
+            elif "ais_point" in model_name:
                 return ais_query
-            elif 'port_call' in model_name:
+            elif "port_call" in model_name:
                 return port_call_join_query
-            elif 'sts_transfer' in model_name:
+            elif "sts_transfer" in model_name:
                 return sts_query
             return MagicMock()
 
@@ -485,11 +503,13 @@ class TestCargoInference:
     def test_vlcc_draught_threshold(self):
         """VLCC (200k+ DWT) has max draught 22m."""
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught("vlcc", 250000) == 22.0
 
     def test_unknown_type_uses_dwt(self):
         """Unknown vessel type falls back to DWT-based estimate."""
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught(None, 150000) == 17.0  # Suezmax range
 
 
@@ -497,11 +517,12 @@ class TestCargoInference:
 # Weather correlation
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestWeatherCorrelation:
 
+class TestWeatherCorrelation:
     def test_weather_stub_delegates_to_get_weather(self):
         """get_weather_stub delegates to get_weather (backward compat wrapper)."""
         from app.modules.weather_correlator import get_weather_stub
+
         with patch("app.modules.weather_correlator.get_weather", return_value={}) as mock_gw:
             result = get_weather_stub(55.0, 20.0)
         mock_gw.assert_called_once_with(55.0, 20.0, None)
@@ -510,6 +531,7 @@ class TestWeatherCorrelation:
     def test_wind_deduction(self):
         """Wind > 25kn => -8 deduction."""
         from app.modules.weather_correlator import compute_weather_deduction
+
         deduction, reason = compute_weather_deduction({"wind_speed_kn": 28.0})
         assert deduction == -8
         assert reason == "high_wind"
@@ -517,6 +539,7 @@ class TestWeatherCorrelation:
     def test_storm_deduction(self):
         """Wind > 40kn => -15 deduction (Stage D: Open-Meteo threshold)."""
         from app.modules.weather_correlator import compute_weather_deduction
+
         deduction, reason = compute_weather_deduction({"wind_speed_kn": 41.0})
         assert deduction == -15
         assert reason == "storm_conditions"
@@ -524,6 +547,7 @@ class TestWeatherCorrelation:
     def test_no_deduction_moderate_wind(self):
         """Wind <= 25kn => no deduction."""
         from app.modules.weather_correlator import compute_weather_deduction
+
         deduction, reason = compute_weather_deduction({"wind_speed_kn": 15.0})
         assert deduction == 0
         assert reason == ""
@@ -531,12 +555,14 @@ class TestWeatherCorrelation:
     def test_no_deduction_empty_data(self):
         """Empty weather data => no deduction."""
         from app.modules.weather_correlator import compute_weather_deduction
+
         deduction, reason = compute_weather_deduction({})
         assert deduction == 0
 
     def test_no_deduction_missing_wind(self):
         """Weather data without wind_speed_kn => no deduction."""
         from app.modules.weather_correlator import compute_weather_deduction
+
         deduction, reason = compute_weather_deduction({"conditions": "clear"})
         assert deduction == 0
 
@@ -554,7 +580,7 @@ class TestWeatherCorrelation:
 
     def test_correlate_with_mock_weather(self):
         """Correlate with injected weather data produces deductions."""
-        from app.modules.weather_correlator import correlate_weather, get_weather_stub
+        from app.modules.weather_correlator import correlate_weather
 
         db = MagicMock()
         pt = _make_mock_ais_point(1, 55.0, 20.0, sog=18.0)
@@ -613,29 +639,33 @@ class TestWeatherCorrelation:
 # Feature flag gating
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestFeatureFlags:
 
+class TestFeatureFlags:
     def test_voyage_prediction_flag_default_true(self):
         """VOYAGE_PREDICTION_ENABLED defaults to True."""
         from app.config import Settings
+
         s = Settings()
         assert s.VOYAGE_PREDICTION_ENABLED is True
 
     def test_voyage_scoring_flag_default_true(self):
         """VOYAGE_SCORING_ENABLED defaults to True."""
         from app.config import Settings
+
         s = Settings()
         assert s.VOYAGE_SCORING_ENABLED is True
 
     def test_cargo_inference_flag_default_true(self):
         """CARGO_INFERENCE_ENABLED defaults to True."""
         from app.config import Settings
+
         s = Settings()
         assert s.CARGO_INFERENCE_ENABLED is True
 
     def test_weather_correlation_flag_default_true(self):
         """WEATHER_CORRELATION_ENABLED defaults to True."""
         from app.config import Settings
+
         s = Settings()
         assert s.WEATHER_CORRELATION_ENABLED is True
 
@@ -644,8 +674,8 @@ class TestFeatureFlags:
 # Pipeline wiring
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestPipelineWiring:
 
+class TestPipelineWiring:
     @patch("app.modules.dark_vessel_discovery.settings")
     def test_voyage_prediction_step_in_pipeline(self, mock_settings):
         """Pipeline includes voyage prediction step when enabled."""
@@ -670,8 +700,10 @@ class TestPipelineWiring:
         db.query.return_value.join.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
         db.query.return_value.all.return_value = []
 
-        with patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}), \
-             patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[]):
+        with (
+            patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}),
+            patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[]),
+        ):
             try:
                 result = discover_dark_vessels(db, "2025-01-01", "2025-01-31", skip_fetch=True)
                 # Step should be attempted
@@ -701,8 +733,10 @@ class TestPipelineWiring:
         db.query.return_value.join.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
         db.query.return_value.all.return_value = []
 
-        with patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}), \
-             patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[]):
+        with (
+            patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}),
+            patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[]),
+        ):
             try:
                 result = discover_dark_vessels(db, "2025-01-01", "2025-01-31", skip_fetch=True)
                 assert "voyage_prediction" not in result["steps"]
@@ -716,12 +750,13 @@ class TestPipelineWiring:
 # Config integration
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestConfigIntegration:
 
+class TestConfigIntegration:
     def test_voyage_section_in_yaml(self):
         """risk_scoring.yaml has voyage section."""
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         # Find the config file relative to the repo root
         repo_root = Path(__file__).resolve().parent.parent.parent
@@ -740,7 +775,8 @@ class TestConfigIntegration:
 
     def test_voyage_in_expected_sections(self):
         """_EXPECTED_SECTIONS includes 'voyage'."""
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
+
         assert "voyage" in _EXPECTED_SECTIONS
 
 
@@ -748,21 +784,24 @@ class TestConfigIntegration:
 # Model
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestRouteTemplateModel:
 
+class TestRouteTemplateModel:
     def test_model_import(self):
         """RouteTemplate can be imported."""
         from app.models.route_template import RouteTemplate
+
         assert RouteTemplate.__tablename__ == "route_templates"
 
     def test_model_in_init(self):
         """RouteTemplate is registered in models __init__."""
         from app.models import RouteTemplate
+
         assert RouteTemplate is not None
 
     def test_model_columns(self):
         """RouteTemplate has expected columns."""
         from app.models.route_template import RouteTemplate
+
         columns = {c.name for c in RouteTemplate.__table__.columns}
         assert "template_id" in columns
         assert "vessel_type" in columns
@@ -776,11 +815,12 @@ class TestRouteTemplateModel:
 # Subsequence extraction
 # ──────────────────────────────────────────────────────────────────────────────
 
-class TestSubsequenceExtraction:
 
+class TestSubsequenceExtraction:
     def test_extract_subsequences_basic(self):
         """Extract subsequences of min_length 3 from [1,2,3,4]."""
         from app.modules.voyage_predictor import _extract_subsequences
+
         result = _extract_subsequences([1, 2, 3, 4], min_length=3)
         # Should include (1,2,3), (2,3,4), (1,2,3,4)
         assert (1, 2, 3) in result
@@ -790,11 +830,13 @@ class TestSubsequenceExtraction:
     def test_extract_subsequences_too_short(self):
         """Sequence shorter than min_length returns empty."""
         from app.modules.voyage_predictor import _extract_subsequences
+
         result = _extract_subsequences([1, 2], min_length=3)
         assert result == []
 
     def test_extract_subsequences_exact_length(self):
         """Sequence exactly min_length returns just that one."""
         from app.modules.voyage_predictor import _extract_subsequences
+
         result = _extract_subsequences([1, 2, 3], min_length=3)
         assert result == [(1, 2, 3)]

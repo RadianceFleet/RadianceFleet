@@ -1,8 +1,8 @@
 """Pydantic schemas for vessel track endpoints."""
+
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -15,8 +15,8 @@ class TrackQueryMeta(BaseModel):
     date_to: date
     total_points: int
     downsampling_applied: bool
-    downsampling_interval: Optional[str] = None  # "1h", "6h", or None
-    next_cursor: Optional[str] = None
+    downsampling_interval: str | None = None  # "1h", "6h", or None
+    next_cursor: str | None = None
 
 
 class TrackResponse(BaseModel):

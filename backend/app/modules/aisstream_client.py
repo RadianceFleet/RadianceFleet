@@ -8,19 +8,20 @@ Usage:
     boxes = get_corridor_bounding_boxes(db)
     result = asyncio.run(stream_ais(api_key, boxes, duration_seconds=300))
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
-
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pybreaker
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.modules.circuit_breakers import breakers
@@ -39,7 +40,6 @@ def get_corridor_bounding_boxes(db: Session, max_boxes: int = 10) -> list[list[l
     positions/s vs 3 boxes → ~26 positions/s).
     """
     from app.models.corridor import Corridor
-
     from app.utils.geo import load_geometry
 
     corridors = db.query(Corridor).all()
@@ -52,10 +52,12 @@ def get_corridor_bounding_boxes(db: Session, max_boxes: int = 10) -> list[list[l
             if shape is None:
                 continue
             bounds = shape.bounds  # (minx, miny, maxx, maxy) = (lon_min, lat_min, lon_max, lat_max)
-            raw_boxes.append([
-                [bounds[1], bounds[0]],  # [lat_min, lon_min]
-                [bounds[3], bounds[2]],  # [lat_max, lon_max]
-            ])
+            raw_boxes.append(
+                [
+                    [bounds[1], bounds[0]],  # [lat_min, lon_min]
+                    [bounds[3], bounds[2]],  # [lat_max, lon_max]
+                ]
+            )
         except Exception as exc:
             logger.warning("Could not extract bbox from corridor %s: %s", c.name, exc)
 
@@ -122,7 +124,8 @@ def _merge_bounding_boxes(
                 logger.warning(
                     "Bounding box merge: dropping largest box (%.1f sq deg) to stay within %d-box limit. "
                     "Some corridor coverage may be lost.",
-                    areas[0][1], max_boxes,
+                    areas[0][1],
+                    max_boxes,
                 )
                 merged.pop(areas[0][0])
             break
@@ -137,7 +140,8 @@ def _merge_bounding_boxes(
 
     logger.info(
         "Merged %d corridor boxes into %d regional boxes for AIS streaming",
-        len(boxes), len(merged),
+        len(boxes),
+        len(merged),
     )
     return merged
 
@@ -173,7 +177,7 @@ def _map_position_report(msg: dict, msg_type: str = "PositionReport") -> dict | 
             return None
 
         # P1.2: Reject future timestamps (5-min tolerance for clock skew)
-        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        now_utc = datetime.now(UTC).replace(tzinfo=None)
         ts_naive = ts.replace(tzinfo=None) if ts.tzinfo is not None else ts
         if ts_naive > now_utc + timedelta(minutes=5):
             return None
@@ -273,8 +277,8 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
 
     Returns {"points_stored": int, "vessels_updated": int}.
     """
-    from app.models.vessel import Vessel
     from app.models.ais_point import AISPoint
+    from app.models.vessel import Vessel
     from app.modules.ingest import _parse_timestamp, _track_field_change
 
     stored = 0
@@ -286,7 +290,8 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
         if not vessel:
             # Create vessel from static data even without a position report —
             # enables watchlist matching for vessels seen in the streaming window.
-            from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+            from app.utils.vessel_identity import flag_to_risk_category, mmsi_to_flag
+
             derived_flag = mmsi_to_flag(mmsi)
             vessel = Vessel(
                 mmsi=mmsi,
@@ -298,7 +303,7 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
                 flag_risk_category=flag_to_risk_category(derived_flag),
                 ais_class="A",
                 ais_source="aisstream",
-                mmsi_first_seen_utc=datetime.now(timezone.utc).replace(tzinfo=None),
+                mmsi_first_seen_utc=datetime.now(UTC).replace(tzinfo=None),
             )
             try:
                 with db.begin_nested():
@@ -312,7 +317,7 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
             continue
         if vessel:
             changed = False
-            ts = datetime.now(timezone.utc).replace(tzinfo=None)
+            ts = datetime.now(UTC).replace(tzinfo=None)
 
             # IMO: only fill if empty (IMO is permanent — changes indicate data error)
             if sdata.get("imo") and not vessel.imo:
@@ -322,21 +327,33 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
             # vessel_type: compare-and-track
             if sdata.get("vessel_type") and sdata["vessel_type"] != vessel.vessel_type:
                 if vessel.vessel_type:
-                    _track_field_change(db, vessel, "vessel_type", vessel.vessel_type, sdata["vessel_type"], ts, "aisstream")
+                    _track_field_change(
+                        db,
+                        vessel,
+                        "vessel_type",
+                        vessel.vessel_type,
+                        sdata["vessel_type"],
+                        ts,
+                        "aisstream",
+                    )
                 vessel.vessel_type = sdata["vessel_type"]
                 changed = True
 
             # callsign: compare-and-track
             if sdata.get("callsign") and sdata["callsign"] != vessel.callsign:
                 if vessel.callsign:
-                    _track_field_change(db, vessel, "callsign", vessel.callsign, sdata["callsign"], ts, "aisstream")
+                    _track_field_change(
+                        db, vessel, "callsign", vessel.callsign, sdata["callsign"], ts, "aisstream"
+                    )
                 vessel.callsign = sdata["callsign"]
                 changed = True
 
             # vessel name: compare-and-track
             if sdata.get("vessel_name") and sdata["vessel_name"] != vessel.name:
                 if vessel.name:
-                    _track_field_change(db, vessel, "name", vessel.name, sdata["vessel_name"], ts, "aisstream")
+                    _track_field_change(
+                        db, vessel, "name", vessel.name, sdata["vessel_name"], ts, "aisstream"
+                    )
                 vessel.name = sdata["vessel_name"]
                 changed = True
 
@@ -365,7 +382,8 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
             ts = _parse_timestamp(pt)
             if ts is None:
                 continue
-            from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+            from app.utils.vessel_identity import flag_to_risk_category, mmsi_to_flag
+
             derived_flag = mmsi_to_flag(mmsi)
             vessel = Vessel(
                 mmsi=mmsi,
@@ -414,7 +432,9 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
 
         sog_val = float(pt["sog"]) if pt.get("sog") is not None else None
         cog_val = float(pt["cog"]) if pt.get("cog") is not None else None
-        heading_val = float(pt["heading"]) if pt.get("heading") is not None and pt["heading"] != 511 else None
+        heading_val = (
+            float(pt["heading"]) if pt.get("heading") is not None and pt["heading"] != 511 else None
+        )
 
         point = AISPoint(
             vessel_id=vessel.vessel_id,
@@ -436,6 +456,7 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
         # Dual-write to AIS observations for cross-receiver detection
         try:
             from app.models.ais_observation import AISObservation
+
             obs = AISObservation(
                 mmsi=mmsi,
                 timestamp_utc=ts,
@@ -480,6 +501,7 @@ async def stream_ais(
 
     if db_factory is None:
         from app.database import SessionLocal
+
         db_factory = SessionLocal
 
     ws_url = settings.AISSTREAM_WS_URL
@@ -521,7 +543,6 @@ async def stream_ais(
     # P1.1: Retry loop with exponential backoff for WebSocket reconnection
     retry_delays = [5, 15, 30]  # seconds
     retry_count = 0
-    connection_broken = False
 
     while True:
         try:
@@ -592,13 +613,17 @@ async def stream_ais(
                             db.close()
 
                         if progress_callback:
-                            progress_callback({
-                                "elapsed_s": int(elapsed),
-                                "messages": stats["messages_received"],
-                                "points_stored": stats["points_stored"],
-                                "vessels_seen": len(stats["vessels_seen"]),
-                                "msg_per_s": round(stats["messages_received"] / max(elapsed, 1), 1),
-                            })
+                            progress_callback(
+                                {
+                                    "elapsed_s": int(elapsed),
+                                    "messages": stats["messages_received"],
+                                    "points_stored": stats["points_stored"],
+                                    "vessels_seen": len(stats["vessels_seen"]),
+                                    "msg_per_s": round(
+                                        stats["messages_received"] / max(elapsed, 1), 1
+                                    ),
+                                }
+                            )
 
                         last_batch_time = now
 
@@ -625,7 +650,7 @@ async def stream_ais(
         except (websockets.ConnectionClosed, websockets.WebSocketException, OSError) as exc:
             # Record failure in circuit breaker
             try:
-                breakers["aisstream"].call(lambda: (_ for _ in ()).throw(exc))
+                breakers["aisstream"].call(lambda e=exc: (_ for _ in ()).throw(e))
             except (pybreaker.CircuitBreakerError, type(exc)):
                 pass
 
@@ -641,7 +666,10 @@ async def stream_ais(
                 retry_count += 1
                 logger.warning(
                     "aisstream.io connection lost (%s), reconnecting in %ds (attempt %d/%d)",
-                    exc, delay, retry_count, len(retry_delays),
+                    exc,
+                    delay,
+                    retry_count,
+                    len(retry_delays),
                 )
                 await asyncio.sleep(delay)
                 # Continue to retry — buffers are preserved across reconnections

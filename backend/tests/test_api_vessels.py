@@ -1,4 +1,5 @@
 """Tests for vessel-specific API endpoints."""
+
 from io import BytesIO
 
 

@@ -1,14 +1,13 @@
 """Tests for multi-source AIS CLI integration and backfill command."""
+
 from __future__ import annotations
 
-from datetime import date, timedelta
-from unittest.mock import MagicMock, patch, call
+from datetime import date
+from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from app.cli import app
-
 
 runner = CliRunner()
 
@@ -93,8 +92,10 @@ def test_update_offline_skips_multi_source(mock_sl, mock_discover, mock_summary,
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
 
-    with patch("app.modules.digitraffic_client.fetch_digitraffic_ais") as mock_digi, \
-         patch("app.modules.kystverket_client.stream_kystverket") as mock_kyst:
+    with (
+        patch("app.modules.digitraffic_client.fetch_digitraffic_ais") as mock_digi,
+        patch("app.modules.kystverket_client.stream_kystverket") as mock_kyst,
+    ):
         result = runner.invoke(app, ["update", "--offline"])
 
     assert result.exit_code == 0
@@ -132,7 +133,10 @@ def test_backfill_validates_date_order(mock_sl):
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
 
-    result = runner.invoke(app, ["history", "backfill", "--source", "noaa", "--start", "2025-12-31", "--end", "2025-12-01"])
+    result = runner.invoke(
+        app,
+        ["history", "backfill", "--source", "noaa", "--start", "2025-12-31", "--end", "2025-12-01"],
+    )
     assert result.exit_code == 1
     assert "before or equal" in result.output
 
@@ -151,11 +155,17 @@ def test_backfill_calls_noaa_import(mock_sl, mock_noaa, mock_discover):
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
     mock_noaa.return_value = {
-        "dates_attempted": 5, "dates_downloaded": 5,
-        "total_accepted": 1000, "total_rows": 1500, "dates_failed": [],
+        "dates_attempted": 5,
+        "dates_downloaded": 5,
+        "total_accepted": 1000,
+        "total_rows": 1500,
+        "dates_failed": [],
     }
 
-    result = runner.invoke(app, ["history", "backfill", "--source", "noaa", "--start", "2025-12-01", "--end", "2025-12-05"])
+    result = runner.invoke(
+        app,
+        ["history", "backfill", "--source", "noaa", "--start", "2025-12-01", "--end", "2025-12-05"],
+    )
     assert result.exit_code == 0
     mock_noaa.assert_called_once_with(
         mock_db,
@@ -174,11 +184,17 @@ def test_backfill_runs_detection_by_default(mock_sl, mock_noaa, mock_discover):
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
     mock_noaa.return_value = {
-        "dates_attempted": 1, "dates_downloaded": 1,
-        "total_accepted": 100, "total_rows": 150, "dates_failed": [],
+        "dates_attempted": 1,
+        "dates_downloaded": 1,
+        "total_accepted": 100,
+        "total_rows": 150,
+        "dates_failed": [],
     }
 
-    result = runner.invoke(app, ["history", "backfill", "--source", "noaa", "--start", "2025-12-01", "--end", "2025-12-01"])
+    result = runner.invoke(
+        app,
+        ["history", "backfill", "--source", "noaa", "--start", "2025-12-01", "--end", "2025-12-01"],
+    )
     assert result.exit_code == 0
     mock_discover.assert_called_once()
 
@@ -190,12 +206,28 @@ def test_backfill_no_detect_skips_detection(mock_sl, mock_noaa):
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
     mock_noaa.return_value = {
-        "dates_attempted": 1, "dates_downloaded": 1,
-        "total_accepted": 50, "total_rows": 80, "dates_failed": [],
+        "dates_attempted": 1,
+        "dates_downloaded": 1,
+        "total_accepted": 50,
+        "total_rows": 80,
+        "dates_failed": [],
     }
 
     with patch("app.modules.dark_vessel_discovery.discover_dark_vessels") as mock_discover:
-        result = runner.invoke(app, ["history", "backfill", "--source", "noaa", "--start", "2025-12-01", "--end", "2025-12-01", "--no-detect"])
+        result = runner.invoke(
+            app,
+            [
+                "history",
+                "backfill",
+                "--source",
+                "noaa",
+                "--start",
+                "2025-12-01",
+                "--end",
+                "2025-12-01",
+                "--no-detect",
+            ],
+        )
 
     assert result.exit_code == 0
     mock_discover.assert_not_called()
@@ -207,7 +239,19 @@ def test_backfill_unknown_source_exits(mock_sl):
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
 
-    result = runner.invoke(app, ["history", "backfill", "--source", "unknown", "--start", "2025-12-01", "--end", "2025-12-31"])
+    result = runner.invoke(
+        app,
+        [
+            "history",
+            "backfill",
+            "--source",
+            "unknown",
+            "--start",
+            "2025-12-01",
+            "--end",
+            "2025-12-31",
+        ],
+    )
     assert result.exit_code == 1
     assert "Unknown source" in result.output
 
@@ -222,8 +266,17 @@ def test_help_shows_core_commands():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     output = result.output
-    for cmd in ["start", "update", "check-vessels", "open", "status", "search",
-                "rescore", "evaluate-detector", "confirm-detector"]:
+    for cmd in [
+        "start",
+        "update",
+        "check-vessels",
+        "open",
+        "status",
+        "search",
+        "rescore",
+        "evaluate-detector",
+        "confirm-detector",
+    ]:
         assert cmd in output, f"Command '{cmd}' not found in help output"
 
 
@@ -241,8 +294,14 @@ def test_help_shows_core_commands():
 @patch("app.database.SessionLocal")
 @patch("app.database.init_db")
 def test_start_demo_skips_collection(
-    mock_init, mock_sl, mock_first_run, mock_corridors, mock_sample,
-    mock_discover, mock_summary, mock_next
+    mock_init,
+    mock_sl,
+    mock_first_run,
+    mock_corridors,
+    mock_sample,
+    mock_discover,
+    mock_summary,
+    mock_next,
 ):
     """start --demo does not run CollectionScheduler."""
     mock_db = MagicMock()
@@ -296,9 +355,14 @@ def test_update_check_identity_graceful_without_agent_c(
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
 
-    with patch.dict("sys.modules", {"app.modules.identity_resolver": MagicMock(
-        diagnose_merge_readiness=MagicMock(side_effect=AttributeError("no such function"))
-    )}):
+    with patch.dict(
+        "sys.modules",
+        {
+            "app.modules.identity_resolver": MagicMock(
+                diagnose_merge_readiness=MagicMock(side_effect=AttributeError("no such function"))
+            )
+        },
+    ):
         result = runner.invoke(app, ["update", "--check-identity"])
 
     assert result.exit_code == 0

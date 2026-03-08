@@ -7,21 +7,29 @@ Covers:
   PipelineRun model + drift detection
   CLI commands (rescore, evaluate-detector, confirm-detector)
 """
+
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from unittest.mock import MagicMock, patch
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _gap(vessel_id=1, corridor_id=1, gap_start=None, risk_score=0,
-         is_feed_outage=False, source=None, in_dark_zone=False,
-         dark_zone_id=None, gap_event_id=None, original_vessel_id=None,
-         duration_minutes=120, coverage_quality=None):
+
+def _gap(
+    vessel_id=1,
+    corridor_id=1,
+    gap_start=None,
+    risk_score=0,
+    is_feed_outage=False,
+    source=None,
+    in_dark_zone=False,
+    dark_zone_id=None,
+    gap_event_id=None,
+    original_vessel_id=None,
+    duration_minutes=120,
+    coverage_quality=None,
+):
     """Create a mock AISGapEvent."""
     m = MagicMock()
     m.gap_event_id = gap_event_id or vessel_id * 100
@@ -69,6 +77,7 @@ class TestFeedOutageDetection:
     def test_disabled_returns_zeros(self, mock_settings):
         mock_settings.FEED_OUTAGE_DETECTION_ENABLED = False
         from app.modules.feed_outage_detector import detect_feed_outages
+
         result = detect_feed_outages(MagicMock())
         assert result["gaps_checked"] == 0
         assert result["outages_detected"] == 0
@@ -80,6 +89,7 @@ class TestFeedOutageDetection:
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = []
         from app.modules.feed_outage_detector import detect_feed_outages
+
         result = detect_feed_outages(db)
         assert result["gaps_checked"] == 0
 
@@ -91,6 +101,7 @@ class TestFeedOutageDetection:
         gaps = [_gap(vessel_id=1, corridor_id=10)]
         db.query.return_value.filter.return_value.all.return_value = gaps
         from app.modules.feed_outage_detector import detect_feed_outages
+
         result = detect_feed_outages(db)
         assert result["outages_detected"] == 0
         assert result["gaps_marked"] == 0
@@ -108,6 +119,7 @@ class TestFeedOutageDetection:
         db.query.return_value.filter.return_value.all.return_value = gaps
         # Use patched threshold to test detection logic (min is now 8)
         from app.modules.feed_outage_detector import detect_feed_outages
+
         with patch("app.modules.feed_outage_detector._get_threshold", return_value=8):
             result = detect_feed_outages(db)
         assert result["outages_detected"] == 1
@@ -121,6 +133,7 @@ class TestFeedOutageDetection:
         """When P95 baseline exists, threshold = max(3 × P95, 8)."""
         mock_settings.FEED_OUTAGE_DETECTION_ENABLED = True
         from app.modules.feed_outage_detector import _get_threshold
+
         db = MagicMock()
         baseline = MagicMock()
         baseline.p95_threshold = 5.0  # 3 × 5 = 15 (above min of 8)
@@ -133,6 +146,7 @@ class TestFeedOutageDetection:
         """Even with very low baseline, threshold never goes below 8."""
         mock_settings.FEED_OUTAGE_DETECTION_ENABLED = True
         from app.modules.feed_outage_detector import _get_threshold
+
         db = MagicMock()
         baseline = MagicMock()
         baseline.p95_threshold = 0.5  # 3 × 0.5 = 1.5, floored to 8
@@ -142,7 +156,10 @@ class TestFeedOutageDetection:
 
     def test_no_corridor_uses_minimum(self):
         from app.modules.feed_outage_detector import _get_threshold
-        threshold = _get_threshold(MagicMock(), corridor_id=None, reference_time=datetime(2025, 6, 15))
+
+        threshold = _get_threshold(
+            MagicMock(), corridor_id=None, reference_time=datetime(2025, 6, 15)
+        )
         assert threshold >= 25  # NULL-corridor proportional minimum
 
     @patch("app.modules.feed_outage_detector.settings")
@@ -152,13 +169,12 @@ class TestFeedOutageDetection:
         db = MagicMock()
         base_time = datetime(2025, 6, 15, 10, 30)
         # 3 vessels in corridor 10, 3 in corridor 20 — neither hits threshold of 5
-        gaps = [
-            _gap(vessel_id=i, corridor_id=10, gap_start=base_time) for i in range(1, 4)
-        ] + [
+        gaps = [_gap(vessel_id=i, corridor_id=10, gap_start=base_time) for i in range(1, 4)] + [
             _gap(vessel_id=i, corridor_id=20, gap_start=base_time) for i in range(4, 7)
         ]
         db.query.return_value.filter.return_value.all.return_value = gaps
         from app.modules.feed_outage_detector import detect_feed_outages
+
         with patch("app.modules.feed_outage_detector._get_threshold", return_value=5):
             result = detect_feed_outages(db)
         assert result["outages_detected"] == 0
@@ -169,15 +185,18 @@ class TestFeedOutageScoringSkip:
 
     def test_score_all_skips_feed_outage(self):
         from app.modules.risk_scoring import score_all_alerts
+
         db = MagicMock()
         outage_gap = _gap(vessel_id=1, is_feed_outage=True, risk_score=0)
         normal_gap = _gap(vessel_id=2, is_feed_outage=False, risk_score=0)
         db.query.return_value.filter.return_value.all.return_value = [outage_gap, normal_gap]
         db.commit = MagicMock()
 
-        with patch("app.modules.risk_scoring.load_scoring_config", return_value={}), \
-             patch("app.modules.risk_scoring._count_gaps_in_window", return_value=0), \
-             patch("app.modules.risk_scoring.compute_gap_score", return_value=(42, {"test": 42})):
+        with (
+            patch("app.modules.risk_scoring.load_scoring_config", return_value={}),
+            patch("app.modules.risk_scoring._count_gaps_in_window", return_value=0),
+            patch("app.modules.risk_scoring.compute_gap_score", return_value=(42, {"test": 42})),
+        ):
             result = score_all_alerts(db)
 
         assert result["feed_outage_skipped"] == 1
@@ -198,18 +217,24 @@ class TestConfidenceClassifier:
 
     def test_confirmed_watchlist(self):
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         conf, evidence = classify_vessel_confidence(
-            v, total_score=30, breakdown={"watchlist_OFAC": 50},
+            v,
+            total_score=30,
+            breakdown={"watchlist_OFAC": 50},
             has_watchlist_match=True,
         )
         assert conf == "CONFIRMED"
 
     def test_confirmed_analyst_verified(self):
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         conf, _ = classify_vessel_confidence(
-            v, total_score=10, breakdown={},
+            v,
+            total_score=10,
+            breakdown={},
             analyst_verified=True,
         )
         assert conf == "CONFIRMED"
@@ -217,6 +242,7 @@ class TestConfidenceClassifier:
     def test_high_two_categories(self):
         """score ≥ 76 AND ≥2 categories → HIGH."""
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         breakdown = {
             "gap_duration_8h_12h": 40,
@@ -230,6 +256,7 @@ class TestConfidenceClassifier:
     def test_high_single_category_80_plus(self):
         """score ≥ 76 AND single category ≥80 pts → HIGH."""
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         breakdown = {
             "spoofing_erratic_nav_status": 50,
@@ -241,6 +268,7 @@ class TestConfidenceClassifier:
     def test_score_76_single_category_below_80_not_high(self):
         """score ≥ 76 but only 1 category <80 → falls to MEDIUM."""
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         breakdown = {"gap_duration_24h_plus": 76}
         conf, _ = classify_vessel_confidence(v, total_score=76, breakdown=breakdown)
@@ -250,6 +278,7 @@ class TestConfidenceClassifier:
     def test_medium(self):
         """score ≥ 51 AND ≥1 category ≥30 pts → MEDIUM."""
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         breakdown = {"gap_duration_8h_12h": 35}
         conf, _ = classify_vessel_confidence(v, total_score=55, breakdown=breakdown)
@@ -258,6 +287,7 @@ class TestConfidenceClassifier:
     def test_low(self):
         """score 21-50 → LOW."""
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         breakdown = {"gap_duration_2h_4h": 25}
         conf, _ = classify_vessel_confidence(v, total_score=25, breakdown=breakdown)
@@ -266,13 +296,17 @@ class TestConfidenceClassifier:
     def test_none(self):
         """score < 21 → NONE."""
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
-        conf, _ = classify_vessel_confidence(v, total_score=15, breakdown={"gap_duration_2h_4h": 15})
+        conf, _ = classify_vessel_confidence(
+            v, total_score=15, breakdown={"gap_duration_2h_4h": 15}
+        )
         assert conf == "NONE"
 
     def test_negative_scores_excluded_from_evidence(self):
         """Deductions (negative values) don't count as evidence."""
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         breakdown = {
             "gap_duration_8h_12h": 60,
@@ -284,27 +318,32 @@ class TestConfidenceClassifier:
 
     def test_categorize_key_spoofing(self):
         from app.modules.confidence_classifier import _categorize_key
+
         assert _categorize_key("spoofing_erratic_nav_status") == "SPOOFING"
         assert _categorize_key("track_naturalness_3of5") == "SPOOFING"
 
     def test_categorize_key_sts(self):
         from app.modules.confidence_classifier import _categorize_key
+
         assert _categorize_key("sts_event_42") == "STS_TRANSFER"
         assert _categorize_key("repeat_sts_partnership") == "STS_TRANSFER"
 
     def test_categorize_key_identity(self):
         from app.modules.confidence_classifier import _categorize_key
+
         assert _categorize_key("flag_change_7d") == "IDENTITY_CHANGE"
         assert _categorize_key("callsign_change") == "IDENTITY_CHANGE"
 
     def test_categorize_key_watchlist(self):
         from app.modules.confidence_classifier import _categorize_key
+
         assert _categorize_key("watchlist_OFAC") == "WATCHLIST"
         assert _categorize_key("owner_or_manager_on_sanctions_list") == "WATCHLIST"
 
     def test_107pt_spoofing_is_high(self):
         """The bug from v1: 107 pts all spoofing = HIGH (was LOW)."""
         from app.modules.confidence_classifier import classify_vessel_confidence
+
         v = _vessel()
         breakdown = {
             "spoofing_erratic_nav_status": 57,
@@ -324,6 +363,7 @@ class TestCoverageQualityTagging:
     def test_disabled_returns_zero(self, mock_settings):
         mock_settings.COVERAGE_QUALITY_TAGGING_ENABLED = False
         from app.modules.feed_outage_detector import tag_coverage_quality
+
         result = tag_coverage_quality(MagicMock())
         assert result == {"gaps_tagged": 0}
 
@@ -338,6 +378,7 @@ class TestCoverageQualityTagging:
         db.query.return_value.filter.return_value.all.return_value = [gap]
 
         from app.modules.feed_outage_detector import tag_coverage_quality
+
         with patch("app.api.routes._get_coverage_quality", return_value="GOOD"):
             result = tag_coverage_quality(db)
         assert result["gaps_tagged"] == 1
@@ -352,6 +393,7 @@ class TestCoverageQualityTagging:
         db.query.return_value.filter.return_value.all.return_value = [gap]
 
         from app.modules.feed_outage_detector import tag_coverage_quality
+
         with patch("app.api.routes._get_coverage_quality", return_value="UNKNOWN"):
             result = tag_coverage_quality(db)
         assert result["gaps_tagged"] == 1
@@ -366,27 +408,28 @@ class TestCoverageQualityTagging:
 class TestPipelineRunModel:
     def test_model_attributes(self):
         from app.models.pipeline_run import PipelineRun
+
         run = PipelineRun(status="running")
         assert run.status == "running"
         assert run.drift_disabled_detectors_json is None
 
     def test_model_in_registry(self):
         from app.models import PipelineRun
+
         assert PipelineRun.__tablename__ == "pipeline_runs"
 
 
 class TestDriftDetection:
     def test_no_drift_when_counts_stable(self):
         """No drift when anomaly counts are similar between runs."""
-        from app.modules.dark_vessel_discovery import _finalize_pipeline_run
         from app.models.pipeline_run import PipelineRun
+        from app.modules.dark_vessel_discovery import _finalize_pipeline_run
 
         db = MagicMock()
         pipeline_run = MagicMock(spec=PipelineRun)
         pipeline_run.run_id = 2
 
         # Mock queries
-        from sqlalchemy import func
         db.query.return_value.group_by.return_value.all.return_value = []
         db.query.return_value.count.return_value = 10
         db.query.return_value.filter.return_value.count.return_value = 5
@@ -396,12 +439,16 @@ class TestDriftDetection:
         prev_run.detector_anomaly_counts_json = {"gap_events": 10}
         prev_run.data_volume_json = {"ais_points_count": 1000, "vessels_count": 50}
         prev_run.drift_disabled_detectors_json = None
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = prev_run
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            prev_run
+        )
 
         _finalize_pipeline_run(db, pipeline_run, {"run_status": "complete"})
         # Should not have drift-disabled detectors
-        assert pipeline_run.drift_disabled_detectors_json is None or \
-               pipeline_run.drift_disabled_detectors_json == []
+        assert (
+            pipeline_run.drift_disabled_detectors_json is None
+            or pipeline_run.drift_disabled_detectors_json == []
+        )
 
     def test_drift_carries_forward_disabled(self):
         """Previously disabled detectors carry forward until confirmed."""
@@ -419,7 +466,9 @@ class TestDriftDetection:
         prev_run.detector_anomaly_counts_json = {"gap_events": 10}
         prev_run.data_volume_json = {"ais_points_count": 1000, "vessels_count": 50}
         prev_run.drift_disabled_detectors_json = ["spoofing_detector"]
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = prev_run
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            prev_run
+        )
 
         _finalize_pipeline_run(db, pipeline_run, {"run_status": "complete"})
         disabled = pipeline_run.drift_disabled_detectors_json
@@ -435,6 +484,7 @@ class TestCLIRescore:
     def test_rescore_command_exists(self):
         """Verify rescore command is registered."""
         from app.cli import app
+
         command_names = [cmd.name for cmd in app.registered_commands]
         assert "rescore" in command_names
 
@@ -442,6 +492,7 @@ class TestCLIRescore:
 class TestCLIEvaluateDetector:
     def test_evaluate_detector_command_exists(self):
         from app.cli import app
+
         command_names = [cmd.name for cmd in app.registered_commands]
         assert "evaluate-detector" in command_names
 
@@ -449,6 +500,7 @@ class TestCLIEvaluateDetector:
 class TestCLIConfirmDetector:
     def test_confirm_detector_command_exists(self):
         from app.cli import app
+
         command_names = [cmd.name for cmd in app.registered_commands]
         assert "confirm-detector" in command_names
 
@@ -462,7 +514,9 @@ class TestPipelineWiring:
     def test_feed_outage_in_pipeline(self):
         """Feed outage detection is wired between gap detection and scoring."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
+
         src = inspect.getsource(discover_dark_vessels)
         # Feed outage must appear BEFORE scoring
         assert src.index("feed_outage_detection") < src.index('"scoring"')
@@ -470,21 +524,27 @@ class TestPipelineWiring:
     def test_confidence_classification_in_pipeline(self):
         """Confidence classification runs after scoring."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
+
         src = inspect.getsource(discover_dark_vessels)
         assert src.index("confidence_classification") > src.index('"scoring"')
 
     def test_coverage_quality_in_pipeline(self):
         """Coverage quality tagging is wired before scoring."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
+
         src = inspect.getsource(discover_dark_vessels)
         assert src.index("coverage_quality_tagging") < src.index('"scoring"')
 
     def test_pipeline_run_created(self):
         """PipelineRun is created at pipeline start."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
+
         src = inspect.getsource(discover_dark_vessels)
         assert "PipelineRun" in src
         assert "_finalize_pipeline_run" in src
@@ -493,22 +553,22 @@ class TestPipelineWiring:
 class TestStage1Integration:
     def test_all_imports_compile(self):
         """All Stage 1 modules import without errors."""
-        from app.modules import feed_outage_detector
-        from app.modules import confidence_classifier
-        from app.models import pipeline_run
 
     def test_vessel_model_has_confidence_fields(self):
         from app.models.vessel import Vessel
+
         assert hasattr(Vessel, "dark_fleet_confidence")
         assert hasattr(Vessel, "confidence_evidence_json")
 
     def test_gap_model_has_feed_outage_field(self):
         from app.models.gap_event import AISGapEvent
+
         assert hasattr(AISGapEvent, "is_feed_outage")
         assert hasattr(AISGapEvent, "coverage_quality")
 
     def test_config_has_feature_flags(self):
         from app.config import Settings
+
         s = Settings(_env_file=None)
         assert hasattr(s, "FEED_OUTAGE_DETECTION_ENABLED")
         assert hasattr(s, "COVERAGE_QUALITY_TAGGING_ENABLED")
@@ -523,7 +583,9 @@ class TestPartialOutageGuard:
         """When ≤2 other-dark vessels share same source, no evasion bonus."""
         # This test verifies the logic exists in risk_scoring.py
         import inspect
+
         from app.modules.risk_scoring import compute_gap_score
+
         src = inspect.getsource(compute_gap_score)
         assert "_same_source" in src
         assert "_vessel_source" in src

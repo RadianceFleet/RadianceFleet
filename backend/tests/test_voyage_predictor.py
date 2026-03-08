@@ -1,17 +1,16 @@
 """Tests for voyage prediction — route templates and destination prediction."""
+
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from app.modules.voyage_predictor import (
-    jaccard_similarity,
     _extract_subsequences,
+    jaccard_similarity,
 )
 
-
 # ── Tests: jaccard_similarity ────────────────────────────────────────
+
 
 class TestJaccardSimilarity:
     def test_identical_sets(self):
@@ -39,6 +38,7 @@ class TestJaccardSimilarity:
 
 
 # ── Tests: _extract_subsequences ─────────────────────────────────────
+
 
 class TestExtractSubsequences:
     def test_extracts_all_subsequences(self):
@@ -68,6 +68,7 @@ class TestExtractSubsequences:
 
 # ── Tests: build_route_templates ─────────────────────────────────────
 
+
 class TestBuildRouteTemplates:
     def test_no_port_calls(self):
         from app.modules.voyage_predictor import build_route_templates
@@ -96,9 +97,16 @@ class TestBuildRouteTemplates:
 
         def query_side_effect(model):
             q = MagicMock()
-            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            model_name = model.__name__ if hasattr(model, "__name__") else str(model)
             if model_name == "PortCall":
-                q.filter.return_value.order_by.return_value.all.return_value = [pc1, pc2, pc3, pc4, pc5, pc6]
+                q.filter.return_value.order_by.return_value.all.return_value = [
+                    pc1,
+                    pc2,
+                    pc3,
+                    pc4,
+                    pc5,
+                    pc6,
+                ]
             elif model_name == "Vessel":
                 q.filter.return_value.all.return_value = [v1, v2]
             elif model_name == "RouteTemplate":
@@ -115,6 +123,7 @@ class TestBuildRouteTemplates:
 
 # ── Tests: predict_next_destination ──────────────────────────────────
 
+
 class TestPredictNextDestination:
     def test_no_port_calls(self):
         from app.modules.voyage_predictor import predict_next_destination
@@ -130,7 +139,9 @@ class TestPredictNextDestination:
 
         db = MagicMock()
         pc = MagicMock(port_id=10)
-        db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [pc]
+        db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+            pc
+        ]
 
         result = predict_next_destination(db, vessel_id=1)
         assert result is None
@@ -144,9 +155,12 @@ class TestPredictNextDestination:
 
         def query_side_effect(model):
             q = MagicMock()
-            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            model_name = model.__name__ if hasattr(model, "__name__") else str(model)
             if model_name == "PortCall":
-                q.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [pc1, pc2]
+                q.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+                    pc1,
+                    pc2,
+                ]
             elif model_name == "RouteTemplate":
                 q.all.return_value = []
             return q
@@ -171,9 +185,13 @@ class TestPredictNextDestination:
 
         def query_side_effect(model):
             q = MagicMock()
-            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            model_name = model.__name__ if hasattr(model, "__name__") else str(model)
             if model_name == "PortCall":
-                q.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [pc3, pc2, pc1]
+                q.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
+                    pc3,
+                    pc2,
+                    pc1,
+                ]
             elif model_name == "RouteTemplate":
                 q.all.return_value = [template]
             elif model_name == "AISPoint":
@@ -191,6 +209,7 @@ class TestPredictNextDestination:
 
 
 # ── Tests: _find_existing_template ───────────────────────────────────
+
 
 class TestFindExistingTemplate:
     def test_finds_matching_template(self):

@@ -6,17 +6,18 @@ Validates that:
 - STS in exclusion zone with strong evidence (12+ windows, <0.5kn) still triggers
 - Single vessel in exclusion zone (other outside) uses normal thresholds
 """
+
+from datetime import UTC
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.modules.sts_detector import (
-    _build_anchorage_exclusion_bboxes,
-    _in_any_anchorage_exclusion,
     _MIN_CONSECUTIVE_WINDOWS_STRICT,
     _SOG_STATIONARY_STRICT,
+    _build_anchorage_exclusion_bboxes,
+    _in_any_anchorage_exclusion,
 )
-
 
 # ── Helper function tests ───────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ class TestBuildAnchorageExclusionBboxes:
         assert len(result) == 1
         bbox = result[0]
         assert bbox[0] == pytest.approx(-5.35)  # min_lon
-        assert bbox[1] == pytest.approx(35.88)   # min_lat
+        assert bbox[1] == pytest.approx(35.88)  # min_lat
 
     def test_empty_when_no_tagged_corridors(self):
         c = MagicMock()
@@ -73,7 +74,7 @@ class TestInAnyAnchorageExclusion:
 
     def test_multiple_zones_second_matches(self):
         bbox1 = (-5.35, 35.88, -5.28, 35.92)  # Ceuta
-        bbox2 = (14.70, 35.65, 15.10, 35.85)   # Hurd Bank
+        bbox2 = (14.70, 35.65, 15.10, 35.85)  # Hurd Bank
         assert _in_any_anchorage_exclusion(35.75, 14.90, [bbox1, bbox2]) is True
 
 
@@ -82,7 +83,7 @@ class TestInAnyAnchorageExclusion:
 
 def _make_ais_point(vessel_id, lat, lon, sog, cog, ts_epoch_min):
     """Create a mock AISPoint for testing."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     pt = MagicMock()
     pt.vessel_id = vessel_id
@@ -91,7 +92,7 @@ def _make_ais_point(vessel_id, lat, lon, sog, cog, ts_epoch_min):
     pt.sog = sog
     pt.cog = cog
     pt.heading = cog
-    pt.timestamp_utc = datetime.fromtimestamp(ts_epoch_min * 60, tz=timezone.utc)
+    pt.timestamp_utc = datetime.fromtimestamp(ts_epoch_min * 60, tz=UTC)
     return pt
 
 
@@ -128,15 +129,21 @@ class TestPhaseAAnchorageExclusion:
     @patch("app.modules.sts_detector._overlap_exists", return_value=False)
     def test_normal_sts_outside_exclusion_zone(self, mock_overlap, mock_bunk):
         """STS detection with 8 windows outside exclusion zones works normally."""
-        from app.modules.sts_detector import _phase_a, _MIN_CONSECUTIVE_WINDOWS
+        from app.modules.sts_detector import _MIN_CONSECUTIVE_WINDOWS, _phase_a
 
         # Position outside any exclusion zone (open Mediterranean, mid-cell)
         lat, lon = 38.5, 3.5
-        points = self._build_window_points(1, 2, lat, lon, sog=0.3, n_windows=_MIN_CONSECUTIVE_WINDOWS)
+        points = self._build_window_points(
+            1, 2, lat, lon, sog=0.3, n_windows=_MIN_CONSECUTIVE_WINDOWS
+        )
 
-        sts_corridor = _make_corridor(1, "Med STS", "sts_zone",
+        sts_corridor = _make_corridor(
+            1,
+            "Med STS",
+            "sts_zone",
             "POLYGON((-1.0 37.0, 6.0 37.0, 6.0 40.0, -1.0 40.0, -1.0 37.0))",
-            tags=["ship_to_ship"])
+            tags=["ship_to_ship"],
+        )
         sts_zone_bboxes = [(sts_corridor, (-1.0, 37.0, 6.0, 40.0))]
 
         db = MagicMock()
@@ -149,19 +156,28 @@ class TestPhaseAAnchorageExclusion:
     @patch("app.modules.sts_detector._overlap_exists", return_value=False)
     def test_sts_in_exclusion_zone_weak_evidence_suppressed(self, mock_overlap, mock_bunk):
         """STS in exclusion zone with only 8 windows (below 12 threshold) is suppressed."""
-        from app.modules.sts_detector import _phase_a, _MIN_CONSECUTIVE_WINDOWS
+        from app.modules.sts_detector import _MIN_CONSECUTIVE_WINDOWS, _phase_a
 
         # Position inside Ceuta exclusion zone (mid-cell at lat 35.9, lon -5.31)
         lat, lon = 35.90, -5.31
-        points = self._build_window_points(1, 2, lat, lon, sog=0.3,
-                                           n_windows=_MIN_CONSECUTIVE_WINDOWS)
+        points = self._build_window_points(
+            1, 2, lat, lon, sog=0.3, n_windows=_MIN_CONSECUTIVE_WINDOWS
+        )
 
-        sts_corridor = _make_corridor(1, "Ceuta STS", "sts_zone",
+        sts_corridor = _make_corridor(
+            1,
+            "Ceuta STS",
+            "sts_zone",
             "POLYGON((-5.8 35.8, -5.2 35.8, -5.2 36.2, -5.8 36.2, -5.8 35.8))",
-            tags=["ship_to_ship"])
-        excl_corridor = _make_corridor(2, "Ceuta Exclusion", "anchorage_holding",
+            tags=["ship_to_ship"],
+        )
+        excl_corridor = _make_corridor(
+            2,
+            "Ceuta Exclusion",
+            "anchorage_holding",
             "POLYGON((-5.35 35.88, -5.28 35.88, -5.28 35.92, -5.35 35.92, -5.35 35.88))",
-            tags=["anchorage_exclusion", "med_fp_reduction"])
+            tags=["anchorage_exclusion", "med_fp_reduction"],
+        )
 
         sts_zone_bboxes = [(sts_corridor, (-5.8, 35.8, -5.2, 36.2))]
         all_corridors = [sts_corridor, excl_corridor]
@@ -180,15 +196,24 @@ class TestPhaseAAnchorageExclusion:
 
         lat, lon = 35.90, -5.31
         # 12 windows but SOG = 0.7 (above 0.5 strict threshold)
-        points = self._build_window_points(1, 2, lat, lon, sog=0.7,
-                                           n_windows=_MIN_CONSECUTIVE_WINDOWS_STRICT)
+        points = self._build_window_points(
+            1, 2, lat, lon, sog=0.7, n_windows=_MIN_CONSECUTIVE_WINDOWS_STRICT
+        )
 
-        sts_corridor = _make_corridor(1, "Ceuta STS", "sts_zone",
+        sts_corridor = _make_corridor(
+            1,
+            "Ceuta STS",
+            "sts_zone",
             "POLYGON((-5.8 35.8, -5.2 35.8, -5.2 36.2, -5.8 36.2, -5.8 35.8))",
-            tags=["ship_to_ship"])
-        excl_corridor = _make_corridor(2, "Ceuta Exclusion", "anchorage_holding",
+            tags=["ship_to_ship"],
+        )
+        excl_corridor = _make_corridor(
+            2,
+            "Ceuta Exclusion",
+            "anchorage_holding",
             "POLYGON((-5.35 35.88, -5.28 35.88, -5.28 35.92, -5.35 35.92, -5.35 35.88))",
-            tags=["anchorage_exclusion", "med_fp_reduction"])
+            tags=["anchorage_exclusion", "med_fp_reduction"],
+        )
 
         sts_zone_bboxes = [(sts_corridor, (-5.8, 35.8, -5.2, 36.2))]
         all_corridors = [sts_corridor, excl_corridor]
@@ -208,15 +233,24 @@ class TestPhaseAAnchorageExclusion:
         # Position inside Ceuta exclusion zone (mid-cell)
         lat, lon = 35.90, -5.31
         # 13 windows at 0.3kn — strong evidence, should pass stricter thresholds
-        points = self._build_window_points(1, 2, lat, lon, sog=0.3,
-                                           n_windows=_MIN_CONSECUTIVE_WINDOWS_STRICT + 1)
+        points = self._build_window_points(
+            1, 2, lat, lon, sog=0.3, n_windows=_MIN_CONSECUTIVE_WINDOWS_STRICT + 1
+        )
 
-        sts_corridor = _make_corridor(1, "Ceuta STS", "sts_zone",
+        sts_corridor = _make_corridor(
+            1,
+            "Ceuta STS",
+            "sts_zone",
             "POLYGON((-5.8 35.8, -5.2 35.8, -5.2 36.2, -5.8 36.2, -5.8 35.8))",
-            tags=["ship_to_ship"])
-        excl_corridor = _make_corridor(2, "Ceuta Exclusion", "anchorage_holding",
+            tags=["ship_to_ship"],
+        )
+        excl_corridor = _make_corridor(
+            2,
+            "Ceuta Exclusion",
+            "anchorage_holding",
             "POLYGON((-5.35 35.88, -5.28 35.88, -5.28 35.92, -5.35 35.92, -5.35 35.88))",
-            tags=["anchorage_exclusion", "med_fp_reduction"])
+            tags=["anchorage_exclusion", "med_fp_reduction"],
+        )
 
         sts_zone_bboxes = [(sts_corridor, (-5.8, 35.8, -5.2, 36.2))]
         all_corridors = [sts_corridor, excl_corridor]

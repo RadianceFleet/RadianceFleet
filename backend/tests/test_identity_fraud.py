@@ -3,27 +3,27 @@
 Covers stateless MMSI detection, flag hopping detection, and IMO fraud detection.
 Uses in-memory SQLite for tests requiring real SQL queries.
 """
-import pytest
-from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
 
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
+
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base  # noqa: F401 -- registers all models
+from app.models.ais_point import AISPoint
 from app.models.base import SpoofingTypeEnum
+from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
-from app.models.ais_point import AISPoint
-from app.models.spoofing_anomaly import SpoofingAnomaly
-from app.modules.stateless_detector import run_stateless_detection, _extract_ship_mid
 from app.modules.flag_hopping_detector import run_flag_hopping_detection
-from app.utils.vessel_identity import validate_imo_checksum as _validate_imo_checksum
 from app.modules.imo_fraud_detector import run_imo_fraud_detection
-from app.utils.geo import haversine_nm as _haversine_nm
-
+from app.modules.stateless_detector import run_stateless_detection
+from app.utils.vessel_identity import validate_imo_checksum as _validate_imo_checksum
 
 # -- Shared fixture: in-memory SQLite session --
+
 
 @pytest.fixture
 def db():
@@ -44,6 +44,7 @@ def db():
 
 
 # -- Helper factories --
+
 
 def _make_vessel(db, mmsi="211456789", name="TEST VESSEL", **kwargs):
     v = Vessel(mmsi=mmsi, name=name, **kwargs)
@@ -84,7 +85,7 @@ def _make_owner_change(db, vessel_id, old_name, new_name, days_ago=0):
 
 def _make_ais_point(db, vessel, lat, lon, ts=None, sog=10.0):
     if ts is None:
-        ts = datetime.now(timezone.utc)
+        ts = datetime.now(UTC)
     pt = AISPoint(
         vessel_id=vessel.vessel_id,
         timestamp_utc=ts,
@@ -127,9 +128,11 @@ class TestStatelessTier1:
 
         assert result["status"] == "ok"
         assert result["tier1"] == 1
-        anomalies = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI
-        ).all()
+        anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI)
+            .all()
+        )
         assert len(anomalies) == 1
         assert anomalies[0].risk_score_component == 35
         assert anomalies[0].evidence_json["tier"] == 1
@@ -162,9 +165,11 @@ class TestStatelessTier2:
         result = run_stateless_detection(db)
 
         assert result["tier2"] == 1
-        anomalies = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI
-        ).all()
+        anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI)
+            .all()
+        )
         assert len(anomalies) == 1
         assert anomalies[0].risk_score_component == 20
 
@@ -178,9 +183,11 @@ class TestStatelessTier2:
         result = run_stateless_detection(db)
 
         assert result["tier2"] == 0
-        anomalies = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI
-        ).all()
+        anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI)
+            .all()
+        )
         assert len(anomalies) == 0
 
 
@@ -197,9 +204,11 @@ class TestStatelessTier3:
         result = run_stateless_detection(db)
 
         assert result["tier3"] == 1
-        anomalies = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI
-        ).all()
+        anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI)
+            .all()
+        )
         assert len(anomalies) == 1
         assert anomalies[0].risk_score_component == 10
 
@@ -264,7 +273,7 @@ class TestStatelessNoDuplicate:
         existing = SpoofingAnomaly(
             vessel_id=v.vessel_id,
             anomaly_type=SpoofingTypeEnum.STATELESS_MMSI,
-            start_time_utc=datetime.now(timezone.utc),
+            start_time_utc=datetime.now(UTC),
             risk_score_component=35,
         )
         db.add(existing)
@@ -274,9 +283,11 @@ class TestStatelessNoDuplicate:
 
         assert result["tier1"] == 0
         # Should still have exactly 1 anomaly (the pre-existing one)
-        anomalies = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI
-        ).all()
+        anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI)
+            .all()
+        )
         assert len(anomalies) == 1
 
 
@@ -310,9 +321,11 @@ class TestFlagHoppingScoring:
         result = run_flag_hopping_detection(db)
 
         assert result["anomalies_created"] == 1
-        a = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING
-        ).first()
+        a = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING)
+            .first()
+        )
         assert a is not None
         assert a.risk_score_component == 20
 
@@ -329,9 +342,11 @@ class TestFlagHoppingScoring:
         result = run_flag_hopping_detection(db)
 
         assert result["anomalies_created"] == 1
-        a = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING
-        ).first()
+        a = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING)
+            .first()
+        )
         assert a is not None
         assert a.risk_score_component == 40
 
@@ -350,9 +365,11 @@ class TestFlagHoppingScoring:
         result = run_flag_hopping_detection(db)
 
         assert result["anomalies_created"] == 1
-        a = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING
-        ).first()
+        a = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING)
+            .first()
+        )
         assert a is not None
         assert a.risk_score_component == 50
 
@@ -386,9 +403,11 @@ class TestFlagHoppingModifiers:
         result = run_flag_hopping_detection(db)
 
         assert result["anomalies_created"] == 1
-        a = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING
-        ).first()
+        a = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING)
+            .first()
+        )
         assert a is not None
         # Base 20, discounted 50% = 10
         assert a.risk_score_component == 10
@@ -405,9 +424,11 @@ class TestFlagHoppingModifiers:
         result = run_flag_hopping_detection(db)
 
         assert result["anomalies_created"] == 1
-        a = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING
-        ).first()
+        a = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING)
+            .first()
+        )
         assert a is not None
         # Base 20, 2x = 40
         assert a.risk_score_component == 40
@@ -424,9 +445,11 @@ class TestFlagHoppingModifiers:
         result = run_flag_hopping_detection(db)
 
         assert result["anomalies_created"] == 1
-        a = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING
-        ).first()
+        a = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FLAG_HOPPING)
+            .first()
+        )
         assert a is not None
         # Base 20, 0.5x = 10
         assert a.risk_score_component == 10
@@ -481,7 +504,7 @@ class TestSimultaneousImo:
         v1 = _make_vessel(db, mmsi="211000001", name="VESSEL A", imo="9074729")
         v2 = _make_vessel(db, mmsi="211000002", name="VESSEL B", imo="9074729")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # v1 in North Sea, v2 in Mediterranean -- >500nm apart
         _make_ais_point(db, v1, lat=58.0, lon=3.0, ts=now, sog=12.0)
         _make_ais_point(db, v2, lat=35.0, lon=25.0, ts=now, sog=10.0)
@@ -491,9 +514,11 @@ class TestSimultaneousImo:
 
         assert result["status"] == "ok"
         assert result["simultaneous"] == 1
-        anomalies = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD
-        ).all()
+        anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD)
+            .all()
+        )
         assert len(anomalies) == 1
         assert anomalies[0].risk_score_component == 45
         assert anomalies[0].evidence_json["detection_type"] == "simultaneous"
@@ -507,7 +532,7 @@ class TestSimultaneousImo:
         v1 = _make_vessel(db, mmsi="211000001", name="VESSEL A", imo="1234560")
         v2 = _make_vessel(db, mmsi="211000002", name="VESSEL B", imo="1234560")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         _make_ais_point(db, v1, lat=58.0, lon=3.0, ts=now, sog=12.0)
         _make_ais_point(db, v2, lat=35.0, lon=25.0, ts=now, sog=10.0)
         db.commit()
@@ -524,7 +549,7 @@ class TestSimultaneousImo:
         v1 = _make_vessel(db, mmsi="211000001", name="VESSEL A", imo="9074729")
         v2 = _make_vessel(db, mmsi="211000002", name="VESSEL B", imo="9074729")
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Both in the North Sea, close together
         _make_ais_point(db, v1, lat=58.0, lon=3.0, ts=now, sog=12.0)
         _make_ais_point(db, v2, lat=58.5, lon=3.5, ts=now, sog=10.0)
@@ -544,19 +569,27 @@ class TestNearMissImo:
         mock_settings.IMO_FRAUD_DETECTION_ENABLED = True
 
         v1 = _make_vessel(
-            db, mmsi="211000001", name="VESSEL A", imo="9074729",
-            vessel_type="Oil Tanker", deadweight=50000.0,
+            db,
+            mmsi="211000001",
+            name="VESSEL A",
+            imo="9074729",
+            vessel_type="Oil Tanker",
+            deadweight=50000.0,
         )
-        v2 = _make_vessel(
-            db, mmsi="211000002", name="VESSEL B", imo="9074720",
-            vessel_type="Bulk Carrier", deadweight=120000.0,
+        _make_vessel(
+            db,
+            mmsi="211000002",
+            name="VESSEL B",
+            imo="9074720",
+            vessel_type="Bulk Carrier",
+            deadweight=120000.0,
         )
 
         # Make v1 suspicious with an existing anomaly
         anomaly = SpoofingAnomaly(
             vessel_id=v1.vessel_id,
             anomaly_type=SpoofingTypeEnum.ANCHOR_SPOOF,
-            start_time_utc=datetime.now(timezone.utc),
+            start_time_utc=datetime.now(UTC),
             risk_score_component=10,
         )
         db.add(anomaly)
@@ -574,19 +607,27 @@ class TestNearMissImo:
         mock_settings.IMO_FRAUD_DETECTION_ENABLED = True
 
         v1 = _make_vessel(
-            db, mmsi="211000001", name="VESSEL A", imo="9074729",
-            vessel_type="Oil Tanker", deadweight=50000.0,
+            db,
+            mmsi="211000001",
+            name="VESSEL A",
+            imo="9074729",
+            vessel_type="Oil Tanker",
+            deadweight=50000.0,
         )
-        v2 = _make_vessel(
-            db, mmsi="211000002", name="VESSEL B", imo="9074720",
-            vessel_type="Oil Tanker", deadweight=48000.0,
+        _make_vessel(
+            db,
+            mmsi="211000002",
+            name="VESSEL B",
+            imo="9074720",
+            vessel_type="Oil Tanker",
+            deadweight=48000.0,
         )
 
         # Make v1 suspicious with an existing anomaly
         anomaly = SpoofingAnomaly(
             vessel_id=v1.vessel_id,
             anomaly_type=SpoofingTypeEnum.ANCHOR_SPOOF,
-            start_time_utc=datetime.now(timezone.utc),
+            start_time_utc=datetime.now(UTC),
             risk_score_component=10,
         )
         db.add(anomaly)
@@ -595,9 +636,11 @@ class TestNearMissImo:
         result = run_imo_fraud_detection(db)
 
         assert result["near_miss"] == 1
-        near_miss_anomalies = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD
-        ).all()
+        near_miss_anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD)
+            .all()
+        )
         assert len(near_miss_anomalies) == 1
         assert near_miss_anomalies[0].risk_score_component == 20
         assert near_miss_anomalies[0].evidence_json["detection_type"] == "near_miss"

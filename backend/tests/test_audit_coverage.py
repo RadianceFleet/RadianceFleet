@@ -1,6 +1,6 @@
 """Tests for G5: Audit logging expansion — verify _audit_log is called in state-changing routes."""
-from unittest.mock import MagicMock, patch, call
-from datetime import datetime, timezone
+
+from unittest.mock import MagicMock, patch
 
 
 class TestCorridorAuditLogging:
@@ -8,8 +8,10 @@ class TestCorridorAuditLogging:
         mock_db.add = MagicMock()
         mock_db.flush = MagicMock()
         mock_db.commit = MagicMock()
+
         def set_id(obj):
             obj.corridor_id = 42
+
         mock_db.add.side_effect = set_id
 
         with patch("app.api.routes_detection._audit_log") as mock_audit:
@@ -49,8 +51,10 @@ class TestWatchlistAuditLogging:
         vessel = MagicMock()
         vessel.vessel_id = 1
         mock_db.query.return_value.filter.return_value.first.return_value = vessel
+
         def set_id(obj):
             obj.watchlist_entry_id = 10
+
         mock_db.add.side_effect = set_id
 
         with patch("app.api.routes_vessels._audit_log") as mock_audit:
@@ -67,13 +71,22 @@ class TestWatchlistAuditLogging:
 
 class TestAISImportAuditLogging:
     def test_ais_import_has_audit_log(self, api_client, mock_db):
-        with patch("app.modules.ingest.ingest_ais_csv", return_value={
-            "accepted": 10, "rejected": 2, "duplicates": 0,
-            "replaced": 0, "ignored": 0, "errors": [],
-            "errors_truncated": False, "total_errors": 0,
-        }):
+        with patch(
+            "app.modules.ingest.ingest_ais_csv",
+            return_value={
+                "accepted": 10,
+                "rejected": 2,
+                "duplicates": 0,
+                "replaced": 0,
+                "ignored": 0,
+                "errors": [],
+                "errors_truncated": False,
+                "total_errors": 0,
+            },
+        ):
             with patch("app.api.routes_admin._audit_log") as mock_audit:
                 from io import BytesIO
+
                 resp = api_client.post(
                     "/api/v1/ais/import",
                     files={"file": ("test.csv", BytesIO(b"mmsi,timestamp,lat,lon\n"), "text/csv")},

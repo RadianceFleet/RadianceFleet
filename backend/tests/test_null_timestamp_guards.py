@@ -1,11 +1,10 @@
 """Tests for NULL timestamp guards across detector modules."""
+
 from __future__ import annotations
 
-import logging
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
-import pytest
 from sqlalchemy.orm import Session
 
 
@@ -21,7 +20,9 @@ class TestNullTimestampGuards:
         row = {"mmsi": "123456789", "lat": 59.0, "lon": 10.0}
 
         # Should not crash, should not add anything
-        _write_ais_observation(db, vessel, row, ts=None, sog_val=5.0, cog_val=180.0, heading_val=180.0)
+        _write_ais_observation(
+            db, vessel, row, ts=None, sog_val=5.0, cog_val=180.0, heading_val=180.0
+        )
         db.add.assert_not_called()
 
     def test_cross_receiver_skips_null_timestamps(self):
@@ -67,7 +68,7 @@ class TestNullTimestampGuards:
         mock_gap.gap_off_lat = 59.0
         mock_gap.gap_off_lon = 10.0
         mock_gap.start_point = None
-        mock_gap.gap_start_utc = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        mock_gap.gap_start_utc = datetime(2024, 1, 1, tzinfo=UTC)
         mock_gap.gap_end_utc = None
         mock_gap.vessel_id = 1
 
@@ -97,7 +98,7 @@ class TestNullTimestampGuards:
         mock_sts = MagicMock()
         mock_sts.mean_lat = 59.0
         mock_sts.mean_lon = 10.0
-        mock_sts.start_time_utc = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        mock_sts.start_time_utc = datetime(2024, 1, 1, tzinfo=UTC)
         mock_sts.end_time_utc = None
 
         sts_query = MagicMock()
@@ -116,7 +117,7 @@ class TestNullTimestampGuards:
         from app.models.spoofing_anomaly import SpoofingAnomaly
 
         anomaly = MagicMock(spec=SpoofingAnomaly)
-        anomaly.start_time_utc = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        anomaly.start_time_utc = datetime(2024, 1, 1, tzinfo=UTC)
         anomaly.end_time_utc = None
 
         # Verify fallback logic: anomaly_end should be start_time when end is None
@@ -124,4 +125,4 @@ class TestNullTimestampGuards:
         assert anomaly_end == anomaly.start_time_utc
         # And it should support timedelta arithmetic
         result = anomaly_end + timedelta(hours=2)
-        assert result == datetime(2024, 1, 1, 2, 0, tzinfo=timezone.utc)
+        assert result == datetime(2024, 1, 1, 2, 0, tzinfo=UTC)

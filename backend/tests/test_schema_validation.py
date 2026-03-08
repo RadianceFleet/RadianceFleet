@@ -1,14 +1,17 @@
 """Tests for G4: Request schema validation with Pydantic models."""
+
 import pytest
 from pydantic import ValidationError
 
+from app.schemas.alerts import BulkStatusUpdateRequest, NoteAddRequest, WatchlistAddRequest
 from app.schemas.corridor import CorridorCreateRequest, CorridorUpdateRequest
-from app.schemas.alerts import BulkStatusUpdateRequest, WatchlistAddRequest, NoteAddRequest
 
 
 class TestCorridorCreateRequest:
     def test_valid_data(self):
-        req = CorridorCreateRequest(name="Baltic Export Gate", corridor_type="export_route", risk_weight=2.0)
+        req = CorridorCreateRequest(
+            name="Baltic Export Gate", corridor_type="export_route", risk_weight=2.0
+        )
         assert req.name == "Baltic Export Gate"
         assert req.corridor_type == "export_route"
         assert req.risk_weight == 2.0

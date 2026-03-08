@@ -5,7 +5,9 @@ Verifies that:
 - Default values work correctly when config section is missing
 - Score bands use configurable thresholds
 """
+
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 
@@ -16,8 +18,8 @@ class TestHuntScoringConfig:
         """When hunt_scoring section is absent, defaults are used."""
         with patch("app.modules.vessel_hunt._load_hunt_scoring", return_value={}):
             # Re-import to test defaults
-            import importlib
             import app.modules.vessel_hunt as vh
+
             # Verify the fallback defaults match original hardcoded values
             cfg = vh._load_hunt_scoring()
             assert cfg.get("length_ratio_min", 0.8) == 0.8
@@ -43,6 +45,7 @@ class TestHuntScoringConfig:
         }
         with patch("app.modules.risk_scoring.load_scoring_config", return_value=mock_config):
             from app.modules.vessel_hunt import _load_hunt_scoring
+
             cfg = _load_hunt_scoring()
             assert cfg["length_ratio_min"] == 0.75
             assert cfg["length_ratio_max"] == 1.25
@@ -56,12 +59,14 @@ class TestHuntScoringConfig:
         """_load_hunt_scoring returns {} if config loading throws."""
         with patch("app.modules.risk_scoring.load_scoring_config", side_effect=Exception("broken")):
             from app.modules.vessel_hunt import _load_hunt_scoring
+
             cfg = _load_hunt_scoring()
             assert cfg == {}
 
     def test_module_constants_are_set(self):
         """Module-level constants are set from config or defaults."""
         import app.modules.vessel_hunt as vh
+
         assert isinstance(vh.LENGTH_RATIO_MIN, float)
         assert isinstance(vh.LENGTH_RATIO_MAX, float)
         assert isinstance(vh.HEADING_THRESHOLD, float)
@@ -77,7 +82,7 @@ class TestHuntScoreUsesConfig:
 
     def test_heading_score_uses_config(self):
         """heading_plausible score equals HEADING_THRESHOLD from config."""
-        from app.modules.vessel_hunt import _compute_hunt_score, HEADING_THRESHOLD
+        from app.modules.vessel_hunt import HEADING_THRESHOLD, _compute_hunt_score
 
         det = MagicMock()
         det.length_estimate_m = None
@@ -95,7 +100,7 @@ class TestHuntScoreUsesConfig:
 
     def test_drift_score_uses_config(self):
         """Drift score at center equals DRIFT_MULTIPLIER from config."""
-        from app.modules.vessel_hunt import _compute_hunt_score, DRIFT_MULTIPLIER
+        from app.modules.vessel_hunt import DRIFT_MULTIPLIER, _compute_hunt_score
 
         det = MagicMock()
         det.length_estimate_m = None
@@ -113,7 +118,7 @@ class TestHuntScoreUsesConfig:
 
     def test_class_score_uses_config(self):
         """Vessel class match score equals CLASS_SCORE from config."""
-        from app.modules.vessel_hunt import _compute_hunt_score, CLASS_SCORE
+        from app.modules.vessel_hunt import CLASS_SCORE, _compute_hunt_score
 
         det = MagicMock()
         det.length_estimate_m = None
@@ -135,7 +140,7 @@ class TestHuntScoreUsesConfig:
 
     def test_length_match_uses_config_ratio(self):
         """Length match uses LENGTH_RATIO_MIN and LENGTH_RATIO_MAX from config."""
-        from app.modules.vessel_hunt import _compute_hunt_score, LENGTH_RATIO_MIN, LENGTH_RATIO_MAX
+        from app.modules.vessel_hunt import LENGTH_RATIO_MAX, LENGTH_RATIO_MIN, _compute_hunt_score
 
         vessel = MagicMock()
         vessel.deadweight = 50000.0
@@ -191,7 +196,7 @@ class TestHuntScoreBandsConfig:
 
     def test_find_hunt_candidates_uses_config_bands(self):
         """find_hunt_candidates assigns correct bands based on config thresholds."""
-        from app.modules.vessel_hunt import find_hunt_candidates, HIGH_SCORE_BAND, MEDIUM_SCORE_BAND
+        from app.modules.vessel_hunt import find_hunt_candidates
 
         mock_db = MagicMock()
 

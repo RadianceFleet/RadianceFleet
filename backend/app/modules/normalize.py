@@ -2,11 +2,12 @@
 
 Implements validation rules from PRD §7.2.
 """
+
 from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import polars as pl
@@ -98,7 +99,7 @@ def parse_timestamp_flexible(ts: Any) -> datetime | None:
     # Unix epoch (int or float)
     if isinstance(ts, (int, float)) and ts > 1_000_000_000:
         try:
-            return datetime.fromtimestamp(ts, tz=timezone.utc)
+            return datetime.fromtimestamp(ts, tz=UTC)
         except (OSError, ValueError, OverflowError):
             pass
 
@@ -116,7 +117,7 @@ def parse_timestamp_flexible(ts: Any) -> datetime | None:
         # Try common strftime formats
         for fmt in _COMMON_TIMESTAMP_FORMATS:
             try:
-                return datetime.strptime(ts_str, fmt).replace(tzinfo=timezone.utc)
+                return datetime.strptime(ts_str, fmt).replace(tzinfo=UTC)
             except ValueError:
                 continue
 
@@ -130,9 +131,9 @@ def parse_timestamp_flexible(ts: Any) -> datetime | None:
             if dot_idx > 0:
                 space_after_frac = cleaned.find(" ", dot_idx)
                 if space_after_frac > 0:
-                    frac = cleaned[dot_idx + 1:space_after_frac]
+                    frac = cleaned[dot_idx + 1 : space_after_frac]
                     if len(frac) > 6:
-                        cleaned = cleaned[:dot_idx + 1] + frac[:6] + cleaned[space_after_frac:]
+                        cleaned = cleaned[: dot_idx + 1] + frac[:6] + cleaned[space_after_frac:]
             for go_fmt in (
                 "%Y-%m-%d %H:%M:%S.%f %z",
                 "%Y-%m-%d %H:%M:%S %z",
@@ -186,9 +187,7 @@ def normalize_ais_dataframe(df: pl.DataFrame) -> pl.DataFrame:
 
     # Cast timestamp column if it exists and is string
     if "timestamp" in df.columns and df["timestamp"].dtype == pl.Utf8:
-        df = df.with_columns(
-            pl.col("timestamp").alias("timestamp_utc")
-        )
+        df = df.with_columns(pl.col("timestamp").alias("timestamp_utc"))
     elif "timestamp" in df.columns:
         df = df.rename({"timestamp": "timestamp_utc"})
 
@@ -292,9 +291,9 @@ def validate_ais_row(row: dict[str, Any]) -> str | None:
     if ts_dt is None:
         return f"Unparseable timestamp {ts!r}"
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # Handle naive datetimes (e.g., NOAA BaseDateTime has no timezone)
-    ts_cmp = ts_dt.replace(tzinfo=timezone.utc) if ts_dt.tzinfo is None else ts_dt
+    ts_cmp = ts_dt.replace(tzinfo=UTC) if ts_dt.tzinfo is None else ts_dt
     # E2: Future timestamp ceiling — reject if > now + 7 days (allows minor clock skew)
     future_ceiling = now + timedelta(days=7)
     if ts_cmp > future_ceiling:
@@ -312,7 +311,9 @@ def validate_ais_row(row: dict[str, Any]) -> str | None:
             sog_float = float(sog_final)
             if nav_int == 1 and sog_float > 3:
                 mmsi_tag = row.get("mmsi", "unknown")
-                logger.warning("Anchored vessel MMSI %s reporting SOG %s knots", mmsi_tag, sog_float)
+                logger.warning(
+                    "Anchored vessel MMSI %s reporting SOG %s knots", mmsi_tag, sog_float
+                )
                 row.setdefault("_quality_flags", []).append(f"anchored_high_sog_{sog_float}")
         except (TypeError, ValueError):
             pass  # Non-numeric nav_status or SOG — skip quality check

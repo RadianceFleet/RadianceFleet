@@ -1,20 +1,22 @@
 """Tests for multi-analyst workflow: auth, CRUD, JWT, and auth propagation."""
+
+from datetime import UTC, datetime
+from unittest.mock import patch
+
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
-
 from fastapi.testclient import TestClient
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def _db_engine():
     """Shared in-memory SQLite engine (StaticPool for cross-thread access)."""
     from sqlalchemy import create_engine
     from sqlalchemy.pool import StaticPool
+
     from app.models import Base
 
     engine = create_engine(
@@ -31,6 +33,7 @@ def _db_engine():
 def _real_db(_db_engine):
     """Session bound to the shared in-memory engine."""
     from sqlalchemy.orm import sessionmaker
+
     Session = sessionmaker(bind=_db_engine)
     db = Session()
     yield db
@@ -40,9 +43,10 @@ def _real_db(_db_engine):
 @pytest.fixture
 def real_client(_db_engine, _real_db):
     """TestClient wired to an in-memory SQLite DB."""
-    from app.main import app
-    from app.database import get_db
     from sqlalchemy.orm import sessionmaker
+
+    from app.database import get_db
+    from app.main import app
 
     Session = sessionmaker(bind=_db_engine)
 
@@ -63,11 +67,13 @@ def real_client(_db_engine, _real_db):
 def _admin_token():
     """Create a valid admin JWT for testing."""
     from app.auth import create_token
+
     return create_token(0, "admin", "admin")
 
 
 def _analyst_token(analyst_id=1, username="analyst1", role="analyst"):
     from app.auth import create_token
+
     return create_token(analyst_id, username, role)
 
 
@@ -75,9 +81,11 @@ def _analyst_token(analyst_id=1, username="analyst1", role="analyst"):
 # Password hashing
 # ---------------------------------------------------------------------------
 
+
 class TestPasswordHashing:
     def test_hash_and_verify(self):
         from app.auth import hash_password, verify_password
+
         h = hash_password("secret123")
         assert h != "secret123"
         assert verify_password("secret123", h) is True
@@ -85,6 +93,7 @@ class TestPasswordHashing:
 
     def test_verify_admin_password(self):
         from app.auth import verify_admin_password
+
         with patch("app.auth.settings") as mock_settings:
             mock_settings.ADMIN_PASSWORD = "admin-pass"
             assert verify_admin_password("admin-pass") is True
@@ -95,10 +104,13 @@ class TestPasswordHashing:
 # JWT creation and validation
 # ---------------------------------------------------------------------------
 
+
 class TestJWT:
     def test_create_token_contains_fields(self):
         import jwt as pyjwt
+
         from app.auth import create_token
+
         with patch("app.auth.settings") as mock_settings:
             mock_settings.ADMIN_JWT_SECRET = "test-secret"
             token = create_token(42, "alice", "senior_analyst")
@@ -110,7 +122,9 @@ class TestJWT:
 
     def test_create_admin_token_backward_compat(self):
         import jwt as pyjwt
+
         from app.auth import create_admin_token
+
         with patch("app.auth.settings") as mock_settings:
             mock_settings.ADMIN_JWT_SECRET = "test-secret"
             token = create_admin_token()
@@ -120,8 +134,10 @@ class TestJWT:
             assert payload["role"] == "admin"
 
     def test_require_auth_returns_identity(self):
-        from app.auth import require_auth, create_token
         from fastapi.security import HTTPAuthorizationCredentials
+
+        from app.auth import create_token, require_auth
+
         with patch("app.auth.settings") as mock_settings:
             mock_settings.ADMIN_JWT_SECRET = "test-secret"
             token = create_token(5, "bob", "analyst")
@@ -133,14 +149,17 @@ class TestJWT:
 
     def test_require_auth_legacy_token(self):
         """Legacy tokens (sub=admin, no analyst_id) should still work."""
-        import jwt as pyjwt
-        from app.auth import require_auth
-        from fastapi.security import HTTPAuthorizationCredentials
         from datetime import timedelta
+
+        import jwt as pyjwt
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        from app.auth import require_auth
+
         with patch("app.auth.settings") as mock_settings:
             mock_settings.ADMIN_JWT_SECRET = "test-secret"
             payload = {
-                "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+                "exp": datetime.now(UTC) + timedelta(minutes=30),
                 "sub": "admin",
                 "type": "access",
             }
@@ -152,9 +171,11 @@ class TestJWT:
             assert result["role"] == "admin"
 
     def test_require_admin_rejects_analyst(self):
-        from app.auth import require_admin, create_token
-        from fastapi.security import HTTPAuthorizationCredentials
         from fastapi import HTTPException
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        from app.auth import create_token, require_admin
+
         with patch("app.auth.settings") as mock_settings:
             mock_settings.ADMIN_JWT_SECRET = "test-secret"
             token = create_token(1, "analyst1", "analyst")
@@ -164,8 +185,10 @@ class TestJWT:
             assert exc_info.value.status_code == 403
 
     def test_require_senior_or_admin_accepts_senior(self):
-        from app.auth import require_senior_or_admin, create_token
         from fastapi.security import HTTPAuthorizationCredentials
+
+        from app.auth import create_token, require_senior_or_admin
+
         with patch("app.auth.settings") as mock_settings:
             mock_settings.ADMIN_JWT_SECRET = "test-secret"
             token = create_token(2, "senior1", "senior_analyst")
@@ -174,9 +197,11 @@ class TestJWT:
             assert result["role"] == "senior_analyst"
 
     def test_require_senior_or_admin_rejects_analyst(self):
-        from app.auth import require_senior_or_admin, create_token
-        from fastapi.security import HTTPAuthorizationCredentials
         from fastapi import HTTPException
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        from app.auth import create_token, require_senior_or_admin
+
         with patch("app.auth.settings") as mock_settings:
             mock_settings.ADMIN_JWT_SECRET = "test-secret"
             token = create_token(1, "analyst1", "analyst")
@@ -190,16 +215,19 @@ class TestJWT:
 # Admin seeding
 # ---------------------------------------------------------------------------
 
+
 class TestAdminSeeding:
     def test_seed_creates_admin_when_table_empty(self, _real_db):
-        from app.models.analyst import Analyst
         from app.auth import verify_password
+        from app.models.analyst import Analyst
 
         with patch("app.database.settings") as mock_settings:
             mock_settings.ADMIN_PASSWORD = "seed-pass-123"
             # Import and call seed function
-            from app.database import _seed_admin_user
             from sqlalchemy.orm import sessionmaker
+
+            from app.database import _seed_admin_user
+
             Session = sessionmaker(bind=_real_db.get_bind())
             _seed_admin_user(Session)
 
@@ -211,10 +239,13 @@ class TestAdminSeeding:
 
     def test_seed_skips_when_no_password(self, _real_db):
         from app.models.analyst import Analyst
+
         with patch("app.database.settings") as mock_settings:
             mock_settings.ADMIN_PASSWORD = None
-            from app.database import _seed_admin_user
             from sqlalchemy.orm import sessionmaker
+
+            from app.database import _seed_admin_user
+
             Session = sessionmaker(bind=_real_db.get_bind())
             _seed_admin_user(Session)
         assert _real_db.query(Analyst).count() == 0
@@ -223,6 +254,7 @@ class TestAdminSeeding:
 # ---------------------------------------------------------------------------
 # Analyst CRUD via API
 # ---------------------------------------------------------------------------
+
 
 class TestAnalystCRUD:
     def test_create_analyst(self, real_client):
@@ -331,11 +363,12 @@ class TestAnalystCRUD:
 # Login
 # ---------------------------------------------------------------------------
 
+
 class TestLogin:
     def test_login_with_username(self, real_client, _real_db):
         """DB-backed login with username+password."""
-        from app.models.analyst import Analyst
         from app.auth import hash_password
+        from app.models.analyst import Analyst
 
         # Create analyst directly in DB
         a = Analyst(
@@ -361,8 +394,10 @@ class TestLogin:
 
     def test_legacy_login(self, real_client):
         """Legacy login with ADMIN_PASSWORD only (no username)."""
-        with patch("app.auth.settings") as mock_auth_settings, \
-             patch("app.api.routes_admin.verify_admin_password") as mock_verify:
+        with (
+            patch("app.auth.settings") as mock_auth_settings,
+            patch("app.api.routes_admin.verify_admin_password") as mock_verify,
+        ):
             mock_auth_settings.ADMIN_JWT_SECRET = "test-secret"
             mock_verify.return_value = True
             resp = real_client.post(
@@ -373,8 +408,9 @@ class TestLogin:
             assert "token" in resp.json()
 
     def test_login_inactive_analyst_rejected(self, real_client, _real_db):
-        from app.models.analyst import Analyst
         from app.auth import hash_password
+        from app.models.analyst import Analyst
+
         a = Analyst(
             username="inactive",
             password_hash=hash_password("pass"),
@@ -397,6 +433,7 @@ class TestLogin:
 # Auth propagation on alert write routes
 # ---------------------------------------------------------------------------
 
+
 class TestAuthPropagation:
     def test_alert_status_requires_auth(self, real_client):
         """POST /alerts/{id}/status should return 403/401 without valid token."""
@@ -416,5 +453,7 @@ class TestAuthPropagation:
         assert resp.status_code in (401, 403)
 
     def test_bulk_status_requires_auth(self, real_client):
-        resp = real_client.post("/api/v1/alerts/bulk-status", json={"alert_ids": [1], "status": "under_review"})
+        resp = real_client.post(
+            "/api/v1/alerts/bulk-status", json={"alert_ids": [1], "status": "under_review"}
+        )
         assert resp.status_code in (401, 403)

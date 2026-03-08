@@ -1,33 +1,34 @@
 """Tests for AIS destination manipulation detector."""
+
 from __future__ import annotations
 
-import math
-from datetime import datetime, date, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ── Tests: pure functions ────────────────────────────────────────────
+
 
 class TestInitialBearing:
     def test_north(self):
         from app.modules.destination_detector import _initial_bearing
+
         bearing = _initial_bearing(0.0, 0.0, 1.0, 0.0)
         assert abs(bearing - 0.0) < 1.0
 
     def test_east(self):
         from app.modules.destination_detector import _initial_bearing
+
         bearing = _initial_bearing(0.0, 0.0, 0.0, 1.0)
         assert abs(bearing - 90.0) < 1.0
 
     def test_south(self):
         from app.modules.destination_detector import _initial_bearing
+
         bearing = _initial_bearing(1.0, 0.0, 0.0, 0.0)
         assert abs(bearing - 180.0) < 1.0
 
     def test_west(self):
         from app.modules.destination_detector import _initial_bearing
+
         bearing = _initial_bearing(0.0, 1.0, 0.0, 0.0)
         assert abs(bearing - 270.0) < 1.0
 
@@ -35,61 +36,75 @@ class TestInitialBearing:
 class TestBearingDiff:
     def test_same_bearing(self):
         from app.modules.destination_detector import _bearing_diff
+
         assert _bearing_diff(90.0, 90.0) == 0.0
 
     def test_opposite_bearing(self):
         from app.modules.destination_detector import _bearing_diff
+
         assert _bearing_diff(0.0, 180.0) == 180.0
 
     def test_wraparound(self):
         from app.modules.destination_detector import _bearing_diff
+
         assert _bearing_diff(350.0, 10.0) == 20.0
 
     def test_small_difference(self):
         from app.modules.destination_detector import _bearing_diff
+
         assert abs(_bearing_diff(45.0, 50.0) - 5.0) < 0.01
 
 
 class TestIsBlankOrGeneric:
     def test_blank_string(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic("") is True
 
     def test_for_orders(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic("FOR ORDERS") is True
         assert _is_blank_or_generic("for orders") is True
 
     def test_tba(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic("TBA") is True
 
     def test_none_returns_false(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic(None) is False
 
     def test_real_port(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic("ROTTERDAM") is False
 
     def test_at_sea(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic("AT SEA") is True
 
     def test_na(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic("N/A") is True
 
     def test_whitespace_stripped(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic("  TBA  ") is True
 
     def test_sts(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         assert _is_blank_or_generic("STS") is True
 
 
 # ── Tests: detect_destination_anomalies ──────────────────────────────
+
 
 class TestDetectDestinationAnomalies:
     def test_disabled_returns_status(self):

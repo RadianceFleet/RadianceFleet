@@ -8,13 +8,13 @@ Downloads use httpx with streaming to avoid buffering large files in memory.
 Files are written to a temp path first, validated, then atomically renamed.
 ETag/Last-Modified headers are cached to skip redundant downloads.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from datetime import date
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -25,9 +25,7 @@ logger = logging.getLogger(__name__)
 # ── Source URLs ──────────────────────────────────────────────────────────────
 
 OFAC_SDN_URL = "https://www.treasury.gov/ofac/downloads/sdn.csv"
-OPENSANCTIONS_URL = (
-    "https://data.opensanctions.org/datasets/latest/sanctions/entities.ftm.json"
-)
+OPENSANCTIONS_URL = "https://data.opensanctions.org/datasets/latest/sanctions/entities.ftm.json"
 
 # PSC detention data sources (FTM JSON format from OpenSanctions)
 PSC_FTM_URLS: dict[str, str] = {
@@ -146,18 +144,16 @@ def _download_file(
 
     # Retry transient failures (503, 429, etc.) up to 3 times
     import time as _time
+
     _RETRYABLE = {429, 500, 502, 503, 504}
     _RETRY_DELAYS = [5, 15, 30]
 
-    last_error: str | None = None
     for attempt in range(1 + len(_RETRY_DELAYS)):
         try:
             with httpx.Client(timeout=timeout, follow_redirects=True) as client:
                 with client.stream("GET", url, headers=headers) as response:
                     if response.status_code == 304:
-                        logger.info(
-                            "%s: not modified (304), skipping download", source_key
-                        )
+                        logger.info("%s: not modified (304), skipping download", source_key)
                         return None, None  # Not an error — already up to date
 
                     if response.status_code in _RETRYABLE and attempt < len(_RETRY_DELAYS):
@@ -171,7 +167,9 @@ def _download_file(
                                     pass
                         logger.warning(
                             "%s: HTTP %d — retrying in %.0fs",
-                            source_key, response.status_code, delay,
+                            source_key,
+                            response.status_code,
+                            delay,
                         )
                         _time.sleep(delay)
                         continue
@@ -362,9 +360,7 @@ def fetch_all(
     Returns ``{"ofac": result_dict, "opensanctions": result_dict, "errors": [str]}``.
     """
     ofac = fetch_ofac_sdn(output_dir, force=force, timeout=timeout)
-    opensanctions = fetch_opensanctions_vessels(
-        output_dir, force=force, timeout=timeout
-    )
+    opensanctions = fetch_opensanctions_vessels(output_dir, force=force, timeout=timeout)
 
     errors = []
     if ofac.get("error"):

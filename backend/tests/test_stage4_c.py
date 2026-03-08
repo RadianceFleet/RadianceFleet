@@ -11,16 +11,14 @@ Covers:
   - Edge cases: empty detection list, no position, heading match
   - Stats dict structure
 """
+
 from __future__ import annotations
 
-import math
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 # ── LOA Estimation Tests ─────────────────────────────────────────────────────
+
 
 class TestEstimateLOA:
     """Test the empirical LOA = 5.0 * DWT^0.325 approximation."""
@@ -28,6 +26,7 @@ class TestEstimateLOA:
     def test_vlcc_loa(self):
         """VLCC ~300,000 DWT should give a reasonable LOA."""
         from app.modules.sar_correlator import estimate_loa
+
         loa = estimate_loa(300_000)
         # 5.0 * 300000^0.325 ~ 5.0 * 57.5 ~ 287 m
         assert 250 < loa < 350, f"VLCC LOA estimate {loa} out of reasonable range"
@@ -35,6 +34,7 @@ class TestEstimateLOA:
     def test_aframax_loa(self):
         """Aframax ~100,000 DWT."""
         from app.modules.sar_correlator import estimate_loa
+
         loa = estimate_loa(100_000)
         # 5.0 * 100000^0.325 ~ 5.0 * 40.6 ~ 203 m
         assert 170 < loa < 260, f"Aframax LOA estimate {loa} out of range"
@@ -42,6 +42,7 @@ class TestEstimateLOA:
     def test_small_tanker_loa(self):
         """Small tanker ~10,000 DWT."""
         from app.modules.sar_correlator import estimate_loa
+
         loa = estimate_loa(10_000)
         # 5.0 * 10000^0.325 ~ 5.0 * 18.5 ~ 92 m
         assert 70 < loa < 130, f"Small tanker LOA estimate {loa} out of range"
@@ -49,11 +50,13 @@ class TestEstimateLOA:
     def test_zero_dwt(self):
         """DWT of 0 should return 0."""
         from app.modules.sar_correlator import estimate_loa
+
         assert estimate_loa(0) == 0.0
 
     def test_loa_monotonic(self):
         """Larger DWT should produce larger LOA."""
         from app.modules.sar_correlator import estimate_loa
+
         loa_small = estimate_loa(10_000)
         loa_large = estimate_loa(300_000)
         assert loa_large > loa_small
@@ -61,82 +64,98 @@ class TestEstimateLOA:
 
 # ── Length Matching Tests ─────────────────────────────────────────────────────
 
+
 class TestLengthMatches:
     """Test length_matches with various tolerance scenarios."""
 
     def test_within_tolerance(self):
         """Detected length within 15% of estimated LOA."""
         from app.modules.sar_correlator import length_matches
+
         assert length_matches(200.0, 210.0) is True  # 5% over
 
     def test_outside_tolerance_high(self):
         """Detected length > 15% above estimated LOA."""
         from app.modules.sar_correlator import length_matches
+
         assert length_matches(200.0, 240.0) is False  # 20% over
 
     def test_outside_tolerance_low(self):
         """Detected length > 15% below estimated LOA."""
         from app.modules.sar_correlator import length_matches
+
         assert length_matches(200.0, 160.0) is False  # 20% under
 
     def test_no_detected_length(self):
         """None detected length returns True (no evidence against)."""
         from app.modules.sar_correlator import length_matches
+
         assert length_matches(200.0, None) is True
 
     def test_exact_match(self):
         """Exact match should be True."""
         from app.modules.sar_correlator import length_matches
+
         assert length_matches(200.0, 200.0) is True
 
     def test_boundary_high(self):
         """Just within upper boundary (15%) should be True."""
         from app.modules.sar_correlator import length_matches
+
         assert length_matches(200.0, 229.0) is True  # within 14.5%, under 15% cap
 
     def test_boundary_low(self):
         """Exactly at lower boundary (15%) should be True."""
         from app.modules.sar_correlator import length_matches
+
         assert length_matches(200.0, 170.0) is True  # 200 * 0.85 = 170
 
     def test_custom_tolerance(self):
         """Custom tolerance parameter."""
         from app.modules.sar_correlator import length_matches
+
         assert length_matches(200.0, 250.0, tolerance=0.30) is True  # 25% within 30%
         assert length_matches(200.0, 250.0, tolerance=0.10) is False  # 25% outside 10%
 
 
 # ── Heading Diff Tests ────────────────────────────────────────────────────────
 
+
 class TestHeadingDiff:
     """Test heading difference computation."""
 
     def test_same_heading(self):
         from app.modules.sar_correlator import _heading_diff
+
         assert _heading_diff(90.0, 90.0) == 0.0
 
     def test_small_diff(self):
         from app.modules.sar_correlator import _heading_diff
+
         assert _heading_diff(10.0, 20.0) == 10.0
 
     def test_wrap_around(self):
         """Heading diff should handle wrap-around (350 vs 10 = 20 deg)."""
         from app.modules.sar_correlator import _heading_diff
+
         diff = _heading_diff(350.0, 10.0)
         assert abs(diff - 20.0) < 0.1
 
     def test_opposite(self):
         from app.modules.sar_correlator import _heading_diff
+
         assert abs(_heading_diff(0.0, 180.0) - 180.0) < 0.1
 
 
 # ── Proximity Scoring Tests ──────────────────────────────────────────────────
 
+
 class TestProximityScoring:
     """Test proximity scoring component via _score_vessel_match."""
 
-    def _make_detection(self, lat=25.0, lon=55.0, length_m=None, heading=None,
-                        vessel_type="tanker"):
+    def _make_detection(
+        self, lat=25.0, lon=55.0, length_m=None, heading=None, vessel_type="tanker"
+    ):
         det = MagicMock()
         det.detection_id = 1
         det.detection_lat = lat
@@ -207,11 +226,13 @@ class TestProximityScoring:
 
 # ── Auto-Link and Candidate Tests ────────────────────────────────────────────
 
+
 class TestCorrelateAutoLink:
     """Test the main correlate_sar_detections function with auto-link and candidate thresholds."""
 
-    def _make_detection(self, det_id=1, lat=25.0, lon=55.0, length_m=None,
-                        heading=None, vessel_type="tanker"):
+    def _make_detection(
+        self, det_id=1, lat=25.0, lon=55.0, length_m=None, heading=None, vessel_type="tanker"
+    ):
         det = MagicMock()
         det.detection_id = det_id
         det.detection_lat = lat
@@ -249,8 +270,7 @@ class TestCorrelateAutoLink:
         mock_settings.SAR_CORRELATION_ENABLED = True
 
         db = MagicMock()
-        det = self._make_detection(lat=25.001, lon=55.001, length_m=200.0,
-                                   vessel_type="tanker")
+        det = self._make_detection(lat=25.001, lon=55.001, length_m=200.0, vessel_type="tanker")
         vessel = self._make_vessel(vessel_type="Crude Oil Tanker")
         ais_pt = self._make_ais_point(lat=25.0, lon=55.0)
 
@@ -379,6 +399,7 @@ class TestCorrelateAutoLink:
 
 # ── Feature Flag Tests ────────────────────────────────────────────────────────
 
+
 class TestFeatureFlags:
     """Test feature flag gating."""
 
@@ -399,6 +420,7 @@ class TestFeatureFlags:
     def test_config_has_sar_correlation_enabled(self):
         """Config class should have SAR_CORRELATION_ENABLED field."""
         from app.config import Settings
+
         s = Settings(DATABASE_URL="sqlite:///test.db")
         assert hasattr(s, "SAR_CORRELATION_ENABLED")
         assert s.SAR_CORRELATION_ENABLED is True
@@ -406,6 +428,7 @@ class TestFeatureFlags:
     def test_config_has_sar_correlation_scoring_enabled(self):
         """Config class should have SAR_CORRELATION_SCORING_ENABLED field."""
         from app.config import Settings
+
         s = Settings(DATABASE_URL="sqlite:///test.db")
         assert hasattr(s, "SAR_CORRELATION_SCORING_ENABLED")
         assert s.SAR_CORRELATION_SCORING_ENABLED is True
@@ -413,13 +436,16 @@ class TestFeatureFlags:
 
 # ── Pipeline Wiring Tests ────────────────────────────────────────────────────
 
+
 class TestPipelineWiring:
     """Verify SAR correlation step is wired into the discovery pipeline."""
 
     def test_sar_correlation_step_in_pipeline_source(self):
         """The SAR correlation step should be present in dark_vessel_discovery.py."""
         import inspect
+
         from app.modules import dark_vessel_discovery
+
         source = inspect.getsource(dark_vessel_discovery)
         assert "sar_correlation" in source
         assert "correlate_sar_detections" in source
@@ -427,12 +453,15 @@ class TestPipelineWiring:
     def test_sar_correlation_gated_by_flag(self):
         """The pipeline step should be gated by SAR_CORRELATION_ENABLED."""
         import inspect
+
         from app.modules import dark_vessel_discovery
+
         source = inspect.getsource(dark_vessel_discovery)
         assert "SAR_CORRELATION_ENABLED" in source
 
 
 # ── Empty / Edge Case Tests ──────────────────────────────────────────────────
+
 
 class TestEdgeCases:
     """Edge cases for SAR correlation."""

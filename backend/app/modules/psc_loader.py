@@ -20,6 +20,7 @@ Additional MOU research (2026-03):
 If any of these MOUs publish structured data in the future, add a loader
 following the load_psc_ftm() or load_emsa_bans() patterns above.
 """
+
 from __future__ import annotations
 
 import json
@@ -216,11 +217,7 @@ def load_psc_ftm(
             name = _extract_name_from_ftm(entity)
             if name:
                 # Fuzzy name match: exact case-insensitive match only
-                vessel = (
-                    db.query(Vessel)
-                    .filter(Vessel.name.ilike(name))
-                    .first()
-                )
+                vessel = db.query(Vessel).filter(Vessel.name.ilike(name)).first()
 
         if vessel is None:
             stats["skipped"] += 1

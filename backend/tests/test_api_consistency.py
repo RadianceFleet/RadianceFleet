@@ -7,9 +7,9 @@ Covers:
 - Pagination params (skip/limit) work correctly
 - Default pagination values work
 """
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Merged Vessel Response Consistency
@@ -34,7 +34,7 @@ class TestMergedVesselResponse:
         vessel.flag_risk_category = MagicMock(value="high")
         vessel.pi_coverage_status = MagicMock(value="unknown")
         vessel.psc_detained_last_12m = False
-        vessel.mmsi_first_seen_utc = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        vessel.mmsi_first_seen_utc = datetime(2020, 1, 1, tzinfo=UTC)
         vessel.vessel_laid_up_30d = False
         vessel.vessel_laid_up_60d = False
         vessel.vessel_laid_up_in_sts_zone = False

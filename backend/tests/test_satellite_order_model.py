@@ -1,9 +1,10 @@
 """Tests for SatelliteOrder and SatelliteOrderLog models."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
@@ -129,9 +130,11 @@ def test_order_with_cost_and_scene_urls(db):
         cost_confirmed=True,
         resolution_m=3.0,
         product_type="analytic",
-        scene_urls_json={"urls": ["https://example.com/scene1.tif", "https://example.com/scene2.tif"]},
-        time_window_start=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        time_window_end=datetime(2026, 1, 15, tzinfo=timezone.utc),
+        scene_urls_json={
+            "urls": ["https://example.com/scene1.tif", "https://example.com/scene2.tif"]
+        },
+        time_window_start=datetime(2026, 1, 1, tzinfo=UTC),
+        time_window_end=datetime(2026, 1, 15, tzinfo=UTC),
     )
     db.add(order)
     db.commit()

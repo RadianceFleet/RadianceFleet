@@ -1,4 +1,5 @@
 """Ground truth CSV loader — imports known shadow fleet / clean vessel lists."""
+
 from __future__ import annotations
 
 import csv
@@ -81,12 +82,16 @@ def load_kse_csv(db: Session, csv_path: str) -> int:
 
 def load_ofac_sdn_csv(db: Session, csv_path: str) -> int:
     """Load OFAC SDN sanctioned vessels CSV."""
-    return _load_csv(db, csv_path, source="OFAC_SDN", expected_band="critical", is_shadow_fleet=True)
+    return _load_csv(
+        db, csv_path, source="OFAC_SDN", expected_band="critical", is_shadow_fleet=True
+    )
 
 
 def load_clean_vessels_csv(db: Session, csv_path: str) -> int:
     """Load clean baseline vessels CSV."""
-    return _load_csv(db, csv_path, source="CLEAN_BASELINE", expected_band="low", is_shadow_fleet=False)
+    return _load_csv(
+        db, csv_path, source="CLEAN_BASELINE", expected_band="low", is_shadow_fleet=False
+    )
 
 
 def link_ground_truth(db: Session) -> int:

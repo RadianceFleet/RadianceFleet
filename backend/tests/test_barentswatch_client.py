@@ -1,10 +1,10 @@
 """Tests for BarentsWatch AIS API client."""
+
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from datetime import date, timedelta
+from unittest.mock import MagicMock, patch
 
-import pytest
 from sqlalchemy.orm import Session
 
 
@@ -35,7 +35,6 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_token_request(self):
         """OAuth token request has correct params."""
-        import httpx
 
         mock_response = MagicMock()
         mock_response.json.return_value = {"access_token": "test-token"}
@@ -49,6 +48,7 @@ class TestBarentsWatchClient:
             mock_client_cls.return_value = mock_client
 
             from app.modules.barentswatch_client import get_barentswatch_token
+
             token = get_barentswatch_token(
                 client_id="test-id",
                 client_secret="test-secret",
@@ -83,8 +83,10 @@ class TestBarentsWatchClient:
                 mock_client_cls.return_value = mock_client
 
                 from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
                 result = fetch_barentswatch_tracks(
-                    db, token="test-token",
+                    db,
+                    token="test-token",
                 )
                 assert result["api_calls"] >= 1
 
@@ -108,9 +110,12 @@ class TestBarentsWatchClient:
                 mock_client_cls.return_value = mock_client
 
                 from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
                 old_date = date.today() - timedelta(days=30)
                 result = fetch_barentswatch_tracks(
-                    db, start_date=old_date, token="test-token",
+                    db,
+                    start_date=old_date,
+                    token="test-token",
                 )
                 # Should not error, just clamp
                 assert result["errors"] == 0
@@ -121,6 +126,7 @@ class TestBarentsWatchClient:
         with patch("app.modules.barentswatch_client.settings") as mock_settings:
             mock_settings.BARENTSWATCH_ENABLED = False
             from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
             result = fetch_barentswatch_tracks(db)
             assert result["points_imported"] == 0
             assert result["api_calls"] == 0
@@ -134,6 +140,7 @@ class TestBarentsWatchClient:
             mock_settings.BARENTSWATCH_CLIENT_SECRET = ""
 
             from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
             # No token and empty credentials -> error
             result = fetch_barentswatch_tracks(db)
             assert result["errors"] >= 1
@@ -158,6 +165,7 @@ class TestBarentsWatchClient:
                 mock_client_cls.return_value = mock_client
 
                 from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
                 result = fetch_barentswatch_tracks(db, token="test-token")
                 assert result["points_imported"] == 0
                 assert result["vessels_seen"] == 0
@@ -184,6 +192,7 @@ class TestBarentsWatchClient:
                 mock_client_cls.return_value = mock_client
 
                 from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
                 result = fetch_barentswatch_tracks(
                     db,
                     mmsis=["257000001", "257000002"],
@@ -215,7 +224,8 @@ class TestBarentsWatchClient:
                 mock_client_cls.return_value = mock_client
 
                 from app.modules.barentswatch_client import fetch_barentswatch_tracks
-                result = fetch_barentswatch_tracks(db, token="test-token")
+
+                fetch_barentswatch_tracks(db, token="test-token")
                 # db.add should have been called (vessel + point)
                 assert db.add.called
 
@@ -259,6 +269,7 @@ class TestBarentsWatchClient:
                 mock_client_cls.return_value = mock_client
 
                 from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
                 result = fetch_barentswatch_tracks(db, token="test-token")
                 # Point already exists so should not be added again
                 # (exact behavior depends on mock setup)
@@ -270,6 +281,7 @@ class TestBarentsWatchClient:
         with patch("app.modules.barentswatch_client.settings") as mock_settings:
             mock_settings.BARENTSWATCH_ENABLED = False
             from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
             result = fetch_barentswatch_tracks(db)
             expected_keys = {"points_imported", "vessels_seen", "api_calls", "errors"}
             assert expected_keys == set(result.keys())

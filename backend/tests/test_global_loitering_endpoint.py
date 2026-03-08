@@ -1,11 +1,12 @@
 """Tests for GET /loitering (global) endpoint."""
-import pytest
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 
-def _make_loitering_event(loiter_id=1, vessel_id=1, mean_lat=25.0, mean_lon=55.0,
-                          duration_hours=12.0, corridor_id=1):
+def _make_loitering_event(
+    loiter_id=1, vessel_id=1, mean_lat=25.0, mean_lon=55.0, duration_hours=12.0, corridor_id=1
+):
     e = MagicMock()
     e.loiter_id = loiter_id
     e.vessel_id = vessel_id
@@ -13,7 +14,7 @@ def _make_loitering_event(loiter_id=1, vessel_id=1, mean_lat=25.0, mean_lon=55.0
     e.mean_lon = mean_lon
     e.duration_hours = duration_hours
     e.corridor_id = corridor_id
-    e.start_time_utc = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    e.start_time_utc = datetime(2025, 6, 1, tzinfo=UTC)
     e.median_sog_kn = 0.5
     return e
 

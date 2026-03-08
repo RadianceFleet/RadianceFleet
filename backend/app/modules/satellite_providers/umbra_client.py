@@ -7,12 +7,13 @@ STAC v2 catalog search. SAR imagery — cloud cover is not applicable.
 IMPORTANT: Umbra enforces a 50 token requests/24h limit.
 Token TTL is 24h; we cache aggressively with a 120s safety margin.
 """
+
 from __future__ import annotations
 
 import logging
 import time as _time
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 from shapely import wkt as shapely_wkt
@@ -66,8 +67,7 @@ def _get_access_token(
     secret = client_secret or settings.UMBRA_API_KEY
     if not cid or not secret:
         raise ValueError(
-            "UMBRA_CLIENT_ID and UMBRA_API_KEY must be set. "
-            "Register at https://canopy.umbra.space/"
+            "UMBRA_CLIENT_ID and UMBRA_API_KEY must be set. Register at https://canopy.umbra.space/"
         )
 
     with httpx.Client(timeout=_TIMEOUT) as client:
@@ -127,11 +127,9 @@ class UmbraProvider(SatelliteProvider):
     def name(self) -> str:
         return "umbra"
 
-    def _headers(self, token: Optional[str] = None) -> dict[str, str]:
+    def _headers(self, token: str | None = None) -> dict[str, str]:
         if token is None:
-            token = _get_access_token(
-                client_id=self._client_id, client_secret=self._client_secret
-            )
+            token = _get_access_token(client_id=self._client_id, client_secret=self._client_secret)
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     def _request_with_retry_on_401(
@@ -142,9 +140,7 @@ class UmbraProvider(SatelliteProvider):
         **kwargs: Any,
     ) -> httpx.Response:
         """Make a request, refreshing the token on 401."""
-        token = _get_access_token(
-            client_id=self._client_id, client_secret=self._client_secret
-        )
+        token = _get_access_token(client_id=self._client_id, client_secret=self._client_secret)
         kwargs["headers"] = self._headers(token)
 
         request_fn = getattr(client, method)
@@ -200,20 +196,16 @@ class UmbraProvider(SatelliteProvider):
 
         results: list[ArchiveSearchResult] = []
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = self._request_with_retry_on_401(
-                "post", _STAC_URL, client, json=stac_body
-            )
+            resp = self._request_with_retry_on_401("post", _STAC_URL, client, json=stac_body)
             data = resp.json()
 
             for feature in data.get("features", []):
                 props = feature.get("properties", {})
                 acquired_str = props.get("datetime", "")
                 try:
-                    acquired_at = datetime.fromisoformat(
-                        acquired_str.replace("Z", "+00:00")
-                    )
+                    acquired_at = datetime.fromisoformat(acquired_str.replace("Z", "+00:00"))
                 except (ValueError, AttributeError):
-                    acquired_at = datetime.now(timezone.utc)
+                    acquired_at = datetime.now(UTC)
 
                 # Convert feature geometry to WKT
                 feat_geom = feature.get("geometry")
@@ -263,9 +255,7 @@ class UmbraProvider(SatelliteProvider):
         }
 
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = self._request_with_retry_on_401(
-                "post", _TASKING_URL, client, json=task_body
-            )
+            resp = self._request_with_retry_on_401("post", _TASKING_URL, client, json=task_body)
             data = resp.json()
 
         umbra_status = data.get("status", "SUBMITTED")

@@ -1,17 +1,18 @@
 """Health check endpoints."""
+
 from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.config import settings
 from app.api._helpers import limiter
+from app.config import settings
+from app.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,6 @@ router = APIRouter()
 def health_check(db: Session = Depends(get_db)):
     """Health check with DB latency measurement."""
     from sqlalchemy import text
-    from app.config import settings
 
     t0 = time.time()
     try:
@@ -47,29 +47,35 @@ def health_check(db: Session = Depends(get_db)):
 @limiter.exempt
 def get_data_freshness(db: Session = Depends(get_db)):
     """Data freshness monitoring -- reports AIS data staleness."""
-    from app.models.vessel import Vessel
-    from app.models.vessel_watchlist import VesselWatchlist
     from app.models.ais_point import AISPoint
     from app.models.gap_event import AISGapEvent as _GapEvent
+    from app.models.vessel import Vessel
+    from app.models.vessel_watchlist import VesselWatchlist
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     latest = db.query(func.max(Vessel.last_ais_received_utc)).scalar()
 
     one_hour_ago = now - timedelta(hours=1)
     twenty_four_hours_ago = now - timedelta(hours=24)
 
-    vessels_1h = db.query(func.count(Vessel.vessel_id)).filter(
-        Vessel.last_ais_received_utc >= one_hour_ago
-    ).scalar() or 0
+    vessels_1h = (
+        db.query(func.count(Vessel.vessel_id))
+        .filter(Vessel.last_ais_received_utc >= one_hour_ago)
+        .scalar()
+        or 0
+    )
 
-    vessels_24h = db.query(func.count(Vessel.vessel_id)).filter(
-        Vessel.last_ais_received_utc >= twenty_four_hours_ago
-    ).scalar() or 0
+    vessels_24h = (
+        db.query(func.count(Vessel.vessel_id))
+        .filter(Vessel.last_ais_received_utc >= twenty_four_hours_ago)
+        .scalar()
+        or 0
+    )
 
     staleness_minutes = None
     if latest:
-        staleness_minutes = int((now - latest.replace(tzinfo=timezone.utc)).total_seconds() / 60)
+        staleness_minutes = int((now - latest.replace(tzinfo=UTC)).total_seconds() / 60)
 
     # Count watchlisted vessels that have neither a gap score nor a stub score
     active_watchlist_ids = (
@@ -79,13 +85,18 @@ def get_data_freshness(db: Session = Depends(get_db)):
     )
     vessels_with_ais_ids = db.query(AISPoint.vessel_id).distinct()
     vessels_with_gaps_ids = db.query(_GapEvent.vessel_id).distinct()
-    watchlist_stubs_unscored = db.query(func.count(Vessel.vessel_id)).filter(
-        Vessel.vessel_id.in_(active_watchlist_ids),
-        Vessel.vessel_id.notin_(vessels_with_ais_ids),
-        Vessel.vessel_id.notin_(vessels_with_gaps_ids),
-        Vessel.merged_into_vessel_id.is_(None),
-        Vessel.watchlist_stub_score.is_(None),
-    ).scalar() or 0
+    watchlist_stubs_unscored = (
+        db.query(func.count(Vessel.vessel_id))
+        .filter(
+            Vessel.vessel_id.in_(active_watchlist_ids),
+            Vessel.vessel_id.notin_(vessels_with_ais_ids),
+            Vessel.vessel_id.notin_(vessels_with_gaps_ids),
+            Vessel.merged_into_vessel_id.is_(None),
+            Vessel.watchlist_stub_score.is_(None),
+        )
+        .scalar()
+        or 0
+    )
 
     return {
         "latest_ais_utc": latest.isoformat() if latest else None,
@@ -110,15 +121,20 @@ def get_collection_status(
     from app.models.ais_point import AISPoint
     from app.models.vessel import Vessel
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=days)
 
     # Total vessels
     total_vessels = db.query(func.count(Vessel.vessel_id)).scalar() or 0
-    vessels_with_imo = db.query(func.count(Vessel.vessel_id)).filter(
-        Vessel.imo.isnot(None),
-        Vessel.imo != "",
-    ).scalar() or 0
+    vessels_with_imo = (
+        db.query(func.count(Vessel.vessel_id))
+        .filter(
+            Vessel.imo.isnot(None),
+            Vessel.imo != "",
+        )
+        .scalar()
+        or 0
+    )
 
     # Total AIS points and density
     total_points = db.query(func.count(AISPoint.ais_point_id)).scalar() or 0
@@ -126,12 +142,22 @@ def get_collection_status(
 
     # Points added in last 24h and last N days
     one_day_ago = now - timedelta(hours=24)
-    points_last_24h = db.query(func.count(AISPoint.ais_point_id)).filter(
-        AISPoint.timestamp_utc >= one_day_ago,
-    ).scalar() or 0
-    points_last_n_days = db.query(func.count(AISPoint.ais_point_id)).filter(
-        AISPoint.timestamp_utc >= cutoff,
-    ).scalar() or 0
+    points_last_24h = (
+        db.query(func.count(AISPoint.ais_point_id))
+        .filter(
+            AISPoint.timestamp_utc >= one_day_ago,
+        )
+        .scalar()
+        or 0
+    )
+    points_last_n_days = (
+        db.query(func.count(AISPoint.ais_point_id))
+        .filter(
+            AISPoint.timestamp_utc >= cutoff,
+        )
+        .scalar()
+        or 0
+    )
 
     # Per-source breakdown
     per_source_breakdown = {}
@@ -141,9 +167,7 @@ def get_collection_status(
             .group_by(AISPoint.source)
             .all()
         )
-        per_source_breakdown = {
-            (row[0] or "unknown"): row[1] for row in source_rows
-        }
+        per_source_breakdown = {(row[0] or "unknown"): row[1] for row in source_rows}
     except Exception as e:
         logger.debug("Per-source AIS breakdown query failed: %s", e)
 
@@ -151,6 +175,7 @@ def get_collection_status(
     collection_runs = []
     try:
         from app.models.collection_run import CollectionRun
+
         runs = (
             db.query(CollectionRun)
             .filter(CollectionRun.started_at >= cutoff)
@@ -163,7 +188,9 @@ def get_collection_status(
                 "run_id": r.collection_run_id,
                 "source": getattr(r, "source", None),
                 "started_utc": r.started_at.isoformat() if r.started_at else None,
-                "finished_utc": r.finished_at.isoformat() if getattr(r, "finished_at", None) else None,
+                "finished_utc": r.finished_at.isoformat()
+                if getattr(r, "finished_at", None)
+                else None,
                 "points_imported": getattr(r, "points_imported", None),
                 "status": getattr(r, "status", None),
             }
@@ -176,6 +203,7 @@ def get_collection_status(
     merge_readiness = {}
     try:
         from app.modules.identity_resolver import diagnose_merge_readiness
+
         merge_readiness = diagnose_merge_readiness(db)
     except Exception as e:
         logger.debug("Merge readiness diagnostic failed: %s", e)

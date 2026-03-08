@@ -7,14 +7,14 @@ Format varies by year:
   - ≤2024: ZIP archives containing CSV (AIS_{YYYY}_{MM}_{DD}.zip)
   - 2025+: Zstandard-compressed CSV (ais-{YYYY}-{MM}-{DD}.csv.zst)
 """
+
 from __future__ import annotations
 
 import csv
 import io
 import logging
-import tempfile
 import zipfile
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +25,9 @@ from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
-NOAA_BASE_URL = getattr(settings, "NOAA_BASE_URL", "https://coast.noaa.gov/htdata/CMSP/AISDataHandler")
+NOAA_BASE_URL = getattr(
+    settings, "NOAA_BASE_URL", "https://coast.noaa.gov/htdata/CMSP/AISDataHandler"
+)
 _TIMEOUT = 300.0  # 5 min for large files
 _BATCH_SIZE = 5000
 
@@ -87,8 +89,6 @@ def download_noaa_file(target_date: date, output_dir: Path | None = None) -> Pat
 
     logger.info("Downloading NOAA AIS data: %s", url)
 
-    from app.utils.http_retry import retry_request
-
     with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
         with breakers["noaa"].call(client.stream, "GET", url) as resp:
             resp.raise_for_status()
@@ -109,6 +109,7 @@ def download_noaa_file(target_date: date, output_dir: Path | None = None) -> Pat
     elif filename.endswith(".csv.zst"):
         try:
             import zstandard as zstd
+
             dctx = zstd.ZstdDecompressor()
             with open(tmp_path, "rb") as f:
                 # Read first 1KB to validate
@@ -142,6 +143,7 @@ def _decompress_csv_lines(filepath: Path):
 
     elif name.endswith(".csv.zst"):
         import zstandard as zstd
+
         dctx = zstd.ZstdDecompressor()
         with open(filepath, "rb") as f:
             reader = dctx.stream_reader(f)
@@ -168,8 +170,8 @@ def import_noaa_file(
 
     Returns import statistics dict.
     """
+    from app.modules.ingest import _create_ais_point, _get_or_create_vessel
     from app.modules.normalize import normalize_noaa_row, validate_ais_row
-    from app.modules.ingest import _get_or_create_vessel, _create_ais_point
 
     stats: dict[str, int] = {
         "total_rows": 0,
@@ -236,7 +238,11 @@ def import_noaa_file(
         if batch_count % _BATCH_SIZE == 0:
             db.commit()
             if stats["total_rows"] % 50000 == 0:
-                logger.info("NOAA import progress: %d rows processed, %d accepted", stats["total_rows"], stats["accepted"])
+                logger.info(
+                    "NOAA import progress: %d rows processed, %d accepted",
+                    stats["total_rows"],
+                    stats["accepted"],
+                )
 
     db.commit()
     logger.info("NOAA import complete: %s", stats)
@@ -263,12 +269,12 @@ def fetch_and_import_noaa(
         "total_rows": 0,
     }
 
-    from datetime import datetime as _dt, timezone as _tz
+    from datetime import datetime as _dt
 
     current = start_date
     while current <= end_date:
         stats["dates_attempted"] += 1
-        day_started_at = _dt.now(_tz.utc)
+        day_started_at = _dt.now(UTC)
         try:
             filepath = download_noaa_file(current, output_dir=output_dir)
             stats["dates_downloaded"] += 1
@@ -281,14 +287,18 @@ def fetch_and_import_noaa(
                 # Record coverage window — completed
                 try:
                     from app.modules.coverage_tracker import record_coverage_window
+
                     record_coverage_window(
-                        db, "noaa", current, current,
+                        db,
+                        "noaa",
+                        current,
+                        current,
                         status="completed",
                         points_imported=result["accepted"],
                         vessels_queried=0,
                         errors=result.get("rejected", 0),
                         started_at=day_started_at,
-                        finished_at=_dt.now(_tz.utc),
+                        finished_at=_dt.now(UTC),
                     )
                     db.commit()
                 except Exception as cov_exc:
@@ -299,14 +309,18 @@ def fetch_and_import_noaa(
             # Record coverage window — failed
             try:
                 from app.modules.coverage_tracker import record_coverage_window
+
                 record_coverage_window(
-                    db, "noaa", current, current,
+                    db,
+                    "noaa",
+                    current,
+                    current,
                     status="failed",
                     points_imported=0,
                     vessels_queried=0,
                     errors=1,
                     started_at=day_started_at,
-                    finished_at=_dt.now(_tz.utc),
+                    finished_at=_dt.now(UTC),
                     notes=str(exc)[:500],
                 )
                 db.commit()

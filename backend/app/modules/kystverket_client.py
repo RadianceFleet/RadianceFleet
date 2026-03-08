@@ -5,11 +5,12 @@ Uses pyais for decoding. Covers Barents Sea + Norwegian Sea -- the Murmansk expo
 
 Reference: https://www.kystverket.no/en/navigation-and-monitoring/ais/access-to-ais-data/
 """
+
 from __future__ import annotations
 
 import logging
 import socket
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -49,16 +50,12 @@ def stream_kystverket(
         logger.error("pyais not installed. Run: uv pip install pyais>=2.5.0")
         return {"points_ingested": 0, "vessels_seen": 0, "errors": 1}
 
-    from app.models.ais_point import AISPoint
-    from app.models.vessel import Vessel
     from app.modules.normalize import is_non_vessel_mmsi
-    from app.utils.vessel_identity import flag_to_risk_category, mmsi_to_flag
-    from sqlalchemy.exc import IntegrityError
 
     points_ingested = 0
     vessels_seen: set[str] = set()
     errors = 0
-    deadline = datetime.now(timezone.utc).timestamp() + duration_seconds
+    deadline = datetime.now(UTC).timestamp() + duration_seconds
 
     try:
         logger.info(
@@ -81,7 +78,7 @@ def stream_kystverket(
         batch_size = 50
         static_cache: dict[str, dict] = {}  # mmsi -> {destination, draught} from Type 5
 
-        while datetime.now(timezone.utc).timestamp() < deadline:
+        while datetime.now(UTC).timestamp() < deadline:
             try:
                 data = sock.recv(4096)
                 if not data:
@@ -114,7 +111,9 @@ def stream_kystverket(
                                     "imo": str(raw_imo) if raw_imo and int(raw_imo) > 0 else None,
                                     "callsign": (decoded.get("callsign") or "").strip() or None,
                                     "vessel_name": (decoded.get("shipname") or "").strip() or None,
-                                    "vessel_type": _ais_ship_type_to_string(decoded.get("ship_type", 0)),
+                                    "vessel_type": _ais_ship_type_to_string(
+                                        decoded.get("ship_type", 0)
+                                    ),
                                 }
                                 continue
 
@@ -163,7 +162,7 @@ def stream_kystverket(
                     except Exception:
                         errors += 1
 
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except Exception as e:
                 logger.warning("Kystverket stream error: %s", e)
@@ -201,10 +200,11 @@ def stream_kystverket(
 
 def _ingest_point(db: Session, pt: dict) -> None:
     """Ingest a single AIS point, creating the vessel if needed."""
+    from sqlalchemy.exc import IntegrityError
+
     from app.models.ais_point import AISPoint
     from app.models.vessel import Vessel
     from app.utils.vessel_identity import flag_to_risk_category, mmsi_to_flag
-    from sqlalchemy.exc import IntegrityError
 
     mmsi = pt["mmsi"]
     vessel = db.query(Vessel).filter(Vessel.mmsi == mmsi).first()
@@ -274,6 +274,7 @@ def _ingest_point(db: Session, pt: dict) -> None:
     # Dual-write to AIS observations for cross-receiver detection
     try:
         from app.models.ais_observation import AISObservation
+
         obs = AISObservation(
             mmsi=pt["mmsi"],
             timestamp_utc=pt["timestamp_utc"],
@@ -299,10 +300,10 @@ def _ais_ship_type_to_string(ship_type: int) -> str | None:
         return None
     # Major categories (first digit = X0-X9 range)
     _CATEGORIES = {
-        2: "WIG",           # Wing-In-Ground
-        3: "Vessel",        # Fishing, towing, dredging, diving, military, sailing, pleasure
-        4: "HSC",           # High Speed Craft
-        5: "Special",       # Pilot, SAR, tug, port tender, anti-pollution, law enforcement
+        2: "WIG",  # Wing-In-Ground
+        3: "Vessel",  # Fishing, towing, dredging, diving, military, sailing, pleasure
+        4: "HSC",  # High Speed Craft
+        5: "Special",  # Pilot, SAR, tug, port tender, anti-pollution, law enforcement
         6: "Passenger",
         7: "Cargo",
         8: "Tanker",

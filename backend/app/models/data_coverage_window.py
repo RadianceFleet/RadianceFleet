@@ -1,11 +1,12 @@
 """DataCoverageWindow entity — tracks which date ranges have been imported per source."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional
 
-from sqlalchemy import Integer, String, Date, DateTime, Text, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.models.base import Base
 
 
@@ -22,8 +23,8 @@ class DataCoverageWindow(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)  # completed/failed/partial
     points_imported: Mapped[int] = mapped_column(Integer, default=0)
     vessels_queried: Mapped[int] = mapped_column(Integer, default=0)
-    vessels_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    vessels_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     errors: Mapped[int] = mapped_column(Integer, default=0)
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)

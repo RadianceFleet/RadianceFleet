@@ -5,61 +5,40 @@ This module links "went dark" vessel A to "newly appeared" vessel B using
 speed-feasibility matching, then merges all FK records under a single
 canonical vessel_id.
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
 
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.ais_point import AISPoint
-from app.models.audit_log import AuditLog
 from app.models.gap_event import AISGapEvent
 from app.models.loitering_event import LoiteringEvent
-from app.models.merge_candidate import MergeCandidate
 from app.models.merge_operation import MergeOperation
 from app.models.port_call import PortCall
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.sts_transfer import StsTransferEvent
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
-from app.models.base import MergeCandidateStatusEnum
-from app.utils.geo import haversine_nm
-from app.utils.vessel_identity import validate_imo_checksum
-
 from app.modules.merge_candidates import *  # noqa: F401,F403
-from app.modules.merge_execution import *  # noqa: F401,F403
-from app.modules.merge_candidates import (
+from app.modules.merge_candidates import (  # noqa: F401
+    _build_encounter_cache,
+    _build_history_cache,
     _find_dark_vessels,
     _find_new_vessels,
-    _build_history_cache,
-    _build_encounter_cache,
     _get_historical_values,
     _get_recent_change_count,
-    _score_candidate,
     _has_overlapping_ais,
-    _count_nearby_vessels,
-    detect_merge_candidates,
-    detect_merge_chains,
-    extended_merge_pass,
-    recheck_merges_for_imo_fraud,
+    _score_candidate,
 )
-from app.modules.merge_execution import (
-    execute_merge,
-    reverse_merge,
-    _annotate_evidence_cards,
-    _merge_watchlist,
-    _merge_sts_events,
-    _merge_vessel_history,
-    _reassign_simple_fks,
-    _reassign_ais_points,
-    _update_canonical_metadata,
-    _record_merge_history,
-    _rescore_vessel,
-)
+from app.modules.merge_execution import *  # noqa: F401,F403
+from app.modules.merge_execution import _rescore_vessel  # noqa: F401
+from app.utils.geo import haversine_nm
+from app.utils.vessel_identity import validate_imo_checksum
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +46,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Canonical resolution
 # ---------------------------------------------------------------------------
+
 
 def resolve_canonical(vessel_id: int, db: Session) -> int:
     """Walk merge chain to ultimate canonical vessel. Max 20 hops, cycle detection."""
@@ -86,6 +66,7 @@ def resolve_canonical(vessel_id: int, db: Session) -> int:
 # ---------------------------------------------------------------------------
 # Russian port call check (extracted from risk_scoring for reuse)
 # ---------------------------------------------------------------------------
+
 
 def had_russian_port_call(db: Session, vessel_id: int, before: datetime, days: int = 30) -> bool:
     """Check if vessel had AIS positions near a Russian oil terminal."""
@@ -110,6 +91,7 @@ def had_russian_port_call(db: Session, vessel_id: int, before: datetime, days: i
         for terminal in terminals:
             try:
                 from app.utils.geo import load_geometry
+
                 port_shape = load_geometry(terminal.geometry)
                 if port_shape is None:
                     continue
@@ -126,6 +108,7 @@ def had_russian_port_call(db: Session, vessel_id: int, before: datetime, days: i
 # ---------------------------------------------------------------------------
 # Merge readiness diagnostic
 # ---------------------------------------------------------------------------
+
 
 def diagnose_merge_readiness(db: Session) -> dict:
     """Read-only diagnostic: check whether the database has enough data for
@@ -146,10 +129,7 @@ def diagnose_merge_readiness(db: Session) -> dict:
     ) or 0
 
     # Vessels with at least one gap event
-    vessels_with_gaps = (
-        db.query(func.count(func.distinct(AISGapEvent.vessel_id)))
-        .scalar()
-    ) or 0
+    vessels_with_gaps = (db.query(func.count(func.distinct(AISGapEvent.vessel_id))).scalar()) or 0
 
     # Dark candidates (gap events + last AIS > 2h ago)
     dark_vessels = _find_dark_vessels(db, two_h_ago)
@@ -160,9 +140,7 @@ def diagnose_merge_readiness(db: Session) -> dict:
     new_candidates = len(new_vessels)
 
     # Average AIS points per vessel
-    total_points = (
-        db.query(func.count(AISPoint.ais_point_id)).scalar()
-    ) or 0
+    total_points = (db.query(func.count(AISPoint.ais_point_id)).scalar()) or 0
     avg_points = total_points / total_vessels if total_vessels > 0 else 0.0
 
     # Build issues list
@@ -170,9 +148,7 @@ def diagnose_merge_readiness(db: Session) -> dict:
     if vessels_with_gaps == 0:
         issues.append("No vessels have gap events")
     if dark_candidates == 0:
-        issues.append(
-            "No dark candidates found (need vessels with gap events + last AIS >2h ago)"
-        )
+        issues.append("No dark candidates found (need vessels with gap events + last AIS >2h ago)")
     if new_candidates == 0:
         issues.append(
             f"No new vessel candidates found (need vessels with mmsi_first_seen within {max_gap_days} days)"
@@ -202,6 +178,7 @@ def diagnose_merge_readiness(db: Session) -> dict:
 # Zombie IMO detection
 # ---------------------------------------------------------------------------
 
+
 def detect_zombie_imos(db: Session) -> list[dict]:
     """Find vessels transmitting IMOs that fail checksum validation or
     are potentially scrapped (detected via GFW vessel info).
@@ -220,12 +197,14 @@ def detect_zombie_imos(db: Session) -> list[dict]:
 
     for v in vessels:
         if not validate_imo_checksum(v.imo):
-            results.append({
-                "vessel_id": v.vessel_id,
-                "mmsi": v.mmsi,
-                "imo": v.imo,
-                "issue": "imo_fabricated",
-            })
+            results.append(
+                {
+                    "vessel_id": v.vessel_id,
+                    "mmsi": v.mmsi,
+                    "imo": v.imo,
+                    "issue": "imo_fabricated",
+                }
+            )
 
     return results
 
@@ -234,9 +213,14 @@ def detect_zombie_imos(db: Session) -> list[dict]:
 # Vessel timeline (query-time aggregation)
 # ---------------------------------------------------------------------------
 
+
 def get_vessel_timeline(
-    db: Session, vessel_id: int, limit: int = 100, offset: int = 0,
-    start_dt: Optional[datetime] = None, end_dt: Optional[datetime] = None,
+    db: Session,
+    vessel_id: int,
+    limit: int = 100,
+    offset: int = 0,
+    start_dt: datetime | None = None,
+    end_dt: datetime | None = None,
 ) -> list[dict]:
     """Aggregate events from multiple tables into a chronological timeline."""
     events: list[dict] = []
@@ -248,13 +232,20 @@ def get_vessel_timeline(
     if end_dt is not None:
         q1 = q1.filter(VesselHistory.observed_at <= end_dt)
     for h in q1.all():
-        events.append({
-            "event_type": "identity_change",
-            "timestamp": h.observed_at.isoformat() if h.observed_at else None,
-            "summary": f"{h.field_changed}: {h.old_value} → {h.new_value}",
-            "details": {"field": h.field_changed, "old": h.old_value, "new": h.new_value, "source": h.source},
-            "related_entity_id": h.vessel_history_id,
-        })
+        events.append(
+            {
+                "event_type": "identity_change",
+                "timestamp": h.observed_at.isoformat() if h.observed_at else None,
+                "summary": f"{h.field_changed}: {h.old_value} → {h.new_value}",
+                "details": {
+                    "field": h.field_changed,
+                    "old": h.old_value,
+                    "new": h.new_value,
+                    "source": h.source,
+                },
+                "related_entity_id": h.vessel_history_id,
+            }
+        )
 
     # 2. AISGapEvent
     q2 = db.query(AISGapEvent).filter(AISGapEvent.vessel_id == vessel_id)
@@ -263,13 +254,19 @@ def get_vessel_timeline(
     if end_dt is not None:
         q2 = q2.filter(AISGapEvent.gap_start_utc <= end_dt)
     for g in q2.all():
-        events.append({
-            "event_type": "ais_gap",
-            "timestamp": g.gap_start_utc.isoformat() if g.gap_start_utc else None,
-            "summary": f"AIS gap: {g.duration_minutes}min, score {g.risk_score}",
-            "details": {"duration_minutes": g.duration_minutes, "risk_score": g.risk_score, "status": g.status},
-            "related_entity_id": g.gap_event_id,
-        })
+        events.append(
+            {
+                "event_type": "ais_gap",
+                "timestamp": g.gap_start_utc.isoformat() if g.gap_start_utc else None,
+                "summary": f"AIS gap: {g.duration_minutes}min, score {g.risk_score}",
+                "details": {
+                    "duration_minutes": g.duration_minutes,
+                    "risk_score": g.risk_score,
+                    "status": g.status,
+                },
+                "related_entity_id": g.gap_event_id,
+            }
+        )
 
     # 3. SpoofingAnomaly
     q3 = db.query(SpoofingAnomaly).filter(SpoofingAnomaly.vessel_id == vessel_id)
@@ -278,13 +275,15 @@ def get_vessel_timeline(
     if end_dt is not None:
         q3 = q3.filter(SpoofingAnomaly.start_time_utc <= end_dt)
     for s in q3.all():
-        events.append({
-            "event_type": "spoofing",
-            "timestamp": s.start_time_utc.isoformat() if s.start_time_utc else None,
-            "summary": f"Spoofing: {s.anomaly_type}",
-            "details": {"anomaly_type": s.anomaly_type, "implied_speed_kn": s.implied_speed_kn},
-            "related_entity_id": s.anomaly_id,
-        })
+        events.append(
+            {
+                "event_type": "spoofing",
+                "timestamp": s.start_time_utc.isoformat() if s.start_time_utc else None,
+                "summary": f"Spoofing: {s.anomaly_type}",
+                "details": {"anomaly_type": s.anomaly_type, "implied_speed_kn": s.implied_speed_kn},
+                "related_entity_id": s.anomaly_id,
+            }
+        )
 
     # 4. LoiteringEvent
     q4 = db.query(LoiteringEvent).filter(LoiteringEvent.vessel_id == vessel_id)
@@ -292,14 +291,20 @@ def get_vessel_timeline(
         q4 = q4.filter(LoiteringEvent.start_time_utc >= start_dt)
     if end_dt is not None:
         q4 = q4.filter(LoiteringEvent.start_time_utc <= end_dt)
-    for l in q4.all():
-        events.append({
-            "event_type": "loitering",
-            "timestamp": l.start_time_utc.isoformat() if l.start_time_utc else None,
-            "summary": f"Loitering: {l.duration_hours:.1f}h",
-            "details": {"duration_hours": l.duration_hours, "lat": l.mean_lat, "lon": l.mean_lon},
-            "related_entity_id": l.loiter_id,
-        })
+    for l in q4.all():  # noqa: E741
+        events.append(
+            {
+                "event_type": "loitering",
+                "timestamp": l.start_time_utc.isoformat() if l.start_time_utc else None,
+                "summary": f"Loitering: {l.duration_hours:.1f}h",
+                "details": {
+                    "duration_hours": l.duration_hours,
+                    "lat": l.mean_lat,
+                    "lon": l.mean_lon,
+                },
+                "related_entity_id": l.loiter_id,
+            }
+        )
 
     # 5. StsTransferEvent (as vessel_1 or vessel_2)
     q5 = db.query(StsTransferEvent).filter(
@@ -314,17 +319,19 @@ def get_vessel_timeline(
         q5 = q5.filter(StsTransferEvent.start_time_utc <= end_dt)
     for sts in q5.all():
         partner_id = sts.vessel_2_id if sts.vessel_1_id == vessel_id else sts.vessel_1_id
-        events.append({
-            "event_type": "sts_transfer",
-            "timestamp": sts.start_time_utc.isoformat() if sts.start_time_utc else None,
-            "summary": f"STS with vessel {partner_id}: {sts.duration_minutes}min",
-            "details": {
-                "partner_vessel_id": partner_id,
-                "duration_minutes": sts.duration_minutes,
-                "detection_type": sts.detection_type,
-            },
-            "related_entity_id": sts.sts_id,
-        })
+        events.append(
+            {
+                "event_type": "sts_transfer",
+                "timestamp": sts.start_time_utc.isoformat() if sts.start_time_utc else None,
+                "summary": f"STS with vessel {partner_id}: {sts.duration_minutes}min",
+                "details": {
+                    "partner_vessel_id": partner_id,
+                    "duration_minutes": sts.duration_minutes,
+                    "detection_type": sts.detection_type,
+                },
+                "related_entity_id": sts.sts_id,
+            }
+        )
 
     # 6. PortCall
     q6 = db.query(PortCall).filter(PortCall.vessel_id == vessel_id)
@@ -333,13 +340,18 @@ def get_vessel_timeline(
     if end_dt is not None:
         q6 = q6.filter(PortCall.arrival_utc <= end_dt)
     for pc in q6.all():
-        events.append({
-            "event_type": "port_visit",
-            "timestamp": pc.arrival_utc.isoformat() if pc.arrival_utc else None,
-            "summary": f"Port call at port {pc.port_id}",
-            "details": {"port_id": pc.port_id, "departure": pc.departure_utc.isoformat() if pc.departure_utc else None},
-            "related_entity_id": pc.port_call_id,
-        })
+        events.append(
+            {
+                "event_type": "port_visit",
+                "timestamp": pc.arrival_utc.isoformat() if pc.arrival_utc else None,
+                "summary": f"Port call at port {pc.port_id}",
+                "details": {
+                    "port_id": pc.port_id,
+                    "departure": pc.departure_utc.isoformat() if pc.departure_utc else None,
+                },
+                "related_entity_id": pc.port_call_id,
+            }
+        )
 
     # 7. MergeOperation (involving this vessel as canonical or absorbed)
     q7 = db.query(MergeOperation).filter(
@@ -355,22 +367,25 @@ def get_vessel_timeline(
     for mo in q7.all():
         role = "canonical" if mo.canonical_vessel_id == vessel_id else "absorbed"
         other_id = mo.absorbed_vessel_id if role == "canonical" else mo.canonical_vessel_id
-        events.append({
-            "event_type": "identity_merge",
-            "timestamp": mo.executed_at.isoformat() if mo.executed_at else None,
-            "summary": f"Merge ({role}): vessel {other_id}, by {mo.executed_by}",
-            "details": {"role": role, "other_vessel_id": other_id, "status": mo.status},
-            "related_entity_id": mo.merge_op_id,
-        })
+        events.append(
+            {
+                "event_type": "identity_merge",
+                "timestamp": mo.executed_at.isoformat() if mo.executed_at else None,
+                "summary": f"Merge ({role}): vessel {other_id}, by {mo.executed_by}",
+                "details": {"role": role, "other_vessel_id": other_id, "status": mo.status},
+                "related_entity_id": mo.merge_op_id,
+            }
+        )
 
     # Sort chronologically
     events.sort(key=lambda e: e.get("timestamp") or "")
-    return events[offset:offset + limit]
+    return events[offset : offset + limit]
 
 
 # ---------------------------------------------------------------------------
 # Vessel aliases
 # ---------------------------------------------------------------------------
+
 
 def get_vessel_aliases(db: Session, vessel_id: int) -> list[dict]:
     """Get all MMSIs this vessel has used (via VesselHistory mmsi_absorbed records)."""
@@ -379,12 +394,14 @@ def get_vessel_aliases(db: Session, vessel_id: int) -> list[dict]:
     # Current MMSI
     vessel = db.query(Vessel).get(vessel_id)
     if vessel:
-        aliases.append({
-            "mmsi": vessel.mmsi,
-            "name": vessel.name,
-            "flag": vessel.flag,
-            "status": "current",
-        })
+        aliases.append(
+            {
+                "mmsi": vessel.mmsi,
+                "name": vessel.name,
+                "flag": vessel.flag,
+                "status": "current",
+            }
+        )
 
     # Absorbed MMSIs
     absorbed_records = (
@@ -398,18 +415,16 @@ def get_vessel_aliases(db: Session, vessel_id: int) -> list[dict]:
     )
 
     for record in absorbed_records:
-        absorbed_vessel = (
-            db.query(Vessel)
-            .filter(Vessel.mmsi == record.old_value)
-            .first()
+        absorbed_vessel = db.query(Vessel).filter(Vessel.mmsi == record.old_value).first()
+        aliases.append(
+            {
+                "mmsi": record.old_value,
+                "name": absorbed_vessel.name if absorbed_vessel else None,
+                "flag": absorbed_vessel.flag if absorbed_vessel else None,
+                "status": "absorbed",
+                "absorbed_at": record.observed_at.isoformat() if record.observed_at else None,
+            }
         )
-        aliases.append({
-            "mmsi": record.old_value,
-            "name": absorbed_vessel.name if absorbed_vessel else None,
-            "flag": absorbed_vessel.flag if absorbed_vessel else None,
-            "status": "absorbed",
-            "absorbed_at": record.observed_at.isoformat() if record.observed_at else None,
-        })
 
     return aliases
 
@@ -417,6 +432,7 @@ def get_vessel_aliases(db: Session, vessel_id: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Chain invalidation
 # ---------------------------------------------------------------------------
+
 
 def invalidate_chains_for_rejected_candidate(db: Session, candidate_id: int) -> int:
     """Mark chains as stale when a merge candidate is rejected.

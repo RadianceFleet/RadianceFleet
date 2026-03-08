@@ -4,16 +4,14 @@ Replaces hardcoded `"tanker" in vessel_type.lower()` checks across detection mod
 with a YAML-configurable filter supporting type keywords, DWT threshold, and manual
 include/exclude lists.
 """
+
 from __future__ import annotations
 
-import functools
 import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
-
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +21,9 @@ _FILTER_CONFIG: dict[str, Any] | None = None
 def _load_filter_config() -> dict[str, Any]:
     global _FILTER_CONFIG
     if _FILTER_CONFIG is None:
-        config_path = Path(__file__).resolve().parent.parent.parent.parent / "config" / "vessel_filter.yaml"
+        config_path = (
+            Path(__file__).resolve().parent.parent.parent.parent / "config" / "vessel_filter.yaml"
+        )
         if config_path.exists():
             with open(config_path) as f:
                 _FILTER_CONFIG = yaml.safe_load(f) or {}
@@ -47,7 +47,7 @@ def is_tanker_type(vessel: Any) -> bool:
     cfg = _load_filter_config()
 
     # Manual exclude takes priority
-    mmsi = getattr(vessel, 'mmsi', None)
+    mmsi = getattr(vessel, "mmsi", None)
     exclude_list = cfg.get("manual_exclude_mmsi") or []
     if mmsi and str(mmsi) in [str(m) for m in exclude_list]:
         return False
@@ -58,7 +58,7 @@ def is_tanker_type(vessel: Any) -> bool:
         return True
 
     # Type keyword matching
-    vtype = getattr(vessel, 'vessel_type', None)
+    vtype = getattr(vessel, "vessel_type", None)
     if vtype:
         vtype_lower = vtype.lower()
         keywords = cfg.get("tanker_type_keywords", ["tanker"])
@@ -67,7 +67,7 @@ def is_tanker_type(vessel: Any) -> bool:
                 return True
 
     # DWT fallback
-    dwt = getattr(vessel, 'deadweight', None)
+    dwt = getattr(vessel, "deadweight", None)
     min_dwt = cfg.get("tanker_min_dwt", 20_000)
     if isinstance(dwt, (int, float)) and dwt >= min_dwt:
         return True

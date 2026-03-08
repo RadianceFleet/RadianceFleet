@@ -9,21 +9,21 @@ Tests cover:
 
 All tests are unit-level: no database required.
 """
-import pytest
+
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import yaml
 
-from app.modules.risk_scoring import (
-    compute_gap_score,
-    load_scoring_config,
-    _EXPECTED_SECTIONS,
-    _load_pi_clubs_config,
-    _load_fraudulent_registries_config,
-)
 from app.config import Settings
+from app.modules.risk_scoring import compute_gap_score
+from app.modules.scoring_config import (
+    _EXPECTED_SECTIONS,
+    _load_fraudulent_registries_config,
+    _load_pi_clubs_config,
+    load_scoring_config,
+)
 
 # Resolve config directory relative to this test file (tests/ -> backend/ -> config/)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -178,8 +178,10 @@ class TestPIValidation:
         db = _mock_db_for_pi("Skuld")
 
         mock_s = _settings_patch(PI_VALIDATION_SCORING_ENABLED=True)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config, db=db)
 
         assert "pi_known_fraudulent" not in breakdown
@@ -195,8 +197,10 @@ class TestPIValidation:
         db = _mock_db_for_pi("Shady Marine Insurance Ltd")
 
         mock_s = _settings_patch(PI_VALIDATION_SCORING_ENABLED=True)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config, db=db)
 
         assert "pi_unknown_insurer" in breakdown
@@ -211,8 +215,10 @@ class TestPIValidation:
         db = _mock_db_for_pi("Pacific Maritime Insurance")
 
         mock_s = _settings_patch(PI_VALIDATION_SCORING_ENABLED=True)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config, db=db)
 
         assert "pi_known_fraudulent" in breakdown
@@ -227,8 +233,10 @@ class TestPIValidation:
         db = _mock_db_for_pi(None)
 
         mock_s = _settings_patch(PI_VALIDATION_SCORING_ENABLED=True)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config, db=db)
 
         assert "pi_no_insurer" in breakdown
@@ -243,8 +251,10 @@ class TestPIValidation:
         db = _mock_db_for_pi("Pacific Maritime Insurance")
 
         mock_s = _settings_patch(PI_VALIDATION_SCORING_ENABLED=False)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config, db=db)
 
         assert "pi_known_fraudulent" not in breakdown
@@ -266,8 +276,10 @@ class TestFraudulentRegistry:
         gap = _make_gap(flag="CM")
 
         mock_s = _settings_patch(FRAUDULENT_REGISTRY_SCORING_ENABLED=True)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config)
 
         assert "fraudulent_registry_tier_0" in breakdown
@@ -281,8 +293,10 @@ class TestFraudulentRegistry:
         gap = _make_gap(flag="TG")
 
         mock_s = _settings_patch(FRAUDULENT_REGISTRY_SCORING_ENABLED=True)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config)
 
         assert "fraudulent_registry_tier_1" in breakdown
@@ -296,8 +310,10 @@ class TestFraudulentRegistry:
         gap = _make_gap(flag="NO")
 
         mock_s = _settings_patch(FRAUDULENT_REGISTRY_SCORING_ENABLED=True)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config)
 
         assert "fraudulent_registry_tier_0" not in breakdown
@@ -311,8 +327,10 @@ class TestFraudulentRegistry:
         gap = _make_gap(flag="CM")
 
         mock_s = _settings_patch(FRAUDULENT_REGISTRY_SCORING_ENABLED=False)
-        with patch("app.config.settings", mock_s), \
-             patch("app.modules.risk_scoring.settings", mock_s):
+        with (
+            patch("app.config.settings", mock_s),
+            patch("app.modules.risk_scoring.settings", mock_s),
+        ):
             score, breakdown = compute_gap_score(gap, config)
 
         assert "fraudulent_registry_tier_0" not in breakdown
@@ -373,7 +391,9 @@ class TestYAMLConfigs:
         with open(config_path) as f:
             data = yaml.safe_load(f)
         assert "pi_validation" in data, "Missing pi_validation section in risk_scoring.yaml"
-        assert "fraudulent_registry" in data, "Missing fraudulent_registry section in risk_scoring.yaml"
+        assert "fraudulent_registry" in data, (
+            "Missing fraudulent_registry section in risk_scoring.yaml"
+        )
         # Verify specific keys
         assert data["pi_validation"]["unknown_insurer"] == 25
         assert data["pi_validation"]["known_fraudulent"] == 40
@@ -415,6 +435,7 @@ class TestIntegration:
     def test_pi_clubs_config_loader(self):
         """_load_pi_clubs_config should return parsed YAML data when file exists."""
         import app.modules.scoring_config as sc
+
         sc._PI_CLUBS_CONFIG = None  # Force reload
         config_path = _CONFIG_DIR / "legitimate_pi_clubs.yaml"
         with patch("app.modules.scoring_config.settings") as mock_s:
@@ -426,6 +447,7 @@ class TestIntegration:
     def test_fraudulent_registries_config_loader(self):
         """_load_fraudulent_registries_config should return parsed YAML data when file exists."""
         import app.modules.scoring_config as sc
+
         sc._FRAUDULENT_REGISTRIES_CONFIG = None  # Force reload
         config_path = _CONFIG_DIR / "fraudulent_registries.yaml"
         with patch("app.modules.scoring_config.settings") as mock_s:

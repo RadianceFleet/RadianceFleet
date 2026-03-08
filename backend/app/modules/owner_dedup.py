@@ -3,18 +3,18 @@
 Uses rapidfuzz token_sort_ratio with sorted-first-token bucketing for efficient
 comparisons, then union-find clustering.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Dict, List
 
 from rapidfuzz import fuzz
 
 from app.config import settings
-from app.models.vessel_owner import VesselOwner
 from app.models.owner_cluster import OwnerCluster
 from app.models.owner_cluster_member import OwnerClusterMember
+from app.models.vessel_owner import VesselOwner
 from app.modules.normalize import normalize_owner_name
 
 logger = logging.getLogger(__name__)
@@ -29,12 +29,13 @@ _normalize_owner_name = normalize_owner_name
 # Union-Find
 # ---------------------------------------------------------------------------
 
+
 class _UnionFind:
     """Disjoint-set (union-find) with path compression and union by rank."""
 
     def __init__(self) -> None:
-        self.parent: Dict[int, int] = {}
-        self.rank: Dict[int, int] = {}
+        self.parent: dict[int, int] = {}
+        self.rank: dict[int, int] = {}
 
     def find(self, x: int) -> int:
         if x not in self.parent:
@@ -59,6 +60,7 @@ class _UnionFind:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+
 def run_owner_dedup(db) -> dict:
     """Cluster VesselOwner records by fuzzy name similarity.
 
@@ -68,13 +70,14 @@ def run_owner_dedup(db) -> dict:
         logger.info("Fleet analysis disabled — skipping owner dedup")
         return {"status": "disabled", "clusters_created": 0, "owners_processed": 0}
 
-    owners: List[VesselOwner] = db.query(VesselOwner).all()
+    owners: list[VesselOwner] = db.query(VesselOwner).all()
     if not owners:
         return {"status": "ok", "clusters_created": 0, "owners_processed": 0}
 
     # FK-safe cleanup of existing clusters before re-running
     try:
         from app.models.fleet_alert import FleetAlert
+
         db.query(FleetAlert).filter(FleetAlert.owner_cluster_id.isnot(None)).delete(
             synchronize_session="fetch"
         )
@@ -88,8 +91,8 @@ def run_owner_dedup(db) -> dict:
     # Fix: First-letter bucketing defeats token_sort_ratio because "MARITIME ALPINE"
     # (bucket M) and "ALPINE MARITIME" (bucket A) are never compared.
     # Sorted-first-token: normalize → split → sort → first sorted token as key.
-    norm_map: Dict[int, str] = {}  # owner_id -> normalized name
-    buckets: Dict[str, List[int]] = defaultdict(list)  # bucket_key -> [owner_ids]
+    norm_map: dict[int, str] = {}  # owner_id -> normalized name
+    buckets: dict[str, list[int]] = defaultdict(list)  # bucket_key -> [owner_ids]
 
     for owner in owners:
         norm = normalize_owner_name(owner.owner_name)
@@ -102,7 +105,7 @@ def run_owner_dedup(db) -> dict:
 
     # Pairwise comparison within buckets, union-find clustering
     uf = _UnionFind()
-    similarity_scores: Dict[tuple, float] = {}
+    similarity_scores: dict[tuple, float] = {}
 
     for letter, ids in buckets.items():
         for i in range(len(ids)):
@@ -114,18 +117,18 @@ def run_owner_dedup(db) -> dict:
                     similarity_scores[(a_id, b_id)] = score
 
     # Group owners by cluster root
-    clusters_map: Dict[int, List[int]] = defaultdict(list)
+    clusters_map: dict[int, list[int]] = defaultdict(list)
     for oid in norm_map:
         root = uf.find(oid)
         clusters_map[root].append(oid)
 
     # Build lookup
-    owner_by_id: Dict[int, VesselOwner] = {o.owner_id: o for o in owners}
+    owner_by_id: dict[int, VesselOwner] = {o.owner_id: o for o in owners}
 
     clusters_created = 0
     for root_id, member_ids in clusters_map.items():
         # Pick canonical name = most common raw name variant
-        name_counts: Dict[str, int] = defaultdict(int)
+        name_counts: dict[str, int] = defaultdict(int)
         any_sanctioned = False
         country = None
         vessel_ids_seen: set = set()
@@ -141,7 +144,11 @@ def run_owner_dedup(db) -> dict:
                 country = owner.country
             vessel_ids_seen.add(owner.vessel_id)
 
-        canonical = max(name_counts, key=name_counts.get) if name_counts else norm_map.get(root_id, "UNKNOWN")
+        canonical = (
+            max(name_counts, key=name_counts.get)
+            if name_counts
+            else norm_map.get(root_id, "UNKNOWN")
+        )
 
         cluster = OwnerCluster(
             canonical_name=canonical,

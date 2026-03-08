@@ -9,21 +9,20 @@ Detection algorithm:
 2. Check VesselHistory for identity attribute swaps within 1h after proximity
 3. If vessel A's old attributes match vessel B's new attributes, flag as handshake
 """
+
 from __future__ import annotations
 
 import logging
 import math
 from collections import defaultdict
-from datetime import datetime, date, timedelta, timezone
-from typing import Optional
+from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.models.ais_point import AISPoint
 from app.models.base import SpoofingTypeEnum
-from app.models.vessel import Vessel
-from app.models.vessel_history import VesselHistory
 from app.models.spoofing_anomaly import SpoofingAnomaly
+from app.models.vessel_history import VesselHistory
 from app.utils.geo import haversine_nm
 
 logger = logging.getLogger(__name__)
@@ -34,8 +33,8 @@ _SWAP_WINDOW_HOURS = 1
 
 def detect_handshakes(
     db: Session,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> dict:
     """Detect AIS identity swaps (handshakes) between vessel pairs.
 
@@ -95,19 +94,27 @@ def detect_handshakes(
 
     for vid_a, vid_b, meet_time in proximity_pairs:
         # Get identity changes for both vessels within swap window after meeting
-        changes_a = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vid_a,
-            VesselHistory.field_changed.in_(["name", "callsign", "vessel_type"]),
-            VesselHistory.observed_at >= meet_time,
-            VesselHistory.observed_at <= meet_time + swap_window,
-        ).all()
+        changes_a = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vid_a,
+                VesselHistory.field_changed.in_(["name", "callsign", "vessel_type"]),
+                VesselHistory.observed_at >= meet_time,
+                VesselHistory.observed_at <= meet_time + swap_window,
+            )
+            .all()
+        )
 
-        changes_b = db.query(VesselHistory).filter(
-            VesselHistory.vessel_id == vid_b,
-            VesselHistory.field_changed.in_(["name", "callsign", "vessel_type"]),
-            VesselHistory.observed_at >= meet_time,
-            VesselHistory.observed_at <= meet_time + swap_window,
-        ).all()
+        changes_b = (
+            db.query(VesselHistory)
+            .filter(
+                VesselHistory.vessel_id == vid_b,
+                VesselHistory.field_changed.in_(["name", "callsign", "vessel_type"]),
+                VesselHistory.observed_at >= meet_time,
+                VesselHistory.observed_at <= meet_time + swap_window,
+            )
+            .all()
+        )
 
         if not changes_a or not changes_b:
             continue
@@ -119,8 +126,11 @@ def detect_handshakes(
                 if ca.field_changed != cb.field_changed:
                     continue
                 # A's old == B's new AND B's old == A's new
-                if (ca.old_value and cb.new_value and
-                    ca.old_value.strip().upper() == cb.new_value.strip().upper()):
+                if (
+                    ca.old_value
+                    and cb.new_value
+                    and ca.old_value.strip().upper() == cb.new_value.strip().upper()
+                ):
                     is_swap = True
                     break
             if is_swap:
@@ -130,10 +140,14 @@ def detect_handshakes(
             continue
 
         # Check if already flagged
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IDENTITY_SWAP,
-            SpoofingAnomaly.start_time_utc == meet_time,
-        ).first()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IDENTITY_SWAP,
+                SpoofingAnomaly.start_time_utc == meet_time,
+            )
+            .first()
+        )
         if existing:
             continue
 

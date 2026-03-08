@@ -7,13 +7,17 @@ Provides access to:
 
 API docs: https://globalfishingwatch.org/our-apis/documentation
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
+
+if TYPE_CHECKING:
+    from app.models.merge_candidate import MergeCandidate
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -91,16 +95,18 @@ def search_vessel(
         for sr in self_reported:
             if not sr.get("transmissionDateFrom"):
                 continue
-            identity_history.append({
-                "ssvid": sr.get("ssvid"),
-                "name": sr.get("shipname"),
-                "flag": sr.get("flag"),
-                "callsign": sr.get("callsign"),
-                "imo": sr.get("imo"),
-                "date_from": sr.get("transmissionDateFrom"),
-                "date_to": sr.get("transmissionDateTo"),
-                "source": "gfw_self_reported",
-            })
+            identity_history.append(
+                {
+                    "ssvid": sr.get("ssvid"),
+                    "name": sr.get("shipname"),
+                    "flag": sr.get("flag"),
+                    "callsign": sr.get("callsign"),
+                    "imo": sr.get("imo"),
+                    "date_from": sr.get("transmissionDateFrom"),
+                    "date_to": sr.get("transmissionDateTo"),
+                    "source": "gfw_self_reported",
+                }
+            )
 
         # Top-level identity from combined[0].shipsData[0] (backward compat)
         info = combined[0] if combined else {}
@@ -112,19 +118,21 @@ def search_vessel(
         callsign = sr_primary.get("callsign")
         primary_imo = ship.get("imo") or sr_primary.get("imo")
 
-        results.append({
-            "gfw_id": gfw_id,
-            "name": ship.get("shipname"),
-            "mmsi": sr_primary.get("ssvid") or entry.get("ssvid"),
-            "imo": primary_imo,
-            "flag": ship.get("flag"),
-            "callsign": callsign,
-            "vessel_type": ship.get("vesselType") or ship.get("geartype"),
-            "length_m": ship.get("lengthM"),
-            "tonnage_gt": ship.get("tonnageGt"),
-            "year_built": ship.get("builtYear"),
-            "identity_history": identity_history,
-        })
+        results.append(
+            {
+                "gfw_id": gfw_id,
+                "name": ship.get("shipname"),
+                "mmsi": sr_primary.get("ssvid") or entry.get("ssvid"),
+                "imo": primary_imo,
+                "flag": ship.get("flag"),
+                "callsign": callsign,
+                "vessel_type": ship.get("vesselType") or ship.get("geartype"),
+                "length_m": ship.get("lengthM"),
+                "tonnage_gt": ship.get("tonnageGt"),
+                "year_built": ship.get("builtYear"),
+                "identity_history": identity_history,
+            }
+        )
     return results
 
 
@@ -214,7 +222,9 @@ def get_vessel_events(
                     event_dict["gap_on_lon"] = _safe_float(on_pos.get("lon"))
                     event_dict["duration_hours"] = _safe_float(gap_info.get("durationHours"))
                     event_dict["distance_km"] = _safe_float(gap_info.get("distanceKm"))
-                    event_dict["implied_speed_knots"] = _safe_float(gap_info.get("impliedSpeedKnots"))
+                    event_dict["implied_speed_knots"] = _safe_float(
+                        gap_info.get("impliedSpeedKnots")
+                    )
                 # Also extract vessel MMSI (ssvid) from the response
                 vessel_info = ev.get("vessel") or {}
                 event_dict["ssvid"] = vessel_info.get("ssvid")
@@ -273,13 +283,15 @@ def get_sar_detections(
     geometry = {
         "geojson": {
             "type": "Polygon",
-            "coordinates": [[
-                [lon_min, lat_min],
-                [lon_max, lat_min],
-                [lon_max, lat_max],
-                [lon_min, lat_max],
-                [lon_min, lat_min],
-            ]],
+            "coordinates": [
+                [
+                    [lon_min, lat_min],
+                    [lon_max, lat_min],
+                    [lon_max, lat_max],
+                    [lon_min, lat_max],
+                    [lon_min, lat_min],
+                ]
+            ],
         }
     }
 
@@ -329,15 +341,17 @@ def _parse_4wings_group(group: dict, detections: list[dict]) -> None:
 
     if lat is not None and lon is not None and date_str:
         scene_id = f"gfw-sar-{date_str}-{float(lat):.4f}-{float(lon):.4f}"
-        detections.append({
-            "scene_id": scene_id,
-            "detection_lat": float(lat),
-            "detection_lon": float(lon),
-            "detection_time_utc": str(date_str),
-            "length_estimate_m": group.get("lengthM"),
-            "model_confidence": None,
-            "vessel_type_inferred": group.get("vesselType") or "unknown",
-        })
+        detections.append(
+            {
+                "scene_id": scene_id,
+                "detection_lat": float(lat),
+                "detection_lon": float(lon),
+                "detection_time_utc": str(date_str),
+                "length_estimate_m": group.get("lengthM"),
+                "model_confidence": None,
+                "vessel_type_inferred": group.get("vesselType") or "unknown",
+            }
+        )
         # If the cell reports multiple detections, the count is informational —
         # we create one record per cell/day since we can't disambiguate.
         if isinstance(count, (int, float)) and count > 1:
@@ -353,8 +367,11 @@ def _parse_4wings_group(group: dict, detections: list[dict]) -> None:
 
 
 def query_sar_detections(
-    lat: float, lon: float, radius_nm: float,
-    date_from: str, date_to: str,
+    lat: float,
+    lon: float,
+    radius_nm: float,
+    date_from: str,
+    date_to: str,
     token: str | None = None,
 ) -> list[dict]:
     """Query GFW 4Wings API for SAR vessel detections near a point.
@@ -373,21 +390,34 @@ def query_sar_detections(
 
 
 def corroborate_merge_candidate(
-    candidate: "MergeCandidate",
+    candidate: MergeCandidate,
     token: str | None = None,
 ) -> dict:
     """Check GFW SAR for dark vessel presence near both ends of a merge gap.
 
     Returns corroboration result dict suitable for MergeCandidate.satellite_corroboration_json.
     """
-    from app.models.merge_candidate import MergeCandidate  # noqa: F811
 
-    result: dict[str, Any] = {"vessel_a_location": {}, "vessel_b_location": {}, "corroboration_score": 0}
+    result: dict[str, Any] = {
+        "vessel_a_location": {},
+        "vessel_b_location": {},
+        "corroboration_score": 0,
+    }
     score = 0
 
     for label, lat, lon, ts in [
-        ("vessel_a_location", candidate.vessel_a_last_lat, candidate.vessel_a_last_lon, candidate.vessel_a_last_time),
-        ("vessel_b_location", candidate.vessel_b_first_lat, candidate.vessel_b_first_lon, candidate.vessel_b_first_time),
+        (
+            "vessel_a_location",
+            candidate.vessel_a_last_lat,
+            candidate.vessel_a_last_lon,
+            candidate.vessel_a_last_time,
+        ),
+        (
+            "vessel_b_location",
+            candidate.vessel_b_first_lat,
+            candidate.vessel_b_first_lon,
+            candidate.vessel_b_first_time,
+        ),
     ]:
         if lat is None or lon is None or ts is None:
             result[label] = {"sar_detections": 0, "dark_detections": 0, "length_match": False}
@@ -435,8 +465,8 @@ def import_sar_detections_to_db(
     Reuses AIS matching logic from gfw_import.py pattern.
     Returns {"total", "matched", "dark", "rejected"}.
     """
-    from app.models.stubs import DarkVesselDetection
     from app.models.ais_point import AISPoint
+    from app.models.stubs import DarkVesselDetection
 
     stats: dict[str, int] = {"total": 0, "matched": 0, "dark": 0, "rejected": 0}
 
@@ -489,9 +519,13 @@ def import_sar_detections_to_db(
         # (but only when scene_id is non-empty — blank IDs are not reliable for dedup)
         scene_id = det.get("scene_id", "")
         if scene_id:
-            existing = db.query(DarkVesselDetection).filter(
-                DarkVesselDetection.scene_id == scene_id,
-            ).first()
+            existing = (
+                db.query(DarkVesselDetection)
+                .filter(
+                    DarkVesselDetection.scene_id == scene_id,
+                )
+                .first()
+            )
             if existing:
                 continue
 
@@ -545,8 +579,9 @@ def import_gfw_gap_events(
     Returns dict with import statistics.
     """
     import time
-    from app.models.vessel import Vessel
+
     from app.models.gap_event import AISGapEvent
+    from app.models.vessel import Vessel
 
     token = token or settings.GFW_API_TOKEN
     if not token:
@@ -565,10 +600,14 @@ def import_gfw_gap_events(
         "errors": [],
     }
 
-    q = db.query(Vessel).filter(
-        Vessel.mmsi.isnot(None),
-        Vessel.merged_into_vessel_id.is_(None),
-    ).order_by(Vessel.vessel_id)
+    q = (
+        db.query(Vessel)
+        .filter(
+            Vessel.mmsi.isnot(None),
+            Vessel.merged_into_vessel_id.is_(None),
+        )
+        .order_by(Vessel.vessel_id)
+    )
 
     if resume_from_vessel_id:
         q = q.filter(Vessel.vessel_id > resume_from_vessel_id)
@@ -613,8 +652,10 @@ def import_gfw_gap_events(
         # Fetch gap events for this vessel
         try:
             events = get_vessel_events(
-                gfw_id, token=token,
-                start_date=start_date, end_date=end_date,
+                gfw_id,
+                token=token,
+                start_date=start_date,
+                end_date=end_date,
                 event_types=["gap"],
             )
             time.sleep(0.5)
@@ -651,11 +692,15 @@ def import_gfw_gap_events(
 
             # Dedup: same vessel + gap_start within ±10 min
             dedup_window = timedelta(minutes=10)
-            existing = db.query(AISGapEvent).filter(
-                AISGapEvent.vessel_id == vessel.vessel_id,
-                AISGapEvent.gap_start_utc >= gap_start - dedup_window,
-                AISGapEvent.gap_start_utc <= gap_start + dedup_window,
-            ).first()
+            existing = (
+                db.query(AISGapEvent)
+                .filter(
+                    AISGapEvent.vessel_id == vessel.vessel_id,
+                    AISGapEvent.gap_start_utc >= gap_start - dedup_window,
+                    AISGapEvent.gap_start_utc <= gap_start + dedup_window,
+                )
+                .first()
+            )
             if existing:
                 stats["skipped_dup"] += 1
                 continue
@@ -668,11 +713,16 @@ def import_gfw_gap_events(
 
             # Compute actual distance if both positions available
             actual_dist_nm = None
-            if off_lat is not None and off_lon is not None and on_lat is not None and on_lon is not None:
+            if (
+                off_lat is not None
+                and off_lon is not None
+                and on_lat is not None
+                and on_lon is not None
+            ):
                 actual_dist_nm = haversine_nm(off_lat, off_lon, on_lat, on_lon)
 
             # Implied speed from GFW or computed
-            implied_speed = ev.get("implied_speed_knots")
+            ev.get("implied_speed_knots")
             duration_h = duration_min / 60
             max_dist = None
             ratio = None
@@ -703,31 +753,39 @@ def import_gfw_gap_events(
 
             # Create AIS anchor points for merger visibility
             from app.models.ais_point import AISPoint
+
             for anchor_lat, anchor_lon, anchor_ts in [
                 (off_lat, off_lon, gap_start),
                 (on_lat, on_lon, gap_end),
             ]:
                 if anchor_lat is None or anchor_lon is None:
                     continue
-                exists_anchor = db.query(AISPoint).filter(
-                    AISPoint.vessel_id == vessel.vessel_id,
-                    AISPoint.timestamp_utc == anchor_ts,
-                    AISPoint.source == "gfw_gap_anchor",
-                ).first()
+                exists_anchor = (
+                    db.query(AISPoint)
+                    .filter(
+                        AISPoint.vessel_id == vessel.vessel_id,
+                        AISPoint.timestamp_utc == anchor_ts,
+                        AISPoint.source == "gfw_gap_anchor",
+                    )
+                    .first()
+                )
                 if not exists_anchor:
-                    db.add(AISPoint(
-                        vessel_id=vessel.vessel_id,
-                        lat=anchor_lat,
-                        lon=anchor_lon,
-                        timestamp_utc=anchor_ts,
-                        source="gfw_gap_anchor",
-                    ))
+                    db.add(
+                        AISPoint(
+                            vessel_id=vessel.vessel_id,
+                            lat=anchor_lat,
+                            lon=anchor_lon,
+                            timestamp_utc=anchor_ts,
+                            source="gfw_gap_anchor",
+                        )
+                    )
                     db.flush()
 
             # Corridor correlation using off-position
             if off_lat is not None and off_lon is not None:
                 try:
                     from app.modules.corridor_correlator import find_corridor_for_point
+
                     corridor = find_corridor_for_point(db, off_lat, off_lon)
                     if corridor:
                         gap_event.corridor_id = corridor.corridor_id
@@ -750,12 +808,15 @@ def import_gfw_gap_events(
 
     # Record coverage window
     try:
-        from app.modules.coverage_tracker import record_coverage_window
         import datetime as _dt_mod
-        _utcnow = _dt_mod.datetime.now(_dt_mod.timezone.utc)
+
+        from app.modules.coverage_tracker import record_coverage_window
+
+        _utcnow = _dt_mod.datetime.now(_dt_mod.UTC)
         total_vessels = len(vessels)
         record_coverage_window(
-            db, "gfw",
+            db,
+            "gfw",
             datetime.strptime(start_date, "%Y-%m-%d").date(),
             datetime.strptime(end_date, "%Y-%m-%d").date(),
             status="partial" if stats["partial"] else "completed",
@@ -794,6 +855,7 @@ def sweep_corridors_sar(
     Returns dict with sweep statistics.
     """
     import time
+
     from app.models.corridor import Corridor
 
     token = token or settings.GFW_API_TOKEN
@@ -823,7 +885,9 @@ def sweep_corridors_sar(
             continue
 
         try:
-            detections = get_sar_detections(bbox, token=token, start_date=start_date, end_date=end_date)
+            detections = get_sar_detections(
+                bbox, token=token, start_date=start_date, end_date=end_date
+            )
             time.sleep(1)  # Rate-limit
         except Exception as exc:
             consecutive_failures += 1
@@ -866,18 +930,24 @@ def import_gfw_encounters(
     Uses the same search_vessel → get_vessel_events pattern as import_gfw_gap_events.
     """
     import time
-    from app.models.vessel import Vessel
-    from app.models.sts_transfer import StsTransferEvent
+
     from app.models.base import STSDetectionTypeEnum
+    from app.models.sts_transfer import StsTransferEvent
+    from app.models.vessel import Vessel
 
     token = token or settings.GFW_API_TOKEN
     if not token:
         raise ValueError("GFW_API_TOKEN not configured")
 
-    vessels = db.query(Vessel).filter(
-        Vessel.mmsi.isnot(None),
-        Vessel.merged_into_vessel_id.is_(None),
-    ).limit(limit).all()
+    vessels = (
+        db.query(Vessel)
+        .filter(
+            Vessel.mmsi.isnot(None),
+            Vessel.merged_into_vessel_id.is_(None),
+        )
+        .limit(limit)
+        .all()
+    )
 
     created = 0
     errors = 0
@@ -906,7 +976,7 @@ def import_gfw_encounters(
             )
             time.sleep(0.5)
 
-            for event in (events or []):
+            for event in events or []:
                 # Extract encounter data
                 lat = event.get("lat")
                 lon = event.get("lon")
@@ -932,9 +1002,9 @@ def import_gfw_encounters(
                 partner_mmsi = encounter_info.get("vessel", {}).get("ssvid")
                 partner_vessel = None
                 if partner_mmsi:
-                    partner_vessel = db.query(Vessel).filter(
-                        Vessel.mmsi == str(partner_mmsi)
-                    ).first()
+                    partner_vessel = (
+                        db.query(Vessel).filter(Vessel.mmsi == str(partner_mmsi)).first()
+                    )
 
                 # Skip if partner not found — we need both vessel IDs
                 if partner_vessel is None:
@@ -944,11 +1014,15 @@ def import_gfw_encounters(
                 vid2 = max(vessel.vessel_id, partner_vessel.vessel_id)
 
                 # Dedup check
-                existing = db.query(StsTransferEvent).filter(
-                    StsTransferEvent.vessel_1_id == vid1,
-                    StsTransferEvent.vessel_2_id == vid2,
-                    StsTransferEvent.start_time_utc == start_dt,
-                ).first()
+                existing = (
+                    db.query(StsTransferEvent)
+                    .filter(
+                        StsTransferEvent.vessel_1_id == vid1,
+                        StsTransferEvent.vessel_2_id == vid2,
+                        StsTransferEvent.start_time_utc == start_dt,
+                    )
+                    .first()
+                )
                 if existing:
                     continue
 
@@ -988,18 +1062,24 @@ def import_gfw_port_visits(
     Port resolution maps GFW coordinates to internal Port records where possible.
     """
     import time
-    from app.models.vessel import Vessel
+
     from app.models.port_call import PortCall
+    from app.models.vessel import Vessel
     from app.modules.port_resolver import resolve_port
 
     token = token or settings.GFW_API_TOKEN
     if not token:
         raise ValueError("GFW_API_TOKEN not configured")
 
-    vessels = db.query(Vessel).filter(
-        Vessel.mmsi.isnot(None),
-        Vessel.merged_into_vessel_id.is_(None),
-    ).limit(limit).all()
+    vessels = (
+        db.query(Vessel)
+        .filter(
+            Vessel.mmsi.isnot(None),
+            Vessel.merged_into_vessel_id.is_(None),
+        )
+        .limit(limit)
+        .all()
+    )
 
     created = 0
     errors = 0
@@ -1028,7 +1108,7 @@ def import_gfw_port_visits(
             )
             time.sleep(0.5)
 
-            for event in (events or []):
+            for event in events or []:
                 lat = event.get("lat")
                 lon = event.get("lon")
                 start = event.get("start")
@@ -1052,10 +1132,14 @@ def import_gfw_port_visits(
                 port = resolve_port(db, float(lat), float(lon), port_name=raw_port_name)
 
                 # Dedup
-                existing = db.query(PortCall).filter(
-                    PortCall.vessel_id == vessel.vessel_id,
-                    PortCall.arrival_utc == start_dt,
-                ).first()
+                existing = (
+                    db.query(PortCall)
+                    .filter(
+                        PortCall.vessel_id == vessel.vessel_id,
+                        PortCall.arrival_utc == start_dt,
+                    )
+                    .first()
+                )
                 if existing:
                     continue
 
@@ -1086,6 +1170,7 @@ def _extract_bbox_from_wkt(wkt: str | None) -> tuple[float, float, float, float]
     then swaps to the lat-first order expected by GFW API callers.
     """
     from app.utils.geo import parse_wkt_bbox
+
     bbox = parse_wkt_bbox(wkt) if wkt else None
     if bbox is None:
         return None

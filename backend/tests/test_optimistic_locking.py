@@ -1,7 +1,7 @@
 """Tests for optimistic locking on alert write endpoints."""
+
 from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock
 
 

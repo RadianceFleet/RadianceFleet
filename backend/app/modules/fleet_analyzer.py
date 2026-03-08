@@ -8,23 +8,23 @@ Checks for:
 5. Shared manager different owners: same owner_name on vessel but different VesselOwner names
 6. Shared P&I coverage status with high risk: vessels sharing same pi_coverage_status
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
 from datetime import timedelta
-from typing import Dict, List, Optional
 
 from sqlalchemy import or_
 
 from app.config import settings
+from app.models.fleet_alert import FleetAlert
+from app.models.gap_event import AISGapEvent
 from app.models.owner_cluster import OwnerCluster
 from app.models.owner_cluster_member import OwnerClusterMember
-from app.models.vessel_owner import VesselOwner
-from app.models.vessel import Vessel
-from app.models.gap_event import AISGapEvent
 from app.models.sts_transfer import StsTransferEvent
-from app.models.fleet_alert import FleetAlert
+from app.models.vessel import Vessel
+from app.models.vessel_owner import VesselOwner
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ SCORE_SHARED_MANAGER = 15
 SCORE_SHARED_PI_CLUB = 10
 
 
-def _get_cluster_vessels(db, cluster: OwnerCluster) -> List[Vessel]:
+def _get_cluster_vessels(db, cluster: OwnerCluster) -> list[Vessel]:
     """Get all vessels associated with an owner cluster via ownership links."""
     members = (
         db.query(OwnerClusterMember)
@@ -65,7 +65,7 @@ def _get_cluster_vessels(db, cluster: OwnerCluster) -> List[Vessel]:
     return db.query(Vessel).filter(Vessel.vessel_id.in_(vessel_ids)).all()
 
 
-def _check_sts_concentration(db, cluster: OwnerCluster, vessels: List[Vessel]) -> Optional[FleetAlert]:
+def _check_sts_concentration(db, cluster: OwnerCluster, vessels: list[Vessel]) -> FleetAlert | None:
     """3+ cluster vessels in same STS corridor within 30 days."""
     if len(vessels) < STS_CONCENTRATION_MIN_VESSELS:
         return None
@@ -86,7 +86,7 @@ def _check_sts_concentration(db, cluster: OwnerCluster, vessels: List[Vessel]) -
         return None
 
     # Group by corridor_id, check time window
-    corridor_events: Dict[int, list] = defaultdict(list)
+    corridor_events: dict[int, list] = defaultdict(list)
     for ev in sts_events:
         cid = ev.corridor_id
         if cid is not None:
@@ -122,7 +122,7 @@ def _check_sts_concentration(db, cluster: OwnerCluster, vessels: List[Vessel]) -
     return None
 
 
-def _geo_bin_key(lat: Optional[float], lon: Optional[float], bin_deg: float = 5.0) -> Optional[tuple]:
+def _geo_bin_key(lat: float | None, lon: float | None, bin_deg: float = 5.0) -> tuple | None:
     """Return a (lat_bin, lon_bin) key for grouping by geographic proximity.
 
     Gaps whose lat/lon is unknown return None (excluded from proximity check).
@@ -132,7 +132,7 @@ def _geo_bin_key(lat: Optional[float], lon: Optional[float], bin_deg: float = 5.
     return (int(lat / bin_deg), int(lon / bin_deg))
 
 
-def _check_dark_coordination(db, cluster: OwnerCluster, vessels: List[Vessel]) -> Optional[FleetAlert]:
+def _check_dark_coordination(db, cluster: OwnerCluster, vessels: list[Vessel]) -> FleetAlert | None:
     """3+ vessels going dark (AIS gaps) within a 48h window **and** in the same geographic area.
 
     Gaps are grouped by corridor_id first; gaps without a corridor are binned
@@ -154,7 +154,7 @@ def _check_dark_coordination(db, cluster: OwnerCluster, vessels: List[Vessel]) -
         return None
 
     # Group gaps by geographic proximity: corridor_id if available, else 5-deg bin
-    geo_groups: Dict[str, list] = defaultdict(list)
+    geo_groups: dict[str, list] = defaultdict(list)
     for gap in gaps:
         cid = getattr(gap, "corridor_id", None)
         if cid is not None:
@@ -196,7 +196,7 @@ def _check_dark_coordination(db, cluster: OwnerCluster, vessels: List[Vessel]) -
     return None
 
 
-def _check_flag_diversity(cluster: OwnerCluster, vessels: List[Vessel]) -> Optional[FleetAlert]:
+def _check_flag_diversity(cluster: OwnerCluster, vessels: list[Vessel]) -> FleetAlert | None:
     """4+ different flags in one cluster."""
     flags = {v.flag for v in vessels if v.flag}
     if len(flags) >= FLAG_DIVERSITY_MIN:
@@ -213,21 +213,17 @@ def _check_flag_diversity(cluster: OwnerCluster, vessels: List[Vessel]) -> Optio
     return None
 
 
-def _check_high_risk_average(cluster: OwnerCluster, vessels: List[Vessel], db) -> Optional[FleetAlert]:
+def _check_high_risk_average(cluster: OwnerCluster, vessels: list[Vessel], db) -> FleetAlert | None:
     """Cluster average risk score >50."""
     if not vessels:
         return None
 
     # Get the latest gap event risk scores for each vessel as a proxy for risk
     vessel_ids = [v.vessel_id for v in vessels]
-    gaps = (
-        db.query(AISGapEvent)
-        .filter(AISGapEvent.vessel_id.in_(vessel_ids))
-        .all()
-    )
+    gaps = db.query(AISGapEvent).filter(AISGapEvent.vessel_id.in_(vessel_ids)).all()
 
     # Group by vessel, take max risk_score per vessel
-    vessel_risk: Dict[int, int] = {}
+    vessel_risk: dict[int, int] = {}
     for g in gaps:
         vid = g.vessel_id
         if vid not in vessel_risk or g.risk_score > vessel_risk[vid]:
@@ -252,8 +248,8 @@ def _check_high_risk_average(cluster: OwnerCluster, vessels: List[Vessel], db) -
 
 
 def _check_shared_manager_different_owners(
-    cluster: OwnerCluster, vessels: List[Vessel], db
-) -> Optional[FleetAlert]:
+    cluster: OwnerCluster, vessels: list[Vessel], db
+) -> FleetAlert | None:
     """Vessels with same owner_name on vessel record but different VesselOwner names.
 
     This detects cases where vessels share a manager/operator (vessel.owner_name)
@@ -264,7 +260,7 @@ def _check_shared_manager_different_owners(
         return None
 
     # Group vessels by their manager (vessel.owner_name field)
-    manager_vessels: Dict[str, List[Vessel]] = defaultdict(list)
+    manager_vessels: dict[str, list[Vessel]] = defaultdict(list)
     for v in vessels:
         if v.owner_name:
             manager_vessels[v.owner_name.upper().strip()].append(v)
@@ -274,11 +270,7 @@ def _check_shared_manager_different_owners(
         if len(mgr_vessels) < 2:
             continue
         vessel_ids = [v.vessel_id for v in mgr_vessels]
-        owners = (
-            db.query(VesselOwner)
-            .filter(VesselOwner.vessel_id.in_(vessel_ids))
-            .all()
-        )
+        owners = db.query(VesselOwner).filter(VesselOwner.vessel_id.in_(vessel_ids)).all()
         unique_owner_names = {o.owner_name.upper().strip() for o in owners if o.owner_name}
         if len(unique_owner_names) >= 2:
             return FleetAlert(
@@ -294,9 +286,7 @@ def _check_shared_manager_different_owners(
     return None
 
 
-def _check_shared_pi_club(
-    cluster: OwnerCluster, vessels: List[Vessel], db
-) -> Optional[FleetAlert]:
+def _check_shared_pi_club(cluster: OwnerCluster, vessels: list[Vessel], db) -> FleetAlert | None:
     """Vessels sharing same P&I coverage status when cluster has high-risk signals.
 
     Uses pi_coverage_status on the Vessel model as a proxy for P&I club grouping.
@@ -308,7 +298,7 @@ def _check_shared_pi_club(
         return None
 
     # Group by pi_coverage_status
-    pi_groups: Dict[str, List[int]] = defaultdict(list)
+    pi_groups: dict[str, list[int]] = defaultdict(list)
     for v in vessels:
         status = getattr(v, "pi_coverage_status", None)
         if status and str(status) != "unknown":
@@ -364,14 +354,9 @@ def detect_ism_pi_continuity(db) -> dict:
 
         # Check ISM manager continuity
         ism_values = [
-            (o.ism_manager or "").strip().upper()
-            for o in owners
-            if (o.ism_manager or "").strip()
+            (o.ism_manager or "").strip().upper() for o in owners if (o.ism_manager or "").strip()
         ]
-        owner_names = [
-            (o.owner_name or "").strip().upper()
-            for o in owners
-        ]
+        owner_names = [(o.owner_name or "").strip().upper() for o in owners]
         unique_owners = set(owner_names)
 
         if len(ism_values) >= 2 and len(unique_owners) >= 2:
@@ -409,9 +394,7 @@ def detect_ism_pi_continuity(db) -> dict:
 
         # Check P&I club continuity
         pi_values = [
-            (o.pi_club_name or "").strip().upper()
-            for o in owners
-            if (o.pi_club_name or "").strip()
+            (o.pi_club_name or "").strip().upper() for o in owners if (o.pi_club_name or "").strip()
         ]
         if len(pi_values) >= 2 and len(unique_owners) >= 2:
             for i in range(len(owners) - 1):
@@ -486,14 +469,16 @@ def detect_batch_renames(db) -> dict:
             .first()
         )
         if owner and owner.owner_name:
-            change_with_owner.append({
-                "vessel_id": ch.vessel_id,
-                "owner_name": owner.owner_name.strip().upper(),
-                "observed_at": ch.observed_at,
-            })
+            change_with_owner.append(
+                {
+                    "vessel_id": ch.vessel_id,
+                    "owner_name": owner.owner_name.strip().upper(),
+                    "observed_at": ch.observed_at,
+                }
+            )
 
     # Group by owner_name
-    owner_changes: Dict[str, list] = defaultdict(list)
+    owner_changes: dict[str, list] = defaultdict(list)
     for item in change_with_owner:
         owner_changes[item["owner_name"]].append(item)
 

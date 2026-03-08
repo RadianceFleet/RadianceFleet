@@ -1,6 +1,7 @@
 """Tests for alert detail enrichment — spoofing, loitering, STS linked anomalies."""
+
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
-from datetime import datetime, timezone, timedelta
 
 
 class TestAlertEnrichment:
@@ -10,8 +11,8 @@ class TestAlertEnrichment:
         alert.gap_event_id = 1
         alert.vessel_id = 10
         alert.corridor_id = 5
-        alert.gap_start_utc = datetime(2026, 1, 15, tzinfo=timezone.utc)
-        alert.gap_end_utc = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        alert.gap_start_utc = datetime(2026, 1, 15, tzinfo=UTC)
+        alert.gap_end_utc = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
         alert.duration_minutes = 720
         alert.risk_score = 75
         alert.risk_breakdown_json = None
@@ -36,6 +37,7 @@ class TestAlertEnrichment:
         vessel.deadweight = 50000.0
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -59,11 +61,15 @@ class TestAlertEnrichment:
                 pass
             elif call_count[0] == 6:
                 # SpoofingAnomaly query
-                result.filter.return_value.filter.return_value.filter.return_value.all.return_value = spoofing or []
+                result.filter.return_value.filter.return_value.filter.return_value.all.return_value = (
+                    spoofing or []
+                )
                 result.filter.return_value.all.return_value = spoofing or []
             elif call_count[0] == 7:
                 # LoiteringEvent query
-                result.filter.return_value.filter.return_value.filter.return_value.all.return_value = loitering or []
+                result.filter.return_value.filter.return_value.filter.return_value.all.return_value = (
+                    loitering or []
+                )
                 result.filter.return_value.all.return_value = loitering or []
             elif call_count[0] == 8:
                 # StsTransferEvent query
@@ -74,6 +80,7 @@ class TestAlertEnrichment:
                 result.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.scalar.return_value = prior_count
                 result.filter.return_value.scalar.return_value = prior_count
             return result
+
         mock_db.query.side_effect = query_side_effect
 
         return alert, vessel
@@ -114,7 +121,7 @@ class TestAlertEnrichment:
         spoof = MagicMock()
         spoof.anomaly_id = 100
         spoof.anomaly_type = MagicMock(value="anchor_spoof")
-        spoof.start_time_utc = datetime(2026, 1, 15, 6, 0, tzinfo=timezone.utc)
+        spoof.start_time_utc = datetime(2026, 1, 15, 6, 0, tzinfo=UTC)
         spoof.risk_score_component = 15
         spoof.evidence_json = {"note": "test"}
 
@@ -129,7 +136,7 @@ class TestAlertEnrichment:
     def test_loitering_events_populated(self, api_client, mock_db):
         loiter = MagicMock()
         loiter.loiter_id = 200
-        loiter.start_time_utc = datetime(2026, 1, 14, tzinfo=timezone.utc)
+        loiter.start_time_utc = datetime(2026, 1, 14, tzinfo=UTC)
         loiter.duration_hours = 8.5
         loiter.mean_lat = 36.0
         loiter.mean_lon = 22.0
@@ -149,7 +156,7 @@ class TestAlertEnrichment:
         sts.vessel_1_id = 10
         sts.vessel_2_id = 20
         sts.detection_type = MagicMock(value="visible_visible")
-        sts.start_time_utc = datetime(2026, 1, 16, tzinfo=timezone.utc)
+        sts.start_time_utc = datetime(2026, 1, 16, tzinfo=UTC)
 
         partner = MagicMock()
         partner.name = "PARTNER VESSEL"
@@ -160,8 +167,8 @@ class TestAlertEnrichment:
         alert.gap_event_id = 1
         alert.vessel_id = 10
         alert.corridor_id = 5
-        alert.gap_start_utc = datetime(2026, 1, 15, tzinfo=timezone.utc)
-        alert.gap_end_utc = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        alert.gap_start_utc = datetime(2026, 1, 15, tzinfo=UTC)
+        alert.gap_end_utc = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
         alert.duration_minutes = 720
         alert.risk_score = 75
         alert.risk_breakdown_json = None
@@ -201,6 +208,7 @@ class TestAlertEnrichment:
                 # Partner vessel lookup
                 result.filter.return_value.first.return_value = partner
             return result
+
         mock_db.query.side_effect = query_side_effect
 
         resp = api_client.get("/api/v1/alerts/1")

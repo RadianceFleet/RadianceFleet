@@ -9,11 +9,11 @@ Spatial query strategy:
   endpoint falls within the derived min/max bounds.  A small tolerance
   (BBOX_TOLERANCE_DEG) is added to avoid edge-case misses.
 """
+
 from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -43,13 +43,12 @@ def _point_in_bbox(
 ) -> bool:
     """Return True if (lat, lon) lies within bbox expanded by tolerance degrees."""
     min_lon, min_lat, max_lon, max_lat = bbox
-    return (
-        (min_lon - tolerance) <= lon <= (max_lon + tolerance)
-        and (min_lat - tolerance) <= lat <= (max_lat + tolerance)
-    )
+    return (min_lon - tolerance) <= lon <= (max_lon + tolerance) and (
+        min_lat - tolerance
+    ) <= lat <= (max_lat + tolerance)
 
 
-def _geometry_wkt(geometry_value: object) -> Optional[str]:
+def _geometry_wkt(geometry_value: object) -> str | None:
     """Extract a plain WKT string from a geometry column value.
 
     The column is now plain Text storing WKT directly, so this is a simple
@@ -66,6 +65,7 @@ def _geometry_wkt(geometry_value: object) -> Optional[str]:
 
 
 # ── Spatial query ─────────────────────────────────────────────────────────────
+
 
 def _intersecting_rows(
     db: Session,
@@ -92,9 +92,8 @@ def _intersecting_rows(
 
 # ── AIS point loader ──────────────────────────────────────────────────────────
 
-def _load_gap_endpoints(
-    db: Session, gap: AISGapEvent
-) -> Optional[tuple[AISPoint, AISPoint]]:
+
+def _load_gap_endpoints(db: Session, gap: AISGapEvent) -> tuple[AISPoint, AISPoint] | None:
     """Return (start_point, end_point) for a gap, or None if either is missing."""
     if gap.start_point_id is None or gap.end_point_id is None:
         return None
@@ -116,7 +115,8 @@ def _load_gap_endpoints(
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def find_corridor_for_gap(db: Session, gap: AISGapEvent) -> Optional[Corridor]:
+
+def find_corridor_for_gap(db: Session, gap: AISGapEvent) -> Corridor | None:
     """Find the highest-risk corridor that the gap trajectory intersects.
 
     Tests the gap's start/end AIS point coordinates against all corridor
@@ -144,7 +144,7 @@ def find_corridor_for_gap(db: Session, gap: AISGapEvent) -> Optional[Corridor]:
     return max(matches, key=lambda c: c.risk_weight)
 
 
-def find_dark_zone_for_gap(db: Session, gap: AISGapEvent) -> Optional[DarkZone]:
+def find_dark_zone_for_gap(db: Session, gap: AISGapEvent) -> DarkZone | None:
     """Find the dark zone whose polygon bbox the gap trajectory intersects.
 
     Uses the same bounding-box approach as ``find_corridor_for_gap`` but
@@ -173,7 +173,7 @@ def find_dark_zone_for_gap(db: Session, gap: AISGapEvent) -> Optional[DarkZone]:
     return min(matches, key=lambda z: z.zone_id)
 
 
-def find_corridor_for_point(db: Session, lat: float, lon: float) -> Optional[Corridor]:
+def find_corridor_for_point(db: Session, lat: float, lon: float) -> Corridor | None:
     """Find the highest-risk corridor containing a single lat/lon point.
 
     Used for GFW gap events where we only have off-position coordinates
@@ -214,9 +214,7 @@ def correlate_all_uncorrelated_gaps(db: Session) -> dict:
                 "dark_zone": <int>,    # gaps marked in_dark_zone=True
             }
     """
-    uncorrelated_gaps = (
-        db.query(AISGapEvent).filter(AISGapEvent.corridor_id.is_(None)).all()
-    )
+    uncorrelated_gaps = db.query(AISGapEvent).filter(AISGapEvent.corridor_id.is_(None)).all()
 
     correlated_count = 0
     dark_zone_count = 0

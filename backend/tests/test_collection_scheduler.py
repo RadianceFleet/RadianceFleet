@@ -1,13 +1,11 @@
 """Tests for the periodic AIS collection scheduler."""
+
 from __future__ import annotations
 
-import json
 import threading
 import time
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 from sqlalchemy.orm import Session
 
 
@@ -30,10 +28,16 @@ class TestCollectionScheduler:
             mock_source.name = "test_source"
             mock_source.interval_seconds = 1
             mock_source.enabled = True
-            mock_source.collector = MagicMock(return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0})
+            mock_source.collector = MagicMock(
+                return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0}
+            )
 
-            with patch("app.modules.collection_sources.get_available_sources", return_value={"test": mock_source}):
+            with patch(
+                "app.modules.collection_sources.get_available_sources",
+                return_value={"test": mock_source},
+            ):
                 from app.modules.collection_scheduler import CollectionScheduler
+
                 scheduler = CollectionScheduler(db_factory=_mock_db_factory)
                 # Run for a very short time
                 scheduler.start(duration_seconds=1)
@@ -58,8 +62,9 @@ class TestCollectionScheduler:
         """Absolute scheduling: next_run calculated before callback."""
         # This is a design test — verify the scheduler uses monotonic time
         from app.modules.collection_scheduler import CollectionScheduler
+
         scheduler = CollectionScheduler(db_factory=_mock_db_factory)
-        assert hasattr(scheduler, '_shutdown_event')
+        assert hasattr(scheduler, "_shutdown_event")
         assert isinstance(scheduler._shutdown_event, threading.Event)
 
     def test_scheduler_source_isolation(self):
@@ -79,15 +84,22 @@ class TestCollectionScheduler:
             mock_src_a.name = "source_a"
             mock_src_a.interval_seconds = 60
             mock_src_a.enabled = True
-            mock_src_a.collector = MagicMock(return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0})
+            mock_src_a.collector = MagicMock(
+                return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0}
+            )
 
             mock_src_b = MagicMock()
             mock_src_b.name = "source_b"
             mock_src_b.interval_seconds = 60
             mock_src_b.enabled = True
-            mock_src_b.collector = MagicMock(return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0})
+            mock_src_b.collector = MagicMock(
+                return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0}
+            )
 
-            with patch("app.modules.collection_sources.get_available_sources", return_value={"a": mock_src_a, "b": mock_src_b}):
+            with patch(
+                "app.modules.collection_sources.get_available_sources",
+                return_value={"a": mock_src_a, "b": mock_src_b},
+            ):
                 scheduler = CollectionScheduler(db_factory=counting_factory)
                 scheduler.start(duration_seconds=1)
                 # Each source thread should call factory at least once, plus pruning
@@ -147,7 +159,10 @@ class TestCollectionScheduler:
             mock_ok.enabled = True
             mock_ok.collector = working_collector
 
-            with patch("app.modules.collection_sources.get_available_sources", return_value={"fail": mock_fail, "ok": mock_ok}):
+            with patch(
+                "app.modules.collection_sources.get_available_sources",
+                return_value={"fail": mock_fail, "ok": mock_ok},
+            ):
                 scheduler = CollectionScheduler(db_factory=_mock_db_factory)
                 scheduler.start(duration_seconds=1)
                 # The working source should have produced results
@@ -174,11 +189,16 @@ class TestCollectionScheduler:
         mock_src.name = "custom"
         mock_src.interval_seconds = 60
         mock_src.enabled = True
-        mock_src.collector = MagicMock(return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0})
+        mock_src.collector = MagicMock(
+            return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0}
+        )
 
         with patch("app.modules.collection_scheduler.settings") as mock_settings:
             mock_settings.COLLECT_RETENTION_DAYS = 90
-            with patch("app.modules.collection_sources.get_all_sources", return_value={"custom": mock_src, "other": MagicMock()}):
+            with patch(
+                "app.modules.collection_sources.get_all_sources",
+                return_value={"custom": mock_src, "other": MagicMock()},
+            ):
                 scheduler = CollectionScheduler(db_factory=_mock_db_factory, sources=["custom"])
                 scheduler.start(duration_seconds=1)
                 assert len(scheduler._threads) == 1
@@ -191,11 +211,16 @@ class TestCollectionScheduler:
         mock_src.name = "timed"
         mock_src.interval_seconds = 1
         mock_src.enabled = True
-        mock_src.collector = MagicMock(return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0})
+        mock_src.collector = MagicMock(
+            return_value={"points_imported": 0, "vessels_seen": 0, "errors": 0}
+        )
 
         with patch("app.modules.collection_scheduler.settings") as mock_settings:
             mock_settings.COLLECT_RETENTION_DAYS = 90
-            with patch("app.modules.collection_sources.get_available_sources", return_value={"timed": mock_src}):
+            with patch(
+                "app.modules.collection_sources.get_available_sources",
+                return_value={"timed": mock_src},
+            ):
                 scheduler = CollectionScheduler(db_factory=_mock_db_factory)
                 start_time = time.monotonic()
                 scheduler.start(duration_seconds=2)
@@ -205,6 +230,7 @@ class TestCollectionScheduler:
     def test_scheduler_shutdown_event(self):
         """Clean termination via shutdown event."""
         from app.modules.collection_scheduler import CollectionScheduler
+
         scheduler = CollectionScheduler(db_factory=_mock_db_factory)
         assert not scheduler._shutdown_event.is_set()
         scheduler.stop()
@@ -218,7 +244,9 @@ class TestCollectionScheduler:
         with patch("app.modules.collection_scheduler.settings"):
             scheduler = CollectionScheduler(db_factory=lambda: db)
             run = MagicMock()
-            scheduler._finish_collection_run(db, run, {"points_imported": 10, "vessels_seen": 3, "errors": 0})
+            scheduler._finish_collection_run(
+                db, run, {"points_imported": 10, "vessels_seen": 3, "errors": 0}
+            )
             assert run.status == "completed"
             assert run.points_imported == 10
 

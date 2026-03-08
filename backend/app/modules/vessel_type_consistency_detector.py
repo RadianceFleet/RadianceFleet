@@ -7,6 +7,7 @@ or "pleasure craft" is physically impossible and indicates deliberate
 misrepresentation. This detector cross-references vessel DWT against
 reported AIS type for consistency.
 """
+
 from __future__ import annotations
 
 import logging
@@ -27,33 +28,35 @@ _LARGE_VESSEL_DWT = 5000
 
 # ── AIS vessel types that are inconsistent with large (>5000 DWT) vessels ─
 # These types physically cannot apply to vessels above 5000 DWT.
-_NON_COMMERCIAL_TYPES: frozenset[str] = frozenset({
-    "fishing",
-    "fishing vessel",
-    "trawler",
-    "pleasure craft",
-    "pleasure",
-    "yacht",
-    "sailing",
-    "sailing vessel",
-    "recreational",
-    "tug",
-    "tugboat",
-    "pilot vessel",
-    "pilot",
-    "search and rescue",
-    "sar",
-    "dredger",
-    "dredging",
-    "diving vessel",
-    "diving",
-    "military",
-    "law enforcement",
-    "medical transport",
-    "reserved",
-    "wing in ground",
-    "wig",
-})
+_NON_COMMERCIAL_TYPES: frozenset[str] = frozenset(
+    {
+        "fishing",
+        "fishing vessel",
+        "trawler",
+        "pleasure craft",
+        "pleasure",
+        "yacht",
+        "sailing",
+        "sailing vessel",
+        "recreational",
+        "tug",
+        "tugboat",
+        "pilot vessel",
+        "pilot",
+        "search and rescue",
+        "sar",
+        "dredger",
+        "dredging",
+        "diving vessel",
+        "diving",
+        "military",
+        "law enforcement",
+        "medical transport",
+        "reserved",
+        "wing in ground",
+        "wig",
+    }
+)
 
 
 def _is_non_commercial_type(vessel_type: str | None) -> bool:
@@ -86,10 +89,14 @@ def run_vessel_type_consistency_detection(db: Session) -> dict:
         vessels_checked += 1
 
         # Check for existing anomaly
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == vessel.vessel_id,
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.TYPE_DWT_MISMATCH,
-        ).first()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.TYPE_DWT_MISMATCH,
+            )
+            .first()
+        )
         if existing:
             continue
 
@@ -169,7 +176,8 @@ def run_vessel_type_consistency_detection(db: Session) -> dict:
     db.commit()
     logger.info(
         "Vessel type consistency: %d anomalies from %d vessels checked",
-        anomalies_created, vessels_checked,
+        anomalies_created,
+        vessels_checked,
     )
     return {
         "status": "ok",

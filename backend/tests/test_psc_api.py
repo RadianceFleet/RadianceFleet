@@ -1,5 +1,6 @@
 """Tests for PSC detention API endpoints."""
-from datetime import date, datetime, timezone
+
+from datetime import UTC, date, datetime
 from unittest.mock import MagicMock
 
 
@@ -19,12 +20,12 @@ def _mock_vessel(vessel_id=1, psc_detentions=None):
     v.pi_coverage_status = MagicMock(value="unknown")
     v.psc_detained_last_12m = False
     v.psc_major_deficiencies_last_12m = 0
-    v.mmsi_first_seen_utc = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    v.mmsi_first_seen_utc = datetime(2020, 1, 1, tzinfo=UTC)
     v.vessel_laid_up_30d = False
     v.vessel_laid_up_60d = False
     v.vessel_laid_up_in_sts_zone = False
     v.merged_into_vessel_id = None
-    v.last_ais_received_utc = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    v.last_ais_received_utc = datetime(2026, 3, 1, tzinfo=UTC)
     v.callsign = "ABCD"
     v.owner_name = None
     v.ais_source = None
@@ -33,13 +34,18 @@ def _mock_vessel(vessel_id=1, psc_detentions=None):
     v.ais_cargo_type = None
     v.watchlist_stub_score = None
     v.watchlist_stub_breakdown = None
-    v.updated_at = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    v.updated_at = datetime(2026, 3, 1, tzinfo=UTC)
     v.psc_detentions = psc_detentions or []
     return v
 
 
-def _mock_detention(psc_detention_id=1, detention_date=None, mou_source="tokyo_mou",
-                    deficiency_count=3, ban_type=None):
+def _mock_detention(
+    psc_detention_id=1,
+    detention_date=None,
+    mou_source="tokyo_mou",
+    deficiency_count=3,
+    ban_type=None,
+):
     """Create a mock PscDetention record that passes PscDetentionRead validation."""
     d = MagicMock()
     d.psc_detention_id = psc_detention_id
@@ -68,7 +74,10 @@ def test_psc_detentions_returns_list(api_client, mock_db):
     det1 = _mock_detention(psc_detention_id=1, detention_date=date(2026, 2, 1))
     det2 = _mock_detention(psc_detention_id=2, detention_date=date(2026, 1, 15))
 
-    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [det1, det2]
+    mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+        det1,
+        det2,
+    ]
 
     response = api_client.get("/api/v1/vessels/1/psc-detentions")
     assert response.status_code == 200
@@ -111,8 +120,7 @@ def test_vessel_detail_includes_psc_detention_count(api_client, mock_db):
 def test_vessel_detail_psc_detentions_capped_at_10(api_client, mock_db):
     """Vessel detail psc_detentions list is capped at 10 entries."""
     detentions = [
-        _mock_detention(psc_detention_id=i, detention_date=date(2026, 1, i + 1))
-        for i in range(15)
+        _mock_detention(psc_detention_id=i, detention_date=date(2026, 1, i + 1)) for i in range(15)
     ]
     vessel = _mock_vessel(psc_detentions=detentions)
 

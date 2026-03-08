@@ -5,14 +5,20 @@ combined with ais_match_result == "unmatched" was a logical contradiction —
 unmatched detections have NULL matched_vessel_id, so the query always
 returned 0 rows. The fix uses spatial+temporal proximity instead.
 """
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
 
-import pytest
+from datetime import datetime
+from unittest.mock import MagicMock
 
 
-def _make_gap(vessel_id=1, gap_start=None, gap_end=None, off_lat=60.0, off_lon=25.0,
-              corridor_id=None, max_dist=200.0):
+def _make_gap(
+    vessel_id=1,
+    gap_start=None,
+    gap_end=None,
+    off_lat=60.0,
+    off_lon=25.0,
+    corridor_id=None,
+    max_dist=200.0,
+):
     """Create a mock AISGapEvent with the fields scoring needs."""
     gap = MagicMock()
     gap.vessel_id = vessel_id
@@ -106,7 +112,9 @@ class TestDarkVesselScoringFix:
 
         # Create a dark detection near the gap position, within the time window
         dark_det = _make_dark_detection(
-            1, 60.01, 25.01,
+            1,
+            60.01,
+            25.01,
             datetime(2025, 12, 1, 12, 0),
             corridor_id=5,
         )
@@ -117,6 +125,7 @@ class TestDarkVesselScoringFix:
         def query_side_effect(model):
             mock_q = MagicMock()
             from app.models.stubs import DarkVesselDetection
+
             if model is DarkVesselDetection:
                 mock_q.filter.return_value.all.return_value = [dark_det]
             else:

@@ -1,4 +1,5 @@
 """Tests for port call endpoint."""
+
 from unittest.mock import MagicMock
 
 
@@ -21,6 +22,7 @@ class TestPortCallEndpoint:
         port.name = "Rotterdam"
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -31,6 +33,7 @@ class TestPortCallEndpoint:
             elif call_count[0] == 3:
                 result.filter.return_value.first.return_value = port
             return result
+
         mock_db.query.side_effect = query_side_effect
 
         resp = api_client.get("/api/v1/port-calls/1")
@@ -57,6 +60,7 @@ class TestPortCallEndpoint:
         port.name = "Fujairah"
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -67,6 +71,7 @@ class TestPortCallEndpoint:
             elif call_count[0] == 3:
                 result.filter.return_value.first.return_value = port
             return result
+
         mock_db.query.side_effect = query_side_effect
 
         resp = api_client.get("/api/v1/port-calls/1")

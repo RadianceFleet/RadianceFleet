@@ -6,6 +6,7 @@ GitHub: https://github.com/energyandcleanair
 
 Includes write-through persistence of voyage data to CreaVoyage table.
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,8 +19,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.modules.circuit_breakers import breakers
 from app.models.crea_voyage import CreaVoyage
+from app.modules.circuit_breakers import breakers
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,13 @@ def import_crea_data(db: Session, limit: int = 100) -> dict:
     writes through to the crea_voyages table with dedup via savepoints.
     """
     if not getattr(settings, "CREA_ENABLED", False):
-        return {"queried": 0, "enriched": 0, "errors": 0, "voyages_stored": 0, "duplicates_skipped": 0}
+        return {
+            "queried": 0,
+            "enriched": 0,
+            "errors": 0,
+            "voyages_stored": 0,
+            "duplicates_skipped": 0,
+        }
 
     from app.models.vessel import Vessel
 
@@ -139,7 +146,11 @@ def import_crea_data(db: Session, limit: int = 100) -> dict:
     db.commit()
     logger.info(
         "CREA import: queried=%d enriched=%d errors=%d voyages_stored=%d duplicates_skipped=%d",
-        queried, enriched, errors, voyages_stored, duplicates_skipped,
+        queried,
+        enriched,
+        errors,
+        voyages_stored,
+        duplicates_skipped,
     )
     return {
         "queried": queried,

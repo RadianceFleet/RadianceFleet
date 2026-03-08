@@ -3,14 +3,13 @@
 Provides:
   - infer_cargo_state()  — determine laden vs ballast from AIS draught data
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
-
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -201,14 +200,16 @@ def infer_cargo_state(db: Session, vessel_id: int) -> dict:
         "max_draught_m": max_draught,
         "laden_ratio": round(laden_ratio, 3),
         "risk_score": 0,
-        "timestamp_utc": latest_point.timestamp_utc.isoformat() if latest_point.timestamp_utc else None,
+        "timestamp_utc": latest_point.timestamp_utc.isoformat()
+        if latest_point.timestamp_utc
+        else None,
     }
 
     # Context scoring: laden from Russian terminal + STS -> +15
     if state == "laden":
         try:
-            from app.models.port_call import PortCall
             from app.models.port import Port
+            from app.models.port_call import PortCall
 
             # Check if recent port call was to a Russian terminal
             recent_call = (
@@ -216,7 +217,7 @@ def infer_cargo_state(db: Session, vessel_id: int) -> dict:
                 .join(Port, PortCall.port_id == Port.port_id)
                 .filter(
                     PortCall.vessel_id == vessel_id,
-                    Port.is_russian_oil_terminal == True,
+                    Port.is_russian_oil_terminal,
                 )
                 .order_by(PortCall.arrival_utc.desc())
                 .first()
@@ -224,15 +225,20 @@ def infer_cargo_state(db: Session, vessel_id: int) -> dict:
 
             if recent_call is not None:
                 # Check for STS events
-                from app.models.sts_transfer import StsTransferEvent
                 from sqlalchemy import or_
 
-                sts_event = db.query(StsTransferEvent).filter(
-                    or_(
-                        StsTransferEvent.vessel_1_id == vessel_id,
-                        StsTransferEvent.vessel_2_id == vessel_id,
+                from app.models.sts_transfer import StsTransferEvent
+
+                sts_event = (
+                    db.query(StsTransferEvent)
+                    .filter(
+                        or_(
+                            StsTransferEvent.vessel_1_id == vessel_id,
+                            StsTransferEvent.vessel_2_id == vessel_id,
+                        )
                     )
-                ).first()
+                    .first()
+                )
 
                 if sts_event is not None:
                     result["risk_score"] = 15

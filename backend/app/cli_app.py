@@ -1,4 +1,5 @@
 """Core CLI objects — no dependencies on cli_helpers or sub-command modules."""
+
 from __future__ import annotations
 
 import typer
@@ -42,9 +43,7 @@ def satellite_search(
     db = SessionLocal()
     try:
         result = search_archive_for_alert(db, alert_id, provider)
-        typer.echo(
-            f"Order {result['order_id']} created with {result['scenes_found']} scenes"
-        )
+        typer.echo(f"Order {result['order_id']} created with {result['scenes_found']} scenes")
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -65,9 +64,7 @@ def satellite_submit(
     try:
         ids = [s.strip() for s in scene_ids.split(",")]
         result = submit_order(db, order_id, ids)
-        typer.echo(
-            f"Order {result['order_id']} submitted: {result['external_order_id']}"
-        )
+        typer.echo(f"Order {result['order_id']} submitted: {result['external_order_id']}")
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -85,10 +82,7 @@ def satellite_poll() -> None:
     try:
         results = poll_order_status(db)
         for r in results:
-            typer.echo(
-                f"  Order {r.get('order_id')}: "
-                f"{r.get('status', r.get('error', 'unknown'))}"
-            )
+            typer.echo(f"  Order {r.get('order_id')}: {r.get('status', r.get('error', 'unknown'))}")
     finally:
         db.close()
 

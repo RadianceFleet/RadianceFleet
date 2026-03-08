@@ -2,6 +2,7 @@
 
 Extracted from risk_scoring.py to reduce module size.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,19 +20,50 @@ logger = logging.getLogger(__name__)
 _SCORING_CONFIG: dict[str, Any] | None = None
 
 _EXPECTED_SECTIONS = [
-    "gap_duration", "gap_frequency", "speed_anomaly", "movement_envelope",
-    "spoofing", "metadata", "vessel_age", "flag_state", "vessel_size_multiplier",
-    "watchlist", "dark_zone", "sts", "behavioral", "legitimacy", "corridor",
-    "score_bands", "ais_class", "dark_vessel", "pi_insurance", "psc_detention",
+    "gap_duration",
+    "gap_frequency",
+    "speed_anomaly",
+    "movement_envelope",
+    "spoofing",
+    "metadata",
+    "vessel_age",
+    "flag_state",
+    "vessel_size_multiplier",
+    "watchlist",
+    "dark_zone",
+    "sts",
+    "behavioral",
+    "legitimacy",
+    "corridor",
+    "score_bands",
+    "ais_class",
+    "dark_vessel",
+    "pi_insurance",
+    "psc_detention",
     "sts_patterns",
-    "track_naturalness", "draught", "identity_fraud", "dark_sts", "fleet",
-    "pi_validation", "fraudulent_registry",
-    "stale_ais", "at_sea_operations",
-    "ism_continuity", "rename_velocity",
-    "destination", "sts_chains", "scrapped_registry", "track_replay",
+    "track_naturalness",
+    "draught",
+    "identity_fraud",
+    "dark_sts",
+    "fleet",
+    "pi_validation",
+    "fraudulent_registry",
+    "stale_ais",
+    "at_sea_operations",
+    "ism_continuity",
+    "rename_velocity",
+    "destination",
+    "sts_chains",
+    "scrapped_registry",
+    "track_replay",
     "merge_chains",
-    "ownership_graph", "convoy", "voyage",
-    "route_laundering", "pi_cycling", "sparse_transmission", "vessel_type_consistency",
+    "ownership_graph",
+    "convoy",
+    "voyage",
+    "route_laundering",
+    "pi_cycling",
+    "sparse_transmission",
+    "vessel_type_consistency",
     "watchlist_stub_scoring",
 ]
 
@@ -42,7 +74,9 @@ _WATCHLIST_KEY_MAP = {
     "KSE_SHADOW": "vessel_on_kse_shadow_fleet_list",
 }
 _WATCHLIST_DEFAULTS = {
-    "OFAC_SDN": 50, "EU_COUNCIL": 50, "KSE_SHADOW": 30,
+    "OFAC_SDN": 50,
+    "EU_COUNCIL": 50,
+    "KSE_SHADOW": 30,
 }
 
 
@@ -105,9 +139,19 @@ def load_scoring_config() -> dict[str, Any]:
                     if isinstance(val, (int, float)):
                         if section_name in ("corridor", "vessel_size_multiplier"):
                             if not (0 <= val <= 10):
-                                logger.warning("risk_scoring.yaml %s.%s=%s outside [0,10]", section_name, key, val)
+                                logger.warning(
+                                    "risk_scoring.yaml %s.%s=%s outside [0,10]",
+                                    section_name,
+                                    key,
+                                    val,
+                                )
                         elif not (-50 <= val <= 200):
-                            logger.warning("risk_scoring.yaml %s.%s=%s outside [-50,200]", section_name, key, val)
+                            logger.warning(
+                                "risk_scoring.yaml %s.%s=%s outside [-50,200]",
+                                section_name,
+                                key,
+                                val,
+                            )
     return _SCORING_CONFIG
 
 

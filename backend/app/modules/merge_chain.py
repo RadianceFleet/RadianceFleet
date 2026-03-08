@@ -3,9 +3,11 @@
 The core BFS algorithm lives in identity_resolver.detect_merge_chains().
 This module provides a public API surface and convenience wrappers.
 """
+
 from __future__ import annotations
 
 import logging
+
 from sqlalchemy.orm import Session
 
 from app.models.merge_chain import MergeChain
@@ -25,6 +27,7 @@ def detect_merge_chains(db: Session) -> dict:
     Returns dict with chains_created, chains_by_band, etc.
     """
     from app.modules.identity_resolver import detect_merge_chains as _detect
+
     return _detect(db)
 
 
@@ -44,13 +47,7 @@ def get_merge_chains(
     if confidence_band is not None:
         query = query.filter(MergeChain.confidence_band == confidence_band.upper())
 
-    return (
-        query
-        .order_by(MergeChain.chain_id.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    return query.order_by(MergeChain.chain_id.desc()).offset(skip).limit(limit).all()
 
 
 def get_merge_chain_count(

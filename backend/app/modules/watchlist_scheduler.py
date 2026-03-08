@@ -12,12 +12,12 @@ enforce intervals.
 Design: single-threaded synchronous (called from CLI or cron).
 For background use, wrap in a threading.Thread like HistoryScheduler.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -63,7 +63,7 @@ class WatchlistUpdateLog:
     """
 
     @staticmethod
-    def get_last_update(db: Session, source_name: str) -> Optional[datetime]:
+    def get_last_update(db: Session, source_name: str) -> datetime | None:
         """Get the last successful update time for a source."""
         # Check in-memory cache first
         if source_name in _last_update:
@@ -72,6 +72,7 @@ class WatchlistUpdateLog:
         # Try DB table
         try:
             from sqlalchemy import text
+
             row = db.execute(
                 text(
                     "SELECT updated_at FROM watchlist_update_log "
@@ -84,7 +85,7 @@ class WatchlistUpdateLog:
                 if isinstance(ts, str):
                     ts = datetime.fromisoformat(ts)
                 if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
+                    ts = ts.replace(tzinfo=UTC)
                 return ts
         except Exception:
             pass
@@ -98,15 +99,16 @@ class WatchlistUpdateLog:
         added: int = 0,
         removed: int = 0,
         unchanged: int = 0,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> None:
         """Record a watchlist update result."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if status == "success":
             _last_update[source_name] = now
 
         try:
             from sqlalchemy import text
+
             db.execute(
                 text(
                     "INSERT INTO watchlist_update_log "
@@ -133,18 +135,21 @@ def _ensure_log_table(db: Session) -> None:
     """Create watchlist_update_log table if it doesn't exist."""
     try:
         from sqlalchemy import text
-        db.execute(text(
-            "CREATE TABLE IF NOT EXISTS watchlist_update_log ("
-            "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            "  source_name VARCHAR(100) NOT NULL,"
-            "  updated_at TIMESTAMP NOT NULL,"
-            "  status VARCHAR(20) NOT NULL,"
-            "  added INTEGER DEFAULT 0,"
-            "  removed INTEGER DEFAULT 0,"
-            "  unchanged INTEGER DEFAULT 0,"
-            "  error TEXT"
-            ")"
-        ))
+
+        db.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS watchlist_update_log ("
+                "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                "  source_name VARCHAR(100) NOT NULL,"
+                "  updated_at TIMESTAMP NOT NULL,"
+                "  status VARCHAR(20) NOT NULL,"
+                "  added INTEGER DEFAULT 0,"
+                "  removed INTEGER DEFAULT 0,"
+                "  unchanged INTEGER DEFAULT 0,"
+                "  error TEXT"
+                ")"
+            )
+        )
         db.commit()
     except Exception as e:
         logger.debug("Could not create watchlist_update_log table: %s", e)
@@ -153,6 +158,7 @@ def _ensure_log_table(db: Session) -> None:
 def _count_active_entries(db: Session, source_name: str) -> int:
     """Count currently active watchlist entries for a source."""
     from app.models.vessel_watchlist import VesselWatchlist
+
     return (
         db.query(VesselWatchlist)
         .filter(
@@ -166,6 +172,7 @@ def _count_active_entries(db: Session, source_name: str) -> int:
 def _get_active_vessel_ids(db: Session, source_name: str) -> set[int]:
     """Get set of vessel_ids with active watchlist entries for a source."""
     from app.models.vessel_watchlist import VesselWatchlist
+
     rows = (
         db.query(VesselWatchlist.vessel_id)
         .filter(
@@ -182,7 +189,7 @@ def _should_update(db: Session, source_name: str, interval: timedelta) -> bool:
     last = WatchlistUpdateLog.get_last_update(db, source_name)
     if last is None:
         return True
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return (now - last) >= interval
 
 
@@ -217,15 +224,12 @@ def update_source(
     if source_cfg["fetch"]:
         try:
             from app.modules import data_fetcher
+
             fetch_fn = getattr(data_fetcher, source_cfg["fetch"])
             result = fetch_fn(force=force)
             if result.get("error"):
-                logger.warning(
-                    "Watchlist %s fetch error: %s", source_name, result["error"]
-                )
-                WatchlistUpdateLog.record_update(
-                    db, source_name, "error", error=result["error"]
-                )
+                logger.warning("Watchlist %s fetch error: %s", source_name, result["error"])
+                WatchlistUpdateLog.record_update(db, source_name, "error", error=result["error"])
                 return {
                     "source": source_name,
                     "status": "error",
@@ -234,14 +238,13 @@ def update_source(
             file_path = result.get("path")
         except Exception as e:
             logger.error("Watchlist %s fetch failed: %s", source_name, e)
-            WatchlistUpdateLog.record_update(
-                db, source_name, "error", error=str(e)
-            )
+            WatchlistUpdateLog.record_update(db, source_name, "error", error=str(e))
             return {"source": source_name, "status": "error", "error": str(e)}
 
     # Find file if not returned by fetch
     if file_path is None:
         from app.modules.data_fetcher import _find_latest
+
         file_path = _find_latest(data_dir, source_cfg["file_prefix"])
 
     if file_path is None:
@@ -253,13 +256,12 @@ def update_source(
     # Run the loader
     try:
         from app.modules import watchlist_loader
+
         loader_fn = getattr(watchlist_loader, source_cfg["loader"])
         load_result = loader_fn(db, str(file_path))
     except Exception as e:
         logger.error("Watchlist %s load failed: %s", source_name, e)
-        WatchlistUpdateLog.record_update(
-            db, source_name, "error", error=str(e)
-        )
+        WatchlistUpdateLog.record_update(db, source_name, "error", error=str(e))
         return {"source": source_name, "status": "error", "error": str(e)}
 
     # Diff: compute added/removed
@@ -329,10 +331,12 @@ def run_watchlist_update(
                 source_cfg["name"],
                 e,
             )
-            results.append({
-                "source": source_cfg["name"],
-                "status": "error",
-                "error": str(e),
-            })
+            results.append(
+                {
+                    "source": source_cfg["name"],
+                    "status": "error",
+                    "error": str(e),
+                }
+            )
 
     return results

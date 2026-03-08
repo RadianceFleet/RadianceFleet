@@ -2,6 +2,7 @@
 
 Ensures consistent vessel-class speed thresholds across gap_detector and risk_scoring.
 """
+
 from __future__ import annotations
 
 

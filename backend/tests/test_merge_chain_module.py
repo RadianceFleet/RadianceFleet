@@ -1,15 +1,14 @@
 """Tests for merge_chain.py module — BFS detection wrapper, query helpers, and endpoint."""
+
 from __future__ import annotations
 
 import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_chain(
     chain_id: int,
@@ -26,7 +25,7 @@ def _make_chain(
     mc.confidence = confidence
     mc.confidence_band = confidence_band
     mc.evidence_json = evidence_json or {}
-    mc.created_at = datetime.datetime(2025, 6, 1, tzinfo=datetime.timezone.utc)
+    mc.created_at = datetime.datetime(2025, 6, 1, tzinfo=datetime.UTC)
     return mc
 
 
@@ -43,7 +42,7 @@ def _make_merge_candidate(
     mc.vessel_a_id = vessel_a_id
     mc.vessel_b_id = vessel_b_id
     mc.confidence_score = confidence_score
-    mc.created_at = created_at or datetime.datetime(2025, 6, 1, tzinfo=datetime.timezone.utc)
+    mc.created_at = created_at or datetime.datetime(2025, 6, 1, tzinfo=datetime.UTC)
     mc.status = MagicMock()
     mc.status.value = status_value
     return mc
@@ -53,17 +52,21 @@ def _make_merge_candidate(
 # Module import tests
 # ---------------------------------------------------------------------------
 
+
 class TestModuleImports:
     def test_import_module(self):
         from app.modules.merge_chain import detect_merge_chains
+
         assert callable(detect_merge_chains)
 
     def test_import_get_merge_chains(self):
         from app.modules.merge_chain import get_merge_chains
+
         assert callable(get_merge_chains)
 
     def test_import_serialize(self):
         from app.modules.merge_chain import serialize_merge_chain
+
         assert callable(serialize_merge_chain)
 
 
@@ -71,9 +74,11 @@ class TestModuleImports:
 # Serialization tests
 # ---------------------------------------------------------------------------
 
+
 class TestSerializeMergeChain:
     def test_basic_serialization(self):
         from app.modules.merge_chain import serialize_merge_chain
+
         chain = _make_chain(1, [10, 20, 30], confidence=75.0, confidence_band="HIGH")
         result = serialize_merge_chain(chain)
         assert result["chain_id"] == 1
@@ -85,6 +90,7 @@ class TestSerializeMergeChain:
 
     def test_none_fields(self):
         from app.modules.merge_chain import serialize_merge_chain
+
         chain = MagicMock()
         chain.chain_id = 1
         chain.vessel_ids_json = None
@@ -105,6 +111,7 @@ class TestSerializeMergeChain:
 # BFS detection delegation tests
 # ---------------------------------------------------------------------------
 
+
 class TestDetectMergeChainsModule:
     @patch("app.modules.merge_candidates.settings")
     def test_delegates_to_identity_resolver(self, mock_settings):
@@ -112,6 +119,7 @@ class TestDetectMergeChainsModule:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = False
         db = MagicMock()
         from app.modules.merge_chain import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["skipped"] == "feature_disabled"
 
@@ -123,6 +131,7 @@ class TestDetectMergeChainsModule:
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = candidates
         from app.modules.merge_chain import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
@@ -131,18 +140,23 @@ class TestDetectMergeChainsModule:
         """A->B, B->C creates a single chain of 3."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=80,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=70,
-                                  created_at=datetime.datetime(2025, 2, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=80, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=70, created_at=datetime.datetime(2025, 2, 1)
+            ),
         ]
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = candidates
-        vessel_mocks = {i: MagicMock(vessel_id=i, imo="1234567", mmsi="123456789") for i in range(1, 4)}
+        vessel_mocks = {
+            i: MagicMock(vessel_id=i, imo="1234567", mmsi="123456789") for i in range(1, 4)
+        }
         db.query.return_value.get.side_effect = lambda vid: vessel_mocks.get(vid)
         db.query.return_value.filter.return_value.first.return_value = None
 
         from app.modules.merge_chain import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 1
 
@@ -151,14 +165,18 @@ class TestDetectMergeChainsModule:
         """Two disconnected 3-vessel groups = two chains."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=80,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=70,
-                                  created_at=datetime.datetime(2025, 2, 1)),
-            _make_merge_candidate(102, 10, 20, confidence_score=90,
-                                  created_at=datetime.datetime(2025, 3, 1)),
-            _make_merge_candidate(103, 20, 30, confidence_score=85,
-                                  created_at=datetime.datetime(2025, 4, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=80, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=70, created_at=datetime.datetime(2025, 2, 1)
+            ),
+            _make_merge_candidate(
+                102, 10, 20, confidence_score=90, created_at=datetime.datetime(2025, 3, 1)
+            ),
+            _make_merge_candidate(
+                103, 20, 30, confidence_score=85, created_at=datetime.datetime(2025, 4, 1)
+            ),
         ]
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = candidates
@@ -169,6 +187,7 @@ class TestDetectMergeChainsModule:
         db.query.return_value.filter.return_value.first.return_value = None
 
         from app.modules.merge_chain import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 2
 
@@ -179,6 +198,7 @@ class TestDetectMergeChainsModule:
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = []
         from app.modules.merge_chain import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
@@ -187,14 +207,18 @@ class TestDetectMergeChainsModule:
         """Chain confidence = min of all link confidence scores."""
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=90,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=55,
-                                  created_at=datetime.datetime(2025, 2, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=90, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=55, created_at=datetime.datetime(2025, 2, 1)
+            ),
         ]
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = candidates
-        vessel_mocks = {i: MagicMock(vessel_id=i, imo="1234567", mmsi="123456789") for i in range(1, 4)}
+        vessel_mocks = {
+            i: MagicMock(vessel_id=i, imo="1234567", mmsi="123456789") for i in range(1, 4)
+        }
         db.query.return_value.get.side_effect = lambda vid: vessel_mocks.get(vid)
         db.query.return_value.filter.return_value.first.return_value = None
 
@@ -202,9 +226,8 @@ class TestDetectMergeChainsModule:
         db.add.side_effect = lambda obj: added_objects.append(obj)
 
         from app.modules.merge_chain import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 1
         assert len(added_objects) == 1
         assert added_objects[0].confidence == 55
-
-

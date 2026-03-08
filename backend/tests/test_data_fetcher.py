@@ -2,18 +2,18 @@
 
 All HTTP calls are mocked — no real network traffic.
 """
+
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def tmp_data_dir(tmp_path):
@@ -39,14 +39,16 @@ VALID_OFAC_CSV = (
     '1234,"TEST VESSEL","Vessel","123456789","sanctioned"\n'
 )
 
-VALID_OPENSANCTIONS_JSON = json.dumps([
-    {
-        "schema": "Vessel",
-        "caption": "TEST VESSEL",
-        "datasets": ["ofac_sdn"],
-        "properties": {"name": ["TEST VESSEL"], "mmsi": ["123456789"]},
-    }
-])
+VALID_OPENSANCTIONS_JSON = json.dumps(
+    [
+        {
+            "schema": "Vessel",
+            "caption": "TEST VESSEL",
+            "datasets": ["ofac_sdn"],
+            "properties": {"name": ["TEST VESSEL"], "mmsi": ["123456789"]},
+        }
+    ]
+)
 
 
 def _mock_stream_response(content: bytes, status_code: int = 200, headers: dict = None):
@@ -58,6 +60,7 @@ def _mock_stream_response(content: bytes, status_code: int = 200, headers: dict 
     response.raise_for_status = MagicMock()
     if status_code >= 400:
         import httpx
+
         response.raise_for_status.side_effect = httpx.HTTPStatusError(
             message=f"HTTP {status_code}",
             request=MagicMock(),
@@ -81,6 +84,7 @@ def _mock_client(stream_response):
 # Tests: fetch_ofac_sdn
 # ---------------------------------------------------------------------------
 
+
 class TestFetchOfacSdn:
     def test_successful_download(self, tmp_data_dir, _patch_settings):
         """Download OFAC SDN CSV and validate it."""
@@ -102,6 +106,7 @@ class TestFetchOfacSdn:
     def test_network_error(self, tmp_data_dir, _patch_settings):
         """Connection error returns friendly message."""
         import httpx
+
         from app.modules.data_fetcher import fetch_ofac_sdn
 
         client = MagicMock()
@@ -112,8 +117,10 @@ class TestFetchOfacSdn:
         client.__enter__ = MagicMock(return_value=client)
         client.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.modules.data_fetcher.httpx.Client", return_value=client), \
-             patch("time.sleep"):
+        with (
+            patch("app.modules.data_fetcher.httpx.Client", return_value=client),
+            patch("time.sleep"),
+        ):
             result = fetch_ofac_sdn(tmp_data_dir)
 
         assert result["status"] == "error"
@@ -127,8 +134,10 @@ class TestFetchOfacSdn:
         response = _mock_stream_response(b"", status_code=500)
         client = _mock_client(response)
 
-        with patch("app.modules.data_fetcher.httpx.Client", return_value=client), \
-             patch("time.sleep"):
+        with (
+            patch("app.modules.data_fetcher.httpx.Client", return_value=client),
+            patch("time.sleep"),
+        ):
             result = fetch_ofac_sdn(tmp_data_dir)
 
         assert result["status"] == "error"
@@ -150,18 +159,21 @@ class TestFetchOfacSdn:
 
     def test_etag_304_not_modified(self, tmp_data_dir, _patch_settings):
         """ETag-based conditional GET returns up_to_date when 304."""
-        from app.modules.data_fetcher import fetch_ofac_sdn, _save_metadata
+        from app.modules.data_fetcher import _save_metadata, fetch_ofac_sdn
 
         # Pre-populate metadata with an etag
         tmp_data_dir.mkdir(parents=True, exist_ok=True)
-        _save_metadata(tmp_data_dir, {
-            "ofac": {
-                "etag": '"abc123"',
-                "last_modified": None,
-                "downloaded_at": "2026-02-25",
-                "url": "https://example.com",
-            }
-        })
+        _save_metadata(
+            tmp_data_dir,
+            {
+                "ofac": {
+                    "etag": '"abc123"',
+                    "last_modified": None,
+                    "downloaded_at": "2026-02-25",
+                    "url": "https://example.com",
+                }
+            },
+        )
         # Also create a "previous" download file so _find_latest works
         prev_file = tmp_data_dir / "ofac_sdn_2026-02-25.csv"
         prev_file.write_text(VALID_OFAC_CSV)
@@ -177,12 +189,10 @@ class TestFetchOfacSdn:
 
     def test_force_ignores_etag(self, tmp_data_dir, _patch_settings):
         """--force re-downloads even when etag is cached."""
-        from app.modules.data_fetcher import fetch_ofac_sdn, _save_metadata
+        from app.modules.data_fetcher import _save_metadata, fetch_ofac_sdn
 
         tmp_data_dir.mkdir(parents=True, exist_ok=True)
-        _save_metadata(tmp_data_dir, {
-            "ofac": {"etag": '"abc123"', "downloaded_at": "2026-02-25"}
-        })
+        _save_metadata(tmp_data_dir, {"ofac": {"etag": '"abc123"', "downloaded_at": "2026-02-25"}})
 
         response = _mock_stream_response(VALID_OFAC_CSV.encode())
         client = _mock_client(response)
@@ -200,6 +210,7 @@ class TestFetchOfacSdn:
 # ---------------------------------------------------------------------------
 # Tests: fetch_opensanctions_vessels
 # ---------------------------------------------------------------------------
+
 
 class TestFetchOpenSanctions:
     def test_successful_download(self, tmp_data_dir, _patch_settings):
@@ -249,6 +260,7 @@ class TestFetchOpenSanctions:
 # Tests: fetch_all
 # ---------------------------------------------------------------------------
 
+
 class TestFetchAll:
     def test_partial_failure(self, tmp_data_dir, _patch_settings):
         """One source fails, other succeeds — errors list has one entry."""
@@ -260,8 +272,13 @@ class TestFetchAll:
         def mock_opensanctions(*a, **kw):
             return {"path": tmp_data_dir / "test.json", "status": "downloaded", "error": None}
 
-        with patch("app.modules.data_fetcher.fetch_ofac_sdn", side_effect=mock_ofac), \
-             patch("app.modules.data_fetcher.fetch_opensanctions_vessels", side_effect=mock_opensanctions):
+        with (
+            patch("app.modules.data_fetcher.fetch_ofac_sdn", side_effect=mock_ofac),
+            patch(
+                "app.modules.data_fetcher.fetch_opensanctions_vessels",
+                side_effect=mock_opensanctions,
+            ),
+        ):
             result = fetch_all(tmp_data_dir)
 
         assert len(result["errors"]) == 1
@@ -275,8 +292,10 @@ class TestFetchAll:
         def mock_fetch(*a, **kw):
             return {"path": tmp_data_dir / "test", "status": "downloaded", "error": None}
 
-        with patch("app.modules.data_fetcher.fetch_ofac_sdn", side_effect=mock_fetch), \
-             patch("app.modules.data_fetcher.fetch_opensanctions_vessels", side_effect=mock_fetch):
+        with (
+            patch("app.modules.data_fetcher.fetch_ofac_sdn", side_effect=mock_fetch),
+            patch("app.modules.data_fetcher.fetch_opensanctions_vessels", side_effect=mock_fetch),
+        ):
             result = fetch_all(tmp_data_dir)
 
         assert result["errors"] == []
@@ -285,6 +304,7 @@ class TestFetchAll:
 # ---------------------------------------------------------------------------
 # Tests: validation helpers
 # ---------------------------------------------------------------------------
+
 
 class TestValidation:
     def test_validate_ofac_csv_valid(self, tmp_path):
@@ -327,9 +347,10 @@ class TestValidation:
 # Tests: metadata persistence
 # ---------------------------------------------------------------------------
 
+
 class TestMetadata:
     def test_save_and_load(self, tmp_path):
-        from app.modules.data_fetcher import _save_metadata, _load_metadata
+        from app.modules.data_fetcher import _load_metadata, _save_metadata
 
         meta = {"ofac": {"etag": '"abc"', "downloaded_at": "2026-02-26"}}
         _save_metadata(tmp_path, meta)
@@ -352,10 +373,12 @@ class TestMetadata:
 # Tests: timeout handling
 # ---------------------------------------------------------------------------
 
+
 class TestTimeout:
     def test_timeout_error(self, tmp_data_dir, _patch_settings):
         """Timeout returns friendly error with retry hint."""
         import httpx
+
         from app.modules.data_fetcher import fetch_ofac_sdn
 
         client = MagicMock()
@@ -366,8 +389,10 @@ class TestTimeout:
         client.__enter__ = MagicMock(return_value=client)
         client.__exit__ = MagicMock(return_value=False)
 
-        with patch("app.modules.data_fetcher.httpx.Client", return_value=client), \
-             patch("time.sleep"):
+        with (
+            patch("app.modules.data_fetcher.httpx.Client", return_value=client),
+            patch("time.sleep"),
+        ):
             result = fetch_ofac_sdn(tmp_data_dir)
 
         assert result["status"] == "error"

@@ -1,13 +1,12 @@
 """Tests for cargo inference — draught-based laden/ballast detection."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
-
-import pytest
-
+from unittest.mock import MagicMock
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_vessel(vessel_id=1, vessel_type="Tanker", deadweight=120000):
     v = MagicMock()
@@ -26,61 +25,76 @@ def _make_ais_point(draught, ts=None):
 
 # ── Tests: _get_max_draught ──────────────────────────────────────────
 
+
 class TestGetMaxDraught:
     def test_vlcc_by_type(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught("VLCC", None) == 22.0
 
     def test_suezmax_by_type(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught("Suezmax Tanker", None) == 17.0
 
     def test_aframax_by_type(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught("Aframax", None) == 15.0
 
     def test_panamax_by_type(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught("Panamax", None) == 14.0
 
     def test_tanker_generic(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught("tanker", None) == 16.0
 
     def test_crude_oil_tanker(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught("Crude_oil_tanker", None) == 18.0
 
     def test_fallback_to_dwt_vlcc(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught(None, 250_000) == 22.0
 
     def test_fallback_to_dwt_suezmax(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught(None, 130_000) == 17.0
 
     def test_fallback_to_dwt_aframax(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught(None, 90_000) == 15.0
 
     def test_fallback_to_dwt_panamax(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught(None, 65_000) == 14.0
 
     def test_fallback_to_dwt_general(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught(None, 20_000) == 12.0
 
     def test_default_fallback(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught(None, None) == 15.0
 
     def test_unknown_type_uses_dwt(self):
         from app.modules.cargo_inference import _get_max_draught
+
         assert _get_max_draught("Container Ship", 200_000) == 22.0
 
 
 # ── Tests: infer_cargo_state ─────────────────────────────────────────
+
 
 class TestInferCargoState:
     def _setup_db(self, vessel, latest_point, recent_call=None, sts_event=None):
@@ -88,7 +102,7 @@ class TestInferCargoState:
 
         def query_side_effect(model):
             q = MagicMock()
-            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            model_name = model.__name__ if hasattr(model, "__name__") else str(model)
 
             if model_name == "Vessel":
                 q.filter.return_value.first.return_value = vessel

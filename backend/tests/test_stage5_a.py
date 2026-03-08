@@ -16,19 +16,18 @@ Covers:
 - Shared address with sanctioned entity
 - Scoring integration
 """
+
 from __future__ import annotations
 
-import importlib
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
-import pytest
 import yaml
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_owner(
     owner_id: int,
@@ -82,6 +81,7 @@ def _make_member(member_id: int, cluster_id: int, owner_id: int):
 # 1. Feature flag gating — disabled
 # ---------------------------------------------------------------------------
 
+
 class TestFeatureFlagGating:
     @patch("app.modules.ownership_graph.settings")
     def test_build_ownership_graph_disabled(self, mock_settings):
@@ -111,6 +111,7 @@ class TestFeatureFlagGating:
 # 2. Empty owners — no crash
 # ---------------------------------------------------------------------------
 
+
 class TestEmptyOwners:
     @patch("app.modules.ownership_graph.settings")
     def test_build_graph_empty(self, mock_settings):
@@ -139,6 +140,7 @@ class TestEmptyOwners:
 # 3. Basic cluster detection
 # ---------------------------------------------------------------------------
 
+
 class TestBasicClusters:
     @patch("app.modules.ownership_graph.settings")
     def test_clusters_found_count(self, mock_settings):
@@ -148,7 +150,7 @@ class TestBasicClusters:
         owners = [
             _make_owner(1, 100, "Acme Shipping"),
             _make_owner(2, 200, "Acme Shipping"),  # same name -> cluster
-            _make_owner(3, 300, "Beta Corp"),       # different name -> no cluster
+            _make_owner(3, 300, "Beta Corp"),  # different name -> no cluster
         ]
 
         db = MagicMock()
@@ -162,6 +164,7 @@ class TestBasicClusters:
 # ---------------------------------------------------------------------------
 # 4. Shell chain detection (depth > 2)
 # ---------------------------------------------------------------------------
+
 
 class TestShellChains:
     @patch("app.modules.ownership_graph.settings")
@@ -202,6 +205,7 @@ class TestShellChains:
 # 5. Max depth guard (10)
 # ---------------------------------------------------------------------------
 
+
 class TestMaxDepthGuard:
     @patch("app.modules.ownership_graph.settings")
     def test_max_depth_does_not_infinite_loop(self, mock_settings):
@@ -225,6 +229,7 @@ class TestMaxDepthGuard:
 # ---------------------------------------------------------------------------
 # 6. Post-sanction reshuffling (>2 changes in 12 months)
 # ---------------------------------------------------------------------------
+
 
 class TestReshuffling:
     @patch("app.modules.ownership_graph.settings")
@@ -266,6 +271,7 @@ class TestReshuffling:
 # 7. Circular ownership detection
 # ---------------------------------------------------------------------------
 
+
 class TestCircularOwnership:
     @patch("app.modules.ownership_graph.settings")
     def test_circular_detected(self, mock_settings):
@@ -304,6 +310,7 @@ class TestCircularOwnership:
 # 8. Shared address with sanctioned entity
 # ---------------------------------------------------------------------------
 
+
 class TestSharedAddress:
     @patch("app.modules.ownership_graph.settings")
     def test_shared_address_detected(self, mock_settings):
@@ -324,6 +331,7 @@ class TestSharedAddress:
 # ---------------------------------------------------------------------------
 # 9. Sanctions propagation
 # ---------------------------------------------------------------------------
+
 
 class TestSanctionsPropagation:
     @patch("app.modules.ownership_graph.settings")
@@ -364,6 +372,7 @@ class TestSanctionsPropagation:
 # 10. Config integration — feature flags exist
 # ---------------------------------------------------------------------------
 
+
 class TestConfig:
     def test_ownership_graph_flags_exist(self):
         from app.config import Settings
@@ -379,13 +388,15 @@ class TestConfig:
 # 11. Migration columns exist in database.py
 # ---------------------------------------------------------------------------
 
+
 class TestMigrationColumns:
     def test_column_migrations_include_ownership_graph(self):
         """Verify the 3 new columns are in the migration list."""
-        import app.database as db_module
-
         # Re-read the source to check the column_migrations list
         import inspect
+
+        import app.database as db_module
+
         source = inspect.getsource(db_module._run_migrations)
         assert "parent_owner_id" in source
         assert "ownership_type" in source
@@ -395,6 +406,7 @@ class TestMigrationColumns:
 # ---------------------------------------------------------------------------
 # 12. YAML section exists
 # ---------------------------------------------------------------------------
+
 
 class TestYAMLSection:
     def test_ownership_graph_yaml_section(self):
@@ -416,9 +428,10 @@ class TestYAMLSection:
 # 13. Expected sections includes ownership_graph
 # ---------------------------------------------------------------------------
 
+
 class TestExpectedSections:
     def test_ownership_graph_in_expected_sections(self):
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
 
         assert "ownership_graph" in _EXPECTED_SECTIONS
 
@@ -427,10 +440,12 @@ class TestExpectedSections:
 # 14. Pipeline wiring
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineWiring:
     def test_pipeline_calls_ownership_graph_when_enabled(self):
         """Verify discover_dark_vessels calls ownership graph when enabled."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
 
         source = inspect.getsource(discover_dark_vessels)
@@ -443,6 +458,7 @@ class TestPipelineWiring:
 # ---------------------------------------------------------------------------
 # 15. VesselOwner model has new columns
 # ---------------------------------------------------------------------------
+
 
 class TestVesselOwnerModel:
     def test_new_columns_on_model(self):
@@ -460,10 +476,12 @@ class TestVesselOwnerModel:
 # 16. Scoring integration — ownership graph scoring section
 # ---------------------------------------------------------------------------
 
+
 class TestScoringIntegration:
     def test_scoring_reads_ownership_graph_config(self):
         """Verify risk_scoring.py has ownership graph scoring block."""
         import inspect
+
         from app.modules.risk_scoring import compute_gap_score
 
         source = inspect.getsource(compute_gap_score)
@@ -475,6 +493,7 @@ class TestScoringIntegration:
 # ---------------------------------------------------------------------------
 # 17. Internal helper tests
 # ---------------------------------------------------------------------------
+
 
 class TestInternalHelpers:
     def test_normalize_name(self):
@@ -521,6 +540,7 @@ class TestInternalHelpers:
 # 18. Mixed scenario — multiple patterns detected
 # ---------------------------------------------------------------------------
 
+
 class TestMixedScenario:
     @patch("app.modules.ownership_graph.settings")
     def test_multiple_patterns_in_one_graph(self, mock_settings):
@@ -548,6 +568,6 @@ class TestMixedScenario:
 
         assert result["status"] == "ok"
         assert result["clusters_found"] >= 1  # "shell corp" x2
-        assert result["shell_chains"] >= 1    # depth-3 chain
+        assert result["shell_chains"] >= 1  # depth-3 chain
         assert result["reshuffling_detected"] >= 1  # vessel 600
         assert result["shared_address_sanctioned"] >= 1  # RU shared with sanctioned

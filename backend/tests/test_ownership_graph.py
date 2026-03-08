@@ -1,19 +1,18 @@
 """Tests for corporate ownership graph — shell chains, circular ownership, sanctions."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.modules.ownership_graph import (
-    _normalize_name,
     _build_parent_chain,
     _detect_circular_ownership,
+    _normalize_name,
 )
 
-
 # ── Tests: _normalize_name ───────────────────────────────────────────
+
 
 class TestNormalizeName:
     def test_strips_and_lowercases(self):
@@ -27,6 +26,7 @@ class TestNormalizeName:
 
 
 # ── Tests: _build_parent_chain ───────────────────────────────────────
+
 
 class TestBuildParentChain:
     def test_simple_chain(self):
@@ -60,6 +60,7 @@ class TestBuildParentChain:
 
 # ── Tests: _detect_circular_ownership ────────────────────────────────
 
+
 class TestDetectCircularOwnership:
     def test_no_circles(self):
         parent_map = {1: 2, 2: 3, 3: None}
@@ -87,6 +88,7 @@ class TestDetectCircularOwnership:
 
 
 # ── Tests: build_ownership_graph ─────────────────────────────────────
+
 
 class TestBuildOwnershipGraph:
     def test_disabled_returns_status(self):
@@ -212,6 +214,7 @@ class TestBuildOwnershipGraph:
 
 
 # ── Tests: propagate_sanctions ───────────────────────────────────────
+
 
 class TestPropagateSanctions:
     def test_disabled_returns_status(self):

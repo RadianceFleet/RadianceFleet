@@ -1,8 +1,10 @@
 """Shared CLI helper functions."""
+
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+
 from rich.console import Console
 from rich.table import Table
 
@@ -17,6 +19,7 @@ def _is_first_run() -> bool:
     try:
         from app.database import SessionLocal
         from app.models.corridor import Corridor
+
         db = SessionLocal()
         try:
             return db.query(Corridor).count() == 0
@@ -31,10 +34,10 @@ def _import_corridors(db) -> None:
     so corridors are visible in-session but rolled back atomically if a
     later step fails."""
     import yaml
-    from app.models.corridor import Corridor
 
     # Lazy import console from cli to avoid circular import at module level
     from app.cli_app import console
+    from app.models.corridor import Corridor
 
     config_path = Path("../config/corridors.yaml")
     if not config_path.exists():
@@ -49,6 +52,7 @@ def _import_corridors(db) -> None:
         corridors_data = data.get("corridors", [])
 
         from shapely.geometry import shape as shapely_shape
+
         upserted = 0
         for c_data in corridors_data:
             existing = db.query(Corridor).filter(Corridor.name == c_data["name"]).first()
@@ -62,6 +66,7 @@ def _import_corridors(db) -> None:
             elif raw_geom and isinstance(raw_geom, str):
                 try:
                     from shapely import wkt as shapely_wkt
+
                     geom = shapely_wkt.loads(raw_geom).wkt
                 except Exception:
                     pass
@@ -86,9 +91,9 @@ def _import_corridors(db) -> None:
 
 def _load_sample_data(db) -> None:
     """Generate and ingest sample AIS data for demo mode."""
-    from app.modules.ingest import ingest_ais_csv
-    from app.models.ais_point import AISPoint
     from app.cli_app import console
+    from app.models.ais_point import AISPoint
+    from app.modules.ingest import ingest_ais_csv
 
     ais_count = db.query(AISPoint).count()
     if ais_count > 0:
@@ -98,9 +103,11 @@ def _load_sample_data(db) -> None:
     sample_path = Path("scripts/sample_ais.csv")
     if not sample_path.exists():
         import subprocess
+
         subprocess.run(
             [sys.executable, "scripts/generate_sample_data.py"],
-            check=True, capture_output=True,
+            check=True,
+            capture_output=True,
         )
     if sample_path.exists():
         with open(sample_path, "rb") as f:
@@ -116,9 +123,11 @@ def _enrich_vessels(db) -> None:
 
     if settings.GFW_API_TOKEN:
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
         enrich_vessels_from_gfw(db, limit=50)
 
     from app.modules.vessel_enrichment import infer_ais_class_batch
+
     infer_ais_class_batch(db)
 
 
@@ -126,8 +135,8 @@ def _print_summary(con: Console) -> None:
     """Print a brief summary of database contents."""
     try:
         from app.database import SessionLocal
-        from app.models.vessel import Vessel
         from app.models.gap_event import AISGapEvent
+        from app.models.vessel import Vessel
 
         db = SessionLocal()
         try:
@@ -181,9 +190,15 @@ def _print_candidates_table(con: Console, db, candidates) -> None:
 
 def _update_fetch_watchlists(db) -> None:
     """Fetch and import watchlists."""
-    from app.modules.data_fetcher import fetch_all, _find_latest
-    from app.modules.watchlist_loader import load_ofac_sdn, load_opensanctions, load_fleetleaks, load_gur_list, load_kse_list
     from app.config import settings
+    from app.modules.data_fetcher import _find_latest, fetch_all
+    from app.modules.watchlist_loader import (
+        load_fleetleaks,
+        load_gur_list,
+        load_kse_list,
+        load_ofac_sdn,
+        load_opensanctions,
+    )
 
     fetch_all()
 

@@ -1,11 +1,10 @@
 """Tests for dark vessel discovery — auto-hunt, clustering, and orchestrator."""
+
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from unittest.mock import MagicMock, patch
 
 # --- Helpers ---
+
 
 def _make_gap(gap_id, vessel_id, risk_score=60, off_lat=60.0, off_lon=25.0):
     gap = MagicMock()
@@ -35,6 +34,7 @@ def _make_detection(det_id, lat, lon, time_utc, corridor_id=None, vessel_type="u
 
 
 # --- Auto-hunt ---
+
 
 class TestAutoHunt:
     @patch("app.modules.vessel_hunt.find_hunt_candidates")
@@ -79,6 +79,7 @@ class TestAutoHunt:
 
 
 # --- Clustering ---
+
 
 class TestClusterDarkDetections:
     def test_clusters_nearby_detections(self):
@@ -133,6 +134,7 @@ class TestClusterDarkDetections:
 
 # --- Orchestrator ---
 
+
 class TestOrchestrator:
     @patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[])
     @patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={})
@@ -146,7 +148,9 @@ class TestOrchestrator:
             mock_gaps.side_effect = RuntimeError("DB locked")
 
             result = discover_dark_vessels(
-                db, start_date="2025-12-01", end_date="2025-12-31",
+                db,
+                start_date="2025-12-01",
+                end_date="2025-12-31",
                 skip_fetch=True,
             )
 
@@ -163,16 +167,17 @@ class TestOrchestrator:
         # Make top_alerts query work
         db.query.return_value.join.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
 
-        with patch("app.modules.gfw_client.import_gfw_gap_events") as mock_gfw, \
-             patch("app.modules.gfw_client.sweep_corridors_sar") as mock_sar, \
-             patch("app.modules.gap_detector.run_gap_detection") as mock_gaps, \
-             patch("app.modules.gap_detector.run_spoofing_detection") as mock_spoof, \
-             patch("app.modules.loitering_detector.run_loitering_detection") as mock_loiter, \
-             patch("app.modules.sts_detector.detect_sts_events") as mock_sts, \
-             patch("app.modules.risk_scoring.rescore_all_alerts") as mock_score, \
-             patch("app.modules.identity_resolver.detect_merge_candidates") as mock_merge, \
-             patch("app.modules.mmsi_cloning_detector.detect_mmsi_cloning") as mock_clone:
-
+        with (
+            patch("app.modules.gfw_client.import_gfw_gap_events") as mock_gfw,
+            patch("app.modules.gfw_client.sweep_corridors_sar") as mock_sar,
+            patch("app.modules.gap_detector.run_gap_detection") as mock_gaps,
+            patch("app.modules.gap_detector.run_spoofing_detection") as mock_spoof,
+            patch("app.modules.loitering_detector.run_loitering_detection") as mock_loiter,
+            patch("app.modules.sts_detector.detect_sts_events") as mock_sts,
+            patch("app.modules.risk_scoring.rescore_all_alerts") as mock_score,
+            patch("app.modules.identity_resolver.detect_merge_candidates") as mock_merge,
+            patch("app.modules.mmsi_cloning_detector.detect_mmsi_cloning") as mock_clone,
+        ):
             mock_gfw.side_effect = Exception("GFW down")
             mock_sar.return_value = {}
             mock_gaps.return_value = {"gaps_detected": 5}
@@ -184,7 +189,9 @@ class TestOrchestrator:
             mock_clone.return_value = []
 
             result = discover_dark_vessels(
-                db, start_date="2025-12-01", end_date="2025-12-31",
+                db,
+                start_date="2025-12-01",
+                end_date="2025-12-31",
             )
 
         assert result["run_status"] == "partial"
@@ -195,6 +202,7 @@ class TestOrchestrator:
 
 
 # --- Hunt threshold fix ---
+
 
 class TestHuntThresholdFix:
     def test_high_threshold_reachable(self):
@@ -225,5 +233,6 @@ class TestHuntThresholdFix:
         """find_hunt_candidates should use updated thresholds: HIGH>=45, MEDIUM>=25."""
         # Verify thresholds via config constants (moved from hardcoded to config)
         from app.modules.vessel_hunt import HIGH_SCORE_BAND, MEDIUM_SCORE_BAND
+
         assert HIGH_SCORE_BAND == 45
         assert MEDIUM_SCORE_BAND == 25

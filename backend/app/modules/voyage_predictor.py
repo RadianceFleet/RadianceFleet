@@ -5,6 +5,7 @@ Provides:
   - predict_next_destination()    — predict next port based on matching route template
   - jaccard_similarity()          — set-level similarity for port sequences
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,8 +13,6 @@ from collections import defaultdict
 from typing import Any
 
 from sqlalchemy.orm import Session
-
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ def _extract_subsequences(port_sequence: list[int], min_length: int = 3) -> list
     subsequences = []
     for length in range(min_length, len(port_sequence) + 1):
         for start in range(len(port_sequence) - length + 1):
-            subseq = tuple(port_sequence[start:start + length])
+            subseq = tuple(port_sequence[start : start + length])
             subsequences.append(subseq)
     return subsequences
 
@@ -49,9 +48,7 @@ def _find_existing_template(db: Session, vessel_type: str | None, route_ports: l
     from app.models.route_template import RouteTemplate
 
     # Query all templates with matching vessel_type
-    candidates = db.query(RouteTemplate).filter(
-        RouteTemplate.vessel_type == vessel_type
-    ).all()
+    candidates = db.query(RouteTemplate).filter(RouteTemplate.vessel_type == vessel_type).all()
 
     for t in candidates:
         existing_ports = t.route_ports_json
@@ -72,8 +69,8 @@ def build_route_templates(db: Session) -> dict:
     Returns dict with templates_created, vessels_analyzed, sequences_found.
     """
     from app.models.port_call import PortCall
-    from app.models.vessel import Vessel
     from app.models.route_template import RouteTemplate
+    from app.models.vessel import Vessel
 
     stats: dict[str, Any] = {
         "templates_created": 0,
@@ -150,11 +147,13 @@ def build_route_templates(db: Session) -> dict:
                 type_counts[vt] += 1
             common_type = max(type_counts, key=type_counts.get)  # type: ignore[arg-type]
 
-            clusters.append({
-                "route_ports": list(representative),
-                "frequency": len(cluster_seqs),
-                "vessel_type": common_type,
-            })
+            clusters.append(
+                {
+                    "route_ports": list(representative),
+                    "frequency": len(cluster_seqs),
+                    "vessel_type": common_type,
+                }
+            )
 
     # Step 4: Store as RouteTemplate records (with dedup — E4b)
     templates_updated = 0
@@ -183,7 +182,11 @@ def build_route_templates(db: Session) -> dict:
 
     stats["templates_updated"] = templates_updated
     db.commit()
-    logger.info("Built %d route templates from %d vessels", stats["templates_created"], stats["vessels_analyzed"])
+    logger.info(
+        "Built %d route templates from %d vessels",
+        stats["templates_created"],
+        stats["vessels_analyzed"],
+    )
     return stats
 
 
@@ -197,10 +200,10 @@ def predict_next_destination(db: Session, vessel_id: int) -> dict | None:
 
     Returns dict with predicted_port_id, confidence, deviation_score or None.
     """
+    from app.models.ais_point import AISPoint
+    from app.models.corridor import Corridor
     from app.models.port_call import PortCall
     from app.models.route_template import RouteTemplate
-    from app.models.corridor import Corridor
-    from app.models.ais_point import AISPoint
 
     # Get recent port calls for vessel
     recent_calls = (
@@ -277,24 +280,23 @@ def predict_next_destination(db: Session, vessel_id: int) -> dict | None:
             from app.utils.geo import haversine_nm
 
             # Get STS zone corridors
-            sts_corridors = (
-                db.query(Corridor)
-                .filter(Corridor.corridor_type == "sts_zone")
-                .all()
-            )
+            sts_corridors = db.query(Corridor).filter(Corridor.corridor_type == "sts_zone").all()
 
             for corr in sts_corridors:
                 if corr.geometry is None:
                     continue
                 try:
                     from app.utils.geo import load_geometry
+
                     geom = load_geometry(corr.geometry)
                     if geom is None:
                         continue
                     centroid = geom.centroid
                     dist = haversine_nm(
-                        latest_point.lat, latest_point.lon,
-                        centroid.y, centroid.x,
+                        latest_point.lat,
+                        latest_point.lon,
+                        centroid.y,
+                        centroid.x,
                     )
                     if dist <= 100:
                         result["deviation_score"] = 25
@@ -326,9 +328,9 @@ def _port_coords(port) -> dict[str, float] | None:
 
 def predict_next_destination_enriched(db: Session, vessel_id: int) -> dict | None:
     """Wrap predict_next_destination with enriched port/route details for the frontend."""
-    from app.models.route_template import RouteTemplate
     from app.models.port import Port
     from app.models.port_call import PortCall
+    from app.models.route_template import RouteTemplate
 
     base = predict_next_destination(db, vessel_id)
     if base is None:

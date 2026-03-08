@@ -1,11 +1,11 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
+
+from pydantic import BaseModel
 
 
 class AnalystCreate(BaseModel):
     username: str
-    display_name: Optional[str] = None
+    display_name: str | None = None
     password: str
     role: str = "analyst"
 
@@ -13,17 +13,17 @@ class AnalystCreate(BaseModel):
 class AnalystRead(BaseModel):
     analyst_id: int
     username: str
-    display_name: Optional[str] = None
+    display_name: str | None = None
     role: str
     is_active: bool
-    created_at: Optional[datetime] = None
-    last_login_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    last_login_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 
 class AnalystLoginRequest(BaseModel):
     password: str
-    username: Optional[str] = None
+    username: str | None = None
 
 
 class AnalystLoginResponse(BaseModel):

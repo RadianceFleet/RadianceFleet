@@ -3,6 +3,7 @@
 Uses pybreaker to prevent cascading failures when external services are down.
 Each breaker trips after 5 consecutive failures and resets after 60 seconds.
 """
+
 from __future__ import annotations
 
 import logging
@@ -14,9 +15,7 @@ logger = logging.getLogger(__name__)
 
 class LoggingListener(pybreaker.CircuitBreakerListener):
     def state_change(self, cb, old_state, new_state):
-        logger.warning(
-            "Circuit breaker '%s': %s -> %s", cb.name, old_state.name, new_state.name
-        )
+        logger.warning("Circuit breaker '%s': %s -> %s", cb.name, old_state.name, new_state.name)
 
 
 _listener = LoggingListener()

@@ -15,14 +15,13 @@ Guards:
 - Creates SpoofingAnomaly records with type DESTINATION_DEVIATION.
 - Gated by DESTINATION_DETECTION_ENABLED feature flag.
 """
+
 from __future__ import annotations
 
 import logging
-import math
-from datetime import datetime, date, timedelta, timezone
-from typing import Any, Optional
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -31,15 +30,30 @@ from app.models.base import SpoofingTypeEnum
 from app.models.corridor import Corridor
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
-from app.utils.geo import bearing_diff, initial_bearing as _initial_bearing
+from app.utils.geo import bearing_diff
+from app.utils.geo import initial_bearing as _initial_bearing
 
 logger = logging.getLogger(__name__)
 
 # Generic / blank destination patterns (case-insensitive match)
 _BLANK_DESTINATIONS = {
-    "", "FOR ORDERS", "FOR ORDER", "TBA", "TBN", "AT SEA",
-    "NOT AVAILABLE", "N/A", "NA", "NONE", "UNKNOWN", ".",
-    "---", "XXX", "STS", "ORDERS", "WAITING",
+    "",
+    "FOR ORDERS",
+    "FOR ORDER",
+    "TBA",
+    "TBN",
+    "AT SEA",
+    "NOT AVAILABLE",
+    "N/A",
+    "NA",
+    "NONE",
+    "UNKNOWN",
+    ".",
+    "---",
+    "XXX",
+    "STS",
+    "ORDERS",
+    "WAITING",
 }
 
 # Minimum DWT to analyse (skip small vessels)
@@ -55,6 +69,7 @@ _HEADING_WINDOW_HOURS = 6
 # Load scoring config with fallbacks
 try:
     from app.modules.risk_scoring import load_scoring_config
+
     _cfg = load_scoring_config()
     _dest_cfg = _cfg.get("destination", {})
 except Exception:
@@ -65,12 +80,11 @@ SCORE_BLANK_GENERIC = int(_dest_cfg.get("blank_generic_destination", 10))
 SCORE_FREQUENT_CHANGES = int(_dest_cfg.get("destination_changes_3_in_7d", 20))
 
 
-
 # Backward-compatible alias for tests that import the private name
 _bearing_diff = bearing_diff
 
 
-def _is_blank_or_generic(dest: Optional[str]) -> bool:
+def _is_blank_or_generic(dest: str | None) -> bool:
     """Check whether a destination string is blank or generic.
 
     Returns False for None/missing — a missing destination simply means
@@ -87,9 +101,9 @@ def _get_corridor_centers(db: Session) -> list[dict]:
     """Load STS zone corridors with their centroid coordinates."""
     from app.utils.geo import load_geometry
 
-    corridors = db.query(Corridor).filter(
-        Corridor.corridor_type.in_(["sts_zone", "STS_ZONE"])
-    ).all()
+    corridors = (
+        db.query(Corridor).filter(Corridor.corridor_type.in_(["sts_zone", "STS_ZONE"])).all()
+    )
 
     centers = []
     for corr in corridors:
@@ -97,19 +111,21 @@ def _get_corridor_centers(db: Session) -> list[dict]:
         if geom is None:
             continue
         centroid = geom.centroid
-        centers.append({
-            "corridor_id": corr.corridor_id,
-            "name": corr.name,
-            "lat": centroid.y,
-            "lon": centroid.x,
-        })
+        centers.append(
+            {
+                "corridor_id": corr.corridor_id,
+                "name": corr.name,
+                "lat": centroid.y,
+                "lon": centroid.x,
+            }
+        )
     return centers
 
 
 def detect_destination_anomalies(
     db: Session,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> dict[str, Any]:
     """Run destination manipulation detection.
 
@@ -136,14 +152,14 @@ def detect_destination_anomalies(
 
     # Determine time window
     if date_to is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     else:
-        now = datetime(date_to.year, date_to.month, date_to.day, tzinfo=timezone.utc)
+        now = datetime(date_to.year, date_to.month, date_to.day, tzinfo=UTC)
 
     if date_from is None:
         window_start = now - timedelta(days=7)
     else:
-        window_start = datetime(date_from.year, date_from.month, date_from.day, tzinfo=timezone.utc)
+        window_start = datetime(date_from.year, date_from.month, date_from.day, tzinfo=UTC)
 
     heading_window_start = now - timedelta(hours=_HEADING_WINDOW_HOURS)
 
@@ -152,6 +168,7 @@ def detect_destination_anomalies(
 
     # Load EU ports for declared-destination resolution
     from app.models.port import Port
+
     eu_ports = db.query(Port).filter(Port.is_eu == True).all()  # noqa: E712
     eu_port_names = {p.name.strip().upper() for p in eu_ports if p.name}
 
@@ -188,11 +205,15 @@ def detect_destination_anomalies(
         # ── Check 1: Blank/generic destination ──────────────────────────────
         if _is_blank_or_generic(declared_dest):
             # Check for existing anomaly (dedup)
-            existing = db.query(SpoofingAnomaly).filter(
-                SpoofingAnomaly.vessel_id == vessel.vessel_id,
-                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.DESTINATION_DEVIATION,
-                SpoofingAnomaly.start_time_utc >= window_start,
-            ).first()
+            existing = (
+                db.query(SpoofingAnomaly)
+                .filter(
+                    SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                    SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.DESTINATION_DEVIATION,
+                    SpoofingAnomaly.start_time_utc >= window_start,
+                )
+                .first()
+            )
 
             if existing is None:
                 anomaly = SpoofingAnomaly(
@@ -221,11 +242,15 @@ def detect_destination_anomalies(
         if dest_values:
             unique_dests = set(dest_values)
             if len(unique_dests) > 3:
-                existing = db.query(SpoofingAnomaly).filter(
-                    SpoofingAnomaly.vessel_id == vessel.vessel_id,
-                    SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.DESTINATION_DEVIATION,
-                    SpoofingAnomaly.start_time_utc >= window_start,
-                ).first()
+                existing = (
+                    db.query(SpoofingAnomaly)
+                    .filter(
+                        SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                        SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.DESTINATION_DEVIATION,
+                        SpoofingAnomaly.start_time_utc >= window_start,
+                    )
+                    .first()
+                )
 
                 if existing is None:
                     anomaly = SpoofingAnomaly(
@@ -244,18 +269,15 @@ def detect_destination_anomalies(
                     stats["anomalies_created"] += 1
 
         # ── Check 3: Heading toward STS zone while declaring EU port ────────
-        if (
-            declared_dest
-            and not _is_blank_or_generic(declared_dest)
-            and sts_centers
-        ):
+        if declared_dest and not _is_blank_or_generic(declared_dest) and sts_centers:
             dest_upper = declared_dest.strip().upper()
             declares_eu = dest_upper in eu_port_names
 
             if declares_eu:
                 # Get last 6h of AIS points for heading analysis
                 heading_points = [
-                    pt for pt in recent_points
+                    pt
+                    for pt in recent_points
                     if pt.timestamp_utc >= heading_window_start
                     and pt.cog is not None
                     and pt.lat is not None
@@ -280,11 +302,16 @@ def detect_destination_anomalies(
 
                         if deviation < _BEARING_DEVIATION_DEG:
                             # Vessel heading toward STS zone, not toward declared EU port
-                            existing = db.query(SpoofingAnomaly).filter(
-                                SpoofingAnomaly.vessel_id == vessel.vessel_id,
-                                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.DESTINATION_DEVIATION,
-                                SpoofingAnomaly.start_time_utc >= window_start,
-                            ).first()
+                            existing = (
+                                db.query(SpoofingAnomaly)
+                                .filter(
+                                    SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                                    SpoofingAnomaly.anomaly_type
+                                    == SpoofingTypeEnum.DESTINATION_DEVIATION,
+                                    SpoofingAnomaly.start_time_utc >= window_start,
+                                )
+                                .first()
+                            )
 
                             if existing is None:
                                 anomaly = SpoofingAnomaly(

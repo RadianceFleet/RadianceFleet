@@ -1,12 +1,14 @@
 """Shared test fixtures and mock factories."""
-import pytest
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
+
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.database import get_db
 from app.auth import require_auth, require_senior_or_admin
+from app.database import get_db
+from app.main import app
 
 
 @pytest.fixture
@@ -24,6 +26,7 @@ def mock_db():
 @pytest.fixture
 def api_client(mock_db):
     """TestClient with DB dependency overridden to use a MagicMock session."""
+
     def override_get_db():
         yield mock_db
 
@@ -65,7 +68,7 @@ def make_mock_point(vessel_id=1, lat=0.0, lon=0.0, ts=None, **kwargs):
     p.vessel_id = vessel_id
     p.lat = lat
     p.lon = lon
-    p.timestamp_utc = ts or datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    p.timestamp_utc = ts or datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
     defaults = {
         "sog": 0.0,
         "cog": 0.0,
@@ -76,8 +79,9 @@ def make_mock_point(vessel_id=1, lat=0.0, lon=0.0, ts=None, **kwargs):
     return p
 
 
-def make_mock_port(port_id=1, name="Test Port", geometry="POINT(55.0 25.0)",
-                   is_offshore_terminal=False, **kwargs):
+def make_mock_port(
+    port_id=1, name="Test Port", geometry="POINT(55.0 25.0)", is_offshore_terminal=False, **kwargs
+):
     """Create a mock Port object. Any kwarg becomes an attribute."""
     p = MagicMock()
     p.port_id = port_id
@@ -89,20 +93,20 @@ def make_mock_port(port_id=1, name="Test Port", geometry="POINT(55.0 25.0)",
     return p
 
 
-def make_mock_gap(gap_event_id=1, vessel_id=1, gap_start=None, gap_end=None,
-                  **kwargs):
+def make_mock_gap(gap_event_id=1, vessel_id=1, gap_start=None, gap_end=None, **kwargs):
     """Create a mock GapEvent object. Any kwarg becomes an attribute."""
     g = MagicMock()
     g.gap_event_id = gap_event_id
     g.vessel_id = vessel_id
-    g.gap_start_utc = gap_start or datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
-    g.gap_end_utc = gap_end or datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
+    g.gap_start_utc = gap_start or datetime(2024, 1, 1, 0, 0, tzinfo=UTC)
+    g.gap_end_utc = gap_end or datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
     for key, val in kwargs.items():
         setattr(g, key, val)
     return g
 
 
 # Fixture wrappers — return the factory function for fixture-style usage.
+
 
 @pytest.fixture
 def make_vessel():

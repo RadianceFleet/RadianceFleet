@@ -8,11 +8,12 @@ positives in areas with broad AIS outages.
 
 Feature-gated by ``settings.DARK_STS_DETECTION_ENABLED``.
 """
+
 from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -20,8 +21,8 @@ from app.config import settings
 from app.models.corridor import Corridor
 from app.models.corridor_gap_baseline import CorridorGapBaseline
 from app.models.gap_event import AISGapEvent
-from app.utils.geo import parse_wkt_bbox as _parse_wkt_bbox
 from app.modules.sts_detector import _in_bbox
+from app.utils.geo import parse_wkt_bbox as _parse_wkt_bbox
 
 logger = logging.getLogger(__name__)
 

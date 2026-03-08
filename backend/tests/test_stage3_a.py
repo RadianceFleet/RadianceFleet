@@ -10,21 +10,19 @@ Tests cover:
 - Pipeline wiring in dark_vessel_discovery.py
 - Integration: enum exists, feature flags exist, YAML section, _EXPECTED_SECTIONS
 """
+
 from __future__ import annotations
 
-import math
-from datetime import datetime, date, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _utcnow():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _make_vessel(vessel_id=1, mmsi="123456789", deadweight=80000, merged_into=None):
@@ -37,8 +35,16 @@ def _make_vessel(vessel_id=1, mmsi="123456789", deadweight=80000, merged_into=No
     return v
 
 
-def _make_point(vessel_id=1, ts=None, lat=25.0, lon=56.0, cog=180.0, sog=12.0,
-                raw_payload_ref=None, destination=None):
+def _make_point(
+    vessel_id=1,
+    ts=None,
+    lat=25.0,
+    lon=56.0,
+    cog=180.0,
+    sog=12.0,
+    raw_payload_ref=None,
+    destination=None,
+):
     pt = MagicMock()
     pt.vessel_id = vessel_id
     pt.timestamp_utc = ts or _utcnow()
@@ -60,8 +66,7 @@ def _make_port(name="ROTTERDAM", country="NL", is_eu=True):
     return p
 
 
-def _setup_db(vessels=None, ais_points=None, corridors=None, eu_ports=None,
-              existing_anomaly=None):
+def _setup_db(vessels=None, ais_points=None, corridors=None, eu_ports=None, existing_anomaly=None):
     """Build a mock DB session with properly chained query mocks.
 
     The actual detector code uses these patterns:
@@ -111,6 +116,7 @@ def _setup_db(vessels=None, ais_points=None, corridors=None, eu_ports=None,
 # Test 1: Disabled flag returns early
 # ---------------------------------------------------------------------------
 
+
 class TestDestinationDetectorDisabled:
     def test_disabled_returns_early(self):
         """When DESTINATION_DETECTION_ENABLED is False, detector returns immediately."""
@@ -130,6 +136,7 @@ class TestDestinationDetectorDisabled:
 # ---------------------------------------------------------------------------
 # Test 2-5: Blank destination detected
 # ---------------------------------------------------------------------------
+
 
 class TestBlankDestination:
     def _run_with_dest(self, dest_value):
@@ -175,6 +182,7 @@ class TestBlankDestination:
 # ---------------------------------------------------------------------------
 # Test 6-7: Frequent destination changes
 # ---------------------------------------------------------------------------
+
 
 class TestFrequentDestinationChanges:
     def test_more_than_3_changes(self):
@@ -236,6 +244,7 @@ class TestFrequentDestinationChanges:
 # Test 8: Small vessel (DWT < 5000) skipped
 # ---------------------------------------------------------------------------
 
+
 class TestSmallVesselSkipped:
     def test_low_dwt_skipped(self):
         """Vessels with DWT <= 5000 are excluded from the query."""
@@ -256,6 +265,7 @@ class TestSmallVesselSkipped:
 # Test 9: STS heading while declaring EU port
 # ---------------------------------------------------------------------------
 
+
 class TestSTSHeadingDeviation:
     def test_heading_toward_sts_declaring_eu(self):
         """Vessel heading toward STS zone while declaring EU port is flagged."""
@@ -269,7 +279,8 @@ class TestSTSHeadingDeviation:
         points = [
             _make_point(
                 ts=now - timedelta(hours=i),
-                lat=30.0, lon=56.0,
+                lat=30.0,
+                lon=56.0,
                 cog=180.0,  # heading south
                 destination="ROTTERDAM",
             )
@@ -295,17 +306,22 @@ class TestSTSHeadingDeviation:
 
         # Mock load_geometry inside _get_corridor_centers
         from shapely.geometry import Point
-        mock_geom = Point(56.0, 25.0)
 
-        with patch("app.modules.destination_detector.settings") as mock_settings, \
-             patch("app.modules.destination_detector._get_corridor_centers") as mock_centers:
+        Point(56.0, 25.0)
+
+        with (
+            patch("app.modules.destination_detector.settings") as mock_settings,
+            patch("app.modules.destination_detector._get_corridor_centers") as mock_centers,
+        ):
             mock_settings.DESTINATION_DETECTION_ENABLED = True
-            mock_centers.return_value = [{
-                "corridor_id": 1,
-                "name": "Gulf STS Zone",
-                "lat": 25.0,
-                "lon": 56.0,
-            }]
+            mock_centers.return_value = [
+                {
+                    "corridor_id": 1,
+                    "name": "Gulf STS Zone",
+                    "lat": 25.0,
+                    "lon": 56.0,
+                }
+            ]
             result = detect_destination_anomalies(db)
 
         assert result["heading_deviation"] >= 1
@@ -315,6 +331,7 @@ class TestSTSHeadingDeviation:
 # ---------------------------------------------------------------------------
 # Test 10: Normal vessel -- no anomaly
 # ---------------------------------------------------------------------------
+
 
 class TestNormalVessel:
     def test_legitimate_vessel_no_anomaly(self):
@@ -329,7 +346,8 @@ class TestNormalVessel:
         points = [
             _make_point(
                 ts=now - timedelta(hours=i),
-                lat=45.0, lon=5.0,
+                lat=45.0,
+                lon=5.0,
                 cog=350.0,
                 destination="ROTTERDAM",
             )
@@ -359,6 +377,7 @@ class TestNormalVessel:
 # Test 11: Dedup -- existing anomaly not duplicated
 # ---------------------------------------------------------------------------
 
+
 class TestDedup:
     def test_existing_anomaly_not_duplicated(self):
         """If a DESTINATION_DEVIATION anomaly already exists, don't create another."""
@@ -387,6 +406,7 @@ class TestDedup:
 # Test 12: No AIS points -- vessel skipped
 # ---------------------------------------------------------------------------
 
+
 class TestNoAISPoints:
     def test_no_recent_points_skipped(self):
         """Vessel with no recent AIS points is skipped."""
@@ -413,11 +433,14 @@ class TestNoAISPoints:
 # Test 13-14: Pipeline wiring
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineWiring:
     def test_destination_detection_step_present_in_source(self):
         """dark_vessel_discovery.py contains destination_detection step."""
         import inspect
+
         from app.modules import dark_vessel_discovery
+
         source = inspect.getsource(dark_vessel_discovery.discover_dark_vessels)
         assert "destination_detection" in source
         assert "detect_destination_anomalies" in source
@@ -425,7 +448,9 @@ class TestPipelineWiring:
     def test_destination_detection_gated_by_flag(self):
         """Step is gated by DESTINATION_DETECTION_ENABLED."""
         import inspect
+
         from app.modules import dark_vessel_discovery
+
         source = inspect.getsource(dark_vessel_discovery.discover_dark_vessels)
         assert "DESTINATION_DETECTION_ENABLED" in source
 
@@ -434,15 +459,18 @@ class TestPipelineWiring:
 # Test 15-16: Integration -- enum + feature flags
 # ---------------------------------------------------------------------------
 
+
 class TestIntegrationEnum:
     def test_destination_deviation_enum_exists(self):
         """SpoofingTypeEnum has DESTINATION_DEVIATION value."""
         from app.models.base import SpoofingTypeEnum
+
         assert hasattr(SpoofingTypeEnum, "DESTINATION_DEVIATION")
         assert SpoofingTypeEnum.DESTINATION_DEVIATION.value == "destination_deviation"
 
     def test_enum_is_string_type(self):
         from app.models.base import SpoofingTypeEnum
+
         assert isinstance(SpoofingTypeEnum.DESTINATION_DEVIATION.value, str)
 
 
@@ -450,6 +478,7 @@ class TestIntegrationFeatureFlags:
     def test_detection_flag_exists(self):
         """Settings has DESTINATION_DETECTION_ENABLED."""
         from app.config import Settings
+
         s = Settings(DATABASE_URL="sqlite:///test.db", _env_file=None)
         assert hasattr(s, "DESTINATION_DETECTION_ENABLED")
         assert s.DESTINATION_DETECTION_ENABLED is True
@@ -457,6 +486,7 @@ class TestIntegrationFeatureFlags:
     def test_scoring_flag_exists(self):
         """Settings has DESTINATION_SCORING_ENABLED."""
         from app.config import Settings
+
         s = Settings(DATABASE_URL="sqlite:///test.db", _env_file=None)
         assert hasattr(s, "DESTINATION_SCORING_ENABLED")
         assert s.DESTINATION_SCORING_ENABLED is True
@@ -466,11 +496,13 @@ class TestIntegrationFeatureFlags:
 # Test 17: YAML section exists
 # ---------------------------------------------------------------------------
 
+
 class TestIntegrationYAML:
     def test_destination_section_in_yaml(self):
         """risk_scoring.yaml includes destination section."""
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         config_path = Path(__file__).parent.parent.parent / "config" / "risk_scoring.yaml"
         with open(config_path) as f:
@@ -486,10 +518,12 @@ class TestIntegrationYAML:
 # Test 18: _EXPECTED_SECTIONS includes "destination"
 # ---------------------------------------------------------------------------
 
+
 class TestIntegrationExpectedSections:
     def test_destination_in_expected_sections(self):
         """risk_scoring._EXPECTED_SECTIONS includes 'destination'."""
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
+
         assert "destination" in _EXPECTED_SECTIONS
 
 
@@ -497,11 +531,14 @@ class TestIntegrationExpectedSections:
 # Test 19: Shadow-mode exclusion
 # ---------------------------------------------------------------------------
 
+
 class TestShadowModeExclusion:
     def test_shadow_exclusion_in_scoring_source(self):
         """risk_scoring.py contains shadow-mode exclusion for destination_deviation."""
         import inspect
+
         from app.modules import risk_scoring
+
         source = inspect.getsource(risk_scoring)
         assert "DESTINATION_SCORING_ENABLED" in source
         assert "destination_deviation" in source
@@ -511,11 +548,14 @@ class TestShadowModeExclusion:
 # Test 20: Postgres enum migration
 # ---------------------------------------------------------------------------
 
+
 class TestPostgresEnumMigration:
     def test_destination_deviation_in_migration(self):
         """database.py includes destination_deviation in Postgres enum migration."""
         import inspect
+
         from app.database import _run_migrations
+
         source = inspect.getsource(_run_migrations)
         assert "destination_deviation" in source
 
@@ -524,22 +564,26 @@ class TestPostgresEnumMigration:
 # Test 21-23: Bearing calculation
 # ---------------------------------------------------------------------------
 
+
 class TestBearingCalculation:
     def test_initial_bearing_north(self):
         """Bearing from (0,0) to (10,0) should be ~0 (north)."""
         from app.modules.destination_detector import _initial_bearing
+
         bearing = _initial_bearing(0.0, 0.0, 10.0, 0.0)
         assert abs(bearing) < 1.0 or abs(bearing - 360) < 1.0
 
     def test_initial_bearing_east(self):
         """Bearing from (0,0) to (0,10) should be ~90 (east)."""
         from app.modules.destination_detector import _initial_bearing
+
         bearing = _initial_bearing(0.0, 0.0, 0.0, 10.0)
         assert abs(bearing - 90.0) < 1.0
 
     def test_bearing_diff_symmetric(self):
         """Bearing difference should be symmetric."""
         from app.modules.destination_detector import _bearing_diff
+
         assert abs(_bearing_diff(10, 350) - _bearing_diff(350, 10)) < 0.001
 
 
@@ -547,9 +591,11 @@ class TestBearingCalculation:
 # Test 24: Blank destination classification
 # ---------------------------------------------------------------------------
 
+
 class TestBlankClassification:
     def test_blank_patterns(self):
         from app.modules.destination_detector import _is_blank_or_generic
+
         # None means missing data — NOT a deception signal (B6 fix)
         assert _is_blank_or_generic(None) is False
         assert _is_blank_or_generic("") is True
@@ -563,6 +609,7 @@ class TestBlankClassification:
 # ---------------------------------------------------------------------------
 # Test 25: date_from / date_to parameters
 # ---------------------------------------------------------------------------
+
 
 class TestDateParameters:
     def test_with_explicit_dates(self):
@@ -587,14 +634,16 @@ class TestDateParameters:
 # Test 26: Score values match YAML config
 # ---------------------------------------------------------------------------
 
+
 class TestScoreValues:
     def test_score_constants(self):
         """Score constants match YAML configuration."""
         from app.modules.destination_detector import (
-            SCORE_HEADING_TO_STS,
             SCORE_BLANK_GENERIC,
             SCORE_FREQUENT_CHANGES,
+            SCORE_HEADING_TO_STS,
         )
+
         assert SCORE_HEADING_TO_STS == 40
         assert SCORE_BLANK_GENERIC == 10
         assert SCORE_FREQUENT_CHANGES == 20

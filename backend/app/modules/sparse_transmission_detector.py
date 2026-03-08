@@ -7,10 +7,10 @@ IMO regulations while making position tracking difficult. This evasion
 technique avoids creating formal AIS gaps while still degrading tracking
 quality significantly.
 """
+
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
@@ -24,11 +24,11 @@ from app.models.vessel import Vessel
 logger = logging.getLogger(__name__)
 
 # ── Thresholds ────────────────────────────────────────────────────────────
-_UNDERWAY_SOG_THRESHOLD_KN = 3.0   # vessel considered "underway" above this SOG
-_WINDOW_HOURS = 24                  # rolling window for density calculation
+_UNDERWAY_SOG_THRESHOLD_KN = 3.0  # vessel considered "underway" above this SOG
+_WINDOW_HOURS = 24  # rolling window for density calculation
 _MODERATE_THRESHOLD_PTS_PER_HOUR = 2.0  # <=2 pts/hour = moderate sparsity
-_SEVERE_THRESHOLD_PTS_PER_HOUR = 1.0    # <1 pt/hour = severe sparsity
-_MIN_UNDERWAY_HOURS = 4.0               # minimum underway duration to flag
+_SEVERE_THRESHOLD_PTS_PER_HOUR = 1.0  # <1 pt/hour = severe sparsity
+_MIN_UNDERWAY_HOURS = 4.0  # minimum underway duration to flag
 
 
 def run_sparse_transmission_detection(db: Session) -> dict:
@@ -68,10 +68,14 @@ def run_sparse_transmission_detection(db: Session) -> dict:
         vessels_checked += 1
 
         # Check for existing anomaly
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == vessel.vessel_id,
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.SPARSE_TRANSMISSION,
-        ).first()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.SPARSE_TRANSMISSION,
+            )
+            .first()
+        )
         if existing:
             continue
 
@@ -106,7 +110,8 @@ def run_sparse_transmission_detection(db: Session) -> dict:
     db.commit()
     logger.info(
         "Sparse transmission: %d anomalies from %d vessels checked",
-        anomalies_created, vessels_checked,
+        anomalies_created,
+        vessels_checked,
     )
     return {
         "status": "ok",
@@ -146,15 +151,14 @@ def _find_sparse_windows(
 
         # Filter for underway points
         underway_points = [
-            p for p in window_points
-            if p.sog is not None and p.sog > _UNDERWAY_SOG_THRESHOLD_KN
+            p for p in window_points if p.sog is not None and p.sog > _UNDERWAY_SOG_THRESHOLD_KN
         ]
 
         if len(underway_points) < 2:
             continue
 
         # Calculate underway duration
-        actual_end = min(window_end, window_points[-1].timestamp_utc)
+        min(window_end, window_points[-1].timestamp_utc)
         underway_start = underway_points[0].timestamp_utc
         underway_end = underway_points[-1].timestamp_utc
         underway_hours = (underway_end - underway_start).total_seconds() / 3600.0

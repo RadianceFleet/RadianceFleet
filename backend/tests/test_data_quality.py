@@ -1,8 +1,7 @@
 """Tests for data quality features: digitraffic downsample + feed outage source-awareness."""
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
 
-import pytest
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 
 class TestDigitraficDownsample:
@@ -20,8 +19,13 @@ class TestDigitraficDownsample:
         mock_response.json.return_value = {
             "features": [
                 {
-                    "properties": {"mmsi": "211000001", "sog": 100, "cog": 1800,
-                                   "heading": 180, "timestampExternal": ts_epoch_ms},
+                    "properties": {
+                        "mmsi": "211000001",
+                        "sog": 100,
+                        "cog": 1800,
+                        "heading": 180,
+                        "timestampExternal": ts_epoch_ms,
+                    },
                     "geometry": {"coordinates": [24.0, 60.0]},
                 },
             ]
@@ -41,7 +45,9 @@ class TestDigitraficDownsample:
 
         # Last digitraffic point: 10 minutes ago (< 30 min -> should downsample)
         recent_ts = now - timedelta(minutes=10)
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (recent_ts,)
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            recent_ts,
+        )
 
         with patch("app.modules.digitraffic_client.settings") as mock_settings:
             mock_settings.DIGITRAFFIC_ENABLED = True
@@ -62,8 +68,13 @@ class TestDigitraficDownsample:
         mock_response.json.return_value = {
             "features": [
                 {
-                    "properties": {"mmsi": "211000001", "sog": 100, "cog": 1800,
-                                   "heading": 180, "timestampExternal": ts_epoch_ms},
+                    "properties": {
+                        "mmsi": "211000001",
+                        "sog": 100,
+                        "cog": 1800,
+                        "heading": 180,
+                        "timestampExternal": ts_epoch_ms,
+                    },
                     "geometry": {"coordinates": [24.0, 60.0]},
                 },
             ]
@@ -82,7 +93,9 @@ class TestDigitraficDownsample:
 
         # Last point: 31 minutes ago (>= 30 min -> should allow)
         old_ts = now - timedelta(minutes=31)
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (old_ts,)
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            old_ts,
+        )
 
         with patch("app.modules.digitraffic_client.settings") as mock_settings:
             mock_settings.DIGITRAFFIC_ENABLED = True
@@ -102,8 +115,13 @@ class TestDigitraficDownsample:
         mock_response.json.return_value = {
             "features": [
                 {
-                    "properties": {"mmsi": "211000001", "sog": 100, "cog": 1800,
-                                   "heading": 180, "timestampExternal": ts_epoch_ms},
+                    "properties": {
+                        "mmsi": "211000001",
+                        "sog": 100,
+                        "cog": 1800,
+                        "heading": 180,
+                        "timestampExternal": ts_epoch_ms,
+                    },
                     "geometry": {"coordinates": [24.0, 60.0]},
                 },
             ]
@@ -140,13 +158,23 @@ class TestDigitraficDownsample:
         mock_response.json.return_value = {
             "features": [
                 {
-                    "properties": {"mmsi": "211000001", "sog": 100, "cog": 1800,
-                                   "heading": 180, "timestampExternal": ts_epoch_ms},
+                    "properties": {
+                        "mmsi": "211000001",
+                        "sog": 100,
+                        "cog": 1800,
+                        "heading": 180,
+                        "timestampExternal": ts_epoch_ms,
+                    },
                     "geometry": {"coordinates": [24.0, 60.0]},
                 },
                 {
-                    "properties": {"mmsi": "211000002", "sog": 100, "cog": 1800,
-                                   "heading": 180, "timestampExternal": ts_epoch_ms},
+                    "properties": {
+                        "mmsi": "211000002",
+                        "sog": 100,
+                        "cog": 1800,
+                        "heading": 180,
+                        "timestampExternal": ts_epoch_ms,
+                    },
                     "geometry": {"coordinates": [25.0, 61.0]},
                 },
             ]
@@ -165,7 +193,9 @@ class TestDigitraficDownsample:
 
         # All vessels have recent points -> all downsampled
         recent_ts = now - timedelta(minutes=5)
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (recent_ts,)
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            recent_ts,
+        )
 
         with patch("app.modules.digitraffic_client.settings") as mock_settings:
             mock_settings.DIGITRAFFIC_ENABLED = True
@@ -283,7 +313,7 @@ class TestFeedOutageSourceAware:
 
         # Create mock gaps from a single source (digitraffic), all in the same corridor/window
         # Need 9 vessels to exceed _MIN_VESSELS_FOR_OUTAGE (8)
-        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
         gaps = []
         for i in range(9):
             gap = MagicMock()
@@ -301,9 +331,11 @@ class TestFeedOutageSourceAware:
         # No high-risk vessels
         db.query.return_value.filter.return_value.distinct.return_value.all.return_value = []
 
-        with patch("app.modules.feed_outage_detector.settings") as mock_settings, \
-             patch("app.modules.feed_outage_detector._has_evasion_signals", return_value=False), \
-             patch("app.modules.feed_outage_detector._get_threshold", return_value=8):
+        with (
+            patch("app.modules.feed_outage_detector.settings") as mock_settings,
+            patch("app.modules.feed_outage_detector._has_evasion_signals", return_value=False),
+            patch("app.modules.feed_outage_detector._get_threshold", return_value=8),
+        ):
             mock_settings.FEED_OUTAGE_DETECTION_ENABLED = True
             result = detect_feed_outages(db)
 
@@ -316,9 +348,16 @@ class TestFeedOutageSourceAware:
 
         db = MagicMock()
 
-        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
         gaps = []
-        sources = ["digitraffic", "aisstream", "kystverket", "digitraffic", "aisstream", "kystverket"]
+        sources = [
+            "digitraffic",
+            "aisstream",
+            "kystverket",
+            "digitraffic",
+            "aisstream",
+            "kystverket",
+        ]
         for i, src in enumerate(sources):
             gap = MagicMock()
             gap.vessel_id = i + 1
@@ -334,9 +373,11 @@ class TestFeedOutageSourceAware:
         db.query.return_value.filter.return_value.all.return_value = gaps
         db.query.return_value.filter.return_value.distinct.return_value.all.return_value = []
 
-        with patch("app.modules.feed_outage_detector.settings") as mock_settings, \
-             patch("app.modules.feed_outage_detector._has_evasion_signals", return_value=False), \
-             patch("app.modules.feed_outage_detector._get_threshold", return_value=5):
+        with (
+            patch("app.modules.feed_outage_detector.settings") as mock_settings,
+            patch("app.modules.feed_outage_detector._has_evasion_signals", return_value=False),
+            patch("app.modules.feed_outage_detector._get_threshold", return_value=5),
+        ):
             mock_settings.FEED_OUTAGE_DETECTION_ENABLED = True
             result = detect_feed_outages(db)
 

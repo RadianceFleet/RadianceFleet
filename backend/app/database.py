@@ -1,6 +1,8 @@
+from collections.abc import Generator
+
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
-from typing import Generator
+from sqlalchemy.orm import Session, sessionmaker
+
 from app.config import settings
 
 # Normalize DATABASE_URL for SQLAlchemy driver compatibility
@@ -19,6 +21,7 @@ else:
 engine = create_engine(_db_url, **_engine_kwargs)
 
 if "sqlite" in _db_url:
+
     @event.listens_for(engine, "connect")
     def _set_sqlite_pragmas(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
@@ -26,6 +29,7 @@ if "sqlite" in _db_url:
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -41,6 +45,7 @@ def get_db() -> Generator[Session, None, None]:
 def init_db() -> None:
     """Create all tables. Called on first run or after migrations."""
     from app.models import Base  # noqa: F401 — ensure all models are registered
+
     Base.metadata.create_all(bind=engine)
     _run_migrations()
     _seed_admin_user(SessionLocal)
@@ -50,8 +55,9 @@ def _seed_admin_user(session_factory) -> None:
     """Create default admin analyst if table is empty and ADMIN_PASSWORD is set."""
     if not settings.ADMIN_PASSWORD:
         return
-    from app.models.analyst import Analyst
     from app.auth import hash_password
+    from app.models.analyst import Analyst
+
     db = session_factory()
     try:
         if db.query(Analyst).count() == 0:
@@ -76,7 +82,8 @@ def _run_migrations() -> None:
     Uses sqlalchemy.inspect() to check column existence before ALTER — real SQL
     errors (syntax, permissions) propagate instead of being silently swallowed.
     """
-    from sqlalchemy import inspect as sa_inspect, text
+    from sqlalchemy import inspect as sa_inspect
+    from sqlalchemy import text
 
     inspector = sa_inspect(engine)
 
@@ -168,14 +175,10 @@ def _run_migrations() -> None:
     with engine.connect() as conn:
         for table_name, col_name, col_type in column_migrations:
             if table_name not in _col_cache:
-                _col_cache[table_name] = {
-                    c["name"] for c in inspector.get_columns(table_name)
-                }
+                _col_cache[table_name] = {c["name"] for c in inspector.get_columns(table_name)}
             if col_name not in _col_cache[table_name]:
                 mapped_type = _type_map.get(col_type, col_type) if _is_pg else col_type
-                conn.execute(text(
-                    f"ALTER TABLE {table_name} ADD COLUMN {col_name} {mapped_type}"
-                ))
+                conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {mapped_type}"))
                 conn.commit()
                 _col_cache[table_name].add(col_name)
 
@@ -189,47 +192,48 @@ def _run_migrations() -> None:
             existing_indexes.add(idx_info["name"])
         for idx_name, tbl, col in _idx_migrations:
             if idx_name not in existing_indexes:
-                conn.execute(text(
-                    f"CREATE INDEX {idx_name} ON {tbl} ({col})"
-                ))
+                conn.execute(text(f"CREATE INDEX {idx_name} ON {tbl} ({col})"))
                 conn.commit()
 
     # AIS point dedup: remove duplicates and create unique constraint
-    existing_uq = {
-        c["name"]
-        for c in inspector.get_unique_constraints("ais_points")
-    }
+    existing_uq = {c["name"] for c in inspector.get_unique_constraints("ais_points")}
     if "uq_ais_point_vessel_ts_source" not in existing_uq:
         with engine.connect() as conn:
             # Delete duplicate rows, keeping the highest-quality source per group
             # (prefer non-null source_timestamp_utc, then highest ais_point_id)
             if engine.dialect.name == "sqlite":
-                conn.execute(text(
-                    "DELETE FROM ais_points WHERE ais_point_id NOT IN ("
-                    "  SELECT ais_point_id FROM ("
-                    "    SELECT ais_point_id, ROW_NUMBER() OVER ("
-                    "      PARTITION BY vessel_id, timestamp_utc, source"
-                    "      ORDER BY source_timestamp_utc IS NULL, source_timestamp_utc DESC, ais_point_id DESC"
-                    "    ) AS rn FROM ais_points"
-                    "  ) WHERE rn = 1"
-                    ")"
-                ))
+                conn.execute(
+                    text(
+                        "DELETE FROM ais_points WHERE ais_point_id NOT IN ("
+                        "  SELECT ais_point_id FROM ("
+                        "    SELECT ais_point_id, ROW_NUMBER() OVER ("
+                        "      PARTITION BY vessel_id, timestamp_utc, source"
+                        "      ORDER BY source_timestamp_utc IS NULL, source_timestamp_utc DESC, ais_point_id DESC"
+                        "    ) AS rn FROM ais_points"
+                        "  ) WHERE rn = 1"
+                        ")"
+                    )
+                )
             else:
-                conn.execute(text(
-                    "DELETE FROM ais_points WHERE ais_point_id NOT IN ("
-                    "  SELECT ais_point_id FROM ("
-                    "    SELECT ais_point_id, ROW_NUMBER() OVER ("
-                    "      PARTITION BY vessel_id, timestamp_utc, source"
-                    "      ORDER BY source_timestamp_utc DESC NULLS LAST, ais_point_id DESC"
-                    "    ) AS rn FROM ais_points"
-                    "  ) sub WHERE rn = 1"
-                    ")"
-                ))
+                conn.execute(
+                    text(
+                        "DELETE FROM ais_points WHERE ais_point_id NOT IN ("
+                        "  SELECT ais_point_id FROM ("
+                        "    SELECT ais_point_id, ROW_NUMBER() OVER ("
+                        "      PARTITION BY vessel_id, timestamp_utc, source"
+                        "      ORDER BY source_timestamp_utc DESC NULLS LAST, ais_point_id DESC"
+                        "    ) AS rn FROM ais_points"
+                        "  ) sub WHERE rn = 1"
+                        ")"
+                    )
+                )
             conn.commit()
-            conn.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_ais_point_vessel_ts_source "
-                "ON ais_points (vessel_id, timestamp_utc, source)"
-            ))
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_ais_point_vessel_ts_source "
+                    "ON ais_points (vessel_id, timestamp_utc, source)"
+                )
+            )
             conn.commit()
 
     # Postgres-only: add new enum values to native ENUM type.
@@ -242,17 +246,21 @@ def _run_migrations() -> None:
             raw_conn.set_isolation_level(0)  # ISOLATION_LEVEL_AUTOCOMMIT
             cursor = raw_conn.cursor()
             for val in (
-                "synthetic_track", "stateless_mmsi", "flag_hopping", "imo_fraud",
-                "stale_ais_data", "destination_deviation", "track_replay",
-                "route_laundering", "pi_cycling", "sparse_transmission", "type_dwt_mismatch",
+                "synthetic_track",
+                "stateless_mmsi",
+                "flag_hopping",
+                "imo_fraud",
+                "stale_ais_data",
+                "destination_deviation",
+                "track_replay",
+                "route_laundering",
+                "pi_cycling",
+                "sparse_transmission",
+                "type_dwt_mismatch",
             ):
-                cursor.execute(
-                    f"ALTER TYPE spoofingtypeenum ADD VALUE IF NOT EXISTS '{val}'"
-                )
+                cursor.execute(f"ALTER TYPE spoofingtypeenum ADD VALUE IF NOT EXISTS '{val}'")
             for val in ("confirmed_fp", "confirmed_tp"):
-                cursor.execute(
-                    f"ALTER TYPE alertstatusenum ADD VALUE IF NOT EXISTS '{val}'"
-                )
+                cursor.execute(f"ALTER TYPE alertstatusenum ADD VALUE IF NOT EXISTS '{val}'")
             # Analyst role enum
             cursor.execute(
                 "DO $$ BEGIN CREATE TYPE analyst_role AS ENUM ('analyst', 'senior_analyst', 'admin'); EXCEPTION WHEN duplicate_object THEN NULL; END $$"

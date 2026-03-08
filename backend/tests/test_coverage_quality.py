@@ -1,4 +1,5 @@
 """Tests for H2: Coverage quality mapping from corridor name to coverage.yaml."""
+
 from app.api.routes import _get_coverage_quality
 
 

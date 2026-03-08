@@ -2,17 +2,16 @@
 
 Tests are calibrated against known shadow fleet behavior patterns (PRD §7.4, §7.5).
 """
-import pytest
-from datetime import datetime, timedelta, timezone
+
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
-from app.utils.geo import haversine_nm as _haversine_nm
-from app.modules.gap_detector import detect_gaps_for_vessel
 from app.modules.normalize import validate_ais_row
-from app.modules.risk_scoring import compute_gap_score, _score_band, load_scoring_config
-
+from app.modules.risk_scoring import _score_band, compute_gap_score, load_scoring_config
+from app.utils.geo import haversine_nm as _haversine_nm
 
 # --- Haversine distance tests ---
+
 
 def test_haversine_zero_distance():
     assert _haversine_nm(0, 0, 0, 0) == 0.0
@@ -26,6 +25,7 @@ def test_haversine_known_distance():
 
 # --- AIS validation tests ---
 
+
 def test_validate_rejects_short_mmsi():
     row = {"mmsi": "12345", "lat": 55.0, "lon": 25.0, "timestamp_utc": "2025-01-01T00:00:00Z"}
     assert validate_ais_row(row) is not None
@@ -38,14 +38,19 @@ def test_validate_rejects_invalid_lat():
 
 def test_validate_rejects_future_timestamp():
     # E2: Future ceiling is now + 7 days — use 10 days to trigger rejection
-    future = (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
+    future = (datetime.now(UTC) + timedelta(days=10)).isoformat()
     row = {"mmsi": "241234567", "lat": 55.0, "lon": 25.0, "timestamp_utc": future}
     assert validate_ais_row(row) is not None
 
 
 def test_validate_rejects_excessive_sog():
-    row = {"mmsi": "241234567", "lat": 55.0, "lon": 25.0, "sog": 40.0,
-           "timestamp_utc": "2025-01-01T00:00:00Z"}
+    row = {
+        "mmsi": "241234567",
+        "lat": 55.0,
+        "lon": 25.0,
+        "sog": 40.0,
+        "timestamp_utc": "2025-01-01T00:00:00Z",
+    }
     assert validate_ais_row(row) is not None
 
 
@@ -61,6 +66,7 @@ def test_validate_accepts_valid_row():
 
 
 # --- Score band boundary tests ---
+
 
 def test_score_band_low_boundary():
     assert _score_band(0) == "low"
@@ -84,6 +90,7 @@ def test_score_band_critical_boundary():
 
 # --- Risk scoring integration tests ---
 
+
 def _make_mock_gap(
     duration_minutes=0,
     corridor_type=None,
@@ -102,10 +109,10 @@ def _make_mock_gap(
     """
     vessel = MagicMock()
     vessel.deadweight = deadweight
-    vessel.flag_risk_category = flag_risk   # plain string, not enum
+    vessel.flag_risk_category = flag_risk  # plain string, not enum
     vessel.year_built = year_built
-    vessel.ais_class = ais_class            # plain string, not enum
-    vessel.pi_coverage_status = "active"     # no P&I signal by default
+    vessel.ais_class = ais_class  # plain string, not enum
+    vessel.pi_coverage_status = "active"  # no P&I signal by default
     vessel.psc_detained_last_12m = False
     vessel.psc_major_deficiencies_last_12m = 0
 
@@ -131,9 +138,9 @@ def test_compute_gap_score_critical_sts_vlcc():
     """
     config = load_scoring_config()
     gap = _make_mock_gap(
-        duration_minutes=25 * 60,   # 25 hours
+        duration_minutes=25 * 60,  # 25 hours
         corridor_type="sts_zone",
-        deadweight=250_000,         # VLCC
+        deadweight=250_000,  # VLCC
     )
     score, breakdown = compute_gap_score(gap, config)
 
@@ -148,9 +155,9 @@ def test_compute_gap_score_low_short_gap():
     """6h gap, no corridor, aframax DWT → stays in low-medium range."""
     config = load_scoring_config()
     gap = _make_mock_gap(
-        duration_minutes=6 * 60,    # 6 hours (4h–8h band = 12pts)
+        duration_minutes=6 * 60,  # 6 hours (4h–8h band = 12pts)
         corridor_type=None,
-        deadweight=100_000,         # aframax — 1.0x multiplier
+        deadweight=100_000,  # aframax — 1.0x multiplier
     )
     score, _ = compute_gap_score(gap, config)
 

@@ -1,7 +1,7 @@
 """Tests for DarkVesselDetection scoring (Phase 6.12) and API endpoints."""
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
-import pytest
+
+from datetime import datetime
+from unittest.mock import MagicMock
 
 from app.modules.risk_scoring import compute_gap_score, load_scoring_config
 
@@ -85,8 +85,10 @@ class TestDarkVesselScoring:
 
     def test_dark_vessel_config_values_loaded(self):
         """dark_vessel section exists in risk_scoring.yaml with expected keys."""
-        import yaml
         from pathlib import Path
+
+        import yaml
+
         config_path = Path(__file__).parents[2] / "config" / "risk_scoring.yaml"
         with open(config_path) as f:
             config = yaml.safe_load(f)
@@ -98,8 +100,10 @@ class TestDarkVesselScoring:
 
     def test_dark_vessel_in_corridor_score_value(self):
         """In-corridor detection score value matches config."""
-        import yaml
         from pathlib import Path
+
+        import yaml
+
         config_path = Path(__file__).parents[2] / "config" / "risk_scoring.yaml"
         with open(config_path) as f:
             config = yaml.safe_load(f)
@@ -108,8 +112,10 @@ class TestDarkVesselScoring:
 
     def test_dark_vessel_outside_corridor_score_value(self):
         """Outside-corridor detection score value matches config."""
-        import yaml
         from pathlib import Path
+
+        import yaml
+
         config_path = Path(__file__).parents[2] / "config" / "risk_scoring.yaml"
         with open(config_path) as f:
             config = yaml.safe_load(f)

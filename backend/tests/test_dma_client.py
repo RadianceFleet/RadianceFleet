@@ -1,13 +1,13 @@
 """Tests for DMA (Danish Maritime Authority) historical AIS data importer."""
+
 from __future__ import annotations
 
 import csv
 import gzip
 import io
-from datetime import date, datetime, timezone
+from datetime import date
 from unittest.mock import MagicMock, patch
 
-import pytest
 from sqlalchemy.orm import Session
 
 
@@ -27,11 +27,32 @@ class TestDMAClient:
         """Build a DMA-format CSV string."""
         if header is None:
             header = [
-                "# Timestamp", "Type of mobile", "MMSI", "Latitude", "Longitude",
-                "Navigational status", "ROT", "SOG", "COG", "Heading", "IMO",
-                "Callsign", "Name", "Ship type", "Cargo type", "Width", "Length",
-                "Type of position fixing device", "Draught", "Destination", "ETA",
-                "Data source type", "A", "B", "C", "D",
+                "# Timestamp",
+                "Type of mobile",
+                "MMSI",
+                "Latitude",
+                "Longitude",
+                "Navigational status",
+                "ROT",
+                "SOG",
+                "COG",
+                "Heading",
+                "IMO",
+                "Callsign",
+                "Name",
+                "Ship type",
+                "Cargo type",
+                "Width",
+                "Length",
+                "Type of position fixing device",
+                "Draught",
+                "Destination",
+                "ETA",
+                "Data source type",
+                "A",
+                "B",
+                "C",
+                "D",
             ]
         out = io.StringIO()
         writer = csv.writer(out)
@@ -51,11 +72,32 @@ class TestDMAClient:
         ship_type="Tanker",
     ) -> list[str]:
         return [
-            ts, "Class A", mmsi, lat, lon,
-            "Under way using engine", "0", "12.5", "180.0", "179",
-            imo, "OXYZ", name, ship_type, "0", "32", "200",
-            "GPS", "10.5", "COPENHAGEN", "01/03/2026 18:00:00",
-            "AIS", "100", "100", "16", "16",
+            ts,
+            "Class A",
+            mmsi,
+            lat,
+            lon,
+            "Under way using engine",
+            "0",
+            "12.5",
+            "180.0",
+            "179",
+            imo,
+            "OXYZ",
+            name,
+            ship_type,
+            "0",
+            "32",
+            "200",
+            "GPS",
+            "10.5",
+            "COPENHAGEN",
+            "01/03/2026 18:00:00",
+            "AIS",
+            "100",
+            "100",
+            "16",
+            "16",
         ]
 
     def _make_gz_response(self, csv_content: str) -> MagicMock:
@@ -69,6 +111,7 @@ class TestDMAClient:
     def test_dma_url_construction(self):
         """DMA URL is correctly formed for a given date."""
         from app.modules.dma_client import _build_url
+
         url = _build_url(date(2026, 3, 1), gzip=True)
         assert url == "https://web.ais.dk/aisdata/aisdk-2026-03-01.csv.gz"
 
@@ -78,6 +121,7 @@ class TestDMAClient:
     def test_dma_csv_parsing(self):
         """DMA column names are correctly normalized."""
         from app.modules.dma_client import _DMA_COLUMN_MAP, _normalize_row
+
         header = list(_DMA_COLUMN_MAP.keys())
         values = ["01/03/2026 12:00:00"] + ["test"] * (len(header) - 1)
         row = _normalize_row(header, values)
@@ -88,6 +132,7 @@ class TestDMAClient:
     def test_dma_timestamp_dayfirst(self):
         """DMA timestamps use DD/MM/YYYY, not MM/DD."""
         from app.modules.dma_client import _parse_dma_timestamp
+
         ts = _parse_dma_timestamp("15/03/2026 08:30:00")
         assert ts is not None
         assert ts.month == 3
@@ -108,7 +153,8 @@ class TestDMAClient:
             mock_settings.DMA_ENABLED = True
             with patch("app.modules.dma_client.httpx.Client", return_value=mock_client):
                 from app.modules.dma_client import fetch_and_import_dma
-                result = fetch_and_import_dma(db, date(2026, 3, 1), date(2026, 3, 1))
+
+                fetch_and_import_dma(db, date(2026, 3, 1), date(2026, 3, 1))
                 # Verify that when vessel is created, imo is None
                 for call in db.add.call_args_list:
                     obj = call[0][0]
@@ -121,6 +167,7 @@ class TestDMAClient:
         with patch("app.modules.dma_client.settings") as mock_settings:
             mock_settings.DMA_ENABLED = False
             from app.modules.dma_client import fetch_and_import_dma
+
             result = fetch_and_import_dma(db, date(2026, 3, 1), date(2026, 3, 1))
             assert result["points_imported"] == 0
             assert result["days_processed"] == 0
@@ -140,8 +187,11 @@ class TestDMAClient:
             mock_settings.DMA_ENABLED = True
             with patch("app.modules.dma_client.httpx.Client", return_value=mock_client):
                 from app.modules.dma_client import fetch_and_import_dma
+
                 result = fetch_and_import_dma(
-                    db, date(2026, 3, 1), date(2026, 3, 1),
+                    db,
+                    date(2026, 3, 1),
+                    date(2026, 3, 1),
                     vessel_types=["tanker"],
                 )
                 assert result["days_processed"] == 1
@@ -159,6 +209,7 @@ class TestDMAClient:
             mock_settings.DMA_ENABLED = True
             with patch("app.modules.dma_client.httpx.Client", return_value=mock_client):
                 from app.modules.dma_client import fetch_and_import_dma
+
                 result = fetch_and_import_dma(db, date(2026, 3, 1), date(2026, 3, 1))
                 assert result["errors"] >= 1
                 assert result["points_imported"] == 0
@@ -177,6 +228,7 @@ class TestDMAClient:
             mock_settings.DMA_ENABLED = True
             with patch("app.modules.dma_client.httpx.Client", return_value=mock_client):
                 from app.modules.dma_client import fetch_and_import_dma
+
                 result = fetch_and_import_dma(db, date(2026, 3, 1), date(2026, 3, 1))
                 assert result["days_processed"] == 1
 
@@ -186,8 +238,15 @@ class TestDMAClient:
         with patch("app.modules.dma_client.settings") as mock_settings:
             mock_settings.DMA_ENABLED = False
             from app.modules.dma_client import fetch_and_import_dma
+
             result = fetch_and_import_dma(db, date(2026, 3, 1), date(2026, 3, 1))
-            expected_keys = {"points_imported", "vessels_created", "vessels_updated", "days_processed", "errors"}
+            expected_keys = {
+                "points_imported",
+                "vessels_created",
+                "vessels_updated",
+                "days_processed",
+                "errors",
+            }
             assert expected_keys == set(result.keys())
 
     def test_dma_date_range(self):
@@ -207,6 +266,7 @@ class TestDMAClient:
             mock_settings.DMA_ENABLED = True
             with patch("app.modules.dma_client.httpx.Client", side_effect=counting_client):
                 from app.modules.dma_client import fetch_and_import_dma
+
                 result = fetch_and_import_dma(db, date(2026, 3, 1), date(2026, 3, 3))
                 # Should attempt 3 days (each day creates a client)
                 assert call_count[0] == 3
@@ -221,7 +281,7 @@ class TestDMAClient:
         mock_vessel.imo = "1234567"
         mock_vessel.name = "TEST"
 
-        existing_point = MagicMock()
+        MagicMock()
 
         def mock_filter(*args, **kwargs):
             mock_result = MagicMock()
@@ -240,12 +300,14 @@ class TestDMAClient:
             mock_settings.DMA_ENABLED = True
             with patch("app.modules.dma_client.httpx.Client", return_value=mock_client):
                 from app.modules.dma_client import fetch_and_import_dma
+
                 result = fetch_and_import_dma(db, date(2026, 3, 1), date(2026, 3, 1))
                 assert result["days_processed"] == 1
 
     def test_dma_safe_float(self):
         """_safe_float handles various inputs."""
         from app.modules.dma_client import _safe_float
+
         assert _safe_float("12.5") == 12.5
         assert _safe_float("") is None
         assert _safe_float(None) is None

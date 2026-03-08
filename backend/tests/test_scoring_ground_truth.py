@@ -5,12 +5,13 @@ and known clean vessels score LOW.  All tests are unit-level (db=None).
 
 Uses the same _make_gap() factory from test_risk_scoring_complete.py.
 """
-import pytest
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from app.modules.risk_scoring import compute_gap_score, load_scoring_config, _score_band
+import pytest
 
+from app.modules.risk_scoring import _score_band, compute_gap_score, load_scoring_config
 
 # ── Shared config (loaded once) ─────────────────────────────────────────────
 CONFIG = load_scoring_config()
@@ -18,6 +19,7 @@ SCORING_DATE = datetime(2026, 3, 1, 12, 0)
 
 
 # ── Mock gap factory ────────────────────────────────────────────────────────
+
 
 def _make_gap(
     duration_minutes=0,
@@ -260,8 +262,7 @@ def test_shadow_fleet_archetype(gap_kwargs, score_kwargs, expected_min_band):
 
     band_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
     assert band_order[band] >= band_order[expected_min_band], (
-        f"Expected >= {expected_min_band} but got {band} (score={score}). "
-        f"Breakdown: {breakdown}"
+        f"Expected >= {expected_min_band} but got {band} (score={score}). Breakdown: {breakdown}"
     )
 
 
@@ -357,7 +358,4 @@ def test_clean_vessel(gap_kwargs, score_kwargs):
     )
     band = _score_band(score)
 
-    assert band == "low", (
-        f"Expected low but got {band} (score={score}). "
-        f"Breakdown: {breakdown}"
-    )
+    assert band == "low", f"Expected low but got {band} (score={score}). Breakdown: {breakdown}"

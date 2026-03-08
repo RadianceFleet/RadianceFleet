@@ -5,7 +5,6 @@ return expected shapes and status codes.
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock
 
 
 class TestRootHealth:

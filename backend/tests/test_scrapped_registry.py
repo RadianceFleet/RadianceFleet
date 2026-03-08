@@ -1,11 +1,8 @@
 """Tests for scrapped vessel registry and track replay detection."""
+
 from __future__ import annotations
 
-import math
-from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from app.modules.scrapped_registry import (
     _compute_track_correlation,
@@ -13,15 +10,12 @@ from app.modules.scrapped_registry import (
     reload_scrapped_registry,
 )
 
-
 # ── Tests: _compute_track_correlation ────────────────────────────────
+
 
 class TestComputeTrackCorrelation:
     def test_identical_tracks(self):
-        points = [
-            (25.0 + i * 0.01, 55.0 + i * 0.01, i * 3600.0)
-            for i in range(12)
-        ]
+        points = [(25.0 + i * 0.01, 55.0 + i * 0.01, i * 3600.0) for i in range(12)]
         correlation = _compute_track_correlation(points, points)
         assert correlation > 0.95
 
@@ -58,14 +52,21 @@ class TestComputeTrackCorrelation:
 
 # ── Tests: _load_scrapped_registry ───────────────────────────────────
 
+
 class TestLoadScrappedRegistry:
     def test_loads_from_yaml(self):
         import app.modules.scrapped_registry as sr
+
         sr._SCRAPPED_REGISTRY = None  # Force reload
 
         yaml_content = {
             "scrapped_imos": [
-                {"imo": "1234567", "name": "OLD TANKER", "scrapped_year": 2020, "notes": "demolished"},
+                {
+                    "imo": "1234567",
+                    "name": "OLD TANKER",
+                    "scrapped_year": 2020,
+                    "notes": "demolished",
+                },
                 {"imo": "7654321", "name": "RUSTY SHIP", "scrapped_year": 2019},
             ]
         }
@@ -75,8 +76,10 @@ class TestLoadScrappedRegistry:
             mock_path.exists.return_value = True
             MockPath.return_value = mock_path
 
-            with patch("builtins.open", MagicMock()), \
-                 patch("app.modules.scrapped_registry.yaml.safe_load", return_value=yaml_content):
+            with (
+                patch("builtins.open", MagicMock()),
+                patch("app.modules.scrapped_registry.yaml.safe_load", return_value=yaml_content),
+            ):
                 registry = _load_scrapped_registry()
                 assert "1234567" in registry
                 assert "7654321" in registry
@@ -86,6 +89,7 @@ class TestLoadScrappedRegistry:
 
     def test_missing_file_returns_empty(self):
         import app.modules.scrapped_registry as sr
+
         sr._SCRAPPED_REGISTRY = None
 
         with patch("app.modules.scrapped_registry.Path") as MockPath:
@@ -100,6 +104,7 @@ class TestLoadScrappedRegistry:
 
     def test_caches_result(self):
         import app.modules.scrapped_registry as sr
+
         sr._SCRAPPED_REGISTRY = {"cached": {"name": "test"}}
 
         result = _load_scrapped_registry()
@@ -111,6 +116,7 @@ class TestLoadScrappedRegistry:
 class TestReloadScrappedRegistry:
     def test_clears_cache(self):
         import app.modules.scrapped_registry as sr
+
         sr._SCRAPPED_REGISTRY = {"old": {"name": "old"}}
 
         with patch("app.modules.scrapped_registry.Path") as MockPath:
@@ -126,6 +132,7 @@ class TestReloadScrappedRegistry:
 
 # ── Tests: detect_scrapped_imo_reuse ─────────────────────────────────
 
+
 class TestDetectScrappedImoReuse:
     def test_disabled_returns_status(self):
         from app.modules.scrapped_registry import detect_scrapped_imo_reuse
@@ -137,10 +144,12 @@ class TestDetectScrappedImoReuse:
             assert result["status"] == "disabled"
 
     def test_no_matches(self):
-        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
         import app.modules.scrapped_registry as sr
+        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
-        sr._SCRAPPED_REGISTRY = {"9999999": {"name": "DEAD SHIP", "scrapped_year": 2020, "notes": ""}}
+        sr._SCRAPPED_REGISTRY = {
+            "9999999": {"name": "DEAD SHIP", "scrapped_year": 2020, "notes": ""}
+        }
 
         db = MagicMock()
         vessel = MagicMock()
@@ -156,10 +165,12 @@ class TestDetectScrappedImoReuse:
         sr._SCRAPPED_REGISTRY = None
 
     def test_detects_match(self):
-        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
         import app.modules.scrapped_registry as sr
+        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
-        sr._SCRAPPED_REGISTRY = {"1234567": {"name": "DEAD SHIP", "scrapped_year": 2020, "notes": ""}}
+        sr._SCRAPPED_REGISTRY = {
+            "1234567": {"name": "DEAD SHIP", "scrapped_year": 2020, "notes": ""}
+        }
 
         db = MagicMock()
         vessel = MagicMock()
@@ -175,7 +186,7 @@ class TestDetectScrappedImoReuse:
             # Override query for specific models
             def query_side_effect(model):
                 q = MagicMock()
-                model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+                model_name = model.__name__ if hasattr(model, "__name__") else str(model)
                 if model_name == "Vessel":
                     q.filter.return_value.all.return_value = [vessel]
                 elif model_name == "SpoofingAnomaly":
@@ -192,10 +203,12 @@ class TestDetectScrappedImoReuse:
         sr._SCRAPPED_REGISTRY = None
 
     def test_strips_imo_prefix(self):
-        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
         import app.modules.scrapped_registry as sr
+        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
-        sr._SCRAPPED_REGISTRY = {"1234567": {"name": "DEAD SHIP", "scrapped_year": 2020, "notes": ""}}
+        sr._SCRAPPED_REGISTRY = {
+            "1234567": {"name": "DEAD SHIP", "scrapped_year": 2020, "notes": ""}
+        }
 
         db = MagicMock()
         vessel = MagicMock()
@@ -204,7 +217,7 @@ class TestDetectScrappedImoReuse:
 
         def query_side_effect(model):
             q = MagicMock()
-            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            model_name = model.__name__ if hasattr(model, "__name__") else str(model)
             if model_name == "Vessel":
                 q.filter.return_value.all.return_value = [vessel]
             elif model_name == "SpoofingAnomaly":
@@ -221,10 +234,12 @@ class TestDetectScrappedImoReuse:
         sr._SCRAPPED_REGISTRY = None
 
     def test_skips_already_flagged(self):
-        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
         import app.modules.scrapped_registry as sr
+        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
-        sr._SCRAPPED_REGISTRY = {"1234567": {"name": "DEAD SHIP", "scrapped_year": 2020, "notes": ""}}
+        sr._SCRAPPED_REGISTRY = {
+            "1234567": {"name": "DEAD SHIP", "scrapped_year": 2020, "notes": ""}
+        }
 
         db = MagicMock()
         vessel = MagicMock()
@@ -236,7 +251,7 @@ class TestDetectScrappedImoReuse:
 
         def query_side_effect(model):
             q = MagicMock()
-            model_name = model.__name__ if hasattr(model, '__name__') else str(model)
+            model_name = model.__name__ if hasattr(model, "__name__") else str(model)
             if model_name == "Vessel":
                 q.filter.return_value.all.return_value = [vessel]
             elif model_name == "SpoofingAnomaly":
@@ -254,8 +269,8 @@ class TestDetectScrappedImoReuse:
         sr._SCRAPPED_REGISTRY = None
 
     def test_empty_registry(self):
-        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
         import app.modules.scrapped_registry as sr
+        from app.modules.scrapped_registry import detect_scrapped_imo_reuse
 
         sr._SCRAPPED_REGISTRY = {}
 
@@ -269,6 +284,7 @@ class TestDetectScrappedImoReuse:
 
 
 # ── Tests: detect_track_replay ───────────────────────────────────────
+
 
 class TestDetectTrackReplay:
     def test_disabled_returns_status(self):

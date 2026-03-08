@@ -10,14 +10,14 @@ Tests cover:
 
 All tests are unit-level: no database required (mock DB queries via MagicMock).
 """
-import pytest
-from datetime import datetime, timedelta
+
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from app.modules.risk_scoring import compute_gap_score, load_scoring_config
 
-
 # ── Mock gap factory ──────────────────────────────────────────────────────────
+
 
 def _make_gap(
     duration_minutes=360,
@@ -90,6 +90,7 @@ def _make_gap(
 
 # ── Repeat STS partnership tests ──────────────────────────────────────────────
 
+
 def test_repeat_sts_partnership():
     """Vessel with 3+ STS events with same partner fires repeat_sts_partnership (+30)."""
     config = load_scoring_config()
@@ -135,8 +136,8 @@ def test_repeat_sts_partnership():
     _empty_query.get.return_value = None
 
     def _query_router(model):
-        model_name = getattr(model, '__name__', '') or getattr(model, '__tablename__', '')
-        if 'StsTransferEvent' in str(model_name) or 'sts_transfer' in str(model_name):
+        model_name = getattr(model, "__name__", "") or getattr(model, "__tablename__", "")
+        if "StsTransferEvent" in str(model_name) or "sts_transfer" in str(model_name):
             # Return fresh mock each time to avoid shared filter state
             q = MagicMock()
             q.filter.return_value = q
@@ -157,8 +158,9 @@ def test_repeat_sts_partnership():
     db.query.side_effect = _query_router
 
     score, breakdown = compute_gap_score(gap, config, db=db)
-    assert "repeat_sts_partnership" in breakdown, \
+    assert "repeat_sts_partnership" in breakdown, (
         f"Expected repeat_sts_partnership in breakdown, got: {list(breakdown.keys())}"
+    )
     assert breakdown["repeat_sts_partnership"] == 30
 
 
@@ -179,8 +181,8 @@ def test_repeat_sts_no_repeat():
     sts2.risk_score_component = 10
 
     def _query_router(model):
-        model_name = getattr(model, '__name__', '') or getattr(model, '__tablename__', '')
-        if 'StsTransferEvent' in str(model_name) or 'sts_transfer' in str(model_name):
+        model_name = getattr(model, "__name__", "") or getattr(model, "__tablename__", "")
+        if "StsTransferEvent" in str(model_name) or "sts_transfer" in str(model_name):
             q = MagicMock()
             q.filter.return_value = q
             q.all.return_value = [sts1, sts2]
@@ -200,11 +202,13 @@ def test_repeat_sts_no_repeat():
     db.query.side_effect = _query_router
 
     score, breakdown = compute_gap_score(gap, config, db=db)
-    assert "repeat_sts_partnership" not in breakdown, \
+    assert "repeat_sts_partnership" not in breakdown, (
         f"repeat_sts_partnership should NOT fire with only 2 events, got: {breakdown.get('repeat_sts_partnership')}"
+    )
 
 
 # ── Flag + corridor coupling tests ────────────────────────────────────────────
+
 
 def test_flag_corridor_coupling():
     """High-risk flag (Russian origin) vessel in export_route corridor fires flag_corridor_coupling (+20)."""
@@ -217,8 +221,9 @@ def test_flag_corridor_coupling():
     )
 
     score, breakdown = compute_gap_score(gap, config)
-    assert "flag_corridor_coupling" in breakdown, \
+    assert "flag_corridor_coupling" in breakdown, (
         f"Expected flag_corridor_coupling in breakdown, got: {list(breakdown.keys())}"
+    )
     assert breakdown["flag_corridor_coupling"] == 20
 
 
@@ -233,8 +238,9 @@ def test_flag_corridor_coupling_low_risk_flag():
     )
 
     score, breakdown = compute_gap_score(gap, config)
-    assert "flag_corridor_coupling" not in breakdown, \
+    assert "flag_corridor_coupling" not in breakdown, (
         "flag_corridor_coupling should NOT fire for low-risk flags"
+    )
 
 
 def test_flag_corridor_coupling_high_risk_non_russian_origin():
@@ -249,8 +255,9 @@ def test_flag_corridor_coupling_high_risk_non_russian_origin():
     )
 
     score, breakdown = compute_gap_score(gap, config)
-    assert "flag_corridor_coupling" not in breakdown, \
+    assert "flag_corridor_coupling" not in breakdown, (
         "flag_corridor_coupling should NOT fire for high-risk flags not in RUSSIAN_ORIGIN_FLAGS"
+    )
 
 
 def test_flag_corridor_coupling_sts_zone():
@@ -270,6 +277,7 @@ def test_flag_corridor_coupling_sts_zone():
 
 # ── Invalid AIS metadata tests ───────────────────────────────────────────────
 
+
 def test_invalid_metadata_generic_name():
     """Vessel with generic name 'TANKER' fires invalid_metadata_generic_name (+10)."""
     config = load_scoring_config()
@@ -279,8 +287,9 @@ def test_invalid_metadata_generic_name():
     )
 
     score, breakdown = compute_gap_score(gap, config)
-    assert "invalid_metadata_generic_name" in breakdown, \
+    assert "invalid_metadata_generic_name" in breakdown, (
         f"Expected invalid_metadata_generic_name, got: {list(breakdown.keys())}"
+    )
     assert breakdown["invalid_metadata_generic_name"] == 15  # boosted from 10 per OSINT plan 3b
 
 
@@ -293,8 +302,9 @@ def test_invalid_metadata_normal_name():
     )
 
     score, breakdown = compute_gap_score(gap, config)
-    assert "invalid_metadata_generic_name" not in breakdown, \
+    assert "invalid_metadata_generic_name" not in breakdown, (
         "Normal vessel names should not trigger generic name signal"
+    )
 
 
 def test_invalid_metadata_single_letter_name():
@@ -319,8 +329,9 @@ def test_invalid_metadata_impossible_dwt():
     )
 
     score, breakdown = compute_gap_score(gap, config)
-    assert "invalid_metadata_impossible_dwt" in breakdown, \
+    assert "invalid_metadata_impossible_dwt" in breakdown, (
         f"Expected invalid_metadata_impossible_dwt, got: {list(breakdown.keys())}"
+    )
     assert breakdown["invalid_metadata_impossible_dwt"] == 15
 
 
@@ -347,11 +358,13 @@ def test_invalid_metadata_valid_dwt():
     )
 
     score, breakdown = compute_gap_score(gap, config)
-    assert "invalid_metadata_impossible_dwt" not in breakdown, \
+    assert "invalid_metadata_impossible_dwt" not in breakdown, (
         "Valid DWT should not trigger impossible_dwt signal"
+    )
 
 
 # ── Voyage cycle pattern tests ────────────────────────────────────────────────
+
 
 def test_voyage_cycle_pattern():
     """Breakdown with russian_port_recent + sts_event + gap_frequency fires voyage_cycle_pattern (+30)."""
@@ -380,8 +393,8 @@ def test_voyage_cycle_pattern():
     sts_event.detection_type = None
 
     def _query_router(model):
-        model_name = str(getattr(model, '__name__', '') or getattr(model, '__tablename__', ''))
-        if 'StsTransferEvent' in model_name or 'sts_transfer' in model_name:
+        model_name = str(getattr(model, "__name__", "") or getattr(model, "__tablename__", ""))
+        if "StsTransferEvent" in model_name or "sts_transfer" in model_name:
             q = MagicMock()
             q.filter.return_value = q
             q.all.return_value = [sts_event]
@@ -402,19 +415,24 @@ def test_voyage_cycle_pattern():
 
     with patch("app.modules.risk_scoring._had_russian_port_call", return_value=True):
         score, breakdown = compute_gap_score(
-            gap, config,
+            gap,
+            config,
             gaps_in_7d=2,  # triggers gap_frequency_2_in_7d
             db=db,
         )
 
-    assert "russian_port_recent" in breakdown or "russian_port_gap_sts" in breakdown, \
+    assert "russian_port_recent" in breakdown or "russian_port_gap_sts" in breakdown, (
         f"Expected russian_port signal, got: {list(breakdown.keys())}"
-    assert any(k.startswith("sts_event_") for k in breakdown), \
+    )
+    assert any(k.startswith("sts_event_") for k in breakdown), (
         f"Expected sts_event_ signal, got: {list(breakdown.keys())}"
-    assert any(k.startswith("gap_frequency_") for k in breakdown), \
+    )
+    assert any(k.startswith("gap_frequency_") for k in breakdown), (
         f"Expected gap_frequency_ signal, got: {list(breakdown.keys())}"
-    assert "voyage_cycle_pattern" in breakdown, \
+    )
+    assert "voyage_cycle_pattern" in breakdown, (
         f"Expected voyage_cycle_pattern in breakdown, got: {list(breakdown.keys())}"
+    )
     assert breakdown["voyage_cycle_pattern"] == 30
 
 
@@ -440,16 +458,19 @@ def test_voyage_cycle_pattern_missing_sts():
 
     with patch("app.modules.risk_scoring._had_russian_port_call", return_value=True):
         score, breakdown = compute_gap_score(
-            gap, config,
+            gap,
+            config,
             gaps_in_7d=2,
             db=db,
         )
 
-    assert "voyage_cycle_pattern" not in breakdown, \
+    assert "voyage_cycle_pattern" not in breakdown, (
         "voyage_cycle_pattern should NOT fire without STS events"
+    )
 
 
 # ── Selective dark zone evasion tests ─────────────────────────────────────────
+
 
 def test_selective_dark_zone_evasion():
     """Gap in dark zone with <=2 other vessels dark fires selective_dark_zone_evasion (+20)."""
@@ -463,8 +484,8 @@ def test_selective_dark_zone_evasion():
     db = MagicMock()
 
     def _query_router(model):
-        model_name = str(getattr(model, '__name__', '') or getattr(model, '__tablename__', ''))
-        if 'AISGapEvent' in model_name or 'ais_gap_events' in model_name:
+        model_name = str(getattr(model, "__name__", "") or getattr(model, "__tablename__", ""))
+        if "AISGapEvent" in model_name or "ais_gap_events" in model_name:
             q = MagicMock()
             q.filter.return_value = q
             # Only 1 other vessel dark (<=2 threshold)
@@ -485,11 +506,13 @@ def test_selective_dark_zone_evasion():
     db.query.side_effect = _query_router
 
     score, breakdown = compute_gap_score(gap, config, db=db)
-    assert "selective_dark_zone_evasion" in breakdown, \
+    assert "selective_dark_zone_evasion" in breakdown, (
         f"Expected selective_dark_zone_evasion, got: {list(breakdown.keys())}"
+    )
     assert breakdown["selective_dark_zone_evasion"] == 20
-    assert "dark_zone_deduction" not in breakdown, \
+    assert "dark_zone_deduction" not in breakdown, (
         "dark_zone_deduction should NOT be present when selective evasion fires"
+    )
 
 
 def test_ambient_dark_zone_jamming():
@@ -504,8 +527,8 @@ def test_ambient_dark_zone_jamming():
     db = MagicMock()
 
     def _query_router(model):
-        model_name = str(getattr(model, '__name__', '') or getattr(model, '__tablename__', ''))
-        if 'AISGapEvent' in model_name or 'ais_gap_events' in model_name:
+        model_name = str(getattr(model, "__name__", "") or getattr(model, "__tablename__", ""))
+        if "AISGapEvent" in model_name or "ais_gap_events" in model_name:
             q = MagicMock()
             q.filter.return_value = q
             # 8 other vessels also dark (>2 threshold = ambient jamming)
@@ -526,11 +549,13 @@ def test_ambient_dark_zone_jamming():
     db.query.side_effect = _query_router
 
     score, breakdown = compute_gap_score(gap, config, db=db)
-    assert "dark_zone_deduction" in breakdown, \
+    assert "dark_zone_deduction" in breakdown, (
         f"Expected dark_zone_deduction for ambient jamming, got: {list(breakdown.keys())}"
+    )
     assert breakdown["dark_zone_deduction"] == -10
-    assert "selective_dark_zone_evasion" not in breakdown, \
+    assert "selective_dark_zone_evasion" not in breakdown, (
         "selective_dark_zone_evasion should NOT fire when many vessels are dark"
+    )
 
 
 def test_dark_zone_no_db_falls_back_to_deduction():
@@ -544,7 +569,8 @@ def test_dark_zone_no_db_falls_back_to_deduction():
 
     # No db — db=None
     score, breakdown = compute_gap_score(gap, config, db=None)
-    assert "dark_zone_deduction" in breakdown, \
+    assert "dark_zone_deduction" in breakdown, (
         f"Expected dark_zone_deduction without DB, got: {list(breakdown.keys())}"
+    )
     assert breakdown["dark_zone_deduction"] == -10
     assert "selective_dark_zone_evasion" not in breakdown

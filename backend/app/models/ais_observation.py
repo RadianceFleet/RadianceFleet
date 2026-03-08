@@ -6,11 +6,12 @@ fake port call identification.
 
 Retention: 72h rolling window (cross-receiver comparison only needs recent data).
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Index
+from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Session
 
 from app.models.base import Base
@@ -21,8 +22,10 @@ class AISObservation(Base):
 
     observation_id = Column(Integer, primary_key=True, autoincrement=True)
     mmsi = Column(String(9), nullable=False, index=True)
-    source = Column(String(50), nullable=False)  # "aisstream", "kystverket", "digitraffic", "aishub"
-    received_utc = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    source = Column(
+        String(50), nullable=False
+    )  # "aisstream", "kystverket", "digitraffic", "aishub"
+    received_utc = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
     timestamp_utc = Column(DateTime, nullable=False)
     lat = Column(Float, nullable=False)
     lon = Column(Float, nullable=False)
@@ -49,9 +52,8 @@ class AISObservation(Base):
         """
         if hours is None:
             from app.config import settings
+
             hours = settings.AIS_OBSERVATION_RETENTION_HOURS
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-        count = db.query(AISObservation).filter(
-            AISObservation.received_utc < cutoff
-        ).delete()
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
+        count = db.query(AISObservation).filter(AISObservation.received_utc < cutoff).delete()
         return count

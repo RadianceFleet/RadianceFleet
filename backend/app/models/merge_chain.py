@@ -1,9 +1,11 @@
 """MergeChain — tracks connected components of vessel identity merges."""
+
 from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, Float, JSON
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String
+
 from app.models.base import Base
 
 
@@ -18,6 +20,6 @@ class MergeChain(Base):
     confidence_band = Column(String(20))  # HIGH/MEDIUM/LOW
     created_at = Column(
         DateTime,
-        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        default=lambda: datetime.datetime.now(datetime.UTC),
     )
     evidence_json = Column(JSON)  # optional summary

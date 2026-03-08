@@ -1,4 +1,5 @@
 """Tests for AIS collection source wrappers."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -21,6 +22,7 @@ class TestCollectionSources:
             mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
 
             from app.modules.collection_sources import get_available_sources
+
             sources = get_available_sources()
             assert "digitraffic" in sources
             assert "kystverket" not in sources
@@ -36,6 +38,7 @@ class TestCollectionSources:
             mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
 
             from app.modules.collection_sources import get_all_sources
+
             sources = get_all_sources()
             assert "digitraffic" in sources
             assert "kystverket" in sources
@@ -56,6 +59,7 @@ class TestCollectionSources:
                 mock_collect.return_value = {"points_imported": 5, "vessels_seen": 2, "errors": 0}
 
                 from app.modules.collection_sources import collect_from_source
+
                 result = collect_from_source("digitraffic", db)
                 assert mock_collect.called
                 assert result["points_imported"] == 5
@@ -65,6 +69,7 @@ class TestCollectionSources:
         db = MagicMock(spec=Session)
 
         from app.modules.collection_sources import collect_from_source
+
         with pytest.raises(ValueError, match="Unknown source"):
             collect_from_source("nonexistent_source", db)
 
@@ -80,6 +85,7 @@ class TestCollectionSources:
             mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
 
             from app.modules.collection_sources import get_available_sources
+
             sources = get_available_sources()
             assert len(sources) == 0
 
@@ -93,6 +99,7 @@ class TestCollectionSources:
             mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
 
             from app.modules.collection_sources import collect_from_source
+
             result = collect_from_source("digitraffic", db)
             assert result.get("skipped") is True
 
@@ -107,6 +114,7 @@ class TestCollectionSources:
             mock_settings.AISSTREAM_API_KEY = None
 
             from app.modules.collection_sources import get_available_sources
+
             sources = get_available_sources()
             info = sources["digitraffic"]
             assert info.name == "digitraffic"
@@ -121,6 +129,7 @@ class TestCollectionSources:
         with patch("app.modules.digitraffic_client.fetch_digitraffic_ais") as mock_fetch:
             mock_fetch.return_value = {"points_ingested": 10, "vessels_seen": 3, "errors": 0}
             from app.modules.collection_sources import _collect_digitraffic
+
             result = _collect_digitraffic(db)
             assert result["points_ingested"] == 10
 
@@ -130,6 +139,7 @@ class TestCollectionSources:
         with patch("app.modules.kystverket_client.stream_kystverket") as mock_stream:
             mock_stream.return_value = {"points_ingested": 20, "vessels_seen": 5, "errors": 0}
             from app.modules.collection_sources import _collect_kystverket
+
             result = _collect_kystverket(db, duration_seconds=60)
             mock_stream.assert_called_once_with(db, duration_seconds=60)
             assert result["points_ingested"] == 20
@@ -138,8 +148,14 @@ class TestCollectionSources:
         """BarentsWatch wrapper calls fetch_barentswatch_tracks."""
         db = MagicMock(spec=Session)
         with patch("app.modules.barentswatch_client.fetch_barentswatch_tracks") as mock_fetch:
-            mock_fetch.return_value = {"points_imported": 15, "vessels_seen": 4, "api_calls": 1, "errors": 0}
+            mock_fetch.return_value = {
+                "points_imported": 15,
+                "vessels_seen": 4,
+                "api_calls": 1,
+                "errors": 0,
+            }
             from app.modules.collection_sources import _collect_barentswatch
+
             result = _collect_barentswatch(db)
             assert result["points_imported"] == 15
 
@@ -155,6 +171,7 @@ class TestCollectionSources:
             mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
 
             from app.modules.collection_sources import get_available_sources
+
             sources = get_available_sources()
             assert "dma" in sources
 
@@ -170,6 +187,7 @@ class TestCollectionSources:
             mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
 
             from app.modules.collection_sources import get_available_sources
+
             sources = get_available_sources()
             assert "dma" not in sources
 
@@ -186,6 +204,7 @@ class TestCollectionSources:
                 mock_collect.return_value = {"points_imported": 42, "vessels_seen": 10, "errors": 0}
 
                 from app.modules.collection_sources import collect_from_source
+
                 result = collect_from_source("dma", db)
                 assert mock_collect.called
                 assert result["points_imported"] == 42

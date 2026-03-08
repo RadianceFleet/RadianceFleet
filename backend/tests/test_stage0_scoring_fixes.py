@@ -11,15 +11,15 @@ Tests for:
   0.10: New legitimacy deductions (PSC, IG P&I, long history)
   E1: Score cap at 200
 """
-import pytest
-from datetime import datetime, timedelta
+
+from datetime import datetime
 from unittest.mock import MagicMock
 
-from app.modules.risk_scoring import compute_gap_score, load_scoring_config
 from app.modules.confidence_classifier import _categorize_key
-
+from app.modules.risk_scoring import compute_gap_score, load_scoring_config
 
 # ── Mock gap factory ──────────────────────────────────────────────────────────
+
 
 def _make_gap(
     duration_minutes=0,
@@ -88,6 +88,7 @@ def _make_gap(
 
 # ── 0.2: Self-amplification fix tests ────────────────────────────────────────
 
+
 def test_dark_zone_gap_with_only_duration_no_reactivation():
     """Dark zone gap with ONLY gap_duration signal → gap_reactivation should NOT fire."""
     config = load_scoring_config()
@@ -97,8 +98,9 @@ def test_dark_zone_gap_with_only_duration_no_reactivation():
         dark_zone_id=42,
     )
     _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
-    assert "gap_reactivation_in_jamming_zone" not in bd, \
+    assert "gap_reactivation_in_jamming_zone" not in bd, (
         "Reactivation should not self-fire from gap_duration alone"
+    )
 
 
 def test_dark_zone_gap_with_sts_signal_reactivation_fires():
@@ -112,8 +114,9 @@ def test_dark_zone_gap_with_sts_signal_reactivation_fires():
     )
     _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
     # STS tagged corridor adds gap_in_sts_tagged_corridor which is not a structural key
-    assert "gap_reactivation_in_jamming_zone" in bd, \
+    assert "gap_reactivation_in_jamming_zone" in bd, (
         "Reactivation should fire when non-structural STS signal present"
+    )
 
 
 def test_norwegian_vlcc_hormuz_under_50():
@@ -134,12 +137,14 @@ def test_norwegian_vlcc_hormuz_under_50():
 
 # ── 0.3: Frequency subsumption fix ───────────────────────────────────────────
 
+
 def test_4_gaps_30d_with_3_in_14d_scores_40():
     """Vessel with 4 gaps in 30d AND 3 in 14d scores +40 (not +32)."""
     config = load_scoring_config()
     gap = _make_gap(duration_minutes=6 * 60)
     _, bd = compute_gap_score(
-        gap, config,
+        gap,
+        config,
         gaps_in_14d=3,
         gaps_in_30d=4,
         scoring_date=datetime(2026, 1, 15),
@@ -153,7 +158,8 @@ def test_frequency_takes_max_not_first():
     config = load_scoring_config()
     gap = _make_gap(duration_minutes=6 * 60)
     _, bd = compute_gap_score(
-        gap, config,
+        gap,
+        config,
         gaps_in_7d=2,
         gaps_in_14d=3,
         gaps_in_30d=5,
@@ -169,6 +175,7 @@ def test_frequency_takes_max_not_first():
 
 # ── 0.5: Flag hopping mutual exclusion ───────────────────────────────────────
 
+
 def test_flag_hopping_skipped_when_3plus_90d_present():
     """Flag hopping should not fire when flag_changes_3plus_90d already in breakdown."""
     config = load_scoring_config()
@@ -177,11 +184,13 @@ def test_flag_hopping_skipped_when_3plus_90d_present():
     # If both keys were present, it's a double-count
     has_3plus = "flag_changes_3plus_90d" in bd
     has_hopping = "flag_hopping" in bd
-    assert not (has_3plus and has_hopping), \
+    assert not (has_3plus and has_hopping), (
         "flag_changes_3plus_90d and flag_hopping should be mutually exclusive"
+    )
 
 
 # ── 0.6: Confidence classifier categorization ────────────────────────────────
+
 
 def test_imo_fabricated_categorized_as_spoofing():
     """imo_fabricated should be categorized as SPOOFING, not AIS_GAP."""
@@ -215,6 +224,7 @@ def test_at_sea_no_port_call_categorized_as_ais_gap():
 
 # ── 0.7: Vessel-type filtering ───────────────────────────────────────────────
 
+
 def test_fishing_vessel_365d_at_sea_no_at_sea_ops():
     """Fishing vessel (deadweight<5000) at sea 365d should NOT score at_sea_ops."""
     config = load_scoring_config()
@@ -224,8 +234,7 @@ def test_fishing_vessel_365d_at_sea_no_at_sea_ops():
         vessel_type="fishing",
     )
     _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
-    assert "at_sea_no_port_call_365d" not in bd, \
-        "Fishing vessel should not get at_sea_ops signal"
+    assert "at_sea_no_port_call_365d" not in bd, "Fishing vessel should not get at_sea_ops signal"
 
 
 def test_100k_dwt_fishing_type_still_scores():
@@ -238,10 +247,12 @@ def test_100k_dwt_fishing_type_still_scores():
         corridor_type="sts_zone",
     )
     _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
-    assert "gap_in_sts_tagged_corridor" in bd, \
+    assert "gap_in_sts_tagged_corridor" in bd, (
         "100k DWT vessel should score STS signals despite 'fishing' AIS type"
-    assert bd.get("_corridor_multiplier", 1.0) > 1.0, \
+    )
+    assert bd.get("_corridor_multiplier", 1.0) > 1.0, (
         "Corridor multiplier should NOT be reduced for 100k DWT vessel"
+    )
 
 
 def test_tanker_scores_normally():
@@ -267,8 +278,9 @@ def test_null_deadweight_uses_ais_type():
         corridor_type="sts_zone",
     )
     _, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
-    assert bd.get("_corridor_multiplier", 1.0) == 1.0, \
+    assert bd.get("_corridor_multiplier", 1.0) == 1.0, (
         "Fishing vessel with no DWT should have corridor multiplier reduced to 1.0"
+    )
 
 
 def test_non_commercial_still_scores_identity():
@@ -286,6 +298,7 @@ def test_non_commercial_still_scores_identity():
 
 
 # ── 0.9: YAML calibration ────────────────────────────────────────────────────
+
 
 def test_single_flag_change_12m_scores_15():
     """Single flag change in 12m now scores +15 (was 0 — dead signal)."""
@@ -314,17 +327,18 @@ def test_pi_coverage_unknown_removed():
 
 # ── E1: Score cap at 200 ─────────────────────────────────────────────────────
 
+
 def test_score_capped_at_200():
     """Score should never exceed 200."""
     config = load_scoring_config()
     # Use extreme signals to push score high
     gap = _make_gap(
-        duration_minutes=48 * 60,        # +55
-        deadweight=250_000,               # VLCC 1.3× mult
-        flag_risk="high_risk",            # +15
-        year_built=1990,                  # 25+ = +30 (high risk flag)
-        corridor_type="sts_zone",         # 1.5× mult
-        impossible_speed_flag=True,       # +40
+        duration_minutes=48 * 60,  # +55
+        deadweight=250_000,  # VLCC 1.3× mult
+        flag_risk="high_risk",  # +15
+        year_built=1990,  # 25+ = +30 (high risk flag)
+        corridor_type="sts_zone",  # 1.5× mult
+        impossible_speed_flag=True,  # +40
     )
     score, bd = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
     assert score <= 200, f"Score {score} exceeds cap of 200"
@@ -344,6 +358,7 @@ def test_score_floor_at_0():
 
 
 # ── 0.10: New legitimacy YAML values ─────────────────────────────────────────
+
 
 def test_legitimacy_yaml_has_new_deductions():
     """YAML contains new legitimacy deductions."""

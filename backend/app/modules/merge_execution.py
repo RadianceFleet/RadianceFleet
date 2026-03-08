@@ -2,6 +2,7 @@
 
 Extracted from identity_resolver.py to reduce module size.
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.ais_point import AISPoint
 from app.models.audit_log import AuditLog
+from app.models.base import MergeCandidateStatusEnum
 from app.models.evidence_card import EvidenceCard
 from app.models.gap_event import AISGapEvent
 from app.models.loitering_event import LoiteringEvent
@@ -25,7 +27,6 @@ from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
 from app.models.vessel_owner import VesselOwner
 from app.models.vessel_watchlist import VesselWatchlist
-from app.models.base import MergeCandidateStatusEnum
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +42,7 @@ def _annotate_evidence_cards(db: Session, absorbed_id: int, absorbed_mmsi: str) 
     if not gap_ids:
         return []
 
-    cards = (
-        db.query(EvidenceCard)
-        .filter(EvidenceCard.gap_event_id.in_(gap_ids))
-        .all()
-    )
+    cards = db.query(EvidenceCard).filter(EvidenceCard.gap_event_id.in_(gap_ids)).all()
     ids = []
     for card in cards:
         card.original_vessel_id = absorbed_id
@@ -59,9 +56,7 @@ def _merge_watchlist(db: Session, canonical_id: int, absorbed_id: int) -> dict:
     result = {"reassigned": 0, "conflicts_resolved": 0, "deleted_snapshots": []}
 
     absorbed_entries = (
-        db.query(VesselWatchlist)
-        .filter(VesselWatchlist.vessel_id == absorbed_id)
-        .all()
+        db.query(VesselWatchlist).filter(VesselWatchlist.vessel_id == absorbed_id).all()
     )
 
     for entry in absorbed_entries:
@@ -77,12 +72,14 @@ def _merge_watchlist(db: Session, canonical_id: int, absorbed_id: int) -> dict:
             if entry.match_confidence > conflict.match_confidence:
                 conflict.match_confidence = entry.match_confidence
                 conflict.reason = entry.reason
-            result["deleted_snapshots"].append({
-                "watchlist_entry_id": entry.watchlist_entry_id,
-                "watchlist_source": entry.watchlist_source,
-                "reason": entry.reason,
-                "match_confidence": entry.match_confidence,
-            })
+            result["deleted_snapshots"].append(
+                {
+                    "watchlist_entry_id": entry.watchlist_entry_id,
+                    "watchlist_source": entry.watchlist_source,
+                    "reason": entry.reason,
+                    "match_confidence": entry.match_confidence,
+                }
+            )
             db.delete(entry)
             result["conflicts_resolved"] += 1
         else:
@@ -94,7 +91,12 @@ def _merge_watchlist(db: Session, canonical_id: int, absorbed_id: int) -> dict:
 
 def _merge_sts_events(db: Session, canonical_id: int, absorbed_id: int) -> dict:
     """Merge STS events, handling self-STS and duplicate pair+time conflicts."""
-    result = {"reassigned": 0, "self_sts_deleted": 0, "duplicates_resolved": 0, "deleted_snapshots": []}
+    result = {
+        "reassigned": 0,
+        "self_sts_deleted": 0,
+        "duplicates_resolved": 0,
+        "deleted_snapshots": [],
+    }
 
     sts_events = (
         db.query(StsTransferEvent)
@@ -112,17 +114,19 @@ def _merge_sts_events(db: Session, canonical_id: int, absorbed_id: int) -> dict:
         new_v2 = canonical_id if sts.vessel_2_id == absorbed_id else sts.vessel_2_id
 
         if new_v1 == new_v2:
-            result["deleted_snapshots"].append({
-                "sts_id": sts.sts_id,
-                "vessel_1_id": sts.vessel_1_id,
-                "vessel_2_id": sts.vessel_2_id,
-                "start_time_utc": str(sts.start_time_utc),
-                "end_time_utc": str(sts.end_time_utc) if sts.end_time_utc else None,
-                "duration_minutes": sts.duration_minutes,
-                "mean_proximity_meters": getattr(sts, "mean_proximity_meters", None),
-                "risk_score_component": sts.risk_score_component,
-                "type": "self_sts",
-            })
+            result["deleted_snapshots"].append(
+                {
+                    "sts_id": sts.sts_id,
+                    "vessel_1_id": sts.vessel_1_id,
+                    "vessel_2_id": sts.vessel_2_id,
+                    "start_time_utc": str(sts.start_time_utc),
+                    "end_time_utc": str(sts.end_time_utc) if sts.end_time_utc else None,
+                    "duration_minutes": sts.duration_minutes,
+                    "mean_proximity_meters": getattr(sts, "mean_proximity_meters", None),
+                    "risk_score_component": sts.risk_score_component,
+                    "type": "self_sts",
+                }
+            )
             db.delete(sts)
             result["self_sts_deleted"] += 1
             continue
@@ -152,17 +156,19 @@ def _merge_sts_events(db: Session, canonical_id: int, absorbed_id: int) -> dict:
         if existing:
             if sts.risk_score_component > existing.risk_score_component:
                 existing.risk_score_component = sts.risk_score_component
-            result["deleted_snapshots"].append({
-                "sts_id": sts.sts_id,
-                "vessel_1_id": sts.vessel_1_id,
-                "vessel_2_id": sts.vessel_2_id,
-                "start_time_utc": str(sts.start_time_utc),
-                "end_time_utc": str(sts.end_time_utc) if sts.end_time_utc else None,
-                "duration_minutes": sts.duration_minutes,
-                "mean_proximity_meters": getattr(sts, "mean_proximity_meters", None),
-                "risk_score_component": sts.risk_score_component,
-                "type": "duplicate",
-            })
+            result["deleted_snapshots"].append(
+                {
+                    "sts_id": sts.sts_id,
+                    "vessel_1_id": sts.vessel_1_id,
+                    "vessel_2_id": sts.vessel_2_id,
+                    "start_time_utc": str(sts.start_time_utc),
+                    "end_time_utc": str(sts.end_time_utc) if sts.end_time_utc else None,
+                    "duration_minutes": sts.duration_minutes,
+                    "mean_proximity_meters": getattr(sts, "mean_proximity_meters", None),
+                    "risk_score_component": sts.risk_score_component,
+                    "type": "duplicate",
+                }
+            )
             db.delete(sts)
             result["duplicates_resolved"] += 1
         else:
@@ -177,21 +183,14 @@ def _merge_vessel_history(db: Session, canonical_id: int, absorbed_id: int) -> d
     """Merge vessel history entries, skipping duplicates."""
     result = {"reassigned": 0, "duplicates_skipped": 0}
 
-    entries = (
-        db.query(VesselHistory)
-        .filter(VesselHistory.vessel_id == absorbed_id)
-        .all()
-    )
+    entries = db.query(VesselHistory).filter(VesselHistory.vessel_id == absorbed_id).all()
 
     # Batch-preload canonical entries to avoid per-entry duplicate queries
     canonical_entries = (
-        db.query(VesselHistory)
-        .filter(VesselHistory.vessel_id == canonical_id)
-        .all()
+        db.query(VesselHistory).filter(VesselHistory.vessel_id == canonical_id).all()
     )
     existing_keys = {
-        (h.field_changed, h.old_value, h.new_value, h.observed_at)
-        for h in canonical_entries
+        (h.field_changed, h.old_value, h.new_value, h.observed_at) for h in canonical_entries
     }
 
     for entry in entries:
@@ -272,7 +271,10 @@ def _reassign_ais_points(db: Session, canonical_id: int, absorbed_id: int) -> di
 def _update_canonical_metadata(db: Session, canonical: Vessel, absorbed: Vessel) -> None:
     """Backfill missing metadata from absorbed vessel into canonical."""
     if absorbed.mmsi_first_seen_utc:
-        if canonical.mmsi_first_seen_utc is None or absorbed.mmsi_first_seen_utc < canonical.mmsi_first_seen_utc:
+        if (
+            canonical.mmsi_first_seen_utc is None
+            or absorbed.mmsi_first_seen_utc < canonical.mmsi_first_seen_utc
+        ):
             canonical.mmsi_first_seen_utc = absorbed.mmsi_first_seen_utc
 
     for field in ("imo", "deadweight", "year_built", "owner_name"):
@@ -281,7 +283,10 @@ def _update_canonical_metadata(db: Session, canonical: Vessel, absorbed: Vessel)
 
 
 def _record_merge_history(
-    db: Session, canonical: Vessel, absorbed: Vessel, merged_by: str,
+    db: Session,
+    canonical: Vessel,
+    absorbed: Vessel,
+    merged_by: str,
 ) -> None:
     """Record the MMSI absorption in VesselHistory."""
     source = "auto_merge" if merged_by == "auto" else "analyst_merge"
@@ -298,7 +303,11 @@ def _record_merge_history(
 
 def _rescore_vessel(db: Session, vessel_id: int, commit: bool = True) -> None:
     """Rescore all gap events for a specific vessel."""
-    from app.modules.risk_scoring import load_scoring_config, compute_gap_score, _count_gaps_in_window
+    from app.modules.risk_scoring import (
+        _count_gaps_in_window,
+        compute_gap_score,
+        load_scoring_config,
+    )
 
     config = load_scoring_config()
     alerts = db.query(AISGapEvent).filter(AISGapEvent.vessel_id == vessel_id).all()
@@ -309,7 +318,8 @@ def _rescore_vessel(db: Session, vessel_id: int, commit: bool = True) -> None:
         gaps_30d = _count_gaps_in_window(db, alert, 30)
 
         score, breakdown = compute_gap_score(
-            alert, config,
+            alert,
+            config,
             gaps_in_7d=gaps_7d,
             gaps_in_14d=gaps_14d,
             gaps_in_30d=gaps_30d,
@@ -362,15 +372,17 @@ def execute_merge(
     if absorbed.merged_into_vessel_id is not None:
         return {"success": False, "error": f"Absorbed vessel {absorbed_id} is already absorbed"}
 
-    affected: dict = {"vessel_snapshot": {
-        "mmsi": absorbed.mmsi,
-        "name": absorbed.name,
-        "imo": absorbed.imo,
-        "flag": absorbed.flag,
-        "vessel_type": absorbed.vessel_type,
-        "deadweight": absorbed.deadweight,
-        "year_built": absorbed.year_built,
-    }}
+    affected: dict = {
+        "vessel_snapshot": {
+            "mmsi": absorbed.mmsi,
+            "name": absorbed.name,
+            "imo": absorbed.imo,
+            "flag": absorbed.flag,
+            "vessel_type": absorbed.vessel_type,
+            "deadweight": absorbed.deadweight,
+            "year_built": absorbed.year_built,
+        }
+    }
 
     # 1. Annotate evidence cards with provenance (before FK reassignment)
     ec_ids = _annotate_evidence_cards(db, absorbed_id, absorbed.mmsi)
@@ -442,7 +454,11 @@ def execute_merge(
         cand.resolved_by = f"auto_absorption:{absorbed_id}"
         rejected_count += 1
     if rejected_count:
-        logger.info("Auto-rejected %d stale merge candidates for absorbed vessel %d", rejected_count, absorbed_id)
+        logger.info(
+            "Auto-rejected %d stale merge candidates for absorbed vessel %d",
+            rejected_count,
+            absorbed_id,
+        )
 
     # 10. Create MergeOperation
     merge_op = MergeOperation(
@@ -482,7 +498,11 @@ def execute_merge(
 
     logger.info(
         "Merged vessel %s (MMSI %s) into %s (MMSI %s) — op %s",
-        absorbed_id, absorbed.mmsi, canonical_id, canonical.mmsi, merge_op.merge_op_id,
+        absorbed_id,
+        absorbed.mmsi,
+        canonical_id,
+        canonical.mmsi,
+        merge_op.merge_op_id,
     )
     return {
         "success": True,
@@ -521,7 +541,8 @@ def reverse_merge(db: Session, merge_op_id: int) -> dict:
     if ais_info.get("count", 0) > 0:
         logger.warning(
             "Reverse merge %d: %d AIS points NOT reassigned back (PK list not stored)",
-            merge_op_id, ais_info.get("count", 0),
+            merge_op_id,
+            ais_info.get("count", 0),
         )
 
     # 3. Reassign simple FK tables back
@@ -541,7 +562,9 @@ def reverse_merge(db: Session, merge_op_id: int) -> dict:
         if count > 0:
             logger.warning(
                 "Reverse merge %d: %d %s records NOT reassigned back (PK list not stored)",
-                merge_op_id, count, name,
+                merge_op_id,
+                count,
+                name,
             )
 
     # 4. Re-create deleted watchlist entries
@@ -582,9 +605,7 @@ def reverse_merge(db: Session, merge_op_id: int) -> dict:
     # 7. Clear evidence card provenance
     ec_ids = affected.get("evidence_cards", [])
     if ec_ids:
-        db.query(EvidenceCard).filter(
-            EvidenceCard.evidence_card_id.in_(ec_ids)
-        ).update(
+        db.query(EvidenceCard).filter(EvidenceCard.evidence_card_id.in_(ec_ids)).update(
             {EvidenceCard.original_vessel_id: None, EvidenceCard.original_mmsi: None},
             synchronize_session="fetch",
         )

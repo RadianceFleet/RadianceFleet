@@ -1,10 +1,12 @@
 """CorridorGapBaseline entity -- rolling gap-rate statistics per corridor."""
+
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Integer, Float, DateTime, ForeignKey
+from sqlalchemy import DateTime, Float, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.models.base import Base
 
 

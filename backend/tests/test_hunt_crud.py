@@ -1,6 +1,7 @@
 """Tests for hunt workflow CRUD endpoints."""
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 from tests.conftest import make_mock_vessel
 
@@ -19,7 +20,7 @@ class TestCreateHuntTarget:
         profile.last_ais_position_lat = 55.0
         profile.last_ais_position_lon = 25.0
         profile.last_ais_timestamp_utc = None
-        profile.profile_created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        profile.profile_created_at = datetime(2024, 1, 1, tzinfo=UTC)
         profile.created_by_analyst_id = None
         profile.reference_images_json = None
         profile.hull_type = None
@@ -73,9 +74,9 @@ class TestCreateHuntMission:
         mission.mission_id = 20
         mission.vessel_id = 1
         mission.profile_id = 10
-        mission.search_start_utc = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        mission.search_end_utc = datetime(2024, 1, 2, tzinfo=timezone.utc)
-        mission.created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        mission.search_start_utc = datetime(2024, 1, 1, tzinfo=UTC)
+        mission.search_end_utc = datetime(2024, 1, 2, tzinfo=UTC)
+        mission.created_at = datetime(2024, 1, 1, tzinfo=UTC)
         mission.analyst_id = None
         mission.search_ellipse_wkt = None
         mission.center_lat = 55.0

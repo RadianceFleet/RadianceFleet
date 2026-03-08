@@ -14,10 +14,11 @@ Thresholds:
   40 <= score < 70 -> create MergeCandidate for analyst review
   score < 40 -> no action
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -41,12 +42,13 @@ DEFAULT_ELAPSED_HOURS: float = 48.0  # default gap window for drift calc
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def estimate_loa(dwt: float) -> float:
     """Estimate vessel length overall (LOA) from deadweight tonnage.
 
     Empirical approximation for tankers: LOA ~ 5.0 * DWT^0.325
     """
-    return 5.0 * (dwt ** 0.325)
+    return 5.0 * (dwt**0.325)
 
 
 def length_matches(
@@ -75,6 +77,7 @@ def _compute_max_drift_nm(dwt: float | None, elapsed_hours: float) -> float:
     """Compute max drift distance using gap_detector logic, with fallback."""
     try:
         from app.modules.gap_detector import compute_max_distance_nm
+
         return compute_max_distance_nm(dwt, elapsed_hours)
     except Exception:
         # Fallback: 14 kn * elapsed hours
@@ -82,6 +85,7 @@ def _compute_max_drift_nm(dwt: float | None, elapsed_hours: float) -> float:
 
 
 # ── Main correlation function ────────────────────────────────────────────────
+
 
 def correlate_sar_detections(
     db: Session,
@@ -106,9 +110,6 @@ def correlate_sar_detections(
     """
     from app.models.stubs import DarkVesselDetection
     from app.models.vessel import Vessel
-    from app.models.ais_point import AISPoint
-    from app.models.merge_candidate import MergeCandidate
-    from app.models.base import MergeCandidateStatusEnum
 
     stats: dict[str, Any] = {
         "detections_processed": 0,
@@ -156,9 +157,7 @@ def correlate_sar_detections(
             try:
                 score, breakdown = _score_vessel_match(db, det, vessel)
             except Exception as exc:
-                stats["errors"].append(
-                    f"det_{det.detection_id}_vessel_{vessel.vessel_id}: {exc}"
-                )
+                stats["errors"].append(f"det_{det.detection_id}_vessel_{vessel.vessel_id}: {exc}")
                 continue
 
             if score > best_score:
@@ -174,7 +173,9 @@ def correlate_sar_detections(
             stats["auto_linked"] += 1
             logger.info(
                 "SAR correlator auto-linked detection %d to vessel %d (score=%.1f)",
-                det.detection_id, best_vessel.vessel_id, best_score,
+                det.detection_id,
+                best_vessel.vessel_id,
+                best_score,
             )
 
         elif best_score >= CANDIDATE_THRESHOLD and best_vessel is not None:
@@ -241,8 +242,10 @@ def _score_vessel_match(
 
     # Distance from last AIS to detection
     dist_nm = haversine_nm(
-        last_point.lat, last_point.lon,
-        det.detection_lat, det.detection_lon,
+        last_point.lat,
+        last_point.lon,
+        det.detection_lat,
+        det.detection_lon,
     )
 
     # Skip if outside drift envelope
@@ -300,8 +303,8 @@ def _create_merge_candidate(
     breakdown: dict[str, Any],
 ) -> None:
     """Create a MergeCandidate for analyst review of a SAR-AIS correlation."""
-    from app.models.merge_candidate import MergeCandidate
     from app.models.base import MergeCandidateStatusEnum
+    from app.models.merge_candidate import MergeCandidate
 
     # MergeCandidate requires vessel_a_id and vessel_b_id.
     # For SAR correlation, vessel_a_id is the matched vessel,

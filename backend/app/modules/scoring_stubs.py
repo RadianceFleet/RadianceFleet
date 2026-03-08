@@ -2,11 +2,11 @@
 
 Extracted from risk_scoring.py to reduce module size.
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -43,9 +43,9 @@ def score_watchlist_stubs(db: Session, config: dict | None = None) -> dict:
     current_year = datetime.utcnow().year
 
     from app.models.ais_point import AISPoint
-    from app.models.vessel_watchlist import VesselWatchlist
     from app.models.vessel import Vessel
     from app.models.vessel_owner import VesselOwner
+    from app.models.vessel_watchlist import VesselWatchlist
 
     # Import helpers from the main module (avoid circular by importing at call time)
     from app.modules.risk_scoring import _vessel_age_points, _vessel_size_multiplier
@@ -55,8 +55,7 @@ def score_watchlist_stubs(db: Session, config: dict | None = None) -> dict:
     vessels_with_ais = db.query(AISPoint.vessel_id).distinct()
     vessels_with_gaps = db.query(AISGapEvent.vessel_id).distinct()
     active_watchlist_ids = (
-        db.query(VesselWatchlist.vessel_id)
-        .filter(VesselWatchlist.is_active == True).distinct()  # noqa: E712
+        db.query(VesselWatchlist.vessel_id).filter(VesselWatchlist.is_active == True).distinct()  # noqa: E712
     )
 
     # Phase 1: Clear stale scores for vessels that no longer qualify as stubs
@@ -90,18 +89,29 @@ def score_watchlist_stubs(db: Session, config: dict | None = None) -> dict:
 
     # Batch-load watchlist entries (avoid N+1 queries)
     watchlist_by_vessel: dict[int, list] = {}
-    for w in db.query(VesselWatchlist).filter(
-        VesselWatchlist.vessel_id.in_(stub_ids),
-        VesselWatchlist.is_active == True,  # noqa: E712
-    ).all():
+    for w in (
+        db.query(VesselWatchlist)
+        .filter(
+            VesselWatchlist.vessel_id.in_(stub_ids),
+            VesselWatchlist.is_active == True,  # noqa: E712
+        )
+        .all()
+    ):
         watchlist_by_vessel.setdefault(w.vessel_id, []).append(w)
 
-    verified_owner_ids: set[int] = {
-        row.vessel_id for row in db.query(VesselOwner.vessel_id).filter(
-            VesselOwner.vessel_id.in_(stub_ids),
-            VesselOwner.verified_at.isnot(None),
-        ).all()
-    } if stub_ids else set()
+    verified_owner_ids: set[int] = (
+        {
+            row.vessel_id
+            for row in db.query(VesselOwner.vessel_id)
+            .filter(
+                VesselOwner.vessel_id.in_(stub_ids),
+                VesselOwner.verified_at.isnot(None),
+            )
+            .all()
+        }
+        if stub_ids
+        else set()
+    )
 
     for vessel in stub_vessels:
         breakdown: dict[str, int] = {}

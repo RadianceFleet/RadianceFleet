@@ -10,8 +10,8 @@ Tests mock httpx responses to verify:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock, patch, PropertyMock
-from datetime import datetime, timezone, timedelta
+
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -35,9 +35,7 @@ class TestSearchVessel:
             "entries": [
                 {
                     "ssvid": "123456789",
-                    "selfReportedInfo": [
-                        {"id": "gfw-vessel-1"}
-                    ],
+                    "selfReportedInfo": [{"id": "gfw-vessel-1"}],
                     "combinedSourcesInfo": [
                         {
                             "shipsData": [

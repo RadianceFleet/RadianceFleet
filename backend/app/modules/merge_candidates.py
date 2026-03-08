@@ -2,17 +2,19 @@
 
 Extracted from identity_resolver.py to reduce module size.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import deque
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, text, and_, or_
+from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.ais_point import AISPoint
+from app.models.base import MergeCandidateStatusEnum
 from app.models.gap_event import AISGapEvent
 from app.models.merge_candidate import MergeCandidate
 from app.models.port_call import PortCall
@@ -20,8 +22,6 @@ from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.sts_transfer import StsTransferEvent
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
-from app.models.vessel_owner import VesselOwner
-from app.models.base import MergeCandidateStatusEnum
 from app.utils.geo import haversine_nm
 from app.utils.vessel_identity import (
     RUSSIAN_ORIGIN_FLAGS,
@@ -34,8 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 def _find_dark_vessels(
-    db: Session, cutoff: datetime,
-) -> list[tuple["Vessel", dict]]:
+    db: Session,
+    cutoff: datetime,
+) -> list[tuple[Vessel, dict]]:
     """Find canonical vessels whose last AIS transmission is before cutoff."""
     from sqlalchemy import desc
 
@@ -58,17 +59,23 @@ def _find_dark_vessels(
             .first()
         )
         if last_pt and last_pt.timestamp_utc < cutoff:
-            results.append((vessel, {
-                "lat": last_pt.lat,
-                "lon": last_pt.lon,
-                "ts": last_pt.timestamp_utc,
-            }))
+            results.append(
+                (
+                    vessel,
+                    {
+                        "lat": last_pt.lat,
+                        "lon": last_pt.lon,
+                        "ts": last_pt.timestamp_utc,
+                    },
+                )
+            )
     return results
 
 
 def _find_new_vessels(
-    db: Session, cutoff: datetime,
-) -> list[tuple["Vessel", dict]]:
+    db: Session,
+    cutoff: datetime,
+) -> list[tuple[Vessel, dict]]:
     """Find canonical vessels first seen after cutoff."""
     results = []
     vessels = (
@@ -89,11 +96,16 @@ def _find_new_vessels(
             .first()
         )
         if first_pt:
-            results.append((vessel, {
-                "lat": first_pt.lat,
-                "lon": first_pt.lon,
-                "ts": first_pt.timestamp_utc,
-            }))
+            results.append(
+                (
+                    vessel,
+                    {
+                        "lat": first_pt.lat,
+                        "lon": first_pt.lon,
+                        "ts": first_pt.timestamp_utc,
+                    },
+                )
+            )
     return results
 
 
@@ -106,37 +118,47 @@ def _build_history_cache(
     id_list = list(vessel_ids)
     records = []
     for i in range(0, len(id_list), 500):
-        batch = id_list[i:i + 500]
+        batch = id_list[i : i + 500]
         records.extend(
-            db.query(VesselHistory.vessel_id, VesselHistory.field_changed,
-                     VesselHistory.old_value, VesselHistory.new_value,
-                     VesselHistory.observed_at)
+            db.query(
+                VesselHistory.vessel_id,
+                VesselHistory.field_changed,
+                VesselHistory.old_value,
+                VesselHistory.new_value,
+                VesselHistory.observed_at,
+            )
             .filter(VesselHistory.vessel_id.in_(batch))
             .all()
         )
     cache: dict[int, dict[str, list[tuple[str, str, datetime]]]] = {}
     for vid, field, old_val, new_val, obs_at in records:
         bucket = cache.setdefault(vid, {}).setdefault(field, [])
-        bucket.append((
-            (old_val or "").strip().upper(),
-            (new_val or "").strip().upper(),
-            obs_at,
-        ))
+        bucket.append(
+            (
+                (old_val or "").strip().upper(),
+                (new_val or "").strip().upper(),
+                obs_at,
+            )
+        )
     return cache
 
 
 def _build_encounter_cache(db: Session, vessel_ids: set[int]) -> dict[tuple[int, int], datetime]:
     """Batch-load GFW encounter pairs. Returns {(min_id, max_id): earliest_start_time_utc}."""
     from app.models.base import STSDetectionTypeEnum
+
     if not vessel_ids:
         return {}
     id_list = list(vessel_ids)
     rows = []
     for i in range(0, len(id_list), 500):
-        batch = id_list[i:i + 500]
+        batch = id_list[i : i + 500]
         rows.extend(
-            db.query(StsTransferEvent.vessel_1_id, StsTransferEvent.vessel_2_id,
-                     StsTransferEvent.start_time_utc)
+            db.query(
+                StsTransferEvent.vessel_1_id,
+                StsTransferEvent.vessel_2_id,
+                StsTransferEvent.start_time_utc,
+            )
             .filter(
                 StsTransferEvent.detection_type == STSDetectionTypeEnum.GFW_ENCOUNTER,
                 or_(
@@ -184,7 +206,9 @@ def _get_recent_change_count(cache: dict, vessel_id: int, cutoff: datetime) -> i
 
 
 def _has_overlapping_ais(
-    db: Session, vessel_a_id: int, vessel_b_id: int,
+    db: Session,
+    vessel_a_id: int,
+    vessel_b_id: int,
     granularity_seconds: int = 3600,
 ) -> bool:
     """Check if two vessels have AIS transmissions within the same time window.
@@ -223,8 +247,11 @@ def _has_overlapping_ais(
 
 def _count_nearby_vessels(
     db: Session,
-    lat: float, lon: float, ts: datetime,
-    radius_nm: float, hours: int,
+    lat: float,
+    lon: float,
+    ts: datetime,
+    radius_nm: float,
+    hours: int,
     corridor_vessels_cache: dict,
 ) -> int:
     """Count distinct vessels transmitting near a position within a time window."""
@@ -249,9 +276,13 @@ def _count_nearby_vessels(
 
 def _score_candidate(
     db: Session,
-    dark_v: Vessel, new_v: Vessel,
-    dark_last: dict, new_first: dict,
-    distance: float, time_delta_h: float, max_travel: float,
+    dark_v: Vessel,
+    new_v: Vessel,
+    dark_last: dict,
+    new_first: dict,
+    distance: float,
+    time_delta_h: float,
+    max_travel: float,
     corridor_vessels_cache: dict,
     history_cache: dict | None = None,
     encounter_cache: dict | None = None,
@@ -305,6 +336,7 @@ def _score_candidate(
     if "same_imo" not in reasons and "imo_mismatch" not in reasons:
         if settings.HISTORY_CROSS_REFERENCE_ENABLED:
             from app.utils.vessel_identity import validate_imo_checksum as _validate_imo_hist
+
             dark_imos = _get_historical_values(history_cache, dark_v.vessel_id, "imo")
             new_imos = _get_historical_values(history_cache, new_v.vessel_id, "imo")
             if dark_v.imo:
@@ -320,6 +352,7 @@ def _score_candidate(
 
     # Same vessel_type (with tanker-category normalization)
     from app.utils.vessel_filter import is_tanker_type
+
     _dark_tanker_by_type = bool(dark_v.vessel_type and "tanker" in dark_v.vessel_type.lower())
     _new_tanker_by_type = bool(new_v.vessel_type and "tanker" in new_v.vessel_type.lower())
     if dark_v.vessel_type and new_v.vessel_type:
@@ -349,8 +382,9 @@ def _score_candidate(
 
     # Fuzzy name matching (unidecode normalization + rapidfuzz token_sort_ratio)
     try:
-        from unidecode import unidecode
         from rapidfuzz.fuzz import token_sort_ratio
+        from unidecode import unidecode
+
         _dark_name = (unidecode(dark_v.name or "")).strip().upper()
         _new_name = (unidecode(new_v.name or "")).strip().upper()
         if _dark_name and _new_name and len(_dark_name) > 2 and len(_new_name) > 2:
@@ -432,12 +466,9 @@ def _score_candidate(
     if settings.ISM_CONTINUITY_SCORING_ENABLED:
         try:
             from app.models.vessel_owner import VesselOwner as _VO_ism
-            dark_owner = db.query(_VO_ism).filter(
-                _VO_ism.vessel_id == dark_v.vessel_id
-            ).first()
-            new_owner = db.query(_VO_ism).filter(
-                _VO_ism.vessel_id == new_v.vessel_id
-            ).first()
+
+            dark_owner = db.query(_VO_ism).filter(_VO_ism.vessel_id == dark_v.vessel_id).first()
+            new_owner = db.query(_VO_ism).filter(_VO_ism.vessel_id == new_v.vessel_id).first()
             if dark_owner and new_owner:
                 _dark_ism = (dark_owner.ism_manager or "").strip().upper()
                 _new_ism = (new_owner.ism_manager or "").strip().upper()
@@ -456,6 +487,7 @@ def _score_candidate(
     if settings.FINGERPRINT_ENABLED:
         try:
             from app.modules.vessel_fingerprint import fingerprint_merge_bonus
+
             fp_bonus = fingerprint_merge_bonus(db, dark_v.vessel_id, new_v.vessel_id)
             if fp_bonus != 0:
                 score = max(0, score + fp_bonus)
@@ -467,15 +499,20 @@ def _score_candidate(
 
     # DWT mismatch (>30% difference): strong anti-evidence
     if dark_v.deadweight and new_v.deadweight and "similar_dwt" not in reasons:
-        dwt_ratio = min(dark_v.deadweight, new_v.deadweight) / max(dark_v.deadweight, new_v.deadweight)
+        dwt_ratio = min(dark_v.deadweight, new_v.deadweight) / max(
+            dark_v.deadweight, new_v.deadweight
+        )
         if dwt_ratio < 0.7:
             score = max(0, score - 15)
             reasons["dwt_mismatch"] = {"points": -15, "ratio": round(dwt_ratio, 3)}
 
     # Different vessel type: active penalty (not just 0 points)
-    if (dark_v.vessel_type and new_v.vessel_type
-            and dark_v.vessel_type != new_v.vessel_type
-            and "same_vessel_type" not in reasons):
+    if (
+        dark_v.vessel_type
+        and new_v.vessel_type
+        and dark_v.vessel_type != new_v.vessel_type
+        and "same_vessel_type" not in reasons
+    ):
         score = max(0, score - 10)
         reasons["vessel_type_mismatch"] = {
             "points": -10,
@@ -527,16 +564,24 @@ def _score_candidate(
 
     # Anchorage density filter: require extra matching in busy STS areas
     density_count = _count_nearby_vessels(
-        db, new_first["lat"], new_first["lon"], new_first["ts"],
-        radius_nm=5.0, hours=6,
+        db,
+        new_first["lat"],
+        new_first["lon"],
+        new_first["ts"],
+        radius_nm=5.0,
+        hours=6,
         corridor_vessels_cache=corridor_vessels_cache,
     )
     if density_count > 5:
         has_strong_match = any(
-            k in reasons for k in (
-                "same_imo", "historical_shared_imo",
-                "same_callsign", "historical_shared_callsign",
-                "similar_name", "shared_ism_manager",
+            k in reasons
+            for k in (
+                "same_imo",
+                "historical_shared_imo",
+                "same_callsign",
+                "historical_shared_callsign",
+                "similar_name",
+                "shared_ism_manager",
             )
         )
         has_triple_match = (
@@ -566,6 +611,7 @@ def _score_candidate(
         if score > 0 and imo_pts / score > 0.25:
             imo_val = reasons["same_imo"]["imo"]
             from app.models.base import SpoofingTypeEnum as _ST
+
             fraud_count = (
                 db.query(func.count(SpoofingAnomaly.anomaly_id))
                 .filter(
@@ -631,7 +677,9 @@ def detect_merge_candidates(
             "No merge candidates: dark_vessels=%d, new_vessels=%d. "
             "Dark requires gap events + last AIS >2h ago. "
             "New requires mmsi_first_seen_utc within %d days.",
-            len(dark_vessels or []), len(new_vessels or []), max_gap_days,
+            len(dark_vessels or []),
+            len(new_vessels or []),
+            max_gap_days,
         )
         return stats
 
@@ -674,8 +722,10 @@ def detect_merge_candidates(
                 continue
 
             distance = haversine_nm(
-                dark_last["lat"], dark_last["lon"],
-                new_first["lat"], new_first["lon"],
+                dark_last["lat"],
+                dark_last["lon"],
+                new_first["lat"],
+                new_first["lon"],
             )
             max_travel = time_delta_h * max_speed
 
@@ -684,8 +734,14 @@ def detect_merge_candidates(
 
             # 4. Confidence scoring
             confidence, reasons = _score_candidate(
-                db, dark_v, new_v, dark_last, new_first,
-                distance, time_delta_h, max_travel,
+                db,
+                dark_v,
+                new_v,
+                dark_last,
+                new_first,
+                distance,
+                time_delta_h,
+                max_travel,
                 corridor_vessels_cache,
                 history_cache=_history_cache,
                 encounter_cache=_encounter_pairs,
@@ -726,7 +782,8 @@ def detect_merge_candidates(
             can_auto_merge = confidence >= auto_threshold
             if can_auto_merge and confidence < 85:
                 has_strong_id = any(
-                    k in reasons for k in ("same_imo", "same_callsign", "similar_name", "shared_ism_manager")
+                    k in reasons
+                    for k in ("same_imo", "same_callsign", "similar_name", "shared_ism_manager")
                 )
                 if not has_strong_id:
                     can_auto_merge = False
@@ -746,7 +803,9 @@ def detect_merge_candidates(
                 canonical_id = min(dark_v.vessel_id, new_v.vessel_id)
                 absorbed_id = max(dark_v.vessel_id, new_v.vessel_id)
                 merge_result = execute_merge(
-                    db, canonical_id, absorbed_id,
+                    db,
+                    canonical_id,
+                    absorbed_id,
                     reason=f"Auto-merge: confidence {confidence}",
                     merged_by="auto",
                     candidate_id=candidate.candidate_id,
@@ -837,23 +896,26 @@ def recheck_merges_for_imo_fraud(
             .first()
         )
         if not existing:
-            db.add(SpoofingAnomaly(
-                vessel_id=canonical_id,
-                anomaly_type=SpoofingTypeEnum.IMO_FRAUD,
-                start_time_utc=datetime.utcnow(),
-                end_time_utc=datetime.utcnow(),
-                risk_score_component=0,
-                evidence_json={
-                    "subtype": "post_merge_imo_fraud",
-                    "candidate_id": cand.candidate_id,
-                    "imo": cand_imo,
-                    "merged_vessels": list(cand_vessels),
-                },
-            ))
+            db.add(
+                SpoofingAnomaly(
+                    vessel_id=canonical_id,
+                    anomaly_type=SpoofingTypeEnum.IMO_FRAUD,
+                    start_time_utc=datetime.utcnow(),
+                    end_time_utc=datetime.utcnow(),
+                    risk_score_component=0,
+                    evidence_json={
+                        "subtype": "post_merge_imo_fraud",
+                        "candidate_id": cand.candidate_id,
+                        "imo": cand_imo,
+                        "merged_vessels": list(cand_vessels),
+                    },
+                )
+            )
             stats["flagged"] += 1
             logger.warning(
                 "Auto-merge candidate_id=%d may involve fraudulent IMO %s — manual review recommended",
-                cand.candidate_id, cand_imo,
+                cand.candidate_id,
+                cand_imo,
             )
 
     if stats["flagged"]:
@@ -886,10 +948,12 @@ def detect_merge_chains(db: Session) -> dict:
     candidates = (
         db.query(MergeCandidate)
         .filter(
-            MergeCandidate.status.in_([
-                MergeCandidateStatusEnum.AUTO_MERGED,
-                MergeCandidateStatusEnum.ANALYST_MERGED,
-            ]),
+            MergeCandidate.status.in_(
+                [
+                    MergeCandidateStatusEnum.AUTO_MERGED,
+                    MergeCandidateStatusEnum.ANALYST_MERGED,
+                ]
+            ),
             MergeCandidate.confidence_score >= 50,
         )
         .all()
@@ -983,9 +1047,13 @@ def detect_merge_chains(db: Session) -> dict:
                     break
 
         # Dedup: skip if chain with same vessel_ids_json already exists
-        existing = db.query(MergeChain).filter(
-            MergeChain.vessel_ids_json == ordered_ids,
-        ).first()
+        existing = (
+            db.query(MergeChain)
+            .filter(
+                MergeChain.vessel_ids_json == ordered_ids,
+            )
+            .first()
+        )
         if existing:
             continue
 
@@ -1023,7 +1091,9 @@ def extended_merge_pass(db: Session) -> dict:
         return {"candidates_created": 0, "extended": True, "skipped": "feature_disabled"}
 
     extended_stats = detect_merge_candidates(
-        db, max_gap_days=180, require_identity_anchor=True,
+        db,
+        max_gap_days=180,
+        require_identity_anchor=True,
     )
     extended_stats["extended"] = True
     return extended_stats

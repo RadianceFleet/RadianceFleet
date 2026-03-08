@@ -1,8 +1,9 @@
 """Pydantic schemas for vessel detail and search responses."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -10,10 +11,10 @@ from pydantic import BaseModel
 class VesselHistoryRead(BaseModel):
     vessel_history_id: int
     field_changed: str
-    old_value: Optional[str] = None
-    new_value: Optional[str] = None
+    old_value: str | None = None
+    new_value: str | None = None
     observed_at: datetime
-    source: Optional[str] = None
+    source: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -21,8 +22,8 @@ class VesselHistoryRead(BaseModel):
 class WatchlistEntryRead(BaseModel):
     watchlist_entry_id: int
     watchlist_source: str
-    reason: Optional[str] = None
-    date_listed: Optional[Any] = None
+    reason: str | None = None
+    date_listed: Any | None = None
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -31,15 +32,15 @@ class WatchlistEntryRead(BaseModel):
 class VesselSearchResult(BaseModel):
     vessel_id: int
     mmsi: str
-    imo: Optional[str] = None
-    name: Optional[str] = None
-    flag: Optional[str] = None
-    vessel_type: Optional[str] = None
-    deadweight: Optional[float] = None
-    last_risk_score: Optional[int] = None
+    imo: str | None = None
+    name: str | None = None
+    flag: str | None = None
+    vessel_type: str | None = None
+    deadweight: float | None = None
+    last_risk_score: int | None = None
     watchlist_status: bool = False
-    watchlist_stub_score: Optional[int] = None
-    effective_score: Optional[int] = None   # last_risk_score if not None, else watchlist_stub_score
+    watchlist_stub_score: int | None = None
+    effective_score: int | None = None  # last_risk_score if not None, else watchlist_stub_score
 
     model_config = {"from_attributes": True}
 
@@ -47,39 +48,39 @@ class VesselSearchResult(BaseModel):
 class VesselDetailRead(BaseModel):
     vessel_id: int
     mmsi: str
-    imo: Optional[str] = None
-    name: Optional[str] = None
-    flag: Optional[str] = None
-    vessel_type: Optional[str] = None
-    deadweight: Optional[float] = None
-    year_built: Optional[int] = None
-    ais_class: Optional[str] = None
-    flag_risk_category: Optional[str] = None
-    pi_coverage_status: Optional[str] = None
+    imo: str | None = None
+    name: str | None = None
+    flag: str | None = None
+    vessel_type: str | None = None
+    deadweight: float | None = None
+    year_built: int | None = None
+    ais_class: str | None = None
+    flag_risk_category: str | None = None
+    pi_coverage_status: str | None = None
     psc_detained_last_12m: bool = False
-    mmsi_first_seen_utc: Optional[datetime] = None
+    mmsi_first_seen_utc: datetime | None = None
     vessel_laid_up_30d: bool = False
     vessel_laid_up_60d: bool = False
     vessel_laid_up_in_sts_zone: bool = False
-    merged_into_vessel_id: Optional[int] = None
+    merged_into_vessel_id: int | None = None
     watchlist_entries: list[WatchlistEntryRead] = []
     total_gaps_7d: int = 0
     total_gaps_30d: int = 0
-    watchlist_stub_score: Optional[int] = None
-    watchlist_stub_breakdown: Optional[dict] = None
-    callsign: Optional[str] = None
-    owner_name: Optional[str] = None
-    ais_cargo_type: Optional[str] = None
-    last_ais_received_utc: Optional[datetime] = None
+    watchlist_stub_score: int | None = None
+    watchlist_stub_breakdown: dict | None = None
+    callsign: str | None = None
+    owner_name: str | None = None
+    ais_cargo_type: str | None = None
+    last_ais_received_utc: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 
 class IngestionStatusRead(BaseModel):
     status: str  # idle | running | completed | failed
-    file_name: Optional[str] = None
+    file_name: str | None = None
     processed: int = 0
     accepted: int = 0
     rejected: int = 0
-    percent_complete: Optional[float] = None
-    error: Optional[str] = None
+    percent_complete: float | None = None
+    error: str | None = None

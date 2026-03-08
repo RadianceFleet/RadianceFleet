@@ -7,9 +7,10 @@ Validates _get_gap_center fallback chain:
 4. Last known AIS position for vessel (NEW)
 5. North Sea fallback (55.0, 15.0)
 """
+
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 

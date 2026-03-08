@@ -5,10 +5,11 @@ Rate limit: 1 request per minute.
 
 API docs: https://www.aishub.net/api
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -41,9 +42,7 @@ def fetch_area_positions(
     """
     uname = username or settings.AISHUB_USERNAME
     if not uname:
-        raise ValueError(
-            "AISHUB_USERNAME not configured. Join at https://www.aishub.net/"
-        )
+        raise ValueError("AISHUB_USERNAME not configured. Join at https://www.aishub.net/")
 
     lat_min, lon_min, lat_max, lon_max = bbox
 
@@ -65,7 +64,9 @@ def fetch_area_positions(
         with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
             resp = breakers["aishub"].call(
                 retry_request,
-                client.get, _BASE_URL, params=params,
+                client.get,
+                _BASE_URL,
+                params=params,
                 delays=[60, 120, 180],  # AISHub rate limit: 1 req/min
             )
             data = resp.json()
@@ -178,8 +179,8 @@ def ingest_aishub_positions(
     Uses the same vessel upsert and AIS point creation pattern as ingest.py.
     Returns {"stored": int, "skipped": int, "vessels_created": int}.
     """
-    from app.models.vessel import Vessel
     from app.models.ais_point import AISPoint
+    from app.models.vessel import Vessel
     from app.modules.ingest import _parse_timestamp
 
     stats = {"stored": 0, "skipped": 0, "vessels_created": 0}
@@ -192,7 +193,8 @@ def ingest_aishub_positions(
             if ts is None:
                 stats["skipped"] += 1
                 continue
-            from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+            from app.utils.vessel_identity import flag_to_risk_category, mmsi_to_flag
+
             derived_flag = mmsi_to_flag(mmsi)
             vessel = Vessel(
                 mmsi=mmsi,

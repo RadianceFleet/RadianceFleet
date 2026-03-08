@@ -1,13 +1,12 @@
 """Tests for alert assignment endpoints."""
+
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import jwt
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
 
 from app.config import settings
-
 
 JWT_SECRET = "test-secret-key-1234567890abcdef"
 
@@ -55,6 +54,7 @@ class TestAssignAlert:
             else:
                 q.filter.return_value.first.return_value = mock_alert
             return q
+
         mock_db.query.side_effect = side_effect
 
         token = _make_token()
@@ -100,7 +100,9 @@ class TestAssignAlert:
 
         q = mock_db.query.return_value.options.return_value
         q.filter.return_value.count.return_value = 1
-        q.filter.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [mock_alert]
+        q.filter.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+            mock_alert
+        ]
 
         token = _make_token(analyst_id=1)
         resp = api_client.get(
@@ -121,6 +123,7 @@ class TestAssignAlert:
             else:
                 q.filter.return_value.first.return_value = _make_mock_alert()
             return q
+
         mock_db.query.side_effect = side_effect
 
         token = _make_token()
@@ -143,6 +146,7 @@ class TestAssignAlert:
             else:
                 q.filter.return_value.first.return_value = None
             return q
+
         mock_db.query.side_effect = side_effect
 
         token = _make_token()

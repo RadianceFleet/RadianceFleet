@@ -1,22 +1,20 @@
 """Tests for aisstream.io WebSocket client — message parsing and ingestion."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.modules.aisstream_client import (
+    _ais_type_to_string,
+    _box_area,
     _map_position_report,
     _map_static_data,
-    _ais_type_to_string,
     _merge_bounding_boxes,
-    _box_area,
     get_corridor_bounding_boxes,
 )
 
-
 # ── Tests: _map_position_report ──────────────────────────────────────
+
 
 class TestMapPositionReport:
     def test_valid_position_report(self):
@@ -48,7 +46,12 @@ class TestMapPositionReport:
 
     def test_filters_non_vessel_mmsi(self):
         msg = {
-            "MetaData": {"MMSI": 970123456, "latitude": 25.0, "longitude": 55.0, "time_utc": "2026-01-15T12:00:00Z"},
+            "MetaData": {
+                "MMSI": 970123456,
+                "latitude": 25.0,
+                "longitude": 55.0,
+                "time_utc": "2026-01-15T12:00:00Z",
+            },
             "Message": {"PositionReport": {"Sog": 10}},
         }
         result = _map_position_report(msg)
@@ -56,7 +59,12 @@ class TestMapPositionReport:
 
     def test_filters_zero_mmsi(self):
         msg = {
-            "MetaData": {"MMSI": 0, "latitude": 25.0, "longitude": 55.0, "time_utc": "2026-01-15T12:00:00Z"},
+            "MetaData": {
+                "MMSI": 0,
+                "latitude": 25.0,
+                "longitude": 55.0,
+                "time_utc": "2026-01-15T12:00:00Z",
+            },
             "Message": {"PositionReport": {"Sog": 10}},
         }
         result = _map_position_report(msg)
@@ -64,7 +72,12 @@ class TestMapPositionReport:
 
     def test_filters_invalid_lat(self):
         msg = {
-            "MetaData": {"MMSI": 211000001, "latitude": 95.0, "longitude": 55.0, "time_utc": "2026-01-15T12:00:00Z"},
+            "MetaData": {
+                "MMSI": 211000001,
+                "latitude": 95.0,
+                "longitude": 55.0,
+                "time_utc": "2026-01-15T12:00:00Z",
+            },
             "Message": {"PositionReport": {"Sog": 10}},
         }
         result = _map_position_report(msg)
@@ -72,7 +85,12 @@ class TestMapPositionReport:
 
     def test_sog_sentinel_filtered(self):
         msg = {
-            "MetaData": {"MMSI": 211000001, "latitude": 25.0, "longitude": 55.0, "time_utc": "2026-01-15T12:00:00Z"},
+            "MetaData": {
+                "MMSI": 211000001,
+                "latitude": 25.0,
+                "longitude": 55.0,
+                "time_utc": "2026-01-15T12:00:00Z",
+            },
             "Message": {"PositionReport": {"Sog": 102.3, "Cog": 360.0, "TrueHeading": 511}},
         }
         result = _map_position_report(msg)
@@ -83,7 +101,12 @@ class TestMapPositionReport:
 
     def test_class_b_report(self):
         msg = {
-            "MetaData": {"MMSI": 211000001, "latitude": 25.0, "longitude": 55.0, "time_utc": "2026-01-15T12:00:00Z"},
+            "MetaData": {
+                "MMSI": 211000001,
+                "latitude": 25.0,
+                "longitude": 55.0,
+                "time_utc": "2026-01-15T12:00:00Z",
+            },
             "Message": {"StandardClassBPositionReport": {"Sog": 5.0, "Cog": 90.0}},
         }
         result = _map_position_report(msg, msg_type="StandardClassBPositionReport")
@@ -108,6 +131,7 @@ class TestMapPositionReport:
 
 
 # ── Tests: _map_static_data ──────────────────────────────────────────
+
 
 class TestMapStaticData:
     def test_valid_static_data(self):
@@ -152,6 +176,7 @@ class TestMapStaticData:
 
 # ── Tests: _ais_type_to_string ───────────────────────────────────────
 
+
 class TestAisTypeToString:
     def test_tanker(self):
         assert _ais_type_to_string(80) == "Tanker"
@@ -179,6 +204,7 @@ class TestAisTypeToString:
 
 # ── Tests: bounding box merging ──────────────────────────────────────
 
+
 class TestBoundingBoxMerge:
     def test_box_area(self):
         box = [[10.0, 20.0], [15.0, 30.0]]
@@ -203,9 +229,9 @@ class TestBoundingBoxMerge:
 
     def test_respects_area_cap(self):
         boxes = [
-            [[0.0, 0.0], [20.0, 20.0]],    # 400 sq deg
-            [[-20.0, -20.0], [0.0, 0.0]],   # 400 sq deg
-            [[50.0, 50.0], [52.0, 52.0]],    # small
+            [[0.0, 0.0], [20.0, 20.0]],  # 400 sq deg
+            [[-20.0, -20.0], [0.0, 0.0]],  # 400 sq deg
+            [[50.0, 50.0], [52.0, 52.0]],  # small
         ]
         result = _merge_bounding_boxes(boxes, max_boxes=2, max_box_area=400.0)
         # Should not merge the two large boxes (would exceed area cap)

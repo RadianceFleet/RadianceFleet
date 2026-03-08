@@ -4,19 +4,18 @@
 This module detects impossible-speed pairs within time windows and creates
 SpoofingAnomaly records of type MMSI_REUSE.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
-from itertools import groupby
 
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 
 from app.models.ais_point import AISPoint
+from app.models.base import SpoofingTypeEnum
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
-from app.models.base import SpoofingTypeEnum
 from app.utils.geo import haversine_nm
 
 logger = logging.getLogger(__name__)
@@ -90,14 +89,24 @@ def detect_mmsi_cloning(db: Session) -> list[dict]:
             db.add(anomaly)
             stats["anomalies_created"] += 1
 
-            results.append({
-                "mmsi": vessel.mmsi,
-                "vessel_id": vessel.vessel_id,
-                "point_a": {"lat": clone["point_a_lat"], "lon": clone["point_a_lon"], "time": str(clone["point_a_time"])},
-                "point_b": {"lat": clone["point_b_lat"], "lon": clone["point_b_lon"], "time": str(clone["point_b_time"])},
-                "distance_nm": clone["distance_nm"],
-                "implied_speed_kn": clone["implied_speed_kn"],
-            })
+            results.append(
+                {
+                    "mmsi": vessel.mmsi,
+                    "vessel_id": vessel.vessel_id,
+                    "point_a": {
+                        "lat": clone["point_a_lat"],
+                        "lon": clone["point_a_lon"],
+                        "time": str(clone["point_a_time"]),
+                    },
+                    "point_b": {
+                        "lat": clone["point_b_lat"],
+                        "lon": clone["point_b_lon"],
+                        "time": str(clone["point_b_time"]),
+                    },
+                    "distance_nm": clone["distance_nm"],
+                    "implied_speed_kn": clone["implied_speed_kn"],
+                }
+            )
 
         if clones:
             stats["cloning_events"] += 1
@@ -123,25 +132,26 @@ def _find_impossible_jumps(points: list[AISPoint], vessel: Vessel) -> list[dict]
         # receivers creates false "impossible speed" alerts
         p1_source = getattr(p1, "source", None)
         p2_source = getattr(p2, "source", None)
-        if (p1_source and p2_source and p1_source != p2_source
-                and time_delta < 120):
+        if p1_source and p2_source and p1_source != p2_source and time_delta < 120:
             continue
 
         distance = haversine_nm(p1.lat, p1.lon, p2.lat, p2.lon)
         speed = distance / (time_delta / 3600)
 
         if speed > _IMPOSSIBLE_SPEED_KN:
-            jumps.append({
-                "point_a_lat": p1.lat,
-                "point_a_lon": p1.lon,
-                "point_a_time": p1.timestamp_utc,
-                "point_b_lat": p2.lat,
-                "point_b_lon": p2.lon,
-                "point_b_time": p2.timestamp_utc,
-                "distance_nm": round(distance, 2),
-                "time_delta_seconds": time_delta,
-                "implied_speed_kn": round(speed, 1),
-            })
+            jumps.append(
+                {
+                    "point_a_lat": p1.lat,
+                    "point_a_lon": p1.lon,
+                    "point_a_time": p1.timestamp_utc,
+                    "point_b_lat": p2.lat,
+                    "point_b_lon": p2.lon,
+                    "point_b_time": p2.timestamp_utc,
+                    "distance_nm": round(distance, 2),
+                    "time_delta_seconds": time_delta,
+                    "implied_speed_kn": round(speed, 1),
+                }
+            )
 
     return jumps
 

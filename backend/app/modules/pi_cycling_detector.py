@@ -6,52 +6,54 @@ of sanctions evasion: legitimate vessels maintain long-term relationships
 with established IG P&I Group clubs. Shadow fleet vessels frequently switch
 to non-IG clubs or change coverage rapidly as clubs delist sanctioned vessels.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.base import SpoofingTypeEnum
 from app.models.spoofing_anomaly import SpoofingAnomaly
-from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
 
 logger = logging.getLogger(__name__)
 
 # ── International Group of P&I Clubs (IG) ─────────────────────────────────
 # These 12 clubs cover ~90% of world tonnage. Non-IG coverage is a risk signal.
-IG_PI_CLUBS: frozenset[str] = frozenset({
-    "american steamship owners mutual protection and indemnity association",
-    "american club",
-    "assuranceforeningen skuld",
-    "skuld",
-    "britannia steam ship insurance association",
-    "britannia",
-    "gard p&i",
-    "gard",
-    "japan ship owners' mutual protection & indemnity association",
-    "japan p&i club",
-    "the london steam-ship owners' mutual insurance association",
-    "london p&i club",
-    "north of england protecting & indemnity association",
-    "north p&i",
-    "the shipowners' mutual protection and indemnity association",
-    "shipowners club",
-    "the standard club",
-    "standard club",
-    "steamship mutual underwriting association",
-    "steamship mutual",
-    "the swedish club",
-    "swedish club",
-    "united kingdom mutual steam ship assurance association",
-    "uk p&i club",
-    "west of england ship owners mutual insurance association",
-    "west of england",
-})
+IG_PI_CLUBS: frozenset[str] = frozenset(
+    {
+        "american steamship owners mutual protection and indemnity association",
+        "american club",
+        "assuranceforeningen skuld",
+        "skuld",
+        "britannia steam ship insurance association",
+        "britannia",
+        "gard p&i",
+        "gard",
+        "japan ship owners' mutual protection & indemnity association",
+        "japan p&i club",
+        "the london steam-ship owners' mutual insurance association",
+        "london p&i club",
+        "north of england protecting & indemnity association",
+        "north p&i",
+        "the shipowners' mutual protection and indemnity association",
+        "shipowners club",
+        "the standard club",
+        "standard club",
+        "steamship mutual underwriting association",
+        "steamship mutual",
+        "the swedish club",
+        "swedish club",
+        "united kingdom mutual steam ship assurance association",
+        "uk p&i club",
+        "west of england ship owners mutual insurance association",
+        "west of england",
+    }
+)
 
 
 def _is_ig_club(club_name: str | None) -> bool:
@@ -100,10 +102,7 @@ def run_pi_cycling_detection(db: Session) -> dict:
             continue
 
         # Count changes in 90-day window
-        changes_90d = [
-            c for c in changes
-            if (now - c.observed_at).days <= 90
-        ]
+        changes_90d = [c for c in changes if (now - c.observed_at).days <= 90]
 
         if len(changes_90d) < 2:
             continue
@@ -120,10 +119,14 @@ def run_pi_cycling_detection(db: Session) -> dict:
             score = 20
 
         # Check for existing anomaly
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == vessel_id,
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.PI_CYCLING,
-        ).first()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.PI_CYCLING,
+            )
+            .first()
+        )
         if existing:
             continue
 
@@ -157,7 +160,8 @@ def run_pi_cycling_detection(db: Session) -> dict:
     db.commit()
     logger.info(
         "P&I cycling: %d anomalies from %d vessels checked",
-        anomalies_created, len(by_vessel),
+        anomalies_created,
+        len(by_vessel),
     )
     return {
         "status": "ok",

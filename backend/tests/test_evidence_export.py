@@ -1,14 +1,15 @@
 """Tests for evidence card export with regional coverage metadata."""
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 
 def _mock_db_for_export(corridor_name="Mediterranean STS Zone"):
     gap = MagicMock()
     gap.gap_event_id = 42
     gap.status = "under_review"
-    gap.gap_start_utc = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
-    gap.gap_end_utc = datetime(2026, 1, 15, 22, 0, tzinfo=timezone.utc)
+    gap.gap_start_utc = datetime(2026, 1, 15, 10, 0, tzinfo=UTC)
+    gap.gap_end_utc = datetime(2026, 1, 15, 22, 0, tzinfo=UTC)
     gap.duration_minutes = 720
     gap.risk_score = 65
     gap.risk_breakdown_json = {}
@@ -37,10 +38,18 @@ def _mock_db_for_export(corridor_name="Mediterranean STS Zone"):
 
     # Sequence: gap, vessel, corridor, last_point (None), first_point (None), sat_check (None)
     db.query.return_value.filter.return_value.first.side_effect = [
-        gap, vessel, corridor, None, None, None
+        gap,
+        vessel,
+        corridor,
+        None,
+        None,
+        None,
     ]
     db.query.return_value.filter.return_value.order_by.return_value.first.side_effect = [
-        None, None, None, None
+        None,
+        None,
+        None,
+        None,
     ]
     db.add = MagicMock()
     db.commit = MagicMock()
@@ -55,6 +64,7 @@ def _mock_db_for_export(corridor_name="Mediterranean STS Zone"):
 
 def test_evidence_card_markdown_contains_coverage_section():
     from app.modules.evidence_export import export_evidence_card
+
     db, _ = _mock_db_for_export("Mediterranean STS Zone")
     result = export_evidence_card(42, "md", db)
     assert "error" not in result
@@ -64,6 +74,7 @@ def test_evidence_card_markdown_contains_coverage_section():
 
 def test_evidence_card_coverage_identifies_black_sea():
     from app.modules.evidence_export import _corridor_coverage
+
     quality, desc = _corridor_coverage("Black Sea Export Route")
     assert quality == "POOR"
     assert "falsified" in desc.lower() or "russian" in desc.lower() or "no adequate" in desc.lower()
@@ -71,12 +82,14 @@ def test_evidence_card_coverage_identifies_black_sea():
 
 def test_evidence_card_coverage_unknown_region():
     from app.modules.evidence_export import _corridor_coverage
+
     quality, desc = _corridor_coverage("Unknown Region XYZ")
     assert quality == "UNKNOWN"
 
 
 def test_evidence_card_coverage_none_corridor():
     from app.modules.evidence_export import _corridor_coverage
+
     quality, desc = _corridor_coverage(None)
     assert quality == "UNKNOWN"
 
@@ -84,6 +97,7 @@ def test_evidence_card_coverage_none_corridor():
 def test_evidence_export_blocked_when_status_new():
     """Evidence card export must be blocked when gap.status == 'new' (NFR7 analyst review gate)."""
     from app.modules.evidence_export import export_evidence_card
+
     gap = MagicMock()
     gap.gap_event_id = 99
     gap.status = "new"

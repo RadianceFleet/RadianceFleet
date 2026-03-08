@@ -6,6 +6,7 @@ records for unmatched detections (potential dark ships in monitored corridors).
 Download from: https://globalfishingwatch.org/data-download/
 Expected CSV columns: detect_id, timestamp, lat, lon, vessel_length_m, vessel_score, vessel_type
 """
+
 from __future__ import annotations
 
 import csv
@@ -58,8 +59,8 @@ _haversine_nm = haversine_nm  # module-local alias
 
 def ingest_gfw_csv(db: Session, filepath: str) -> dict:
     """Import GFW detections CSV. Returns {"total", "matched", "dark", "rejected"}."""
-    from app.models.stubs import DarkVesselDetection
     from app.models.ais_point import AISPoint
+    from app.models.stubs import DarkVesselDetection
 
     if not Path(filepath).exists():
         raise FileNotFoundError(f"GFW CSV not found: {filepath}")
@@ -96,22 +97,27 @@ def ingest_gfw_csv(db: Session, filepath: str) -> dict:
 
             matched_vessel_id = None
             for pt in candidates:
-                if _haversine_nm(row["detection_lat"], row["detection_lon"], pt.lat, pt.lon) <= AIS_MATCH_RADIUS_NM:
+                if (
+                    _haversine_nm(row["detection_lat"], row["detection_lon"], pt.lat, pt.lon)
+                    <= AIS_MATCH_RADIUS_NM
+                ):
                     matched_vessel_id = pt.vessel_id
                     break
 
-            db.add(DarkVesselDetection(
-                scene_id=row["scene_id"],
-                detection_lat=row["detection_lat"],
-                detection_lon=row["detection_lon"],
-                detection_time_utc=ts,
-                length_estimate_m=row["length_estimate_m"],
-                vessel_type_inferred=row["vessel_type_inferred"],
-                ais_match_attempted=True,
-                ais_match_result="matched" if matched_vessel_id else "unmatched",
-                matched_vessel_id=matched_vessel_id,
-                model_confidence=row["model_confidence"],
-            ))
+            db.add(
+                DarkVesselDetection(
+                    scene_id=row["scene_id"],
+                    detection_lat=row["detection_lat"],
+                    detection_lon=row["detection_lon"],
+                    detection_time_utc=ts,
+                    length_estimate_m=row["length_estimate_m"],
+                    vessel_type_inferred=row["vessel_type_inferred"],
+                    ais_match_attempted=True,
+                    ais_match_result="matched" if matched_vessel_id else "unmatched",
+                    matched_vessel_id=matched_vessel_id,
+                    model_confidence=row["model_confidence"],
+                )
+            )
             if matched_vessel_id:
                 stats["matched"] += 1
             else:

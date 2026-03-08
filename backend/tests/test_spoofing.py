@@ -3,17 +3,15 @@
 Tests are unit-level: they verify detection logic and scoring constants
 without requiring a real database or full ORM stack.
 """
+
 import math
 import statistics
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from app.utils.geo import haversine_nm as _haversine_nm
 
-
 # ── Helper factory ────────────────────────────────────────────────────────────
-
 from tests.conftest import make_mock_point
 
 
@@ -28,13 +26,18 @@ def _make_point(
 ):
     """Create a mock AISPoint using shared factory."""
     return make_mock_point(
-        lat=lat, lon=lon, ts=timestamp or datetime(2026, 1, 15, 12, 0),
-        sog=sog, cog=cog, nav_status=nav_status,
+        lat=lat,
+        lon=lon,
+        ts=timestamp or datetime(2026, 1, 15, 12, 0),
+        sog=sog,
+        cog=cog,
+        nav_status=nav_status,
         ais_point_id=ais_point_id,
     )
 
 
 # ── Anchor spoof logic tests ──────────────────────────────────────────────────
+
 
 def test_anchor_spoof_condition_fires_when_not_near_port():
     """A run of nav_status=1, sog<0.1 for >=72h, NOT near port → anchor spoof triggered.
@@ -56,9 +59,7 @@ def test_anchor_spoof_condition_fires_when_not_near_port():
         for i in range(10)
     ]
 
-    run_hours = (
-        anchor_run[-1].timestamp_utc - anchor_run[0].timestamp_utc
-    ).total_seconds() / 3600
+    run_hours = (anchor_run[-1].timestamp_utc - anchor_run[0].timestamp_utc).total_seconds() / 3600
 
     # Condition 1: run is >= 72h
     assert run_hours >= 72, f"Expected run >= 72h, got {run_hours:.1f}h"
@@ -88,9 +89,7 @@ def test_anchor_spoof_not_fired_near_port():
         for i in range(10)
     ]
 
-    run_hours = (
-        anchor_run[-1].timestamp_utc - anchor_run[0].timestamp_utc
-    ).total_seconds() / 3600
+    run_hours = (anchor_run[-1].timestamp_utc - anchor_run[0].timestamp_utc).total_seconds() / 3600
 
     assert run_hours >= 72
 
@@ -115,9 +114,7 @@ def test_anchor_spoof_not_fired_run_too_short():
         for i in range(9)  # 48h span
     ]
 
-    run_hours = (
-        short_run[-1].timestamp_utc - short_run[0].timestamp_utc
-    ).total_seconds() / 3600
+    run_hours = (short_run[-1].timestamp_utc - short_run[0].timestamp_utc).total_seconds() / 3600
 
     assert run_hours < 72
     assert run_hours >= 48  # long but below threshold
@@ -127,6 +124,7 @@ def test_anchor_spoof_not_fired_run_too_short():
 
 
 # ── MMSI reuse scoring tests ──────────────────────────────────────────────────
+
 
 def test_mmsi_reuse_score_low():
     """Implied speed of 31 kn (> 30 but <= 100) → score component = 40."""
@@ -174,6 +172,7 @@ def test_mmsi_reuse_implied_speed_calculation():
 
 # ── Nav status mismatch scoring test ─────────────────────────────────────────
 
+
 def test_nav_status_mismatch_score():
     """nav_status=1 AND sog > 2.0 kn → risk_score_component = 15."""
     # Reproduce the check from run_spoofing_detection directly
@@ -205,6 +204,7 @@ def test_nav_status_mismatch_not_fired_different_status():
 
 # ── Circle spoof detection tests ──────────────────────────────────────────────
 
+
 def test_circle_spoof_cluster():
     """Points with SOG > 3 kn but tight positional cluster → circle_spoof conditions met.
 
@@ -229,8 +229,6 @@ def test_circle_spoof_cluster():
 def test_circle_spoof_not_fired_normal_transit():
     """Normal transit: positions spread across 0.5° — std_lat >= 0.05 → not a circle spoof."""
     lats = [55.0, 55.1, 55.2, 55.3, 55.4, 55.5]
-    lons = [24.0, 24.1, 24.2, 24.3, 24.4, 24.5]
-    sogs = [12.0] * 6
 
     std_lat = statistics.stdev(lats)
 
@@ -263,7 +261,7 @@ def test_circle_spoof_lon_correction_matters():
     high latitudes where longitude degrees are physically shorter.
     """
     lat_high = 70.0  # High Arctic — cos(70°) ≈ 0.342
-    lat_mid = 45.0   # Mid-latitude — cos(45°) ≈ 0.707
+    lat_mid = 45.0  # Mid-latitude — cos(45°) ≈ 0.707
 
     raw_std_lon = 0.04  # Would fail the < 0.02 test at mid-lat, but passes at 70°N
 
@@ -279,6 +277,7 @@ def test_circle_spoof_lon_correction_matters():
 
 # ── Haversine sanity test (used by spoofing engine) ───────────────────────────
 
+
 def test_haversine_used_by_spoofing_implied_speed():
     """_haversine_nm gives positive, finite result for typical North Baltic positions."""
     dist = _haversine_nm(60.0, 28.0, 60.1, 28.1)
@@ -288,6 +287,7 @@ def test_haversine_used_by_spoofing_implied_speed():
 
 
 # ── Erratic nav_status detection tests ───────────────────────────────────────
+
 
 def _count_status_changes(points: list) -> int:
     """Count nav_status transitions in a list of points (replicates detection logic)."""
@@ -382,8 +382,9 @@ def test_erratic_nav_status_continuous_episode_one_anomaly():
                 continue
         i += 1
 
-    assert len(episode_starts) == 1, \
+    assert len(episode_starts) == 1, (
         f"Expected exactly 1 episode start from non-overlapping scan, got {len(episode_starts)}"
+    )
 
 
 def test_anchor_spoof_suppressed_in_anchorage_holding_corridor():

@@ -1,17 +1,16 @@
 """Tests for multi-signal confidence classification."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
-
-import pytest
 
 from app.modules.confidence_classifier import (
     _categorize_key,
     classify_vessel_confidence,
 )
 
-
 # ── Tests: _categorize_key ───────────────────────────────────────────
+
 
 class TestCategorizeKey:
     def test_watchlist_keys(self):
@@ -66,6 +65,7 @@ class TestCategorizeKey:
 
 # ── Tests: classify_vessel_confidence ────────────────────────────────
 
+
 class TestClassifyVesselConfidence:
     def _make_vessel(self, vessel_id=1):
         v = MagicMock()
@@ -75,7 +75,8 @@ class TestClassifyVesselConfidence:
     def test_confirmed_with_watchlist(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=30,
+            vessel,
+            total_score=30,
             breakdown={"watchlist_match": 20},
             has_watchlist_match=True,
         )
@@ -84,7 +85,8 @@ class TestClassifyVesselConfidence:
     def test_confirmed_with_analyst_verified(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=10,
+            vessel,
+            total_score=10,
             breakdown={},
             analyst_verified=True,
         )
@@ -93,7 +95,8 @@ class TestClassifyVesselConfidence:
     def test_high_with_multiple_categories(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=80,
+            vessel,
+            total_score=80,
             breakdown={
                 "gap_duration": 40,
                 "spoofing_circle": 30,
@@ -107,7 +110,8 @@ class TestClassifyVesselConfidence:
     def test_high_with_single_category_80_plus(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=85,
+            vessel,
+            total_score=85,
             breakdown={"gap_duration": 85},
         )
         assert confidence == "HIGH"
@@ -115,7 +119,8 @@ class TestClassifyVesselConfidence:
     def test_medium_with_category_30_plus(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=55,
+            vessel,
+            total_score=55,
             breakdown={"gap_duration": 35, "vessel_age": 20},
         )
         assert confidence == "MEDIUM"
@@ -123,7 +128,8 @@ class TestClassifyVesselConfidence:
     def test_low_score_21_to_50(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=30,
+            vessel,
+            total_score=30,
             breakdown={"gap_duration": 20, "vessel_age": 10},
         )
         assert confidence == "LOW"
@@ -131,7 +137,8 @@ class TestClassifyVesselConfidence:
     def test_none_score_below_21(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=15,
+            vessel,
+            total_score=15,
             breakdown={"vessel_age": 15},
         )
         assert confidence == "NONE"
@@ -139,7 +146,8 @@ class TestClassifyVesselConfidence:
     def test_skips_negative_values(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=80,
+            vessel,
+            total_score=80,
             breakdown={
                 "gap_duration": 50,
                 "spoofing_circle": 40,
@@ -151,7 +159,8 @@ class TestClassifyVesselConfidence:
     def test_skips_non_numeric_values(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=30,
+            vessel,
+            total_score=30,
             breakdown={
                 "gap_duration": 20,
                 "notes": "some text",
@@ -162,7 +171,8 @@ class TestClassifyVesselConfidence:
     def test_empty_breakdown(self):
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=10,
+            vessel,
+            total_score=10,
             breakdown={},
         )
         assert confidence == "NONE"
@@ -172,7 +182,8 @@ class TestClassifyVesselConfidence:
         """Score >= 76 but only 1 category with < 80 pts should NOT be HIGH."""
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=76,
+            vessel,
+            total_score=76,
             breakdown={"gap_duration": 76},
         )
         # Single category with 76 pts (< 80), and only 1 category
@@ -182,13 +193,14 @@ class TestClassifyVesselConfidence:
         """Score >= 51 but no category with 30+ pts should NOT be MEDIUM."""
         vessel = self._make_vessel()
         confidence, evidence = classify_vessel_confidence(
-            vessel, total_score=51,
+            vessel,
+            total_score=51,
             breakdown={
                 # Spread across 4 different categories so none reaches 30
-                "gap_duration": 15,       # AIS_GAP
-                "spoofing_circle": 14,    # SPOOFING
-                "sts_event": 12,          # STS_TRANSFER
-                "flag_hopping": 10,       # IDENTITY_CHANGE
+                "gap_duration": 15,  # AIS_GAP
+                "spoofing_circle": 14,  # SPOOFING
+                "sts_event": 12,  # STS_TRANSFER
+                "flag_hopping": 10,  # IDENTITY_CHANGE
             },
         )
         # No single category >= 30 pts, so should be LOW
@@ -196,6 +208,7 @@ class TestClassifyVesselConfidence:
 
 
 # ── Tests: classify_all_vessels ──────────────────────────────────────
+
 
 class TestClassifyAllVessels:
     def test_empty_db(self):

@@ -9,16 +9,17 @@ Providers:
 - Spire Maritime: Satellite AIS position verification
 - S&P Sea-web: Beneficial ownership + P&I insurance lookup
 """
+
 from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.verification_log import VerificationLog
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class VerificationResult:
     """Result from a paid verification query."""
+
     provider: str
     success: bool
     data: dict[str, Any] = field(default_factory=dict)
@@ -41,12 +43,10 @@ class VerificationProvider(ABC):
     """Abstract base class for paid verification providers."""
 
     @abstractmethod
-    def name(self) -> str:
-        ...
+    def name(self) -> str: ...
 
     @abstractmethod
-    def verify_vessel(self, vessel: Vessel) -> VerificationResult:
-        ...
+    def verify_vessel(self, vessel: Vessel) -> VerificationResult: ...
 
     @abstractmethod
     def estimated_cost(self) -> float:
@@ -67,17 +67,19 @@ class SkylightProvider(VerificationProvider):
         return 0.0  # Free for NGOs
 
     def verify_vessel(self, vessel: Vessel) -> VerificationResult:
-        api_key = getattr(settings, 'SKYLIGHT_API_KEY', None)
+        api_key = getattr(settings, "SKYLIGHT_API_KEY", None)
         if not api_key:
             return VerificationResult(
-                provider=self.name(), success=False,
+                provider=self.name(),
+                success=False,
                 error="SKYLIGHT_API_KEY not configured. Apply at https://skylight.global/",
             )
 
         # Stub: actual implementation requires Skylight API documentation
         logger.info("Skylight verification for vessel %s (stub)", vessel.mmsi)
         return VerificationResult(
-            provider=self.name(), success=False,
+            provider=self.name(),
+            success=False,
             error="Skylight API integration pending — apply for NGO access first",
         )
 
@@ -92,17 +94,19 @@ class SpireProvider(VerificationProvider):
         return 0.50  # Estimated per-query cost
 
     def verify_vessel(self, vessel: Vessel) -> VerificationResult:
-        api_key = getattr(settings, 'SPIRE_API_KEY', None)
+        api_key = getattr(settings, "SPIRE_API_KEY", None)
         if not api_key:
             return VerificationResult(
-                provider=self.name(), success=False,
+                provider=self.name(),
+                success=False,
                 error="SPIRE_API_KEY not configured",
             )
 
         # Stub: actual Spire API integration
         logger.info("Spire verification for vessel %s (stub)", vessel.mmsi)
         return VerificationResult(
-            provider=self.name(), success=False,
+            provider=self.name(),
+            success=False,
             error="Spire API integration pending — requires paid API access",
             cost_usd=self.estimated_cost(),
         )
@@ -118,17 +122,19 @@ class SeaWebProvider(VerificationProvider):
         return 2.00  # Estimated per-query cost
 
     def verify_vessel(self, vessel: Vessel) -> VerificationResult:
-        api_key = getattr(settings, 'SEAWEB_API_KEY', None)
+        api_key = getattr(settings, "SEAWEB_API_KEY", None)
         if not api_key:
             return VerificationResult(
-                provider=self.name(), success=False,
+                provider=self.name(),
+                success=False,
                 error="SEAWEB_API_KEY not configured",
             )
 
         # Stub: actual Sea-web API integration
         logger.info("Sea-web verification for vessel %s (stub)", vessel.mmsi)
         return VerificationResult(
-            provider=self.name(), success=False,
+            provider=self.name(),
+            success=False,
             error="Sea-web API integration pending — requires paid subscription",
             cost_usd=self.estimated_cost(),
         )
@@ -141,9 +147,7 @@ _PROVIDERS: dict[str, VerificationProvider] = {
 }
 
 
-def _apply_verification_result(
-    vessel: Vessel, result: VerificationResult, db: Session
-) -> None:
+def _apply_verification_result(vessel: Vessel, result: VerificationResult, db: Session) -> None:
     """Write enriched fields from VerificationResult.data back to Vessel + VesselHistory.
 
     Updates vessel metadata (DWT, vessel_type, year_built) and owner-level fields
@@ -170,17 +174,20 @@ def _apply_verification_result(
                 new_val = cast(result.data[data_key])
                 if old_val != new_val:
                     setattr(vessel, field_name, new_val)
-                    db.add(VesselHistory(
-                        vessel_id=vessel.vessel_id,
-                        field_changed=field_name,
-                        old_value=str(old_val) if old_val is not None else "",
-                        new_value=str(new_val),
-                        source=f"paid_verification:{result.provider}",
-                    ))
+                    db.add(
+                        VesselHistory(
+                            vessel_id=vessel.vessel_id,
+                            field_changed=field_name,
+                            old_value=str(old_val) if old_val is not None else "",
+                            new_value=str(new_val),
+                            source=f"paid_verification:{result.provider}",
+                        )
+                    )
             except (ValueError, TypeError):
                 logger.warning(
                     "Could not cast field %s from verification data for vessel %s",
-                    field_name, vessel.vessel_id,
+                    field_name,
+                    vessel.vessel_id,
                 )
 
     # ISM/P&I: update most recently created VesselOwner row only.
@@ -205,12 +212,16 @@ def _apply_verification_result(
 
 def get_monthly_spend(db: Session) -> float:
     """Get total USD spent on paid verifications this calendar month."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    result = db.query(func.sum(VerificationLog.cost_usd)).filter(
-        VerificationLog.request_time_utc >= month_start,
-        VerificationLog.response_status == "success",
-    ).scalar()
+    result = (
+        db.query(func.sum(VerificationLog.cost_usd))
+        .filter(
+            VerificationLog.request_time_utc >= month_start,
+            VerificationLog.response_status == "success",
+        )
+        .scalar()
+    )
     return float(result or 0.0)
 
 
@@ -231,16 +242,18 @@ def verify_vessel(
     provider = _PROVIDERS.get(provider_name)
     if not provider:
         return VerificationResult(
-            provider=provider_name, success=False,
+            provider=provider_name,
+            success=False,
             error=f"Unknown provider: {provider_name}. Available: {list(_PROVIDERS.keys())}",
         )
 
     # Budget check
-    budget = getattr(settings, 'VERIFICATION_MONTHLY_BUDGET_USD', 500.0)
+    budget = getattr(settings, "VERIFICATION_MONTHLY_BUDGET_USD", 500.0)
     current_spend = get_monthly_spend(db)
     if current_spend + provider.estimated_cost() > budget:
         log = VerificationLog(
-            vessel_id=vessel_id, provider=provider_name,
+            vessel_id=vessel_id,
+            provider=provider_name,
             response_status="budget_exceeded",
             cost_usd=0.0,
             result_summary=f"Monthly budget ${budget:.2f} exceeded (current: ${current_spend:.2f})",
@@ -248,7 +261,8 @@ def verify_vessel(
         db.add(log)
         db.flush()
         return VerificationResult(
-            provider=provider_name, success=False,
+            provider=provider_name,
+            success=False,
             error=f"Monthly budget exceeded: ${current_spend:.2f} / ${budget:.2f}",
         )
 
@@ -261,6 +275,7 @@ def verify_vessel(
 
     # Log result
     import json as _json
+
     log = VerificationLog(
         vessel_id=vessel_id,
         provider=provider_name,
@@ -277,7 +292,7 @@ def verify_vessel(
 
 def get_budget_status(db: Session) -> dict:
     """Get current verification budget status."""
-    budget = getattr(settings, 'VERIFICATION_MONTHLY_BUDGET_USD', 500.0)
+    budget = getattr(settings, "VERIFICATION_MONTHLY_BUDGET_USD", 500.0)
     spent = get_monthly_spend(db)
     provider_status = {}
     for name, provider in _PROVIDERS.items():

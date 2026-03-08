@@ -12,14 +12,14 @@ Tests cover:
 
 All tests are unit-level: no database required.
 """
-import pytest
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from app.modules.risk_scoring import compute_gap_score, load_scoring_config, _score_band
-
+from app.modules.risk_scoring import compute_gap_score, load_scoring_config
 
 # ── Mock gap factory ──────────────────────────────────────────────────────────
+
 
 def _make_gap(
     duration_minutes=0,
@@ -48,9 +48,9 @@ def _make_gap(
     """
     vessel = MagicMock()
     vessel.deadweight = deadweight
-    vessel.flag_risk_category = flag_risk          # plain string, not enum
+    vessel.flag_risk_category = flag_risk  # plain string, not enum
     vessel.year_built = year_built
-    vessel.ais_class = ais_class                   # plain string, not enum
+    vessel.ais_class = ais_class  # plain string, not enum
     vessel.flag = flag
     vessel.mmsi_first_seen_utc = mmsi_first_seen_utc
     vessel.vessel_laid_up_30d = vessel_laid_up_30d
@@ -64,7 +64,7 @@ def _make_gap(
     corridor = None
     if corridor_type is not None:
         corridor = MagicMock()
-        corridor.corridor_type = corridor_type     # plain string, e.g. "sts_zone"
+        corridor.corridor_type = corridor_type  # plain string, e.g. "sts_zone"
 
     gap = MagicMock()
     gap.gap_event_id = 1
@@ -83,27 +83,26 @@ def _make_gap(
 
 # ── Gap frequency subsumption tests ──────────────────────────────────────────
 
+
 def test_gap_frequency_subsumption_30d():
     """5 gaps in 30d → only gap_frequency_5_in_30d fires; 14d and 7d keys absent."""
     config = load_scoring_config()
     gap = _make_gap(duration_minutes=6 * 60)
 
     score, breakdown = compute_gap_score(
-        gap, config,
+        gap,
+        config,
         gaps_in_7d=2,
         gaps_in_14d=3,
         gaps_in_30d=5,
     )
 
     # The highest window fires
-    assert "gap_frequency_5_in_30d" in breakdown, \
-        "Expected 30d frequency key in breakdown"
+    assert "gap_frequency_5_in_30d" in breakdown, "Expected 30d frequency key in breakdown"
 
     # Lower windows must be suppressed by subsumption
-    assert "gap_frequency_3_in_14d" not in breakdown, \
-        "14d frequency should be subsumed by 30d"
-    assert "gap_frequency_2_in_7d" not in breakdown, \
-        "7d frequency should be subsumed by 30d"
+    assert "gap_frequency_3_in_14d" not in breakdown, "14d frequency should be subsumed by 30d"
+    assert "gap_frequency_2_in_7d" not in breakdown, "7d frequency should be subsumed by 30d"
 
 
 def test_gap_frequency_subsumption_14d():
@@ -112,22 +111,23 @@ def test_gap_frequency_subsumption_14d():
     gap = _make_gap(duration_minutes=6 * 60)
 
     score, breakdown = compute_gap_score(
-        gap, config,
+        gap,
+        config,
         gaps_in_7d=2,
         gaps_in_14d=3,
-        gaps_in_30d=4,   # 4_in_30d (+40) > 3_in_14d (+32) → 30d wins
+        gaps_in_30d=4,  # 4_in_30d (+40) > 3_in_14d (+32) → 30d wins
     )
 
     # FIX: old code checked 3_in_14d first (elif chain), giving +32 instead of +40.
     # Now we evaluate all tiers and take the highest score.
-    assert "gap_frequency_4_in_30d" in breakdown, \
+    assert "gap_frequency_4_in_30d" in breakdown, (
         "Expected 4_in_30d frequency key (highest score +40)"
-    assert "gap_frequency_3_in_14d" not in breakdown, \
+    )
+    assert "gap_frequency_3_in_14d" not in breakdown, (
         "3_in_14d should be subsumed by higher-scoring 4_in_30d"
-    assert "gap_frequency_2_in_7d" not in breakdown, \
-        "7d frequency should be subsumed"
-    assert "gap_frequency_5_in_30d" not in breakdown, \
-        "30d frequency should not fire (only 4 gaps)"
+    )
+    assert "gap_frequency_2_in_7d" not in breakdown, "7d frequency should be subsumed"
+    assert "gap_frequency_5_in_30d" not in breakdown, "30d frequency should not fire (only 4 gaps)"
 
 
 def test_gap_frequency_subsumption_7d_only():
@@ -136,14 +136,14 @@ def test_gap_frequency_subsumption_7d_only():
     gap = _make_gap(duration_minutes=6 * 60)
 
     score, breakdown = compute_gap_score(
-        gap, config,
+        gap,
+        config,
         gaps_in_7d=2,
-        gaps_in_14d=2,   # < 3 → 14d does NOT fire
-        gaps_in_30d=2,   # < 5 → 30d does NOT fire
+        gaps_in_14d=2,  # < 3 → 14d does NOT fire
+        gaps_in_30d=2,  # < 5 → 30d does NOT fire
     )
 
-    assert "gap_frequency_2_in_7d" in breakdown, \
-        "Expected 7d frequency key in breakdown"
+    assert "gap_frequency_2_in_7d" in breakdown, "Expected 7d frequency key in breakdown"
     assert "gap_frequency_3_in_14d" not in breakdown
     assert "gap_frequency_5_in_30d" not in breakdown
 
@@ -156,7 +156,9 @@ def test_gap_frequency_values_match_config():
     gap = _make_gap(duration_minutes=6 * 60)
 
     _, bd_30 = compute_gap_score(gap, config, gaps_in_7d=0, gaps_in_14d=0, gaps_in_30d=5)
-    _, bd_14 = compute_gap_score(gap, config, gaps_in_7d=0, gaps_in_14d=3, gaps_in_30d=3)  # 3 in 30d = +25, 3 in 14d = +32 → 14d wins
+    _, bd_14 = compute_gap_score(
+        gap, config, gaps_in_7d=0, gaps_in_14d=3, gaps_in_30d=3
+    )  # 3 in 30d = +25, 3 in 14d = +32 → 14d wins
     _, bd_7 = compute_gap_score(gap, config, gaps_in_7d=2, gaps_in_14d=0, gaps_in_30d=0)
 
     assert bd_30.get("gap_frequency_5_in_30d") == 50
@@ -165,6 +167,7 @@ def test_gap_frequency_values_match_config():
 
 
 # ── New MMSI scoring tests ────────────────────────────────────────────────────
+
 
 def test_new_mmsi_adds_15pts():
     """MMSI first seen 14 days ago (< 30 day threshold) → +15 points."""
@@ -175,8 +178,9 @@ def test_new_mmsi_adds_15pts():
     gap = _make_gap(duration_minutes=6 * 60, mmsi_first_seen_utc=first_seen)
     score, breakdown = compute_gap_score(gap, config, scoring_date=scoring_date)
 
-    assert "new_mmsi_first_30d" in breakdown, \
+    assert "new_mmsi_first_30d" in breakdown, (
         "Expected new_mmsi_first_30d signal for MMSI < 30 days old"
+    )
     assert breakdown["new_mmsi_first_30d"] == 15
 
 
@@ -189,8 +193,9 @@ def test_new_mmsi_not_fired_old_mmsi():
     gap = _make_gap(duration_minutes=6 * 60, mmsi_first_seen_utc=first_seen)
     score, breakdown = compute_gap_score(gap, config, scoring_date=scoring_date)
 
-    assert "new_mmsi_first_30d" not in breakdown, \
+    assert "new_mmsi_first_30d" not in breakdown, (
         "MMSI older than 30 days should not trigger new_mmsi signal"
+    )
 
 
 def test_new_mmsi_not_fired_when_none():
@@ -213,7 +218,7 @@ def test_new_mmsi_russian_flag_adds_40pts_total():
     gap = _make_gap(
         duration_minutes=6 * 60,
         mmsi_first_seen_utc=first_seen,
-        flag="KM",   # Comoros — on the Russian-origin flag list
+        flag="KM",  # Comoros — on the Russian-origin flag list
     )
     score, breakdown = compute_gap_score(gap, config, scoring_date=scoring_date)
 
@@ -233,7 +238,7 @@ def test_new_mmsi_non_russian_flag_no_stacking():
     gap = _make_gap(
         duration_minutes=6 * 60,
         mmsi_first_seen_utc=first_seen,
-        flag="NO",   # Norway — NOT on the Russian-origin list
+        flag="NO",  # Norway — NOT on the Russian-origin list
     )
     score, breakdown = compute_gap_score(gap, config, scoring_date=scoring_date)
 
@@ -257,11 +262,13 @@ def test_russian_origin_flags_enumerated():
             flag=flag,
         )
         _, breakdown = compute_gap_score(gap, config, scoring_date=scoring_date)
-        assert "new_mmsi_russian_origin_flag" in breakdown, \
+        assert "new_mmsi_russian_origin_flag" in breakdown, (
             f"Flag {flag} should trigger russian_origin signal"
+        )
 
 
 # ── Score reproducibility tests ───────────────────────────────────────────────
+
 
 def test_score_reproducibility():
     """Same inputs and fixed scoring_date → identical score and breakdown each call."""
@@ -283,21 +290,19 @@ def test_score_changes_with_different_date():
     gap = _make_gap(duration_minutes=6 * 60, mmsi_first_seen_utc=first_seen)
 
     # Day 14 → MMSI still new
-    score_early, bd_early = compute_gap_score(
-        gap, config, scoring_date=datetime(2026, 1, 15)
-    )
+    score_early, bd_early = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 15))
     # Day 35 → MMSI aged out
-    score_late, bd_late = compute_gap_score(
-        gap, config, scoring_date=datetime(2026, 2, 5)
-    )
+    score_late, bd_late = compute_gap_score(gap, config, scoring_date=datetime(2026, 2, 5))
 
     assert "new_mmsi_first_30d" in bd_early
     assert "new_mmsi_first_30d" not in bd_late
-    assert score_early > score_late, \
+    assert score_early > score_late, (
         "Score should be higher when MMSI is new than when it has aged out"
+    )
 
 
 # ── Dark zone interior deduction tests ───────────────────────────────────────
+
 
 def test_dark_zone_interior_reduces_score():
     """Short gap (< 60 min) entirely inside dark zone, no impossible speed → -10 deduction."""
@@ -316,10 +321,10 @@ def test_dark_zone_interior_reduces_score():
     score_dz, bd_dz = compute_gap_score(gap_dz, config)
     score_normal, _ = compute_gap_score(gap_normal, config)
 
-    assert score_dz <= score_normal, \
+    assert score_dz <= score_normal, (
         "Dark zone interior deduction should reduce or match the normal score"
-    assert "dark_zone_deduction" in bd_dz, \
-        "Expected dark_zone_deduction key in breakdown"
+    )
+    assert "dark_zone_deduction" in bd_dz, "Expected dark_zone_deduction key in breakdown"
     assert bd_dz["dark_zone_deduction"] == -10
 
 
@@ -335,8 +340,7 @@ def test_dark_zone_exit_impossible_adds_35():
     )
     _, breakdown = compute_gap_score(gap, config)
 
-    assert "dark_zone_exit_impossible" in breakdown, \
-        "Expected dark_zone_exit_impossible signal"
+    assert "dark_zone_exit_impossible" in breakdown, "Expected dark_zone_exit_impossible signal"
     assert breakdown["dark_zone_exit_impossible"] == 35
 
 
@@ -345,15 +349,16 @@ def test_dark_zone_long_gap_normal_speed_deduction():
     config = load_scoring_config()
 
     gap = _make_gap(
-        duration_minutes=120,   # 2 hours — above the 60-min clip threshold
+        duration_minutes=120,  # 2 hours — above the 60-min clip threshold
         in_dark_zone=True,
         dark_zone_id=1,
         impossible_speed_flag=False,
     )
     _, breakdown = compute_gap_score(gap, config)
 
-    assert "dark_zone_deduction" in breakdown, \
+    assert "dark_zone_deduction" in breakdown, (
         "Expected dark_zone_deduction for normal-speed long gap in dark zone"
+    )
     assert breakdown["dark_zone_deduction"] == -10
 
 
@@ -374,6 +379,7 @@ def test_dark_zone_deduction_no_dark_zone_id():
 
 
 # ── Legitimacy signal tests ───────────────────────────────────────────────────
+
 
 def test_legitimacy_gap_free_not_applied_when_db_none():
     """When db=None, all DB-dependent legitimacy signals are skipped without error."""
@@ -396,11 +402,13 @@ def test_spoofing_signals_skipped_when_db_none():
 
     # No spoofing_ prefixed key should appear (they require DB query)
     spoofing_keys = [k for k in breakdown if k.startswith("spoofing_")]
-    assert len(spoofing_keys) == 0, \
+    assert len(spoofing_keys) == 0, (
         f"Expected no spoofing keys when db=None, found: {spoofing_keys}"
+    )
 
 
 # ── AIS class mismatch tests ──────────────────────────────────────────────────
+
 
 def test_ais_class_b_threshold_3000_dwt():
     """Class B transponder on a large tanker (DWT=5 000t > 3 000t) → ais_class_mismatch +25."""
@@ -409,8 +417,9 @@ def test_ais_class_b_threshold_3000_dwt():
 
     score, breakdown = compute_gap_score(gap, config)
 
-    assert "ais_class_mismatch" in breakdown, \
+    assert "ais_class_mismatch" in breakdown, (
         "Expected ais_class_mismatch for large tanker using Class B"
+    )
     assert breakdown["ais_class_mismatch"] == 25
 
 
@@ -421,8 +430,9 @@ def test_ais_class_b_not_flagged_small_vessel():
 
     score, breakdown = compute_gap_score(gap, config)
 
-    assert "ais_class_mismatch" not in breakdown, \
+    assert "ais_class_mismatch" not in breakdown, (
         "Small vessel (DWT <= 3000) with Class B should not trigger mismatch"
+    )
 
 
 def test_ais_class_a_no_mismatch():
@@ -445,8 +455,9 @@ def test_ais_class_b_boundary_exactly_3000_dwt():
 
     score, breakdown = compute_gap_score(gap, config)
 
-    assert "ais_class_mismatch" not in breakdown, \
+    assert "ais_class_mismatch" not in breakdown, (
         "DWT=3000 is not > 3000 — boundary vessel should NOT be flagged"
+    )
 
 
 def test_ais_class_b_boundary_3001_dwt():
@@ -456,11 +467,11 @@ def test_ais_class_b_boundary_3001_dwt():
 
     score, breakdown = compute_gap_score(gap, config)
 
-    assert "ais_class_mismatch" in breakdown, \
-        "DWT=3001 > 3000 — should trigger ais_class_mismatch"
+    assert "ais_class_mismatch" in breakdown, "DWT=3001 > 3000 — should trigger ais_class_mismatch"
 
 
 # ── Combined scenario tests ───────────────────────────────────────────────────
+
 
 def test_critical_score_sts_vlcc_from_extended_helper():
     """25h gap in STS zone with VLCC using extended _make_gap helper → critical band."""
@@ -481,6 +492,7 @@ def test_critical_score_sts_vlcc_from_extended_helper():
 
 # ── Phase 1: Multiplier asymmetry tests ──────────────────────────────────
 
+
 def test_legitimacy_not_amplified_by_corridor():
     """STS zone 1.5× corridor multiplier should NOT amplify the -15 legitimacy deduction.
 
@@ -500,8 +512,9 @@ def test_legitimacy_not_amplified_by_corridor():
     _, bd_none = compute_gap_score(gap_none, config, db=mock_db2)
 
     # Both should have the same legitimacy deduction values
-    assert bd_sts.get("legitimacy_gap_free_90d") == -10, \
+    assert bd_sts.get("legitimacy_gap_free_90d") == -10, (
         "STS zone should NOT amplify the -10 deduction"
+    )
     assert bd_none.get("legitimacy_gap_free_90d") == -10
 
 
@@ -535,7 +548,9 @@ def test_vlcc_in_sts_zone_with_legitimacy():
         duration_minutes=6 * 60,
         corridor_type="sts_zone",
         deadweight=250_000,
-        mmsi_first_seen_utc=datetime(2025, 1, 1),  # well before gap_start → bypass data completeness cap
+        mmsi_first_seen_utc=datetime(
+            2025, 1, 1
+        ),  # well before gap_start → bypass data completeness cap
     )
     mock_db = _make_full_mock_db(recent_gap_count=0, all_class_a=True)
     score, bd = compute_gap_score(gap, config, db=mock_db)
@@ -545,8 +560,12 @@ def test_vlcc_in_sts_zone_with_legitimacy():
     assert bd["_vessel_size_multiplier"] == 1.3
 
     # Verify legitimacy not amplified: sum of negative signals
-    neg_sum = sum(v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v < 0)
-    pos_sum = sum(v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v > 0)
+    neg_sum = sum(
+        v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v < 0
+    )
+    pos_sum = sum(
+        v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v > 0
+    )
 
     # final_score = round(pos_sum * 1.5 * 1.3 + neg_sum)
     expected = max(0, round(pos_sum * 1.5 * 1.3 + neg_sum))
@@ -560,8 +579,8 @@ def _make_full_mock_db(recent_gap_count=5, all_class_a=False):
         recent_gap_count: Number of recent gaps to return (0 triggers legitimacy_gap_free_90d).
         all_class_a: If True, return None for non-A AIS point query (triggers ais_class_a_consistent).
     """
-    from app.models.gap_event import AISGapEvent as _GE
     from app.models.ais_point import AISPoint as _AP
+    from app.models.gap_event import AISGapEvent as _GE
 
     def query_side_effect(model):
         mock_chain = MagicMock()
@@ -596,21 +615,29 @@ def test_all_metadata_prefixed_keys_are_not_summed():
 
     score, breakdown = compute_gap_score(gap, config)
 
-    meta_keys = [k for k in breakdown if k.startswith("_")]
-    signal_keys = [k for k in breakdown if not k.startswith("_")]
+    [k for k in breakdown if k.startswith("_")]
+    [k for k in breakdown if not k.startswith("_")]
 
     # Recompute additive sum manually and verify it matches _additive_subtotal
     manual_subtotal = sum(v for k, v in breakdown.items() if not k.startswith("_"))
-    assert manual_subtotal == breakdown["_additive_subtotal"], \
+    assert manual_subtotal == breakdown["_additive_subtotal"], (
         f"Manual subtotal {manual_subtotal} != stored {breakdown['_additive_subtotal']}"
+    )
 
     # Metadata keys must all be present
-    for key in ["_corridor_type", "_corridor_multiplier", "_vessel_size_class",
-                "_vessel_size_multiplier", "_additive_subtotal", "_final_score"]:
+    for key in [
+        "_corridor_type",
+        "_corridor_multiplier",
+        "_vessel_size_class",
+        "_vessel_size_multiplier",
+        "_additive_subtotal",
+        "_final_score",
+    ]:
         assert key in breakdown, f"Expected metadata key {key!r} in breakdown"
 
 
 # ── New signal tests (v4 gap analysis) ───────────────────────────────────────
+
 
 def test_gap_in_sts_corridor_adds_30_then_multiplied():
     """gap_in_sts_tagged_corridor: +20 (reduced from 30, amplified by 1.5× → effective ~30).
@@ -627,13 +654,17 @@ def test_gap_in_sts_corridor_adds_30_then_multiplied():
     score_sts, bd_sts = compute_gap_score(gap_sts, config, scoring_date=scoring_date)
     score_no_sts, bd_no_sts = compute_gap_score(gap_no_sts, config, scoring_date=scoring_date)
 
-    assert "gap_in_sts_tagged_corridor" in bd_sts, \
+    assert "gap_in_sts_tagged_corridor" in bd_sts, (
         "Expected gap_in_sts_tagged_corridor signal in STS corridor gap"
-    assert bd_sts["gap_in_sts_tagged_corridor"] == 20  # reduced from 30 to avoid double-penalty with 1.5× corridor mult
+    )
+    assert (
+        bd_sts["gap_in_sts_tagged_corridor"] == 20
+    )  # reduced from 30 to avoid double-penalty with 1.5× corridor mult
 
     # The signal must be in the additive subtotal (before Phase 2 mult)
-    assert bd_sts["_additive_subtotal"] >= bd_no_sts["_additive_subtotal"] + 20, \
+    assert bd_sts["_additive_subtotal"] >= bd_no_sts["_additive_subtotal"] + 20, (
         "gap_in_sts_tagged_corridor (+20) must be in the additive subtotal"
+    )
 
 
 def test_speed_spoof_supersedes_spike():
@@ -645,8 +676,9 @@ def test_speed_spoof_supersedes_spike():
     _, breakdown = compute_gap_score(gap, config, pre_gap_sog=25.0)
 
     assert "speed_spoof_before_gap" in breakdown, "Spoof signal must fire"
-    assert "speed_spike_before_gap" not in breakdown, \
+    assert "speed_spike_before_gap" not in breakdown, (
         "Spike signal must be suppressed when spoof fires (subsumption)"
+    )
     assert breakdown["speed_spoof_before_gap"] == 25
     # 1.4× duration multiplier must also be applied (gap_duration exists at 6h)
     assert "gap_duration_speed_spike_bonus" in breakdown
@@ -756,8 +788,7 @@ def test_name_change_7d_fires_active_voyage():
     mock_db = _make_db_with_history([name_change_5d])
     _, breakdown = compute_gap_score(gap, config, db=mock_db)
 
-    assert "name_change_during_voyage" in breakdown, \
-        "Name change within 7d of gap start must fire"
+    assert "name_change_during_voyage" in breakdown, "Name change within 7d of gap start must fire"
     assert breakdown["name_change_during_voyage"] == 30
 
 
@@ -770,8 +801,9 @@ def test_name_change_outside_7d_no_fire():
     mock_db = _make_db_with_history([name_change_45d])
     _, breakdown = compute_gap_score(gap, config, db=mock_db)
 
-    assert "name_change_during_voyage" not in breakdown, \
+    assert "name_change_during_voyage" not in breakdown, (
         "Name change >7d before gap must not fire (dry-dock guard)"
+    )
 
 
 def test_mmsi_change_adds_45():
@@ -789,6 +821,7 @@ def test_mmsi_change_adds_45():
 
 # ── Phase 2: Detection logic fix tests ────────────────────────────────────
 
+
 def test_sts_pairwise_dedup_3_vessel_cluster():
     """3-vessel cluster creates 2 STS events per vessel — only max score counts."""
     config = load_scoring_config()
@@ -805,6 +838,7 @@ def test_sts_pairwise_dedup_3_vessel_cluster():
     def query_side_effect(model):
         mock_chain = MagicMock()
         from app.models.sts_transfer import StsTransferEvent
+
         if model is StsTransferEvent:
             mock_chain.filter.return_value.all.return_value = [sts1, sts2]
         else:
@@ -842,6 +876,7 @@ def test_loiter_gap_loiter_full_cycle_25():
     def query_side_effect(model):
         mock_chain = MagicMock()
         from app.models.loitering_event import LoiteringEvent
+
         if model is LoiteringEvent:
             mock_chain.filter.return_value.all.return_value = [le]
         else:
@@ -879,6 +914,7 @@ def test_loiter_gap_loiter_one_sided_15():
     def query_side_effect(model):
         mock_chain = MagicMock()
         from app.models.loitering_event import LoiteringEvent
+
         if model is LoiteringEvent:
             mock_chain.filter.return_value.all.return_value = [le]
         else:
@@ -933,8 +969,8 @@ def test_dark_zone_slow_drift_interior_deduction():
 
 def test_one_vessel_dark_increments_sts_score():
     """_apply_dark_vessel_bonus: overlapping AIS gap → sts_event.risk_score_component increases by 15."""
-    from app.modules.sts_detector import _apply_dark_vessel_bonus
     from app.models.gap_event import AISGapEvent
+    from app.modules.sts_detector import _apply_dark_vessel_bonus
 
     sts_event = MagicMock()
     sts_event.start_time_utc = datetime(2026, 1, 10, 8, 0)
@@ -957,14 +993,14 @@ def test_one_vessel_dark_increments_sts_score():
     config = {"sts": {"one_vessel_dark_during_proximity": 15}}
     _apply_dark_vessel_bonus(mock_db, sts_event, 1, 2, config)
 
-    assert sts_event.risk_score_component == 40, \
+    assert sts_event.risk_score_component == 40, (
         f"Expected 25 + 15 = 40, got {sts_event.risk_score_component}"
+    )
 
 
 def test_one_vessel_dark_no_increment_when_no_gap():
     """_apply_dark_vessel_bonus: no overlapping gap → risk_score_component unchanged."""
     from app.modules.sts_detector import _apply_dark_vessel_bonus
-    from app.models.gap_event import AISGapEvent
 
     sts_event = MagicMock()
     sts_event.start_time_utc = datetime(2026, 1, 10, 8, 0)
@@ -989,7 +1025,9 @@ def test_legitimate_trade_route_multiplier_0_7():
     """corridor_type=legitimate_trade_route → 0.7× corridor multiplier."""
     config = load_scoring_config()
     # 24h+ gap in a legitimate trade route (analyst-cleared)
-    gap = _make_gap(duration_minutes=25 * 60, corridor_type="legitimate_trade_route", deadweight=None)
+    gap = _make_gap(
+        duration_minutes=25 * 60, corridor_type="legitimate_trade_route", deadweight=None
+    )
 
     _, breakdown = compute_gap_score(gap, config)
 
@@ -999,8 +1037,8 @@ def test_legitimate_trade_route_multiplier_0_7():
 
 def test_pre_gap_sog_stored_at_detection():
     """detect_gaps_for_vessel() stores p1.sog as pre_gap_sog on the created AISGapEvent."""
-    from app.modules.gap_detector import detect_gaps_for_vessel
     from app.models.ais_point import AISPoint
+    from app.modules.gap_detector import detect_gaps_for_vessel
 
     base = datetime(2026, 1, 10, 0, 0)
     p1 = MagicMock()
@@ -1053,21 +1091,24 @@ def test_pre_gap_sog_stored_at_detection():
     gap_events = [obj for obj in added_objects if hasattr(obj, "pre_gap_sog")]
 
     assert len(gap_events) >= 1, "Expected at least one AISGapEvent to be created"
-    assert gap_events[0].pre_gap_sog == p1.sog, \
+    assert gap_events[0].pre_gap_sog == p1.sog, (
         f"Expected pre_gap_sog={p1.sog}, got {gap_events[0].pre_gap_sog}"
+    )
 
 
 # ── Phase 5: Scoring edge cases ──────────────────────────────────────────
 
+
 def test_deadweight_none_consistent_classification():
     """DWT=None vessel gets consistent speed thresholds across gap_detector and risk_scoring."""
-    from app.utils.vessel import classify_vessel_speed
     from app.modules.gap_detector import _class_speed
+    from app.utils.vessel import classify_vessel_speed
 
     shared_speeds = classify_vessel_speed(None)
     detector_speeds = _class_speed(None)
-    assert shared_speeds == detector_speeds, \
+    assert shared_speeds == detector_speeds, (
         f"Inconsistent: shared={shared_speeds}, detector={detector_speeds}"
+    )
 
 
 def test_rescore_idempotency():
@@ -1102,12 +1143,17 @@ def test_no_multiplier_amplification():
     assert bd["_corridor_multiplier"] == 1.0
     assert bd["_vessel_size_multiplier"] == 1.0
     # With both at 1.0, final should equal risk signals + legitimacy
-    risk = sum(v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v > 0)
-    legit = sum(v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v < 0)
+    risk = sum(
+        v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v > 0
+    )
+    legit = sum(
+        v for k, v in bd.items() if not k.startswith("_") and isinstance(v, (int, float)) and v < 0
+    )
     assert score == max(0, round(risk + legit))
 
 
 # ── Phase 4: P&I insurance and PSC detention tests ───────────────────────
+
 
 def test_pi_coverage_lapsed_adds_20():
     config = load_scoring_config()
@@ -1157,6 +1203,7 @@ def test_psc_major_deficiencies_below_threshold_no_signal():
 
 
 # ── Phase 4: Laid-up vessel scoring tests ─────────────────────────────────────
+
 
 def _make_mock_db_empty():
     """Create a mock DB session that returns empty lists for all .query().filter().all() chains.
@@ -1209,6 +1256,7 @@ def test_vessel_laid_up_in_sts_zone_score():
 
 # ── Phase 4: New MMSI + Russian-origin with Palau flag ───────────────────────
 
+
 def test_new_mmsi_palau_flag_stacking():
     """New MMSI + Palau flag (PW) → assert individual values: new_mmsi=15, russian_origin=25."""
     config = load_scoring_config()
@@ -1218,15 +1266,20 @@ def test_new_mmsi_palau_flag_stacking():
     gap = _make_gap(
         duration_minutes=6 * 60,
         mmsi_first_seen_utc=first_seen,
-        flag="PW",   # Palau — on the Russian-origin flag list
+        flag="PW",  # Palau — on the Russian-origin flag list
     )
     _, bd = compute_gap_score(gap, config, scoring_date=scoring_date)
 
-    assert bd.get("new_mmsi_first_30d") == 15, f"Expected new_mmsi=15, got {bd.get('new_mmsi_first_30d')}"
-    assert bd.get("new_mmsi_russian_origin_flag") == 25, f"Expected russian_origin=25, got {bd.get('new_mmsi_russian_origin_flag')}"
+    assert bd.get("new_mmsi_first_30d") == 15, (
+        f"Expected new_mmsi=15, got {bd.get('new_mmsi_first_30d')}"
+    )
+    assert bd.get("new_mmsi_russian_origin_flag") == 25, (
+        f"Expected russian_origin=25, got {bd.get('new_mmsi_russian_origin_flag')}"
+    )
 
 
 # ── Phase 0 Bug Regression Tests ──────────────────────────────────────────────
+
 
 def test_speed_impossible_no_duration_bonus():
     """Bug 0.1: speed_impossible (>30kn) must NOT trigger the 1.4× gap duration bonus.
@@ -1240,8 +1293,9 @@ def test_speed_impossible_no_duration_bonus():
 
     assert "speed_impossible" in bd, "Speed impossible must fire at 35kn"
     assert bd["speed_impossible"] == 40
-    assert "gap_duration_speed_spike_bonus" not in bd, \
+    assert "gap_duration_speed_spike_bonus" not in bd, (
         "BUG 0.1: speed_impossible must NOT trigger the 1.4× duration bonus"
+    )
 
 
 def test_speed_spoof_still_gets_duration_bonus():
@@ -1252,8 +1306,9 @@ def test_speed_spoof_still_gets_duration_bonus():
     _, bd = compute_gap_score(gap, config, pre_gap_sog=25.0)
 
     assert "speed_spoof_before_gap" in bd
-    assert "gap_duration_speed_spike_bonus" in bd, \
+    assert "gap_duration_speed_spike_bonus" in bd, (
         "Speed spoof should still trigger the 1.4× duration bonus"
+    )
 
 
 def test_loitering_12h_export_route_scores_8():
@@ -1278,8 +1333,9 @@ def test_loitering_12h_export_route_scores_8():
 
     def query_side_effect(model):
         mock_chain = MagicMock()
-        from app.models.loitering_event import LoiteringEvent
         from app.models.corridor import Corridor
+        from app.models.loitering_event import LoiteringEvent
+
         if model is LoiteringEvent:
             mock_chain.filter.return_value.all.return_value = [loiter]
         elif model is Corridor:
@@ -1297,8 +1353,9 @@ def test_loitering_12h_export_route_scores_8():
 
     loiter_key = f"loitering_{loiter.loiter_id}"
     assert loiter_key in bd, "Loitering signal must fire"
-    assert bd[loiter_key] == 8, \
+    assert bd[loiter_key] == 8, (
         f"BUG 0.2: 12h+ loitering in export_route must be +8, got {bd[loiter_key]}"
+    )
 
 
 def test_loitering_12h_sts_zone_scores_20():
@@ -1318,8 +1375,9 @@ def test_loitering_12h_sts_zone_scores_20():
 
     def query_side_effect(model):
         mock_chain = MagicMock()
-        from app.models.loitering_event import LoiteringEvent
         from app.models.corridor import Corridor
+        from app.models.loitering_event import LoiteringEvent
+
         if model is LoiteringEvent:
             mock_chain.filter.return_value.all.return_value = [loiter]
         elif model is Corridor:
@@ -1337,8 +1395,9 @@ def test_loitering_12h_sts_zone_scores_20():
 
     loiter_key = f"loitering_{loiter.loiter_id}"
     assert loiter_key in bd, "Loitering signal must fire"
-    assert bd[loiter_key] == 20, \
+    assert bd[loiter_key] == 20, (
         f"BUG 0.2: 12h+ loitering in sts_zone must be +20, got {bd[loiter_key]}"
+    )
 
 
 def test_watchlist_scores_from_yaml():
@@ -1347,8 +1406,9 @@ def test_watchlist_scores_from_yaml():
     Verify the YAML file contains the expected keys and the scoring code
     reads from config with correct defaults matching the YAML values.
     """
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     yaml_path = Path(__file__).parent.parent / "config" / "risk_scoring.yaml"
     if not yaml_path.exists():
@@ -1364,8 +1424,9 @@ def test_watchlist_scores_from_yaml():
 
 def test_laid_up_scores_from_yaml():
     """Bug 0.3: Laid-up scores must read from YAML config."""
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     yaml_path = Path(__file__).parent.parent / "config" / "risk_scoring.yaml"
     if not yaml_path.exists():

@@ -5,11 +5,11 @@ Covers Primorsk, Ust-Luga -- the #1 Russian oil export corridor (47.7% of seabor
 
 Reference: https://www.digitraffic.fi/en/marine-traffic/
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -126,7 +126,11 @@ def fetch_digitraffic_ais(
 
                 # Update data freshness tracking
                 current_ais = getattr(vessel, "last_ais_received_utc", None)
-                if current_ais is None or not isinstance(current_ais, datetime) or timestamp > current_ais:
+                if (
+                    current_ais is None
+                    or not isinstance(current_ais, datetime)
+                    or timestamp > current_ais
+                ):
                     vessel.last_ais_received_utc = timestamp
 
                 # Downsample: skip if we have a recent digitraffic point (< 30 min)
@@ -176,6 +180,7 @@ def fetch_digitraffic_ais(
                 # Dual-write to AIS observations for cross-receiver detection
                 try:
                     from app.models.ais_observation import AISObservation
+
                     obs = AISObservation(
                         mmsi=mmsi,
                         timestamp_utc=timestamp,
@@ -200,7 +205,10 @@ def fetch_digitraffic_ais(
 
     logger.info(
         "Digitraffic: %d points, %d vessels, %d downsampled, %d errors",
-        points, len(vessels), downsampled, errors,
+        points,
+        len(vessels),
+        downsampled,
+        errors,
     )
     return {
         "points_ingested": points,
@@ -236,9 +244,7 @@ def fetch_digitraffic_port_calls(db: Session, mmsi: str | None = None) -> dict:
             params["vesselMmsi"] = mmsi
 
         with httpx.Client(timeout=_TIMEOUT) as client:
-            resp = breakers["digitraffic"].call(
-                client.get, _PORT_CALLS_ENDPOINT, params=params
-            )
+            resp = breakers["digitraffic"].call(client.get, _PORT_CALLS_ENDPOINT, params=params)
             resp.raise_for_status()
             data = resp.json()
 
@@ -248,9 +254,7 @@ def fetch_digitraffic_port_calls(db: Session, mmsi: str | None = None) -> dict:
             try:
                 pc_mmsi = str(pc.get("mmsi") or "")
                 vessel = (
-                    db.query(Vessel).filter(Vessel.mmsi == pc_mmsi).first()
-                    if pc_mmsi
-                    else None
+                    db.query(Vessel).filter(Vessel.mmsi == pc_mmsi).first() if pc_mmsi else None
                 )
                 if not vessel:
                     continue
@@ -272,11 +276,7 @@ def fetch_digitraffic_port_calls(db: Session, mmsi: str | None = None) -> dict:
                 port_name = pc.get("portName") or pc.get("portAreaName") or ""
                 port = None
                 if port_name:
-                    port = (
-                        db.query(Port)
-                        .filter(Port.name.ilike(f"%{port_name}%"))
-                        .first()
-                    )
+                    port = db.query(Port).filter(Port.name.ilike(f"%{port_name}%")).first()
 
                 if not port:
                     # Cannot create PortCall without a port_id (non-nullable FK)

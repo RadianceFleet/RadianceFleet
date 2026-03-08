@@ -1,12 +1,14 @@
 """Tests for GET /merge-chains endpoint."""
-import pytest
+
 from unittest.mock import MagicMock, patch
 
 
 class TestMergeChainsAPI:
     def test_empty_returns_empty(self, api_client):
-        with patch("app.modules.merge_chain.get_merge_chains", return_value=[]), \
-             patch("app.modules.merge_chain.get_merge_chain_count", return_value=0):
+        with (
+            patch("app.modules.merge_chain.get_merge_chains", return_value=[]),
+            patch("app.modules.merge_chain.get_merge_chain_count", return_value=0),
+        ):
             resp = api_client.get("/api/v1/merge-chains")
             assert resp.status_code == 200
             data = resp.json()
@@ -53,8 +55,10 @@ class TestMergeChainsAPI:
             [mc_100, mc_101],  # merge candidates
         ]
 
-        with patch("app.modules.merge_chain.get_merge_chains", return_value=[chain]), \
-             patch("app.modules.merge_chain.get_merge_chain_count", return_value=1):
+        with (
+            patch("app.modules.merge_chain.get_merge_chains", return_value=[chain]),
+            patch("app.modules.merge_chain.get_merge_chain_count", return_value=1),
+        ):
             resp = api_client.get("/api/v1/merge-chains?skip=0&limit=10")
             assert resp.status_code == 200
             data = resp.json()
@@ -72,8 +76,10 @@ class TestMergeChainsAPI:
             assert item["edges"][1]["candidate_id"] == 101
 
     def test_filter_by_confidence_band(self, api_client):
-        with patch("app.modules.merge_chain.get_merge_chains", return_value=[]) as mock_get, \
-             patch("app.modules.merge_chain.get_merge_chain_count", return_value=0) as mock_count:
+        with (
+            patch("app.modules.merge_chain.get_merge_chains", return_value=[]) as mock_get,
+            patch("app.modules.merge_chain.get_merge_chain_count", return_value=0) as mock_count,
+        ):
             resp = api_client.get("/api/v1/merge-chains?confidence_band=HIGH")
             assert resp.status_code == 200
             # Verify confidence_band was passed through
@@ -85,8 +91,10 @@ class TestMergeChainsAPI:
             assert count_kwargs["confidence_band"] == "HIGH"
 
     def test_filter_by_min_confidence(self, api_client):
-        with patch("app.modules.merge_chain.get_merge_chains", return_value=[]) as mock_get, \
-             patch("app.modules.merge_chain.get_merge_chain_count", return_value=0):
+        with (
+            patch("app.modules.merge_chain.get_merge_chains", return_value=[]) as mock_get,
+            patch("app.modules.merge_chain.get_merge_chain_count", return_value=0),
+        ):
             resp = api_client.get("/api/v1/merge-chains?min_confidence=0.7")
             assert resp.status_code == 200
             _, kwargs = mock_get.call_args
@@ -107,8 +115,10 @@ class TestMergeChainsAPI:
         # No vessels returned for vessel_id=99
         mock_db.query.return_value.filter.return_value.all.return_value = []
 
-        with patch("app.modules.merge_chain.get_merge_chains", return_value=[chain]), \
-             patch("app.modules.merge_chain.get_merge_chain_count", return_value=1):
+        with (
+            patch("app.modules.merge_chain.get_merge_chains", return_value=[chain]),
+            patch("app.modules.merge_chain.get_merge_chain_count", return_value=1),
+        ):
             resp = api_client.get("/api/v1/merge-chains")
             assert resp.status_code == 200
             item = resp.json()["items"][0]

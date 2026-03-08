@@ -5,8 +5,9 @@ Tests audit log creation on add/remove operations.
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
+
 from io import BytesIO
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 
 class TestAddToWatchlist:

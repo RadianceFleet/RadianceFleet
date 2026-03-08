@@ -3,11 +3,12 @@
 Provides a unified interface for all AIS data sources used by both
 the CLI collect command and the CollectionScheduler.
 """
+
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from sqlalchemy.orm import Session
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class SourceInfo:
     """Metadata for an AIS collection source."""
+
     name: str
     description: str
     interval_seconds: int
@@ -29,38 +31,47 @@ class SourceInfo:
 def _collect_digitraffic(db: Session, duration_seconds: int = 300) -> dict:
     """Collect from Digitraffic (Finnish AIS)."""
     from app.modules.digitraffic_client import fetch_digitraffic_ais
+
     return fetch_digitraffic_ais(db)
 
 
 def _collect_kystverket(db: Session, duration_seconds: int = 300) -> dict:
     """Collect from Kystverket (Norwegian AIS TCP stream)."""
     from app.modules.kystverket_client import stream_kystverket
+
     return stream_kystverket(db, duration_seconds=duration_seconds)
 
 
 def _collect_barentswatch(db: Session, duration_seconds: int = 300) -> dict:
     """Collect from BarentsWatch (Norwegian EEZ REST API)."""
     from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
     return fetch_barentswatch_tracks(db)
 
 
 def _collect_aisstream(db: Session, duration_seconds: int = 300) -> dict:
     """Collect from aisstream.io WebSocket."""
     import asyncio
-    from app.modules.aisstream_client import stream_ais, get_corridor_bounding_boxes
+
+    from app.modules.aisstream_client import get_corridor_bounding_boxes, stream_ais
+
     boxes = get_corridor_bounding_boxes(db)
-    return asyncio.run(stream_ais(
-        api_key=settings.AISSTREAM_API_KEY,
-        bounding_boxes=boxes,
-        duration_seconds=duration_seconds,
-        batch_interval=settings.AISSTREAM_BATCH_INTERVAL,
-    ))
+    return asyncio.run(
+        stream_ais(
+            api_key=settings.AISSTREAM_API_KEY,
+            bounding_boxes=boxes,
+            duration_seconds=duration_seconds,
+            batch_interval=settings.AISSTREAM_BATCH_INTERVAL,
+        )
+    )
 
 
 def _collect_dma(db: Session, duration_seconds: int = 300) -> dict:
     """Collect from DMA (Danish Maritime Authority daily CSV archives)."""
     from datetime import date, timedelta
+
     from app.modules.dma_client import fetch_and_import_dma
+
     yesterday = date.today() - timedelta(days=1)
     return fetch_and_import_dma(db, start_date=yesterday, end_date=yesterday)
 

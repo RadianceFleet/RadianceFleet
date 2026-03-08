@@ -4,18 +4,18 @@ Detects vessels broadcasting physically impossible positions -- e.g., claiming t
 be at Port A and Port B within a time frame that would require >25kn transit speed.
 ~460 fake voyages to Khor al Zubair were documented in H1 2025 alone.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, date, timedelta, timezone
-from typing import Optional
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
 from app.models.ais_point import AISPoint
 from app.models.base import SpoofingTypeEnum
-from app.models.vessel import Vessel
 from app.models.spoofing_anomaly import SpoofingAnomaly
+from app.models.vessel import Vessel
 from app.utils.geo import haversine_nm
 
 logger = logging.getLogger(__name__)
@@ -25,8 +25,8 @@ _MAX_FEASIBLE_SPEED_KN = 25.0  # Max realistic speed for a tanker
 
 def detect_fake_positions(
     db: Session,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> dict:
     """Detect kinematically impossible position sequences.
 
@@ -43,9 +43,13 @@ def detect_fake_positions(
     vessels_checked = 0
 
     for vessel in vessels:
-        pt_query = db.query(AISPoint).filter(
-            AISPoint.vessel_id == vessel.vessel_id,
-        ).order_by(AISPoint.timestamp_utc)
+        pt_query = (
+            db.query(AISPoint)
+            .filter(
+                AISPoint.vessel_id == vessel.vessel_id,
+            )
+            .order_by(AISPoint.timestamp_utc)
+        )
 
         if date_from:
             pt_query = pt_query.filter(
@@ -84,11 +88,15 @@ def detect_fake_positions(
                 continue
 
             # Check if already flagged
-            existing = db.query(SpoofingAnomaly).filter(
-                SpoofingAnomaly.vessel_id == vessel.vessel_id,
-                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FAKE_PORT_CALL,
-                SpoofingAnomaly.start_time_utc == p1.timestamp_utc,
-            ).first()
+            existing = (
+                db.query(SpoofingAnomaly)
+                .filter(
+                    SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                    SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.FAKE_PORT_CALL,
+                    SpoofingAnomaly.start_time_utc == p1.timestamp_utc,
+                )
+                .first()
+            )
             if existing:
                 continue
 
@@ -115,6 +123,7 @@ def detect_fake_positions(
     db.commit()
     logger.info(
         "Fake position detection: %d anomalies from %d vessels",
-        fake_detected, vessels_checked,
+        fake_detected,
+        vessels_checked,
     )
     return {"fake_positions_detected": fake_detected, "vessels_checked": vessels_checked}

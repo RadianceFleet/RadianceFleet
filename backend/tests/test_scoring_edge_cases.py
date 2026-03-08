@@ -9,10 +9,9 @@ Tests:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
 
-import pytest
+from datetime import datetime
+from unittest.mock import patch
 
 
 class TestScoringConfigLoad:
@@ -25,8 +24,8 @@ class TestScoringConfigLoad:
         assert isinstance(config, dict)
 
     def test_config_has_expected_sections(self):
+
         from app.modules.risk_scoring import reload_scoring_config
-        from pathlib import Path
 
         # Force reload to pick up config from the right path
         config = reload_scoring_config()
@@ -188,7 +187,7 @@ class TestScoringConfigExpectedSections:
     """Verify the scoring config has all expected sections from risk_scoring.py."""
 
     def test_expected_sections_list(self):
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
 
         assert isinstance(_EXPECTED_SECTIONS, list)
         assert len(_EXPECTED_SECTIONS) > 10

@@ -1,24 +1,27 @@
 """Detection, corridor, hunt, dark vessel, and fleet endpoints."""
+
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.api._helpers import _audit_log, _get_coverage_quality, _validate_date_range, limiter
 from app.config import settings
+from app.database import get_db
 from app.schemas.corridor import CorridorCreateRequest, CorridorUpdateRequest
-from app.api._helpers import _audit_log, _validate_date_range, _get_coverage_quality, limiter
 from app.schemas.hunt import (
-    DarkVesselDetectionRead, DarkVesselListResponse,
-    VesselTargetProfileRead, SearchMissionRead,
-    HuntCandidateRead, HuntCandidateListResponse,
-    HuntTargetCreateRequest, SearchMissionCreateRequest,
+    DarkVesselDetectionRead,
+    DarkVesselListResponse,
+    HuntCandidateListResponse,
+    HuntTargetCreateRequest,
     MissionFinalizeRequest,
+    SearchMissionCreateRequest,
+    SearchMissionRead,
+    VesselTargetProfileRead,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,51 +33,61 @@ router = APIRouter()
 # Gap / Spoofing / Loitering / STS Detection
 # ---------------------------------------------------------------------------
 
+
 @router.post("/gaps/detect", tags=["detection"])
 def detect_gaps(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Run AIS gap detection over the specified date range."""
     from app.modules.gap_detector import run_gap_detection
+
     return run_gap_detection(db, date_from=date_from, date_to=date_to)
 
 
 @router.post("/spoofing/detect", tags=["detection"])
 def detect_spoofing(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Run AIS spoofing detection (impossible speed, anchor-in-ocean, circle spoof, etc.)."""
     from app.modules.gap_detector import run_spoofing_detection
+
     return run_spoofing_detection(db, date_from=date_from, date_to=date_to)
 
 
 @router.get("/spoofing/{vessel_id}", tags=["detection"])
 def get_spoofing_events(
     vessel_id: int,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     from app.models.spoofing_anomaly import SpoofingAnomaly
+
     _validate_date_range(date_from, date_to)
     q = db.query(SpoofingAnomaly).filter(SpoofingAnomaly.vessel_id == vessel_id)
     if date_from:
-        q = q.filter(SpoofingAnomaly.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            SpoofingAnomaly.start_time_utc
+            >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(SpoofingAnomaly.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            SpoofingAnomaly.start_time_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     results = q.all()
     return {"items": results, "total": len(results)}
 
 
 @router.get("/spoofing", tags=["detection"])
 def get_global_spoofing(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-    anomaly_type: Optional[str] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    anomaly_type: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -89,9 +102,15 @@ def get_global_spoofing(
     if anomaly_type:
         q = q.filter(SpoofingAnomaly.anomaly_type == anomaly_type)
     if date_from:
-        q = q.filter(SpoofingAnomaly.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            SpoofingAnomaly.start_time_utc
+            >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(SpoofingAnomaly.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            SpoofingAnomaly.start_time_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     q = q.order_by(SpoofingAnomaly.start_time_utc.desc())
     total = q.count()
     items = q.offset(skip).limit(limit).all()
@@ -101,7 +120,9 @@ def get_global_spoofing(
             {
                 "anomaly_id": e.anomaly_id,
                 "vessel_id": e.vessel_id,
-                "anomaly_type": str(e.anomaly_type.value) if hasattr(e.anomaly_type, "value") else e.anomaly_type,
+                "anomaly_type": str(e.anomaly_type.value)
+                if hasattr(e.anomaly_type, "value")
+                else e.anomaly_type,
                 "start_time_utc": e.start_time_utc.isoformat() if e.start_time_utc else None,
                 "risk_score_component": e.risk_score_component,
             }
@@ -114,25 +135,32 @@ def get_global_spoofing(
 @router.get("/loitering/{vessel_id}", tags=["detection"])
 def get_loitering_events(
     vessel_id: int,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     from app.models.loitering_event import LoiteringEvent
+
     _validate_date_range(date_from, date_to)
     q = db.query(LoiteringEvent).filter(LoiteringEvent.vessel_id == vessel_id)
     if date_from:
-        q = q.filter(LoiteringEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            LoiteringEvent.start_time_utc
+            >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(LoiteringEvent.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            LoiteringEvent.start_time_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     results = q.all()
     return {"items": results, "total": len(results)}
 
 
 @router.get("/sts-chains", tags=["detection"])
 def get_sts_chains(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -146,9 +174,13 @@ def get_sts_chains(
 
     q = db.query(FleetAlert).filter(FleetAlert.alert_type == "sts_relay_chain")
     if date_from:
-        q = q.filter(FleetAlert.created_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            FleetAlert.created_utc >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(FleetAlert.created_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            FleetAlert.created_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     q = q.order_by(FleetAlert.created_utc.desc())
     total = q.count()
     alerts = q.offset(skip).limit(limit).all()
@@ -162,31 +194,37 @@ def get_sts_chains(
 
     vessel_name_map: dict[int, str | None] = {}
     if all_vessel_ids:
-        rows = db.query(Vessel.vessel_id, Vessel.name).filter(Vessel.vessel_id.in_(all_vessel_ids)).all()
+        rows = (
+            db.query(Vessel.vessel_id, Vessel.name)
+            .filter(Vessel.vessel_id.in_(all_vessel_ids))
+            .all()
+        )
         vessel_name_map = {r[0]: r[1] for r in rows}
 
     items = []
     for a in alerts:
         ev = a.evidence_json or {}
         chain_vessel_ids = ev.get("chain_vessel_ids", [])
-        items.append({
-            "alert_id": a.alert_id,
-            "chain_vessel_ids": chain_vessel_ids,
-            "vessel_names": {vid: vessel_name_map.get(vid) for vid in chain_vessel_ids},
-            "intermediary_vessel_ids": ev.get("intermediary_vessel_ids", []),
-            "hops": ev.get("hops", []),
-            "chain_length": len(chain_vessel_ids),
-            "risk_score_component": a.risk_score_component,
-            "created_utc": a.created_utc.isoformat() if a.created_utc else None,
-        })
+        items.append(
+            {
+                "alert_id": a.alert_id,
+                "chain_vessel_ids": chain_vessel_ids,
+                "vessel_names": {vid: vessel_name_map.get(vid) for vid in chain_vessel_ids},
+                "intermediary_vessel_ids": ev.get("intermediary_vessel_ids", []),
+                "hops": ev.get("hops", []),
+                "chain_length": len(chain_vessel_ids),
+                "risk_score_component": a.risk_score_component,
+                "created_utc": a.created_utc.isoformat() if a.created_utc else None,
+            }
+        )
 
     return {"items": items, "total": total}
 
 
 @router.get("/loitering", tags=["detection"])
 def get_global_loitering(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -199,9 +237,15 @@ def get_global_loitering(
 
     q = db.query(LoiteringEvent)
     if date_from:
-        q = q.filter(LoiteringEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            LoiteringEvent.start_time_utc
+            >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(LoiteringEvent.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            LoiteringEvent.start_time_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     q = q.order_by(LoiteringEvent.start_time_utc.desc())
     total = q.count()
     items = q.offset(skip).limit(limit).all()
@@ -226,23 +270,34 @@ def get_global_loitering(
 
 @router.get("/sts-events", tags=["detection"])
 def get_sts_events(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-    vessel_id: Optional[int] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    vessel_id: int | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     from app.models.sts_transfer import StsTransferEvent
+
     _validate_date_range(date_from, date_to)
     limit = min(limit, settings.MAX_QUERY_LIMIT)
     q = db.query(StsTransferEvent)
     if vessel_id is not None:
-        q = q.filter(or_(StsTransferEvent.vessel_1_id == vessel_id, StsTransferEvent.vessel_2_id == vessel_id))
+        q = q.filter(
+            or_(
+                StsTransferEvent.vessel_1_id == vessel_id, StsTransferEvent.vessel_2_id == vessel_id
+            )
+        )
     if date_from:
-        q = q.filter(StsTransferEvent.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            StsTransferEvent.start_time_utc
+            >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(StsTransferEvent.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            StsTransferEvent.start_time_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     q = q.order_by(StsTransferEvent.start_time_utc.desc())
     total = q.count()
     items = q.offset(skip).limit(limit).all()
@@ -252,12 +307,13 @@ def get_sts_events(
 @router.patch("/sts-events/{sts_id}", tags=["detection"])
 def validate_sts_event(
     sts_id: int,
-    user_validated: Optional[bool] = None,
-    confidence_override: Optional[float] = Query(None, ge=0.0, le=1.0),
+    user_validated: bool | None = None,
+    confidence_override: float | None = Query(None, ge=0.0, le=1.0),
     db: Session = Depends(get_db),
 ):
     """Analyst validation: confirm/reject an STS transfer event."""
     from app.models.sts_transfer import StsTransferEvent
+
     event = db.query(StsTransferEvent).filter(StsTransferEvent.sts_id == sts_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="STS event not found")
@@ -266,40 +322,52 @@ def validate_sts_event(
     if confidence_override is not None:
         event.confidence_override = confidence_override
     db.commit()
-    return {"sts_id": sts_id, "user_validated": event.user_validated, "confidence_override": event.confidence_override}
+    return {
+        "sts_id": sts_id,
+        "user_validated": event.user_validated,
+        "confidence_override": event.confidence_override,
+    }
 
 
 @router.get("/route-laundering/{vessel_id}", tags=["detection"])
 def get_route_laundering(
     vessel_id: int,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Get route laundering anomalies for a vessel."""
-    from app.models.spoofing_anomaly import SpoofingAnomaly
     from app.models.base import SpoofingTypeEnum
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+
     _validate_date_range(date_from, date_to)
     q = db.query(SpoofingAnomaly).filter(
         SpoofingAnomaly.vessel_id == vessel_id,
         SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.ROUTE_LAUNDERING,
     )
     if date_from:
-        q = q.filter(SpoofingAnomaly.start_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            SpoofingAnomaly.start_time_utc
+            >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(SpoofingAnomaly.start_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            SpoofingAnomaly.start_time_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     results = q.order_by(SpoofingAnomaly.start_time_utc.desc()).all()
     return {"items": results, "total": len(results)}
 
 
 @router.post("/loitering/detect", tags=["detection"])
 def detect_loitering(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Run loitering detection and update laid-up vessel flags."""
-    from app.modules.loitering_detector import run_loitering_detection, detect_laid_up_vessels
+    from app.modules.loitering_detector import detect_laid_up_vessels, run_loitering_detection
+
     result = run_loitering_detection(db, date_from=date_from, date_to=date_to)
     laid_up = detect_laid_up_vessels(db)
     result["laid_up_updated"] = laid_up.get("laid_up_updated", 0)
@@ -308,8 +376,8 @@ def detect_loitering(
 
 @router.post("/sts/detect", tags=["detection"])
 def detect_sts(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Run ship-to-ship transfer detection.
@@ -318,6 +386,7 @@ def detect_sts(
     gap records to be present before STS detection runs.
     """
     from app.modules.sts_detector import detect_sts_events
+
     return detect_sts_events(db, date_from=date_from, date_to=date_to)
 
 
@@ -329,6 +398,7 @@ def list_fleet_clusters(
     """List owner clusters."""
     try:
         from app.models.owner_cluster import OwnerCluster
+
         clusters = (
             db.query(OwnerCluster)
             .order_by(OwnerCluster.vessel_count.desc())
@@ -350,6 +420,7 @@ def list_fleet_clusters(
         }
     except Exception as e:
         from sqlalchemy.exc import OperationalError
+
         if isinstance(e, OperationalError):
             logger.debug("Owner clusters fetch failed (empty DB?): %s", e)
         else:
@@ -370,19 +441,19 @@ def get_fleet_cluster(cluster_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Cluster not found")
 
         members = (
-            db.query(OwnerClusterMember)
-            .filter(OwnerClusterMember.cluster_id == cluster_id)
-            .all()
+            db.query(OwnerClusterMember).filter(OwnerClusterMember.cluster_id == cluster_id).all()
         )
         member_details = []
         for m in members:
             owner = db.query(VesselOwner).filter(VesselOwner.owner_id == m.owner_id).first()
-            member_details.append({
-                "member_id": m.member_id,
-                "owner_id": m.owner_id,
-                "owner_name": owner.owner_name if owner else None,
-                "similarity_score": m.similarity_score,
-            })
+            member_details.append(
+                {
+                    "member_id": m.member_id,
+                    "owner_id": m.owner_id,
+                    "owner_name": owner.owner_name if owner else None,
+                    "similarity_score": m.similarity_score,
+                }
+            )
 
         return {
             "cluster_id": cluster.cluster_id,
@@ -407,6 +478,7 @@ def list_fleet_alerts(
     """List fleet-level alerts."""
     try:
         from app.models.fleet_alert import FleetAlert
+
         alerts = (
             db.query(FleetAlert)
             .order_by(FleetAlert.created_utc.desc())
@@ -437,6 +509,7 @@ def list_fleet_alerts(
 # Corridors
 # ---------------------------------------------------------------------------
 
+
 @router.get("/corridors", tags=["corridors"])
 def list_corridors(
     skip: int = Query(0, ge=0),
@@ -444,33 +517,43 @@ def list_corridors(
     db: Session = Depends(get_db),
 ):
     """List all corridors with recent alert stats."""
+    from sqlalchemy import case
+
     from app.models.corridor import Corridor
     from app.models.gap_event import AISGapEvent
-    from sqlalchemy import case
 
     limit = min(limit, settings.MAX_QUERY_LIMIT)
     q = db.query(Corridor)
     total = q.count()
     corridors = q.offset(skip).limit(limit).all()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     corridor_ids = [c.corridor_id for c in corridors]
     stats_map: dict = {}
     if corridor_ids:
-        stats_rows = db.query(
-            AISGapEvent.corridor_id,
-            func.sum(case(
-                (AISGapEvent.gap_start_utc >= now - timedelta(days=7), 1),
-                else_=0,
-            )).label("alert_7d"),
-            func.sum(case(
-                (AISGapEvent.gap_start_utc >= now - timedelta(days=30), 1),
-                else_=0,
-            )).label("alert_30d"),
-            func.avg(AISGapEvent.risk_score).label("avg_score"),
-        ).filter(
-            AISGapEvent.corridor_id.in_(corridor_ids),
-        ).group_by(AISGapEvent.corridor_id).all()
+        stats_rows = (
+            db.query(
+                AISGapEvent.corridor_id,
+                func.sum(
+                    case(
+                        (AISGapEvent.gap_start_utc >= now - timedelta(days=7), 1),
+                        else_=0,
+                    )
+                ).label("alert_7d"),
+                func.sum(
+                    case(
+                        (AISGapEvent.gap_start_utc >= now - timedelta(days=30), 1),
+                        else_=0,
+                    )
+                ).label("alert_30d"),
+                func.avg(AISGapEvent.risk_score).label("avg_score"),
+            )
+            .filter(
+                AISGapEvent.corridor_id.in_(corridor_ids),
+            )
+            .group_by(AISGapEvent.corridor_id)
+            .all()
+        )
         for row in stats_rows:
             stats_map[row[0]] = {
                 "alert_7d": int(row[1] or 0),
@@ -481,18 +564,22 @@ def list_corridors(
     result = []
     for c in corridors:
         s = stats_map.get(c.corridor_id, {})
-        result.append({
-            "corridor_id": c.corridor_id,
-            "name": c.name,
-            "corridor_type": str(c.corridor_type.value) if hasattr(c.corridor_type, "value") else c.corridor_type,
-            "risk_weight": c.risk_weight,
-            "is_jamming_zone": c.is_jamming_zone,
-            "description": c.description,
-            "alert_count_7d": s.get("alert_7d", 0),
-            "alert_count_30d": s.get("alert_30d", 0),
-            "avg_risk_score": s.get("avg_score"),
-            "coverage_quality": _get_coverage_quality(c.name),
-        })
+        result.append(
+            {
+                "corridor_id": c.corridor_id,
+                "name": c.name,
+                "corridor_type": str(c.corridor_type.value)
+                if hasattr(c.corridor_type, "value")
+                else c.corridor_type,
+                "risk_weight": c.risk_weight,
+                "is_jamming_zone": c.is_jamming_zone,
+                "description": c.description,
+                "alert_count_7d": s.get("alert_7d", 0),
+                "alert_count_30d": s.get("alert_30d", 0),
+                "avg_risk_score": s.get("avg_score"),
+                "coverage_quality": _get_coverage_quality(c.name),
+            }
+        )
     return {"items": result, "total": total}
 
 
@@ -507,24 +594,32 @@ def corridors_geojson(db: Session = Depends(get_db)):
         geom = None
         if c.geometry:
             try:
-                from app.utils.geo import load_geometry
                 import shapely.geometry
+
+                from app.utils.geo import load_geometry
+
                 shape = load_geometry(c.geometry)
                 if shape is not None:
                     geom = shapely.geometry.mapping(shape)
             except Exception as e:
-                logger.warning("Corridor geometry deserialization failed for corridor %s: %s", c.corridor_id, e)
-        features.append({
-            "type": "Feature",
-            "geometry": geom,
-            "properties": {
-                "corridor_id": c.corridor_id,
-                "name": c.name,
-                "corridor_type": str(c.corridor_type.value) if hasattr(c.corridor_type, "value") else c.corridor_type,
-                "risk_weight": c.risk_weight,
-                "is_jamming_zone": c.is_jamming_zone,
-            },
-        })
+                logger.warning(
+                    "Corridor geometry deserialization failed for corridor %s: %s", c.corridor_id, e
+                )
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": geom,
+                "properties": {
+                    "corridor_id": c.corridor_id,
+                    "name": c.name,
+                    "corridor_type": str(c.corridor_type.value)
+                    if hasattr(c.corridor_type, "value")
+                    else c.corridor_type,
+                    "risk_weight": c.risk_weight,
+                    "is_jamming_zone": c.is_jamming_zone,
+                },
+            }
+        )
     return {"type": "FeatureCollection", "features": features}
 
 
@@ -537,20 +632,30 @@ def get_corridor(corridor_id: int, db: Session = Depends(get_db)):
     if not corridor:
         raise HTTPException(status_code=404, detail="Corridor not found")
 
-    now = datetime.now(timezone.utc)
-    alert_7d = db.query(AISGapEvent).filter(
-        AISGapEvent.corridor_id == corridor_id,
-        AISGapEvent.gap_start_utc >= now - timedelta(days=7),
-    ).count()
-    alert_30d = db.query(AISGapEvent).filter(
-        AISGapEvent.corridor_id == corridor_id,
-        AISGapEvent.gap_start_utc >= now - timedelta(days=30),
-    ).count()
+    now = datetime.now(UTC)
+    alert_7d = (
+        db.query(AISGapEvent)
+        .filter(
+            AISGapEvent.corridor_id == corridor_id,
+            AISGapEvent.gap_start_utc >= now - timedelta(days=7),
+        )
+        .count()
+    )
+    alert_30d = (
+        db.query(AISGapEvent)
+        .filter(
+            AISGapEvent.corridor_id == corridor_id,
+            AISGapEvent.gap_start_utc >= now - timedelta(days=30),
+        )
+        .count()
+    )
 
     return {
         "corridor_id": corridor.corridor_id,
         "name": corridor.name,
-        "corridor_type": str(corridor.corridor_type.value) if hasattr(corridor.corridor_type, "value") else corridor.corridor_type,
+        "corridor_type": str(corridor.corridor_type.value)
+        if hasattr(corridor.corridor_type, "value")
+        else corridor.corridor_type,
         "risk_weight": corridor.risk_weight,
         "is_jamming_zone": corridor.is_jamming_zone,
         "description": corridor.description,
@@ -564,8 +669,8 @@ def get_corridor(corridor_id: int, db: Session = Depends(get_db)):
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def create_corridor(body: CorridorCreateRequest, request: Request, db: Session = Depends(get_db)):
     """Create a new corridor."""
-    from app.models.corridor import Corridor
     from app.models.base import CorridorTypeEnum
+    from app.models.corridor import Corridor
 
     ct_str = body.corridor_type
     valid_types = [e.value for e in CorridorTypeEnum]
@@ -576,6 +681,7 @@ def create_corridor(body: CorridorCreateRequest, request: Request, db: Session =
     if body.geometry_wkt:
         try:
             from shapely import wkt as shapely_wkt
+
             shape = shapely_wkt.loads(body.geometry_wkt)
             geom = shape.wkt
         except Exception as e:
@@ -591,19 +697,29 @@ def create_corridor(body: CorridorCreateRequest, request: Request, db: Session =
     )
     db.add(corridor)
     db.flush()
-    _audit_log(db, "create", "corridor", corridor.corridor_id, details={
-        "name": body.name, "corridor_type": ct_str,
-    }, request=request)
+    _audit_log(
+        db,
+        "create",
+        "corridor",
+        corridor.corridor_id,
+        details={
+            "name": body.name,
+            "corridor_type": ct_str,
+        },
+        request=request,
+    )
     db.commit()
     return {"corridor_id": corridor.corridor_id, "status": "created"}
 
 
 @router.patch("/corridors/{corridor_id}", tags=["corridors"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def update_corridor(corridor_id: int, body: CorridorUpdateRequest, request: Request, db: Session = Depends(get_db)):
+def update_corridor(
+    corridor_id: int, body: CorridorUpdateRequest, request: Request, db: Session = Depends(get_db)
+):
     """Update corridor metadata."""
-    from app.models.corridor import Corridor
     from app.models.base import CorridorTypeEnum
+    from app.models.corridor import Corridor
 
     corridor = db.query(Corridor).filter(Corridor.corridor_id == corridor_id).first()
     if not corridor:
@@ -621,7 +737,9 @@ def update_corridor(corridor_id: int, body: CorridorUpdateRequest, request: Requ
     if "corridor_type" in updates:
         valid_types = [e.value for e in CorridorTypeEnum]
         if updates["corridor_type"] not in valid_types:
-            raise HTTPException(status_code=400, detail=f"corridor_type must be one of: {valid_types}")
+            raise HTTPException(
+                status_code=400, detail=f"corridor_type must be one of: {valid_types}"
+            )
         corridor.corridor_type = updates["corridor_type"]
 
     _audit_log(db, "update", "corridor", corridor_id, details=updates, request=request)
@@ -629,7 +747,9 @@ def update_corridor(corridor_id: int, body: CorridorUpdateRequest, request: Requ
     return {
         "corridor_id": corridor.corridor_id,
         "name": corridor.name,
-        "corridor_type": str(corridor.corridor_type.value) if hasattr(corridor.corridor_type, "value") else corridor.corridor_type,
+        "corridor_type": str(corridor.corridor_type.value)
+        if hasattr(corridor.corridor_type, "value")
+        else corridor.corridor_type,
         "risk_weight": corridor.risk_weight,
         "is_jamming_zone": corridor.is_jamming_zone,
         "status": "updated",
@@ -647,17 +767,17 @@ def delete_corridor(corridor_id: int, request: Request, db: Session = Depends(ge
     if not corridor:
         raise HTTPException(status_code=404, detail="Corridor not found")
 
-    linked_gaps = db.query(AISGapEvent).filter(
-        AISGapEvent.corridor_id == corridor_id
-    ).count()
+    linked_gaps = db.query(AISGapEvent).filter(AISGapEvent.corridor_id == corridor_id).count()
     if linked_gaps > 0:
         raise HTTPException(
             status_code=409,
             detail=f"Cannot delete corridor: {linked_gaps} gap event(s) reference it. "
-                   "Unlink or reassign those gaps first.",
+            "Unlink or reassign those gaps first.",
         )
 
-    _audit_log(db, "delete", "corridor", corridor_id, details={"name": corridor.name}, request=request)
+    _audit_log(
+        db, "delete", "corridor", corridor_id, details={"name": corridor.name}, request=request
+    )
     db.delete(corridor)
     db.commit()
     return {"status": "deleted", "corridor_id": corridor_id}
@@ -667,13 +787,13 @@ def delete_corridor(corridor_id: int, request: Request, db: Session = Depends(ge
 def get_corridor_activity(
     corridor_id: int,
     granularity: str = Query("week", description="day, week, or month"),
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Time-series activity for a corridor: gap counts, vessel counts, avg risk."""
-    from app.models.gap_event import AISGapEvent
     from app.models.corridor import Corridor
+    from app.models.gap_event import AISGapEvent
 
     _validate_date_range(date_from, date_to)
 
@@ -687,19 +807,24 @@ def get_corridor_activity(
     q = db.query(AISGapEvent).filter(AISGapEvent.corridor_id == corridor_id)
 
     if date_from:
-        q = q.filter(AISGapEvent.gap_start_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            AISGapEvent.gap_start_utc >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(AISGapEvent.gap_start_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            AISGapEvent.gap_start_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
 
     dialect_name = db.bind.dialect.name if db.bind else "sqlite"
 
     if dialect_name == "postgresql":
         if granularity == "day":
-            bucket = func.to_char(AISGapEvent.gap_start_utc, 'YYYY-MM-DD')
+            bucket = func.to_char(AISGapEvent.gap_start_utc, "YYYY-MM-DD")
         elif granularity == "week":
             bucket = func.to_char(AISGapEvent.gap_start_utc, 'IYYY-"W"IW')
         else:
-            bucket = func.to_char(AISGapEvent.gap_start_utc, 'YYYY-MM')
+            bucket = func.to_char(AISGapEvent.gap_start_utc, "YYYY-MM")
     else:
         if granularity == "day":
             bucket = func.strftime("%Y-%m-%d", AISGapEvent.gap_start_utc)
@@ -733,17 +858,19 @@ def get_corridor_activity(
 
 # ─── Dark Vessel Detections ───────────────────────────────────────────────────
 
+
 @router.get("/dark-vessels", response_model=DarkVesselListResponse)
 def list_dark_vessels(
-    ais_match_result: Optional[str] = None,
-    corridor_id: Optional[int] = None,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    ais_match_result: str | None = None,
+    corridor_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     from app.models.stubs import DarkVesselDetection
+
     _validate_date_range(date_from, date_to)
     q = db.query(DarkVesselDetection)
     if ais_match_result:
@@ -751,9 +878,15 @@ def list_dark_vessels(
     if corridor_id:
         q = q.filter(DarkVesselDetection.corridor_id == corridor_id)
     if date_from:
-        q = q.filter(DarkVesselDetection.detection_time_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            DarkVesselDetection.detection_time_utc
+            >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(DarkVesselDetection.detection_time_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            DarkVesselDetection.detection_time_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": items, "total": total}
@@ -762,6 +895,7 @@ def list_dark_vessels(
 @router.get("/dark-vessels/{detection_id}", response_model=DarkVesselDetectionRead)
 def get_dark_vessel(detection_id: int, db: Session = Depends(get_db)):
     from app.models.stubs import DarkVesselDetection
+
     det = (
         db.query(DarkVesselDetection)
         .filter(DarkVesselDetection.detection_id == detection_id)
@@ -774,10 +908,14 @@ def get_dark_vessel(detection_id: int, db: Session = Depends(get_db)):
 
 # ─── Vessel Hunt (FR9) ────────────────────────────────────────────────────────
 
+
 @router.get("/hunt/targets", tags=["hunt"], response_model=list[VesselTargetProfileRead])
-def list_hunt_targets(skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)):
+def list_hunt_targets(
+    skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)
+):
     """List all hunt target profiles."""
     from app.models.stubs import VesselTargetProfile
+
     return db.query(VesselTargetProfile).offset(skip).limit(limit).all()
 
 
@@ -785,34 +923,47 @@ def list_hunt_targets(skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, l
 def get_hunt_target(profile_id: int, db: Session = Depends(get_db)):
     """Get a hunt target profile by ID."""
     from app.models.stubs import VesselTargetProfile
-    profile = db.query(VesselTargetProfile).filter(
-        VesselTargetProfile.profile_id == profile_id
-    ).first()
+
+    profile = (
+        db.query(VesselTargetProfile).filter(VesselTargetProfile.profile_id == profile_id).first()
+    )
     if not profile:
         raise HTTPException(status_code=404, detail="Target profile not found")
     return profile
 
 
 @router.get("/hunt/missions", tags=["hunt"], response_model=list[SearchMissionRead])
-def list_hunt_missions(skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)):
+def list_hunt_missions(
+    skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)
+):
     """List all search missions."""
     from app.models.stubs import SearchMission
-    return db.query(SearchMission).order_by(SearchMission.created_at.desc()).offset(skip).limit(limit).all()
+
+    return (
+        db.query(SearchMission)
+        .order_by(SearchMission.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/hunt/missions/{mission_id}", tags=["hunt"], response_model=SearchMissionRead)
 def get_hunt_mission(mission_id: int, db: Session = Depends(get_db)):
     """Get a search mission by ID."""
     from app.models.stubs import SearchMission
-    mission = db.query(SearchMission).filter(
-        SearchMission.mission_id == mission_id
-    ).first()
+
+    mission = db.query(SearchMission).filter(SearchMission.mission_id == mission_id).first()
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
     return mission
 
 
-@router.get("/hunt/missions/{mission_id}/candidates", tags=["hunt"], response_model=HuntCandidateListResponse)
+@router.get(
+    "/hunt/missions/{mission_id}/candidates",
+    tags=["hunt"],
+    response_model=HuntCandidateListResponse,
+)
 def list_hunt_candidates(
     mission_id: int,
     skip: int = Query(0, ge=0),
@@ -821,9 +972,8 @@ def list_hunt_candidates(
 ):
     """List all candidates for a mission (paginated)."""
     from app.models.stubs import HuntCandidate
-    q = db.query(HuntCandidate).filter(
-        HuntCandidate.mission_id == mission_id
-    )
+
+    q = db.query(HuntCandidate).filter(HuntCandidate.mission_id == mission_id)
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": items, "total": total}
@@ -831,10 +981,12 @@ def list_hunt_candidates(
 
 @router.post("/hunt/targets", tags=["hunt"], response_model=VesselTargetProfileRead)
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def create_hunt_target(body: HuntTargetCreateRequest, request: Request, db: Session = Depends(get_db)):
+def create_hunt_target(
+    body: HuntTargetCreateRequest, request: Request, db: Session = Depends(get_db)
+):
     """Create a vessel target profile for hunt."""
-    from app.models.vessel import Vessel
     from app.models.stubs import VesselTargetProfile
+    from app.models.vessel import Vessel
 
     vessel = db.query(Vessel).filter(Vessel.vessel_id == body.vessel_id).first()
     if not vessel:
@@ -854,16 +1006,20 @@ def create_hunt_target(body: HuntTargetCreateRequest, request: Request, db: Sess
 
 @router.post("/hunt/missions", tags=["hunt"], response_model=SearchMissionRead)
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def create_hunt_mission(body: SearchMissionCreateRequest, request: Request, db: Session = Depends(get_db)):
+def create_hunt_mission(
+    body: SearchMissionCreateRequest, request: Request, db: Session = Depends(get_db)
+):
     """Create a search mission for a target profile."""
-    from app.models.stubs import VesselTargetProfile, SearchMission
+    from app.models.stubs import SearchMission, VesselTargetProfile
 
     if body.search_end_utc <= body.search_start_utc:
         raise HTTPException(status_code=400, detail="search_end_utc must be after search_start_utc")
 
-    profile = db.query(VesselTargetProfile).filter(
-        VesselTargetProfile.profile_id == body.target_profile_id
-    ).first()
+    profile = (
+        db.query(VesselTargetProfile)
+        .filter(VesselTargetProfile.profile_id == body.target_profile_id)
+        .first()
+    )
     if not profile:
         raise HTTPException(status_code=404, detail="Target profile not found")
 
@@ -881,21 +1037,22 @@ def create_hunt_mission(body: SearchMissionCreateRequest, request: Request, db: 
     return mission
 
 
-@router.post("/hunt/missions/{mission_id}/analyze", tags=["hunt"], response_model=HuntCandidateListResponse)
+@router.post(
+    "/hunt/missions/{mission_id}/analyze", tags=["hunt"], response_model=HuntCandidateListResponse
+)
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def analyze_hunt_mission(mission_id: int, request: Request, db: Session = Depends(get_db)):
     """Run hunt analysis on a mission (synchronous)."""
     from app.models.stubs import SearchMission
 
-    mission = db.query(SearchMission).filter(
-        SearchMission.mission_id == mission_id
-    ).first()
+    mission = db.query(SearchMission).filter(SearchMission.mission_id == mission_id).first()
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
 
     candidates = []
     try:
         from app.modules.vessel_hunt import find_hunt_candidates
+
         candidates = find_hunt_candidates(mission.mission_id, db)
     except ImportError:
         logger.warning("vessel_hunt module not available, returning empty candidates")
@@ -906,26 +1063,32 @@ def analyze_hunt_mission(mission_id: int, request: Request, db: Session = Depend
 @router.put("/hunt/missions/{mission_id}/finalize", tags=["hunt"], response_model=SearchMissionRead)
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def finalize_hunt_mission(
-    mission_id: int, body: MissionFinalizeRequest,
-    request: Request, db: Session = Depends(get_db),
+    mission_id: int,
+    body: MissionFinalizeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
 ):
     """Finalize a mission by selecting a candidate."""
-    from app.models.stubs import SearchMission, HuntCandidate
+    from app.models.stubs import HuntCandidate, SearchMission
 
-    mission = db.query(SearchMission).filter(
-        SearchMission.mission_id == mission_id
-    ).first()
+    mission = db.query(SearchMission).filter(SearchMission.mission_id == mission_id).first()
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
     if getattr(mission, "status", None) == "finalized":
         raise HTTPException(status_code=409, detail="Mission already finalized")
 
-    candidate = db.query(HuntCandidate).filter(
-        HuntCandidate.candidate_id == body.candidate_id,
-        HuntCandidate.mission_id == mission_id,
-    ).first()
+    candidate = (
+        db.query(HuntCandidate)
+        .filter(
+            HuntCandidate.candidate_id == body.candidate_id,
+            HuntCandidate.mission_id == mission_id,
+        )
+        .first()
+    )
     if not candidate:
-        raise HTTPException(status_code=400, detail="Candidate not found or does not belong to this mission")
+        raise HTTPException(
+            status_code=400, detail="Candidate not found or does not belong to this mission"
+        )
 
     mission.status = "finalized"
     db.commit()
@@ -937,25 +1100,31 @@ def finalize_hunt_mission(
 # Merge Chains
 # ---------------------------------------------------------------------------
 
+
 @router.get("/merge-chains", tags=["merge-chains"])
 def list_merge_chains(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    min_confidence: Optional[float] = None,
-    confidence_band: Optional[str] = None,
+    min_confidence: float | None = None,
+    confidence_band: str | None = None,
     db: Session = Depends(get_db),
 ):
     """List merge chains with hydrated vessel nodes and edges."""
-    from app.modules.merge_chain import get_merge_chains, get_merge_chain_count
-    from app.models.vessel import Vessel
     from app.models.merge_candidate import MergeCandidate
+    from app.models.vessel import Vessel
+    from app.modules.merge_chain import get_merge_chain_count, get_merge_chains
 
     chains = get_merge_chains(
-        db, skip=skip, limit=limit,
-        min_confidence=min_confidence, confidence_band=confidence_band,
+        db,
+        skip=skip,
+        limit=limit,
+        min_confidence=min_confidence,
+        confidence_band=confidence_band,
     )
     total = get_merge_chain_count(
-        db, min_confidence=min_confidence, confidence_band=confidence_band,
+        db,
+        min_confidence=min_confidence,
+        confidence_band=confidence_band,
     )
 
     items = []
@@ -972,37 +1141,43 @@ def list_merge_chains(
         nodes = []
         for vid in vessel_ids:
             v = vessels.get(vid)
-            nodes.append({
-                "vessel_id": vid,
-                "mmsi": v.mmsi if v else None,
-                "name": v.name if v else None,
-                "flag": getattr(v, "flag", None) if v else None,
-                "role": "primary" if vid == vessel_ids[0] else "absorbed",
-            })
+            nodes.append(
+                {
+                    "vessel_id": vid,
+                    "mmsi": v.mmsi if v else None,
+                    "name": v.name if v else None,
+                    "flag": getattr(v, "flag", None) if v else None,
+                    "role": "primary" if vid == vessel_ids[0] else "absorbed",
+                }
+            )
 
         # Hydrate edges from merge candidates
         edges = []
         if link_ids:
-            mc_rows = db.query(MergeCandidate).filter(
-                MergeCandidate.candidate_id.in_(link_ids)
-            ).all()
+            mc_rows = (
+                db.query(MergeCandidate).filter(MergeCandidate.candidate_id.in_(link_ids)).all()
+            )
             for mc in mc_rows:
-                edges.append({
-                    "candidate_id": mc.candidate_id,
-                    "source_id": mc.vessel_a_id,
-                    "target_id": mc.vessel_b_id,
-                    "confidence": mc.confidence_score,
-                    "evidence": None,
-                })
+                edges.append(
+                    {
+                        "candidate_id": mc.candidate_id,
+                        "source_id": mc.vessel_a_id,
+                        "target_id": mc.vessel_b_id,
+                        "confidence": mc.confidence_score,
+                        "evidence": None,
+                    }
+                )
 
-        items.append({
-            "chain_id": chain.chain_id,
-            "confidence_band": chain.confidence_band,
-            "confidence": chain.confidence,
-            "chain_length": chain.chain_length,
-            "nodes": nodes,
-            "edges": edges,
-        })
+        items.append(
+            {
+                "chain_id": chain.chain_id,
+                "confidence_band": chain.confidence_band,
+                "confidence": chain.confidence,
+                "chain_length": chain.chain_length,
+                "nodes": nodes,
+                "edges": edges,
+            }
+        )
 
     return {"items": items, "total": total}
 
@@ -1011,11 +1186,13 @@ def list_merge_chains(
 # Coverage
 # ---------------------------------------------------------------------------
 
+
 @router.get("/coverage/geojson", tags=["coverage"])
 def coverage_geojson():
     """AIS coverage quality regions as GeoJSON FeatureCollection."""
-    import yaml
     from pathlib import Path
+
+    import yaml
 
     config_path = Path(settings.COVERAGE_CONFIG)
     if not config_path.is_absolute():
@@ -1035,22 +1212,25 @@ def coverage_geojson():
         wkt = region_data.get("geometry_wkt") or region_data.get("geometry")
         if wkt:
             try:
-                from shapely import wkt as shapely_wkt
                 import shapely.geometry
+                from shapely import wkt as shapely_wkt
+
                 shape = shapely_wkt.loads(wkt)
                 geometry = shapely.geometry.mapping(shape)
             except Exception:
                 pass
 
-        features.append({
-            "type": "Feature",
-            "properties": {
-                "name": region_data.get("name", region_key),
-                "quality": region_data.get("quality", "UNKNOWN"),
-                "description": region_data.get("description", ""),
-            },
-            "geometry": geometry,
-        })
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "name": region_data.get("name", region_key),
+                    "quality": region_data.get("quality", "UNKNOWN"),
+                    "description": region_data.get("description", ""),
+                },
+                "geometry": geometry,
+            }
+        )
 
     return {"type": "FeatureCollection", "features": features}
 
@@ -1059,10 +1239,12 @@ def coverage_geojson():
 # Signal Effectiveness
 # ---------------------------------------------------------------------------
 
+
 @router.get("/accuracy/signal-effectiveness", tags=["scoring"])
 def signal_effectiveness_endpoint(db: Session = Depends(get_db)):
     """Per-signal FP rate and lift from analyst verdicts."""
     from app.modules.validation_harness import live_signal_effectiveness
+
     return live_signal_effectiveness(db)
 
 
@@ -1070,11 +1252,12 @@ def signal_effectiveness_endpoint(db: Session = Depends(get_db)):
 # Satellite Orders
 # ---------------------------------------------------------------------------
 
+
 @router.get("/satellite/providers", tags=["satellite"])
 def list_satellite_providers(db: Session = Depends(get_db)):
     """List configured satellite providers and budget."""
-    from app.modules.satellite_providers import list_providers
     from app.modules.satellite_order_manager import get_satellite_budget_status
+    from app.modules.satellite_providers import list_providers
 
     providers = list_providers()
     configured = []
@@ -1087,8 +1270,8 @@ def list_satellite_providers(db: Session = Depends(get_db)):
 
 @router.get("/satellite/orders", tags=["satellite"])
 def list_satellite_orders(
-    status: Optional[str] = None,
-    provider: Optional[str] = None,
+    status: str | None = None,
+    provider: str | None = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -1126,9 +1309,7 @@ def get_satellite_order(order_id: int, db: Session = Depends(get_db)):
     """Get satellite order detail."""
     from app.models.satellite_order import SatelliteOrder
 
-    order = db.query(SatelliteOrder).filter(
-        SatelliteOrder.satellite_order_id == order_id
-    ).first()
+    order = db.query(SatelliteOrder).filter(SatelliteOrder.satellite_order_id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return {c.name: getattr(order, c.name) for c in order.__table__.columns}
@@ -1153,7 +1334,10 @@ def search_satellite_archive(request: Request, body: dict, db: Session = Depends
 @router.post("/satellite/orders/{order_id}/submit", tags=["satellite"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def submit_satellite_order(
-    order_id: int, body: dict, request: Request, db: Session = Depends(get_db),
+    order_id: int,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
 ):
     """Submit a draft satellite order."""
     from app.modules.satellite_order_manager import submit_order
@@ -1168,7 +1352,9 @@ def submit_satellite_order(
 @router.post("/satellite/orders/{order_id}/cancel", tags=["satellite"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def cancel_satellite_order(
-    order_id: int, request: Request, db: Session = Depends(get_db),
+    order_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
 ):
     """Cancel a satellite order."""
     from app.modules.satellite_order_manager import cancel_order
@@ -1194,5 +1380,3 @@ def satellite_budget(db: Session = Depends(get_db)):
     from app.modules.satellite_order_manager import get_satellite_budget_status
 
     return get_satellite_budget_status(db)
-
-

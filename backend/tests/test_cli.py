@@ -1,16 +1,14 @@
 """Tests for RadianceFleet CLI commands."""
+
 from __future__ import annotations
 
 import inspect
-import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
 from typer.testing import CliRunner
 
 from app.cli import app
-
 
 runner = CliRunner()
 
@@ -28,8 +26,16 @@ runner = CliRunner()
 @patch("app.cli_helpers._is_first_run", return_value=True)
 @patch("app.database.SessionLocal")
 @patch("app.database.init_db")
-def test_start_demo(mock_init, mock_sl, mock_first_run, mock_corridors, mock_sample,
-                    mock_discover, mock_summary, mock_next):
+def test_start_demo(
+    mock_init,
+    mock_sl,
+    mock_first_run,
+    mock_corridors,
+    mock_sample,
+    mock_discover,
+    mock_summary,
+    mock_next,
+):
     """start --demo calls init_db, _load_sample_data, and discover_dark_vessels."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
@@ -73,9 +79,18 @@ def test_start_setup_failure(mock_init, mock_first_run):
 @patch("app.cli_helpers._is_first_run", return_value=True)
 @patch("app.database.SessionLocal")
 @patch("app.database.init_db")
-def test_start_enrichment_called(mock_init, mock_sl, mock_first_run, mock_corridors,
-                                 mock_fetch, mock_scheduler_cls, mock_enrich, mock_discover,
-                                 mock_summary, mock_next):
+def test_start_enrichment_called(
+    mock_init,
+    mock_sl,
+    mock_first_run,
+    mock_corridors,
+    mock_fetch,
+    mock_scheduler_cls,
+    mock_enrich,
+    mock_discover,
+    mock_summary,
+    mock_next,
+):
     """start (non-demo) calls _enrich_vessels and CollectionScheduler."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
@@ -102,8 +117,9 @@ def test_start_enrichment_called(mock_init, mock_sl, mock_first_run, mock_corrid
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
-def test_update_full_pipeline(mock_sl, mock_fetch, mock_scheduler_cls, mock_enrich,
-                               mock_discover, mock_summary, mock_next):
+def test_update_full_pipeline(
+    mock_sl, mock_fetch, mock_scheduler_cls, mock_enrich, mock_discover, mock_summary, mock_next
+):
     """update calls fetch, CollectionScheduler, enrichment, and detection."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
@@ -122,7 +138,9 @@ def test_update_full_pipeline(mock_sl, mock_fetch, mock_scheduler_cls, mock_enri
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
-def test_update_offline(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
+def test_update_offline(
+    mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next
+):
     """update --offline skips fetch and collection, still runs detection."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
@@ -141,7 +159,9 @@ def test_update_offline(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, 
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
-def test_update_missing_api_key(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
+def test_update_missing_api_key(
+    mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next
+):
     """update without AISSTREAM_API_KEY still runs CollectionScheduler (aisstream skipped internally)."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
@@ -160,7 +180,9 @@ def test_update_missing_api_key(mock_sl, mock_fetch, mock_scheduler_cls, mock_di
 @patch("app.modules.collection_scheduler.CollectionScheduler")
 @patch("app.cli_helpers._update_fetch_watchlists")
 @patch("app.database.SessionLocal")
-def test_update_fetch_failure(mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next):
+def test_update_fetch_failure(
+    mock_sl, mock_fetch, mock_scheduler_cls, mock_discover, mock_summary, mock_next
+):
     """update continues to detection even if fetch fails."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
@@ -260,6 +282,7 @@ def test_check_vessels_interactive_merge(mock_sl, mock_detect, mock_merge, mock_
     mock_detect.return_value = {"auto_merged": 0, "candidates_created": 1, "skipped": 0}
 
     from app.models.base import MergeCandidateStatusEnum
+
     mc = MagicMock()
     mc.candidate_id = 1
     mc.vessel_a_id = 10
@@ -284,7 +307,7 @@ def test_check_vessels_interactive_merge(mock_sl, mock_detect, mock_merge, mock_
     mock_merge.return_value = {"success": True, "merge_op_id": 1}
 
     with patch("app.cli_helpers._is_interactive", return_value=True):
-        result = runner.invoke(app, ["check-vessels"])
+        runner.invoke(app, ["check-vessels"])
 
     assert mc.status == MergeCandidateStatusEnum.ANALYST_MERGED
 
@@ -299,6 +322,7 @@ def test_check_vessels_interactive_reject(mock_sl, mock_detect, mock_prompt):
     mock_detect.return_value = {"auto_merged": 0, "candidates_created": 1, "skipped": 0}
 
     from app.models.base import MergeCandidateStatusEnum
+
     mc = MagicMock()
     mc.candidate_id = 1
     mc.vessel_a_id = 10
@@ -321,7 +345,7 @@ def test_check_vessels_interactive_reject(mock_sl, mock_detect, mock_prompt):
     mock_db.query.return_value.get.return_value = va
 
     with patch("app.cli_helpers._is_interactive", return_value=True):
-        result = runner.invoke(app, ["check-vessels"])
+        runner.invoke(app, ["check-vessels"])
 
     assert mc.status == MergeCandidateStatusEnum.REJECTED
 
@@ -336,6 +360,7 @@ def test_check_vessels_interactive_skip(mock_sl, mock_detect, mock_prompt):
     mock_detect.return_value = {"auto_merged": 0, "candidates_created": 1, "skipped": 0}
 
     from app.models.base import MergeCandidateStatusEnum
+
     mc = MagicMock()
     mc.candidate_id = 1
     mc.vessel_a_id = 10
@@ -358,7 +383,7 @@ def test_check_vessels_interactive_skip(mock_sl, mock_detect, mock_prompt):
     mock_db.query.return_value.get.return_value = va
 
     with patch("app.cli_helpers._is_interactive", return_value=True):
-        result = runner.invoke(app, ["check-vessels"])
+        runner.invoke(app, ["check-vessels"])
 
     assert mc.status == MergeCandidateStatusEnum.PENDING
 
@@ -373,6 +398,7 @@ def test_check_vessels_interactive_quit(mock_sl, mock_detect, mock_prompt):
     mock_detect.return_value = {"auto_merged": 0, "candidates_created": 2, "skipped": 0}
 
     from app.models.base import MergeCandidateStatusEnum
+
     mc1 = MagicMock()
     mc1.candidate_id = 1
     mc1.vessel_a_id = 10
@@ -406,7 +432,7 @@ def test_check_vessels_interactive_quit(mock_sl, mock_detect, mock_prompt):
     mock_db.query.return_value.get.return_value = va
 
     with patch("app.cli_helpers._is_interactive", return_value=True):
-        result = runner.invoke(app, ["check-vessels"])
+        runner.invoke(app, ["check-vessels"])
 
     assert mc1.status == MergeCandidateStatusEnum.PENDING
     assert mc2.status == MergeCandidateStatusEnum.PENDING
@@ -416,13 +442,16 @@ def test_check_vessels_interactive_quit(mock_sl, mock_detect, mock_prompt):
 @patch("app.modules.identity_resolver.execute_merge")
 @patch("app.modules.identity_resolver.detect_merge_candidates")
 @patch("app.database.SessionLocal")
-def test_check_vessels_merge_failure_preserves_status(mock_sl, mock_detect, mock_merge, mock_prompt):
+def test_check_vessels_merge_failure_preserves_status(
+    mock_sl, mock_detect, mock_merge, mock_prompt
+):
     """Failed merge keeps candidate PENDING (not ANALYST_MERGED)."""
     mock_db = MagicMock()
     mock_sl.return_value = mock_db
     mock_detect.return_value = {"auto_merged": 0, "candidates_created": 1, "skipped": 0}
 
     from app.models.base import MergeCandidateStatusEnum
+
     mc = MagicMock()
     mc.candidate_id = 1
     mc.vessel_a_id = 10
@@ -447,7 +476,7 @@ def test_check_vessels_merge_failure_preserves_status(mock_sl, mock_detect, mock
     mock_merge.return_value = {"success": False, "error": "Already absorbed"}
 
     with patch("app.cli_helpers._is_interactive", return_value=True):
-        result = runner.invoke(app, ["check-vessels"])
+        runner.invoke(app, ["check-vessels"])
 
     assert mc.status == MergeCandidateStatusEnum.PENDING
 
@@ -465,7 +494,7 @@ def test_open_browser_thread(mock_thread_cls, mock_wb_open, mock_uvicorn_run):
     mock_thread_instance = MagicMock()
     mock_thread_cls.return_value = mock_thread_instance
 
-    result = runner.invoke(app, ["open"])
+    runner.invoke(app, ["open"])
     mock_uvicorn_run.assert_called_once_with("app.main:app", host="127.0.0.1", port=8000)
     mock_thread_cls.assert_called_once()
     mock_thread_instance.start.assert_called_once()
@@ -550,9 +579,10 @@ def test_search_by_mmsi(mock_sl):
 
     # Route different model queries
     def route_query(model):
+        from app.models.ais_point import AISPoint
         from app.models.vessel import Vessel
         from app.models.vessel_watchlist import VesselWatchlist
-        from app.models.ais_point import AISPoint
+
         if model is Vessel:
             return mock_vessel_query
         elif model is VesselWatchlist:
@@ -595,8 +625,18 @@ def test_help_shows_commands():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     output = result.output
-    for cmd in ["start", "update", "check-vessels", "open", "status", "search",
-                "rescore", "evaluate-detector", "confirm-detector", "backfill"]:
+    for cmd in [
+        "start",
+        "update",
+        "check-vessels",
+        "open",
+        "status",
+        "search",
+        "rescore",
+        "evaluate-detector",
+        "confirm-detector",
+        "backfill",
+    ]:
         assert cmd in output, f"Command '{cmd}' not found in help output"
     # No panel grouping
     assert "Getting Started" not in output
@@ -610,14 +650,16 @@ def test_help_shows_commands():
 
 def test_import_corridors_uses_flush():
     """_import_corridors uses db.flush() not db.commit() for atomicity."""
-    from app import cli
-    source = inspect.getsource(cli._import_corridors)
+    from app import cli_helpers
+
+    source = inspect.getsource(cli_helpers._import_corridors)
     assert "db.flush()" in source, "_import_corridors should use db.flush()"
     assert "db.commit()" not in source, "_import_corridors should NOT use db.commit()"
 
 
 def test_import_corridors_rollback_on_error():
     """_import_corridors calls db.rollback() in its exception handler."""
-    from app import cli
-    source = inspect.getsource(cli._import_corridors)
+    from app import cli_helpers
+
+    source = inspect.getsource(cli_helpers._import_corridors)
     assert "db.rollback()" in source, "_import_corridors exception handler should rollback"

@@ -1,10 +1,9 @@
 """Tests for NOAA historical AIS client."""
-import csv
-import io
+
 import os
 import tempfile
 import zipfile
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,11 +13,13 @@ import pytest
 class TestURLConstruction:
     def test_pre_2025_zip_url(self):
         from app.modules.noaa_client import _url_for_date
+
         url = _url_for_date(date(2024, 6, 15))
         assert "AIS_2024_06_15.zip" in url
 
     def test_2025_zst_url(self):
         from app.modules.noaa_client import _url_for_date
+
         url = _url_for_date(date(2025, 3, 1))
         assert "ais-2025-03-01.csv.zst" in url
 
@@ -26,6 +27,7 @@ class TestURLConstruction:
 class TestGeoFilter:
     def test_point_in_bbox(self):
         from app.modules.noaa_client import _point_in_bbox
+
         bbox = (55.0, 20.0, 65.0, 30.0)
         assert _point_in_bbox(60.0, 25.0, bbox) is True
         assert _point_in_bbox(70.0, 25.0, bbox) is False
@@ -85,7 +87,6 @@ class TestZipDecompression:
 
     def test_corrupted_zip_raises(self):
         """Truncated ZIP should raise clear error."""
-        from app.modules.noaa_client import download_noaa_file
 
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
             tmp.write(b"PK\x03\x04truncated")
@@ -96,6 +97,7 @@ class TestZipDecompression:
         try:
             with pytest.raises((zipfile.BadZipFile, ValueError)):
                 from app.modules.noaa_client import _decompress_csv_lines
+
                 list(_decompress_csv_lines(tmp_path))
         finally:
             os.unlink(tmp_path)
@@ -141,5 +143,6 @@ class TestNormalization:
 
     def test_missing_required_returns_none(self):
         from app.modules.normalize import normalize_noaa_row
+
         assert normalize_noaa_row({"MMSI": "636017000"}) is None  # No lat/lon
         assert normalize_noaa_row({}) is None

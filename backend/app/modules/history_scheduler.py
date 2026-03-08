@@ -6,13 +6,13 @@ hammering upstream servers.  Oldest-first gap filling via coverage_tracker.
 
 Thread-based, same pattern as CollectionScheduler.
 """
+
 from __future__ import annotations
 
 import logging
 import threading
-import time
-from datetime import date, datetime, timedelta, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -134,9 +134,7 @@ class HistoryScheduler:
         start_date = end_date - timedelta(days=max_days - 1)
         return self._call_source(db, source, start_date, end_date)
 
-    def _find_gaps(
-        self, db: Session, source: str, max_days: int
-    ) -> list[tuple[date, date]]:
+    def _find_gaps(self, db: Session, source: str, max_days: int) -> list[tuple[date, date]]:
         """Query coverage_tracker for uncovered date ranges (oldest first)."""
         try:
             from app.modules.coverage_tracker import find_coverage_gaps
@@ -164,9 +162,7 @@ class HistoryScheduler:
             logger.warning("coverage_tracker.find_coverage_gaps error: %s", e)
             return []
 
-    def _backfill_gaps(
-        self, db: Session, source: str, gaps: list[tuple[date, date]]
-    ) -> dict:
+    def _backfill_gaps(self, db: Session, source: str, gaps: list[tuple[date, date]]) -> dict:
         """Backfill each gap range and aggregate results."""
         combined: dict[str, object] = {"gaps_processed": len(gaps), "errors": []}
         for gap_start, gap_end in gaps:
@@ -179,17 +175,13 @@ class HistoryScheduler:
                 combined["errors"].append(str(e))  # type: ignore[union-attr]
         return combined
 
-    def _call_source(
-        self, db: Session, source: str, start_date: date, end_date: date
-    ) -> dict:
+    def _call_source(self, db: Session, source: str, start_date: date, end_date: date) -> dict:
         """Dispatch to the appropriate client import function and record coverage."""
         result: dict = {}
         if source == "noaa":
             from app.modules.noaa_client import fetch_and_import_noaa
 
-            result = fetch_and_import_noaa(
-                db, start_date=start_date, end_date=end_date
-            )
+            result = fetch_and_import_noaa(db, start_date=start_date, end_date=end_date)
         elif source == "dma":
             from app.modules.dma_client import fetch_and_import_dma
 
@@ -224,15 +216,16 @@ class HistoryScheduler:
 
         return result
 
-    def _record_coverage(
-        self, db: Session, source: str, start_date: date, end_date: date
-    ) -> None:
+    def _record_coverage(self, db: Session, source: str, start_date: date, end_date: date) -> None:
         """Record a coverage window via coverage_tracker (best-effort)."""
         try:
             from app.modules.coverage_tracker import record_coverage_window
 
             record_coverage_window(
-                db, source, start_date, end_date,
+                db,
+                source,
+                start_date,
+                end_date,
                 status="completed",
             )
             db.commit()

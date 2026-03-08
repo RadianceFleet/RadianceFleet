@@ -9,14 +9,13 @@ Tests cover:
 
 All tests are unit-level and require no database.
 """
-import math
+
 import pytest
-from unittest.mock import MagicMock
 
 from app.utils.geo import haversine_nm as _haversine_nm
 
-
 # ── ST_Intersects vs ST_Within concept tests ──────────────────────────────────
+
 
 def test_trajectory_intersects_corridor_concept():
     """A gap trajectory from lon=25.0 to lon=27.0 passes through a corridor at lon=25.5-26.5.
@@ -26,8 +25,8 @@ def test_trajectory_intersects_corridor_concept():
     ST_Intersects on the full line segment rather than ST_Within on individual
     endpoints.
     """
-    start = (55.0, 25.0)   # (lat, lon) — outside corridor (lon 25.0 < 25.5)
-    end = (55.0, 27.0)     # (lat, lon) — outside corridor (lon 27.0 > 26.5)
+    start = (55.0, 25.0)  # (lat, lon) — outside corridor (lon 25.0 < 25.5)
+    end = (55.0, 27.0)  # (lat, lon) — outside corridor (lon 27.0 > 26.5)
     corridor_bbox = (54.8, 55.2, 25.5, 26.5)  # (min_lat, max_lat, min_lon, max_lon)
 
     def point_in_bbox(lat, lon, bbox):
@@ -35,18 +34,21 @@ def test_trajectory_intersects_corridor_concept():
         return min_lat <= lat <= max_lat and min_lon <= lon <= max_lon
 
     # ST_Within on endpoints: BOTH miss the corridor
-    assert not point_in_bbox(start[0], start[1], corridor_bbox), \
+    assert not point_in_bbox(start[0], start[1], corridor_bbox), (
         "Start point should be outside the corridor"
-    assert not point_in_bbox(end[0], end[1], corridor_bbox), \
+    )
+    assert not point_in_bbox(end[0], end[1], corridor_bbox), (
         "End point should be outside the corridor"
+    )
 
     # But the trajectory (lon 25.0 → 27.0) crosses the corridor lon range (25.5–26.5)
     def line_crosses_lon_range(lon1, lon2, min_lon, max_lon):
         """Return True if the segment [lon1, lon2] overlaps [min_lon, max_lon]."""
         return min(lon1, lon2) <= max_lon and max(lon1, lon2) >= min_lon
 
-    assert line_crosses_lon_range(start[1], end[1], corridor_bbox[2], corridor_bbox[3]), \
+    assert line_crosses_lon_range(start[1], end[1], corridor_bbox[2], corridor_bbox[3]), (
         "Trajectory should cross the corridor's longitude range"
+    )
 
 
 def test_st_within_fails_pure_transit():
@@ -58,12 +60,14 @@ def test_st_within_fails_pure_transit():
     corridor_min_lat, corridor_max_lat = 54.0, 56.0
     corridor_min_lon, corridor_max_lon = 14.0, 16.0
 
-    gap_start = (57.0, 13.5)   # North of corridor, west
-    gap_end = (53.0, 16.5)     # South of corridor, east
+    gap_start = (57.0, 13.5)  # North of corridor, west
+    gap_end = (53.0, 16.5)  # South of corridor, east
 
     def in_corridor(lat, lon):
-        return (corridor_min_lat <= lat <= corridor_max_lat and
-                corridor_min_lon <= lon <= corridor_max_lon)
+        return (
+            corridor_min_lat <= lat <= corridor_max_lat
+            and corridor_min_lon <= lon <= corridor_max_lon
+        )
 
     assert not in_corridor(*gap_start)
     assert not in_corridor(*gap_end)
@@ -71,8 +75,9 @@ def test_st_within_fails_pure_transit():
     # But the line from (57, 13.5) to (53, 16.5) clearly passes through (55, 15)
     mid_lat = (gap_start[0] + gap_end[0]) / 2
     mid_lon = (gap_start[1] + gap_end[1]) / 2
-    assert in_corridor(mid_lat, mid_lon), \
+    assert in_corridor(mid_lat, mid_lon), (
         "Midpoint of trajectory should be inside corridor even when endpoints are not"
+    )
 
 
 def test_trajectory_does_not_intersect_distant_corridor():
@@ -94,11 +99,13 @@ def test_trajectory_does_not_intersect_distant_corridor():
     lat_overlap = line_crosses_lat_range(start[0], end[0], corridor_bbox[0], corridor_bbox[1])
 
     # Both must overlap for intersection — here lon does not overlap
-    assert not (lon_overlap and lat_overlap), \
+    assert not (lon_overlap and lat_overlap), (
         "North Sea trajectory should not intersect Persian Gulf corridor"
+    )
 
 
 # ── Dark zone correlation tests ───────────────────────────────────────────────
+
 
 def test_dark_zone_correlation():
     """A gap trajectory near a known dark zone region should intersect it."""
@@ -115,6 +122,7 @@ def test_dark_zone_gap_distance_sanity():
 
 
 # ── Haversine distance tests ──────────────────────────────────────────────────
+
 
 def test_haversine_very_small_distance():
     """0.1 degree latitude difference ≈ 6 nautical miles."""
@@ -149,6 +157,7 @@ def test_haversine_one_degree_latitude_equator():
 
 
 # ── WKT bounding-box parsing tests (corridor_correlator helpers) ──────────────
+
 
 def test_parse_wkt_bbox_simple_rectangle():
     """Parse a simple rectangular POLYGON WKT and return correct bounding box."""
@@ -199,6 +208,7 @@ def test_parse_wkt_bbox_empty_string_returns_none():
 
 
 # ── Point-in-bounding-box tests ───────────────────────────────────────────────
+
 
 def test_point_in_bbox_inside():
     """A point clearly inside the bounding box returns True."""

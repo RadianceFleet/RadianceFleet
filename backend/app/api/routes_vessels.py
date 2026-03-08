@@ -1,22 +1,26 @@
 """Vessel, watchlist, merge, and port-call endpoints."""
+
 from __future__ import annotations
 
 import logging
 import urllib.parse
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.config import settings
 from app.api._helpers import (
-    _audit_log, _validate_date_range, _check_upload_size,
-    _compute_data_age_hours, _compute_freshness_warning, limiter,
+    _audit_log,
+    _check_upload_size,
+    _compute_data_age_hours,
+    _compute_freshness_warning,
+    _validate_date_range,
+    limiter,
 )
+from app.config import settings
+from app.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -27,22 +31,23 @@ router = APIRouter()
 # Vessels
 # ---------------------------------------------------------------------------
 
+
 @router.get("/vessels", tags=["vessels"])
 def search_vessels(
-    search: Optional[str] = Query(None, description="MMSI, IMO, or vessel name"),
-    flag: Optional[str] = None,
-    vessel_type: Optional[str] = None,
-    min_dwt: Optional[float] = Query(None, description="Minimum deadweight tonnage"),
-    max_dwt: Optional[float] = Query(None, description="Maximum deadweight tonnage"),
-    min_year_built: Optional[int] = Query(None, description="Minimum year built"),
+    search: str | None = Query(None, description="MMSI, IMO, or vessel name"),
+    flag: str | None = None,
+    vessel_type: str | None = None,
+    min_dwt: float | None = Query(None, description="Minimum deadweight tonnage"),
+    max_dwt: float | None = Query(None, description="Maximum deadweight tonnage"),
+    min_year_built: int | None = Query(None, description="Minimum year built"),
     watchlist_only: bool = Query(False, description="Only vessels on active watchlists"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """Search vessels by MMSI, IMO, or name. Returns summary with last risk score."""
-    from app.models.vessel import Vessel
     from app.models.gap_event import AISGapEvent
+    from app.models.vessel import Vessel
     from app.models.vessel_watchlist import VesselWatchlist
 
     limit = min(limit, settings.MAX_QUERY_LIMIT)
@@ -73,6 +78,7 @@ def search_vessels(
             )
             if absorbed:
                 from app.modules.identity_resolver import resolve_canonical
+
                 canonical_ids = set()
                 for a in absorbed:
                     cid = resolve_canonical(a.vessel_id, db)
@@ -96,7 +102,7 @@ def search_vessels(
     if watchlist_only:
         q = q.filter(
             Vessel.vessel_id.in_(
-                db.query(VesselWatchlist.vessel_id).filter(VesselWatchlist.is_active == True)
+                db.query(VesselWatchlist.vessel_id).filter(VesselWatchlist.is_active)
             )
         )
 
@@ -112,7 +118,7 @@ def search_vessels(
         )
         on_watchlist = (
             db.query(VesselWatchlist)
-            .filter(VesselWatchlist.vessel_id == v.vessel_id, VesselWatchlist.is_active == True)
+            .filter(VesselWatchlist.vessel_id == v.vessel_id, VesselWatchlist.is_active)
             .first()
         ) is not None
         last_risk = last_gap.risk_score if last_gap else None
@@ -142,8 +148,8 @@ def search_vessels(
 @router.get("/vessels/{vessel_id}/track.geojson", tags=["vessels"])
 def get_vessel_track_geojson(
     vessel_id: int,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Export vessel track as GeoJSON FeatureCollection."""
@@ -159,43 +165,47 @@ def get_vessel_track_geojson(
 @router.get("/vessels/{vessel_id}/track.kml", tags=["vessels"])
 def get_vessel_track_kml(
     vessel_id: int,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Export vessel track as KML."""
+    from fastapi.responses import Response
+
     from app.models.vessel import Vessel
     from app.modules.track_export import export_track_kml
-    from fastapi.responses import Response
 
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
     if not vessel:
         raise HTTPException(status_code=404, detail="Vessel not found")
-    kml_str = export_track_kml(db, vessel_id, vessel.name or f"Vessel {vessel_id}", date_from, date_to)
+    kml_str = export_track_kml(
+        db, vessel_id, vessel.name or f"Vessel {vessel_id}", date_from, date_to
+    )
     return Response(content=kml_str, media_type="application/vnd.google-earth.kml+xml")
 
 
 @router.get("/vessels/{vessel_id}", tags=["vessels"])
 def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
     """Full vessel profile including watchlist, spoofing, loitering, STS, gap counts."""
-    from app.models.vessel import Vessel
-    from app.models.vessel_watchlist import VesselWatchlist
-    from app.models.vessel_owner import VesselOwner
-    from app.models.spoofing_anomaly import SpoofingAnomaly
-    from app.models.loitering_event import LoiteringEvent
-    from app.models.sts_transfer import StsTransferEvent
     from app.models.gap_event import AISGapEvent
+    from app.models.loitering_event import LoiteringEvent
+    from app.models.spoofing_anomaly import SpoofingAnomaly
+    from app.models.sts_transfer import StsTransferEvent
+    from app.models.vessel import Vessel
+    from app.models.vessel_owner import VesselOwner
+    from app.models.vessel_watchlist import VesselWatchlist
     from app.schemas.psc_detention import PscDetentionRead
 
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
     if not vessel:
         raise HTTPException(status_code=404, detail="Vessel not found")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # For absorbed (merged) vessels, return minimal detail with merged_into_vessel_id set.
     if vessel.merged_into_vessel_id is not None:
         from app.modules.identity_resolver import resolve_canonical
+
         canonical_id = resolve_canonical(vessel_id, db)
         return {
             "vessel_id": vessel.vessel_id,
@@ -206,9 +216,15 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
             "vessel_type": vessel.vessel_type,
             "deadweight": vessel.deadweight,
             "year_built": vessel.year_built,
-            "ais_class": str(vessel.ais_class.value) if hasattr(vessel.ais_class, "value") else vessel.ais_class,
-            "flag_risk_category": str(vessel.flag_risk_category.value) if hasattr(vessel.flag_risk_category, "value") else vessel.flag_risk_category,
-            "pi_coverage_status": str(vessel.pi_coverage_status.value) if hasattr(vessel.pi_coverage_status, "value") else vessel.pi_coverage_status,
+            "ais_class": str(vessel.ais_class.value)
+            if hasattr(vessel.ais_class, "value")
+            else vessel.ais_class,
+            "flag_risk_category": str(vessel.flag_risk_category.value)
+            if hasattr(vessel.flag_risk_category, "value")
+            else vessel.flag_risk_category,
+            "pi_coverage_status": str(vessel.pi_coverage_status.value)
+            if hasattr(vessel.pi_coverage_status, "value")
+            else vessel.pi_coverage_status,
             "psc_detained_last_12m": vessel.psc_detained_last_12m,
             "psc_detention_count": 0,
             "psc_latest_detention_date": None,
@@ -224,7 +240,9 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
             "sts_events_60d": [],
             "total_gaps_7d": 0,
             "total_gaps_30d": 0,
-            "equasis_url": f"https://www.equasis.org/EquasisWeb/restricted/Search?P_IMO={vessel.imo}" if vessel.imo else None,
+            "equasis_url": f"https://www.equasis.org/EquasisWeb/restricted/Search?P_IMO={vessel.imo}"
+            if vessel.imo
+            else None,
             "opencorporates_url": None,
             "data_age_hours": _compute_data_age_hours(vessel, now),
             "data_freshness_warning": _compute_freshness_warning(vessel, now),
@@ -232,32 +250,52 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
             "watchlist_stub_breakdown": None,
         }
 
-    gaps_7d = db.query(AISGapEvent).filter(
-        AISGapEvent.vessel_id == vessel_id,
-        AISGapEvent.gap_start_utc >= now - timedelta(days=7),
-    ).count()
-    gaps_30d = db.query(AISGapEvent).filter(
-        AISGapEvent.vessel_id == vessel_id,
-        AISGapEvent.gap_start_utc >= now - timedelta(days=30),
-    ).count()
-    watchlist_entries = db.query(VesselWatchlist).filter(
-        VesselWatchlist.vessel_id == vessel_id
-    ).all()
-    spoofing_30d = db.query(SpoofingAnomaly).filter(
-        SpoofingAnomaly.vessel_id == vessel_id,
-        SpoofingAnomaly.start_time_utc >= now - timedelta(days=30),
-    ).all()
-    loitering_30d = db.query(LoiteringEvent).filter(
-        LoiteringEvent.vessel_id == vessel_id,
-        LoiteringEvent.start_time_utc >= now - timedelta(days=30),
-    ).all()
-    sts_60d = db.query(StsTransferEvent).filter(
-        or_(
-            StsTransferEvent.vessel_1_id == vessel_id,
-            StsTransferEvent.vessel_2_id == vessel_id,
-        ),
-        StsTransferEvent.start_time_utc >= now - timedelta(days=60),
-    ).all()
+    gaps_7d = (
+        db.query(AISGapEvent)
+        .filter(
+            AISGapEvent.vessel_id == vessel_id,
+            AISGapEvent.gap_start_utc >= now - timedelta(days=7),
+        )
+        .count()
+    )
+    gaps_30d = (
+        db.query(AISGapEvent)
+        .filter(
+            AISGapEvent.vessel_id == vessel_id,
+            AISGapEvent.gap_start_utc >= now - timedelta(days=30),
+        )
+        .count()
+    )
+    watchlist_entries = (
+        db.query(VesselWatchlist).filter(VesselWatchlist.vessel_id == vessel_id).all()
+    )
+    spoofing_30d = (
+        db.query(SpoofingAnomaly)
+        .filter(
+            SpoofingAnomaly.vessel_id == vessel_id,
+            SpoofingAnomaly.start_time_utc >= now - timedelta(days=30),
+        )
+        .all()
+    )
+    loitering_30d = (
+        db.query(LoiteringEvent)
+        .filter(
+            LoiteringEvent.vessel_id == vessel_id,
+            LoiteringEvent.start_time_utc >= now - timedelta(days=30),
+        )
+        .all()
+    )
+    sts_60d = (
+        db.query(StsTransferEvent)
+        .filter(
+            or_(
+                StsTransferEvent.vessel_1_id == vessel_id,
+                StsTransferEvent.vessel_2_id == vessel_id,
+            ),
+            StsTransferEvent.start_time_utc >= now - timedelta(days=60),
+        )
+        .all()
+    )
 
     # PSC detention records (safe for mock objects)
     try:
@@ -272,7 +310,9 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         equasis_url = f"https://www.equasis.org/EquasisWeb/restricted/Search?P_IMO={vessel.imo}"
     owner = db.query(VesselOwner).filter(VesselOwner.vessel_id == vessel_id).first()
     if owner and owner.owner_name and isinstance(owner.owner_name, str):
-        opencorporates_url = f"https://opencorporates.com/companies?q={urllib.parse.quote(owner.owner_name)}"
+        opencorporates_url = (
+            f"https://opencorporates.com/companies?q={urllib.parse.quote(owner.owner_name)}"
+        )
 
     return {
         "vessel_id": vessel.vessel_id,
@@ -283,12 +323,20 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         "vessel_type": vessel.vessel_type,
         "deadweight": vessel.deadweight,
         "year_built": vessel.year_built,
-        "ais_class": str(vessel.ais_class.value) if hasattr(vessel.ais_class, "value") else vessel.ais_class,
-        "flag_risk_category": str(vessel.flag_risk_category.value) if hasattr(vessel.flag_risk_category, "value") else vessel.flag_risk_category,
-        "pi_coverage_status": str(vessel.pi_coverage_status.value) if hasattr(vessel.pi_coverage_status, "value") else vessel.pi_coverage_status,
+        "ais_class": str(vessel.ais_class.value)
+        if hasattr(vessel.ais_class, "value")
+        else vessel.ais_class,
+        "flag_risk_category": str(vessel.flag_risk_category.value)
+        if hasattr(vessel.flag_risk_category, "value")
+        else vessel.flag_risk_category,
+        "pi_coverage_status": str(vessel.pi_coverage_status.value)
+        if hasattr(vessel.pi_coverage_status, "value")
+        else vessel.pi_coverage_status,
         "psc_detained_last_12m": vessel.psc_detained_last_12m,
         "psc_detention_count": len(_psc_dets),
-        "psc_latest_detention_date": max(d.detention_date for d in _psc_dets).isoformat() if _psc_dets else None,
+        "psc_latest_detention_date": max(d.detention_date for d in _psc_dets).isoformat()
+        if _psc_dets
+        else None,
         "psc_detentions": [PscDetentionRead.model_validate(d).model_dump() for d in _psc_dets[:10]],
         "mmsi_first_seen_utc": vessel.mmsi_first_seen_utc,
         "vessel_laid_up_30d": vessel.vessel_laid_up_30d,
@@ -296,23 +344,45 @@ def get_vessel_detail(vessel_id: int, db: Session = Depends(get_db)):
         "vessel_laid_up_in_sts_zone": vessel.vessel_laid_up_in_sts_zone,
         "merged_into_vessel_id": None,
         "watchlist_entries": [
-            {"watchlist_entry_id": w.watchlist_entry_id, "watchlist_source": w.watchlist_source,
-             "reason": w.reason, "date_listed": w.date_listed, "is_active": w.is_active}
+            {
+                "watchlist_entry_id": w.watchlist_entry_id,
+                "watchlist_source": w.watchlist_source,
+                "reason": w.reason,
+                "date_listed": w.date_listed,
+                "is_active": w.is_active,
+            }
             for w in watchlist_entries
         ],
         "spoofing_anomalies_30d": [
-            {"anomaly_id": s.anomaly_id, "anomaly_type": str(s.anomaly_type.value) if hasattr(s.anomaly_type, "value") else s.anomaly_type,
-             "start_time_utc": s.start_time_utc, "risk_score_component": s.risk_score_component}
+            {
+                "anomaly_id": s.anomaly_id,
+                "anomaly_type": str(s.anomaly_type.value)
+                if hasattr(s.anomaly_type, "value")
+                else s.anomaly_type,
+                "start_time_utc": s.start_time_utc,
+                "risk_score_component": s.risk_score_component,
+            }
             for s in spoofing_30d
         ],
         "loitering_events_30d": [
-            {"loiter_id": le.loiter_id, "start_time_utc": le.start_time_utc,
-             "duration_hours": le.duration_hours, "corridor_id": le.corridor_id}
+            {
+                "loiter_id": le.loiter_id,
+                "start_time_utc": le.start_time_utc,
+                "duration_hours": le.duration_hours,
+                "corridor_id": le.corridor_id,
+            }
             for le in loitering_30d
         ],
         "sts_events_60d": [
-            {"sts_id": s.sts_id, "vessel_1_id": s.vessel_1_id, "vessel_2_id": s.vessel_2_id,
-             "start_time_utc": s.start_time_utc, "detection_type": str(s.detection_type.value) if hasattr(s.detection_type, "value") else s.detection_type}
+            {
+                "sts_id": s.sts_id,
+                "vessel_1_id": s.vessel_1_id,
+                "vessel_2_id": s.vessel_2_id,
+                "start_time_utc": s.start_time_utc,
+                "detection_type": str(s.detection_type.value)
+                if hasattr(s.detection_type, "value")
+                else s.detection_type,
+            }
             for s in sts_60d
         ],
         "total_gaps_7d": gaps_7d,
@@ -332,9 +402,12 @@ def get_vessel_psc_detentions(vessel_id: int, db: Session = Depends(get_db)):
     from app.models.psc_detention import PscDetention
     from app.schemas.psc_detention import PscDetentionRead
 
-    detentions = db.query(PscDetention).filter(
-        PscDetention.vessel_id == vessel_id
-    ).order_by(PscDetention.detention_date.desc()).all()
+    detentions = (
+        db.query(PscDetention)
+        .filter(PscDetention.vessel_id == vessel_id)
+        .order_by(PscDetention.detention_date.desc())
+        .all()
+    )
 
     return [PscDetentionRead.model_validate(d).model_dump() for d in detentions]
 
@@ -342,8 +415,8 @@ def get_vessel_psc_detentions(vessel_id: int, db: Session = Depends(get_db)):
 @router.get("/vessels/{vessel_id}/alerts", tags=["vessels"])
 def get_vessel_alerts(
     vessel_id: int,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     sort_by: str = Query("gap_start_utc", description="gap_start_utc or risk_score"),
     sort_order: str = Query("desc"),
     db: Session = Depends(get_db),
@@ -354,9 +427,14 @@ def get_vessel_alerts(
     _validate_date_range(date_from, date_to)
     q = db.query(AISGapEvent).filter(AISGapEvent.vessel_id == vessel_id)
     if date_from:
-        q = q.filter(AISGapEvent.gap_start_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            AISGapEvent.gap_start_utc >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(AISGapEvent.gap_start_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            AISGapEvent.gap_start_utc
+            <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     sort_col = AISGapEvent.gap_start_utc if sort_by == "gap_start_utc" else AISGapEvent.risk_score
     q = q.order_by(sort_col.desc() if sort_order == "desc" else sort_col.asc())
     results = q.all()
@@ -394,7 +472,7 @@ def get_vessel_watchlist_entries(vessel_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Vessel not found")
     entries = (
         db.query(VesselWatchlist)
-        .filter(VesselWatchlist.vessel_id == vessel_id, VesselWatchlist.is_active == True)
+        .filter(VesselWatchlist.vessel_id == vessel_id, VesselWatchlist.is_active)
         .all()
     )
     return [WatchlistEntryRead.model_validate(e) for e in entries]
@@ -403,8 +481,8 @@ def get_vessel_watchlist_entries(vessel_id: int, db: Session = Depends(get_db)):
 @router.get("/vessels/{vessel_id}/timeline", tags=["vessels"])
 def get_vessel_timeline_endpoint(
     vessel_id: int,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
@@ -420,7 +498,9 @@ def get_vessel_timeline_endpoint(
 
     start_dt = datetime(date_from.year, date_from.month, date_from.day) if date_from else None
     end_dt = datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59) if date_to else None
-    events = get_vessel_timeline(db, vessel_id, limit=limit, offset=offset, start_dt=start_dt, end_dt=end_dt)
+    events = get_vessel_timeline(
+        db, vessel_id, limit=limit, offset=offset, start_dt=start_dt, end_dt=end_dt
+    )
     return {"vessel_id": vessel_id, "events": events, "count": len(events)}
 
 
@@ -440,20 +520,23 @@ def get_vessel_aliases_endpoint(vessel_id: int, db: Session = Depends(get_db)):
 
 # ── Ownership verification (Phase C15) ───────────────────────────────────────
 
+
 class OwnerUpdateRequest(BaseModel):
-    owner_name: Optional[str] = None
-    is_sanctioned: Optional[bool] = None
-    source_url: Optional[str] = None
-    notes: Optional[str] = None
-    verified_by: Optional[str] = None
+    owner_name: str | None = None
+    is_sanctioned: bool | None = None
+    source_url: str | None = None
+    notes: str | None = None
+    verified_by: str | None = None
 
 
 @router.patch("/vessels/{vessel_id}/owner", tags=["vessels"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def update_vessel_owner(request: Request, vessel_id: int, body: OwnerUpdateRequest, db: Session = Depends(get_db)):
+def update_vessel_owner(
+    request: Request, vessel_id: int, body: OwnerUpdateRequest, db: Session = Depends(get_db)
+):
     """Update or create vessel ownership verification record."""
-    from app.models.vessel_owner import VesselOwner
     from app.models.vessel import Vessel
+    from app.models.vessel_owner import VesselOwner
 
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
     if not vessel:
@@ -474,7 +557,7 @@ def update_vessel_owner(request: Request, vessel_id: int, body: OwnerUpdateReque
         owner.verification_notes = body.notes
     if body.verified_by is not None:
         owner.verified_by = body.verified_by
-        owner.verified_at = datetime.now(timezone.utc)
+        owner.verified_at = datetime.now(UTC)
 
     db.commit()
     return {"status": "updated", "vessel_id": vessel_id}
@@ -482,11 +565,15 @@ def update_vessel_owner(request: Request, vessel_id: int, body: OwnerUpdateReque
 
 # ── Paid verification (Phase D17-19) ─────────────────────────────────────────
 
+
 @router.post("/vessels/{vessel_id}/verify", tags=["vessels"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def verify_vessel_endpoint(request: Request, vessel_id: int, provider: str = "skylight", db: Session = Depends(get_db)):
+def verify_vessel_endpoint(
+    request: Request, vessel_id: int, provider: str = "skylight", db: Session = Depends(get_db)
+):
     """Trigger pay-per-query verification for a vessel."""
     from app.modules.paid_verification import verify_vessel
+
     result = verify_vessel(db, vessel_id, provider_name=provider)
     db.commit()
     return {
@@ -502,6 +589,7 @@ def verify_vessel_endpoint(request: Request, vessel_id: int, provider: str = "sk
 def verification_budget(db: Session = Depends(get_db)):
     """Show current verification budget status."""
     from app.modules.paid_verification import get_budget_status
+
     return get_budget_status(db)
 
 
@@ -524,8 +612,14 @@ def add_to_watchlist(body: WatchlistAddRequest, request: Request, db: Session = 
         raise HTTPException(status_code=400, detail="vessel_id required")
 
     VALID_WATCHLIST_SOURCES = {
-        "OFAC_SDN", "EU_COUNCIL", "KSE_SHADOW", "OPENSANCTIONS",
-        "FLEETLEAKS", "UKRAINE_GUR", "LOCAL_INVESTIGATION", "MANUAL",
+        "OFAC_SDN",
+        "EU_COUNCIL",
+        "KSE_SHADOW",
+        "OPENSANCTIONS",
+        "FLEETLEAKS",
+        "UKRAINE_GUR",
+        "LOCAL_INVESTIGATION",
+        "MANUAL",
     }
     source = (body.watchlist_source or body.source or "LOCAL_INVESTIGATION").upper()
     if source not in VALID_WATCHLIST_SOURCES:
@@ -545,9 +639,17 @@ def add_to_watchlist(body: WatchlistAddRequest, request: Request, db: Session = 
         is_active=True,
     )
     db.add(entry)
-    _audit_log(db, "add", "watchlist", vessel_id, details={
-        "reason": body.reason, "source": body.source,
-    }, request=request)
+    _audit_log(
+        db,
+        "add",
+        "watchlist",
+        vessel_id,
+        details={
+            "reason": body.reason,
+            "source": body.source,
+        },
+        request=request,
+    )
     db.commit()
     return {"watchlist_entry_id": entry.watchlist_entry_id, "status": "added"}
 
@@ -560,9 +662,8 @@ def list_watchlist(
 ):
     """List all watchlist entries (paginated)."""
     from app.models.vessel_watchlist import VesselWatchlist
-    q = db.query(VesselWatchlist).filter(
-        VesselWatchlist.is_active == True
-    )
+
+    q = db.query(VesselWatchlist).filter(VesselWatchlist.is_active)
     total = q.count()
     items = q.offset(skip).limit(limit).all()
     return {"items": items, "total": total}
@@ -573,9 +674,12 @@ def list_watchlist(
 def remove_from_watchlist(watchlist_entry_id: int, request: Request, db: Session = Depends(get_db)):
     """Remove a watchlist entry (soft delete)."""
     from app.models.vessel_watchlist import VesselWatchlist
-    entry = db.query(VesselWatchlist).filter(
-        VesselWatchlist.watchlist_entry_id == watchlist_entry_id
-    ).first()
+
+    entry = (
+        db.query(VesselWatchlist)
+        .filter(VesselWatchlist.watchlist_entry_id == watchlist_entry_id)
+        .first()
+    )
     if not entry:
         raise HTTPException(status_code=404, detail="Watchlist entry not found")
     entry.is_active = False
@@ -594,9 +698,10 @@ async def import_watchlist_file(
 ):
     """Batch-import watchlist from CSV file. source: ofac | kse | opensanctions"""
     _check_upload_size(file)
-    from app.modules.watchlist_loader import load_ofac_sdn, load_kse_list, load_opensanctions
-    import tempfile
     import os
+    import tempfile
+
+    from app.modules.watchlist_loader import load_kse_list, load_ofac_sdn, load_opensanctions
 
     valid_sources = {"ofac", "kse", "opensanctions"}
     if source not in valid_sources:
@@ -615,9 +720,12 @@ async def import_watchlist_file(
 
 # ── Merge Candidate & Identity Merge Endpoints ──────────────────────────────
 
+
 @router.get("/merge-candidates", tags=["merge"])
 def list_merge_candidates(
-    status: Optional[str] = Query(None, description="Filter by status: pending, auto_merged, analyst_merged, rejected"),
+    status: str | None = Query(
+        None, description="Filter by status: pending, auto_merged, analyst_merged, rejected"
+    ),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -646,20 +754,30 @@ def list_merge_candidates(
     for c in candidates:
         va = vessel_map.get(c.vessel_a_id)
         vb = vessel_map.get(c.vessel_b_id)
-        results.append({
-            "candidate_id": c.candidate_id,
-            "vessel_a": {"vessel_id": c.vessel_a_id, "mmsi": va.mmsi if va else None, "name": va.name if va else None},
-            "vessel_b": {"vessel_id": c.vessel_b_id, "mmsi": vb.mmsi if vb else None, "name": vb.name if vb else None},
-            "distance_nm": c.distance_nm,
-            "time_delta_hours": c.time_delta_hours,
-            "confidence_score": c.confidence_score,
-            "match_reasons": c.match_reasons_json,
-            "satellite_corroboration": c.satellite_corroboration_json,
-            "status": c.status,
-            "created_at": c.created_at.isoformat() if c.created_at else None,
-            "resolved_at": c.resolved_at.isoformat() if c.resolved_at else None,
-            "resolved_by": c.resolved_by,
-        })
+        results.append(
+            {
+                "candidate_id": c.candidate_id,
+                "vessel_a": {
+                    "vessel_id": c.vessel_a_id,
+                    "mmsi": va.mmsi if va else None,
+                    "name": va.name if va else None,
+                },
+                "vessel_b": {
+                    "vessel_id": c.vessel_b_id,
+                    "mmsi": vb.mmsi if vb else None,
+                    "name": vb.name if vb else None,
+                },
+                "distance_nm": c.distance_nm,
+                "time_delta_hours": c.time_delta_hours,
+                "confidence_score": c.confidence_score,
+                "match_reasons": c.match_reasons_json,
+                "satellite_corroboration": c.satellite_corroboration_json,
+                "status": c.status,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "resolved_at": c.resolved_at.isoformat() if c.resolved_at else None,
+                "resolved_by": c.resolved_by,
+            }
+        )
     return {"items": results, "total": total}
 
 
@@ -680,17 +798,29 @@ def get_merge_candidate(candidate_id: int, db: Session = Depends(get_db)):
         if not v:
             return None
         return {
-            "vessel_id": v.vessel_id, "mmsi": v.mmsi, "name": v.name,
-            "flag": v.flag, "vessel_type": v.vessel_type,
-            "deadweight": v.deadweight, "year_built": v.year_built,
+            "vessel_id": v.vessel_id,
+            "mmsi": v.mmsi,
+            "name": v.name,
+            "flag": v.flag,
+            "vessel_type": v.vessel_type,
+            "deadweight": v.deadweight,
+            "year_built": v.year_built,
         }
 
     return {
         "candidate_id": c.candidate_id,
         "vessel_a": _vessel_summary(va),
         "vessel_b": _vessel_summary(vb),
-        "vessel_a_last_position": {"lat": c.vessel_a_last_lat, "lon": c.vessel_a_last_lon, "time": c.vessel_a_last_time.isoformat() if c.vessel_a_last_time else None},
-        "vessel_b_first_position": {"lat": c.vessel_b_first_lat, "lon": c.vessel_b_first_lon, "time": c.vessel_b_first_time.isoformat() if c.vessel_b_first_time else None},
+        "vessel_a_last_position": {
+            "lat": c.vessel_a_last_lat,
+            "lon": c.vessel_a_last_lon,
+            "time": c.vessel_a_last_time.isoformat() if c.vessel_a_last_time else None,
+        },
+        "vessel_b_first_position": {
+            "lat": c.vessel_b_first_lat,
+            "lon": c.vessel_b_first_lon,
+            "time": c.vessel_b_first_time.isoformat() if c.vessel_b_first_time else None,
+        },
         "distance_nm": c.distance_nm,
         "time_delta_hours": c.time_delta_hours,
         "confidence_score": c.confidence_score,
@@ -711,8 +841,8 @@ def confirm_merge_candidate(
     db: Session = Depends(get_db),
 ):
     """Analyst confirms a merge candidate — executes the merge."""
-    from app.models.merge_candidate import MergeCandidate
     from app.models.base import MergeCandidateStatusEnum
+    from app.models.merge_candidate import MergeCandidate
     from app.modules.identity_resolver import execute_merge
 
     c = db.query(MergeCandidate).get(candidate_id)
@@ -725,7 +855,9 @@ def confirm_merge_candidate(
     absorbed_id = max(c.vessel_a_id, c.vessel_b_id)
 
     result = execute_merge(
-        db, canonical_id, absorbed_id,
+        db,
+        canonical_id,
+        absorbed_id,
         reason=f"Analyst confirmed candidate {candidate_id}",
         merged_by="analyst",
         candidate_id=candidate_id,
@@ -736,7 +868,9 @@ def confirm_merge_candidate(
         c.status = MergeCandidateStatusEnum.ANALYST_MERGED
         c.resolved_at = datetime.utcnow()
         c.resolved_by = "analyst"
-        _audit_log(db, "merge_candidate_confirmed", "merge_candidate", candidate_id, request=request)
+        _audit_log(
+            db, "merge_candidate_confirmed", "merge_candidate", candidate_id, request=request
+        )
         db.commit()
     else:
         raise HTTPException(status_code=400, detail=result.get("error", "Merge failed"))
@@ -752,8 +886,8 @@ def reject_merge_candidate(
     db: Session = Depends(get_db),
 ):
     """Analyst rejects a merge candidate."""
-    from app.models.merge_candidate import MergeCandidate
     from app.models.base import MergeCandidateStatusEnum
+    from app.models.merge_candidate import MergeCandidate
 
     c = db.query(MergeCandidate).get(candidate_id)
     if not c:
@@ -783,7 +917,9 @@ def manual_merge_vessels(
     from app.modules.identity_resolver import execute_merge
 
     result = execute_merge(
-        db, vessel_a_id, vessel_b_id,
+        db,
+        vessel_a_id,
+        vessel_b_id,
         reason=reason,
         merged_by="analyst",
         commit=False,
@@ -800,16 +936,17 @@ def manual_merge_vessels(
 # Port Calls
 # ---------------------------------------------------------------------------
 
+
 @router.get("/port-calls/{vessel_id}", tags=["port-calls"])
 def get_port_calls(
     vessel_id: int,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """List port calls for a vessel."""
-    from app.models.port_call import PortCall
     from app.models.port import Port
+    from app.models.port_call import PortCall
     from app.models.vessel import Vessel
 
     _validate_date_range(date_from, date_to)
@@ -819,23 +956,29 @@ def get_port_calls(
 
     q = db.query(PortCall).filter(PortCall.vessel_id == vessel_id)
     if date_from:
-        q = q.filter(PortCall.arrival_utc >= datetime(date_from.year, date_from.month, date_from.day))
+        q = q.filter(
+            PortCall.arrival_utc >= datetime(date_from.year, date_from.month, date_from.day)
+        )
     if date_to:
-        q = q.filter(PortCall.arrival_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59))
+        q = q.filter(
+            PortCall.arrival_utc <= datetime(date_to.year, date_to.month, date_to.day, 23, 59, 59)
+        )
     port_calls = q.order_by(PortCall.arrival_utc.desc()).all()
 
     items = []
     for pc in port_calls:
         port = db.query(Port).filter(Port.port_id == pc.port_id).first() if pc.port_id else None
-        items.append({
-            "port_call_id": pc.port_call_id,
-            "vessel_id": pc.vessel_id,
-            "port_id": pc.port_id,
-            "port_name": port.name if port else getattr(pc, "raw_port_name", None),
-            "arrival_utc": pc.arrival_utc.isoformat() if pc.arrival_utc else None,
-            "departure_utc": pc.departure_utc.isoformat() if pc.departure_utc else None,
-            "source": pc.source if hasattr(pc, "source") else None,
-        })
+        items.append(
+            {
+                "port_call_id": pc.port_call_id,
+                "vessel_id": pc.vessel_id,
+                "port_id": pc.port_id,
+                "port_name": port.name if port else getattr(pc, "raw_port_name", None),
+                "arrival_utc": pc.arrival_utc.isoformat() if pc.arrival_utc else None,
+                "departure_utc": pc.departure_utc.isoformat() if pc.departure_utc else None,
+                "source": pc.source if hasattr(pc, "source") else None,
+            }
+        )
 
     return {"vessel_id": vessel_id, "items": items, "total": len(items)}
 

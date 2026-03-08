@@ -1,4 +1,5 @@
 """PSC detention CLI sub-commands — import, sync, stats."""
+
 from __future__ import annotations
 
 import typer
@@ -20,7 +21,7 @@ def psc_import(
 ):
     """Import PSC detention records from FTM or EMSA sources."""
     from app.database import SessionLocal
-    from app.modules.psc_loader import load_psc_ftm, load_emsa_bans
+    from app.modules.psc_loader import load_emsa_bans, load_psc_ftm
 
     db = SessionLocal()
     try:
@@ -63,13 +64,16 @@ def psc_sync():
 @psc_app.command("stats")
 def psc_stats():
     """Detention statistics by MOU source."""
+    from sqlalchemy import func
+
     from app.database import SessionLocal
     from app.models.psc_detention import PscDetention
-    from sqlalchemy import func
 
     db = SessionLocal()
     try:
-        rows = db.query(PscDetention.mou_source, func.count()).group_by(PscDetention.mou_source).all()
+        rows = (
+            db.query(PscDetention.mou_source, func.count()).group_by(PscDetention.mou_source).all()
+        )
         total = sum(r[1] for r in rows)
         typer.echo(f"Total detentions: {total}")
         for source, count in rows:

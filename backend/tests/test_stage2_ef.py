@@ -492,12 +492,12 @@ class TestIntegration:
 
     def test_expected_sections_include_ism_continuity(self):
         """ism_continuity is in _EXPECTED_SECTIONS."""
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
         assert "ism_continuity" in _EXPECTED_SECTIONS
 
     def test_expected_sections_include_rename_velocity(self):
         """rename_velocity is in _EXPECTED_SECTIONS."""
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
         assert "rename_velocity" in _EXPECTED_SECTIONS
 
     def test_feature_flags_exist(self):

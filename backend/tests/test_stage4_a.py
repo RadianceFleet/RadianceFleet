@@ -13,17 +13,16 @@ Covers:
   - Config integration (flags exist, defaults false)
   - Risk scoring integration
 """
+
 from __future__ import annotations
 
 import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_merge_candidate(
     candidate_id: int,
@@ -39,7 +38,7 @@ def _make_merge_candidate(
     mc.vessel_a_id = vessel_a_id
     mc.vessel_b_id = vessel_b_id
     mc.confidence_score = confidence_score
-    mc.created_at = created_at or datetime.datetime(2025, 6, 1, tzinfo=datetime.timezone.utc)
+    mc.created_at = created_at or datetime.datetime(2025, 6, 1, tzinfo=datetime.UTC)
     mc.status = MagicMock()
     mc.status.value = status_value
     return mc
@@ -73,7 +72,7 @@ def _make_chain(
     mc.confidence = confidence
     mc.confidence_band = confidence_band
     mc.evidence_json = evidence_json or {}
-    mc.created_at = datetime.datetime(2025, 6, 1, tzinfo=datetime.timezone.utc)
+    mc.created_at = datetime.datetime(2025, 6, 1, tzinfo=datetime.UTC)
     return mc
 
 
@@ -150,25 +149,35 @@ def _make_scoring_db(chain_list=None):
 # Model tests
 # ---------------------------------------------------------------------------
 
+
 class TestMergeChainModel:
     """Test MergeChain model can be imported and has expected fields."""
 
     def test_import_model(self):
         from app.models.merge_chain import MergeChain
+
         assert MergeChain.__tablename__ == "merge_chains"
 
     def test_model_columns(self):
         from app.models.merge_chain import MergeChain
+
         col_names = {c.name for c in MergeChain.__table__.columns}
         expected = {
-            "chain_id", "vessel_ids_json", "links_json", "chain_length",
-            "confidence", "confidence_band", "created_at", "evidence_json",
+            "chain_id",
+            "vessel_ids_json",
+            "links_json",
+            "chain_length",
+            "confidence",
+            "confidence_band",
+            "created_at",
+            "evidence_json",
         }
         assert expected.issubset(col_names)
 
     def test_model_in_init(self):
         """MergeChain is registered in models __init__."""
         from app.models import MergeChain
+
         assert MergeChain is not None
 
 
@@ -176,17 +185,20 @@ class TestMergeChainModel:
 # Feature flag tests
 # ---------------------------------------------------------------------------
 
+
 class TestFeatureFlags:
     """Test config flags exist and default to True."""
 
     def test_merge_chain_detection_flag_exists(self):
         from app.config import Settings
+
         s = Settings(DATABASE_URL="sqlite:///test.db")
         assert hasattr(s, "MERGE_CHAIN_DETECTION_ENABLED")
         assert s.MERGE_CHAIN_DETECTION_ENABLED is True
 
     def test_merge_chain_scoring_flag_exists(self):
         from app.config import Settings
+
         s = Settings(DATABASE_URL="sqlite:///test.db")
         assert hasattr(s, "MERGE_CHAIN_SCORING_ENABLED")
         assert s.MERGE_CHAIN_SCORING_ENABLED is True
@@ -195,6 +207,7 @@ class TestFeatureFlags:
 # ---------------------------------------------------------------------------
 # Chain detection tests
 # ---------------------------------------------------------------------------
+
 
 class TestDetectMergeChains:
     """Test detect_merge_chains function."""
@@ -205,6 +218,7 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = False
         db = MagicMock()
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["skipped"] == "feature_disabled"
         assert result["chains_created"] == 0
@@ -216,6 +230,7 @@ class TestDetectMergeChains:
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = []
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
@@ -225,10 +240,12 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
 
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=80,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=70,
-                                  created_at=datetime.datetime(2025, 2, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=80, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=70, created_at=datetime.datetime(2025, 2, 1)
+            ),
         ]
 
         db = MagicMock()
@@ -242,6 +259,7 @@ class TestDetectMergeChains:
         db.query.return_value.filter.return_value.first.return_value = None
 
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 1
 
@@ -251,12 +269,15 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
 
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=90,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=75,
-                                  created_at=datetime.datetime(2025, 2, 1)),
-            _make_merge_candidate(102, 3, 4, confidence_score=60,
-                                  created_at=datetime.datetime(2025, 3, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=90, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=75, created_at=datetime.datetime(2025, 2, 1)
+            ),
+            _make_merge_candidate(
+                102, 3, 4, confidence_score=60, created_at=datetime.datetime(2025, 3, 1)
+            ),
         ]
 
         db = MagicMock()
@@ -266,6 +287,7 @@ class TestDetectMergeChains:
         db.query.return_value.filter.return_value.first.return_value = None
 
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 1
 
@@ -275,10 +297,12 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
 
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=90,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=55,
-                                  created_at=datetime.datetime(2025, 2, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=90, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=55, created_at=datetime.datetime(2025, 2, 1)
+            ),
         ]
 
         db = MagicMock()
@@ -292,6 +316,7 @@ class TestDetectMergeChains:
         db.add.side_effect = lambda obj: added_objects.append(obj)
 
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 1
         # The chain's confidence should be min(90, 55) = 55
@@ -304,10 +329,12 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
 
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=85,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=80,
-                                  created_at=datetime.datetime(2025, 2, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=85, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=80, created_at=datetime.datetime(2025, 2, 1)
+            ),
         ]
 
         db = MagicMock()
@@ -318,6 +345,7 @@ class TestDetectMergeChains:
         db.add.side_effect = lambda obj: None
 
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_by_band"]["HIGH"] == 1
 
@@ -327,10 +355,12 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
 
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=60,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=55,
-                                  created_at=datetime.datetime(2025, 2, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=60, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=55, created_at=datetime.datetime(2025, 2, 1)
+            ),
         ]
 
         db = MagicMock()
@@ -341,6 +371,7 @@ class TestDetectMergeChains:
         db.add.side_effect = lambda obj: None
 
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_by_band"]["MEDIUM"] == 1
 
@@ -350,10 +381,12 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
 
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=50,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=50,
-                                  created_at=datetime.datetime(2025, 2, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=50, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=50, created_at=datetime.datetime(2025, 2, 1)
+            ),
         ]
 
         db = MagicMock()
@@ -364,6 +397,7 @@ class TestDetectMergeChains:
         db.add.side_effect = lambda obj: None
 
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_by_band"]["MEDIUM"] == 1
 
@@ -373,8 +407,9 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
 
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=90,
-                                  created_at=datetime.datetime(2025, 1, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=90, created_at=datetime.datetime(2025, 1, 1)
+            ),
         ]
 
         db = MagicMock()
@@ -382,6 +417,7 @@ class TestDetectMergeChains:
         db.query.return_value.filter.return_value.first.return_value = None
 
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
@@ -391,10 +427,12 @@ class TestDetectMergeChains:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = True
 
         candidates = [
-            _make_merge_candidate(100, 1, 2, confidence_score=80,
-                                  created_at=datetime.datetime(2025, 1, 1)),
-            _make_merge_candidate(101, 2, 3, confidence_score=75,
-                                  created_at=datetime.datetime(2025, 2, 1)),
+            _make_merge_candidate(
+                100, 1, 2, confidence_score=80, created_at=datetime.datetime(2025, 1, 1)
+            ),
+            _make_merge_candidate(
+                101, 2, 3, confidence_score=75, created_at=datetime.datetime(2025, 2, 1)
+            ),
         ]
 
         db = MagicMock()
@@ -405,6 +443,7 @@ class TestDetectMergeChains:
         db.query.return_value.filter.return_value.first.return_value = existing_chain
 
         from app.modules.identity_resolver import detect_merge_chains
+
         result = detect_merge_chains(db)
         assert result["chains_created"] == 0
 
@@ -412,6 +451,7 @@ class TestDetectMergeChains:
 # ---------------------------------------------------------------------------
 # Extended merge pass tests
 # ---------------------------------------------------------------------------
+
 
 class TestExtendedMergePass:
     """Test extended_merge_pass function."""
@@ -422,6 +462,7 @@ class TestExtendedMergePass:
         mock_settings.MERGE_CHAIN_DETECTION_ENABLED = False
         db = MagicMock()
         from app.modules.identity_resolver import extended_merge_pass
+
         result = extended_merge_pass(db)
         assert result["skipped"] == "feature_disabled"
         assert result["extended"] is True
@@ -435,6 +476,7 @@ class TestExtendedMergePass:
         db = MagicMock()
 
         from app.modules.identity_resolver import extended_merge_pass
+
         result = extended_merge_pass(db)
 
         mock_detect.assert_called_once_with(db, max_gap_days=180, require_identity_anchor=True)
@@ -446,13 +488,16 @@ class TestExtendedMergePass:
 # Pipeline wiring tests
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineWiring:
     """Test that Stage 4-A is wired into the pipeline."""
 
     def test_pipeline_source_has_merge_chain_step(self):
         """Check that dark_vessel_discovery.py references merge chain detection."""
         import inspect
+
         from app.modules import dark_vessel_discovery
+
         source = inspect.getsource(dark_vessel_discovery)
         assert "merge_chain_detection" in source
         assert "extended_merge_pass" in source
@@ -460,7 +505,9 @@ class TestPipelineWiring:
     def test_pipeline_feature_gate(self):
         """Merge chain step is gated by MERGE_CHAIN_DETECTION_ENABLED."""
         import inspect
+
         from app.modules import dark_vessel_discovery
+
         source = inspect.getsource(dark_vessel_discovery)
         assert "MERGE_CHAIN_DETECTION_ENABLED" in source
 
@@ -469,12 +516,14 @@ class TestPipelineWiring:
 # Risk scoring integration tests
 # ---------------------------------------------------------------------------
 
+
 class TestMergeChainScoring:
     """Test merge chain scoring in compute_gap_score."""
 
     def test_scoring_yaml_has_merge_chains_section(self):
         """risk_scoring.yaml has merge_chains section (if reachable from CWD)."""
         from app.modules.risk_scoring import reload_scoring_config
+
         cfg = reload_scoring_config()
         # In test environments where config/risk_scoring.yaml is not reachable,
         # the config will be empty -- handle gracefully
@@ -489,7 +538,8 @@ class TestMergeChainScoring:
 
     def test_expected_sections_includes_merge_chains(self):
         """_EXPECTED_SECTIONS includes merge_chains."""
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
+
         assert "merge_chains" in _EXPECTED_SECTIONS
 
     @patch("app.config.settings")
@@ -516,9 +566,14 @@ class TestMergeChainScoring:
         }
 
         gap, vessel = _make_gap_and_vessel()
-        chain = _make_chain(1, [1, 2, 3], chain_length=3, confidence=60.0,
-                            confidence_band="MEDIUM",
-                            evidence_json={"has_scrapped_imo": False})
+        chain = _make_chain(
+            1,
+            [1, 2, 3],
+            chain_length=3,
+            confidence=60.0,
+            confidence_band="MEDIUM",
+            evidence_json={"has_scrapped_imo": False},
+        )
 
         db = _make_scoring_db(chain_list=[chain])
 
@@ -550,9 +605,14 @@ class TestMergeChainScoring:
         }
 
         gap, vessel = _make_gap_and_vessel()
-        chain = _make_chain(1, [1, 2, 3, 4], chain_length=4, confidence=70.0,
-                            confidence_band="MEDIUM",
-                            evidence_json={"has_scrapped_imo": False})
+        chain = _make_chain(
+            1,
+            [1, 2, 3, 4],
+            chain_length=4,
+            confidence=70.0,
+            confidence_band="MEDIUM",
+            evidence_json={"has_scrapped_imo": False},
+        )
 
         db = _make_scoring_db(chain_list=[chain])
 
@@ -614,9 +674,14 @@ class TestMergeChainScoring:
         }
 
         gap, vessel = _make_gap_and_vessel()
-        chain = _make_chain(1, [1, 2, 3], chain_length=3, confidence=80.0,
-                            confidence_band="HIGH",
-                            evidence_json={"has_scrapped_imo": True})
+        chain = _make_chain(
+            1,
+            [1, 2, 3],
+            chain_length=3,
+            confidence=80.0,
+            confidence_band="HIGH",
+            evidence_json={"has_scrapped_imo": True},
+        )
 
         db = _make_scoring_db(chain_list=[chain])
 
@@ -649,9 +714,14 @@ class TestMergeChainScoring:
 
         gap, vessel = _make_gap_and_vessel()
         # Chain exists but vessel_id=1 is NOT in it
-        chain = _make_chain(1, [10, 20, 30], chain_length=3, confidence=80.0,
-                            confidence_band="HIGH",
-                            evidence_json={"has_scrapped_imo": False})
+        chain = _make_chain(
+            1,
+            [10, 20, 30],
+            chain_length=3,
+            confidence=80.0,
+            confidence_band="HIGH",
+            evidence_json={"has_scrapped_imo": False},
+        )
 
         db = _make_scoring_db(chain_list=[chain])
 

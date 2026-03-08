@@ -17,6 +17,7 @@ Algorithm:
 
 Feature-gated by ``settings.FEED_OUTAGE_DETECTION_ENABLED``.
 """
+
 from __future__ import annotations
 
 import logging
@@ -45,6 +46,7 @@ _EVASION_CHECK_HOURS = 6
 
 class _GapCluster(NamedTuple):
     """A cluster of gaps in the same corridor and time window."""
+
     corridor_id: int | None
     window_start: datetime
     gaps: list
@@ -65,14 +67,20 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
     """
     if not settings.FEED_OUTAGE_DETECTION_ENABLED:
         logger.debug("Feed outage detection: disabled — skipping.")
-        return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0,
-                "evasion_excluded": 0, "decoy_rejected": 0}
+        return {
+            "gaps_checked": 0,
+            "outages_detected": 0,
+            "gaps_marked": 0,
+            "evasion_excluded": 0,
+            "decoy_rejected": 0,
+        }
 
     # First-run guard: if no baselines exist and no corridor has been seen,
     # skip feed outage detection entirely — we'd be using raw fallback thresholds
     # with no historical context, which causes massive over-classification.
     try:
         from app.models.corridor_gap_baseline import CorridorGapBaseline
+
         has_baselines = db.query(CorridorGapBaseline).first() is not None
     except Exception:
         has_baselines = False
@@ -89,8 +97,14 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
                 "Feed outage detection: skipping — no baselines and no prior scored corridor gaps. "
                 "Run compute_gap_rate_baseline() first."
             )
-            return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0,
-                    "evasion_excluded": 0, "decoy_rejected": 0, "skipped_reason": "no_baselines"}
+            return {
+                "gaps_checked": 0,
+                "outages_detected": 0,
+                "gaps_marked": 0,
+                "evasion_excluded": 0,
+                "decoy_rejected": 0,
+                "skipped_reason": "no_baselines",
+            }
 
     # Fetch unscored gaps (risk_score == 0 means not yet scored)
     gaps = (
@@ -103,8 +117,13 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
     )
 
     if not gaps:
-        return {"gaps_checked": 0, "outages_detected": 0, "gaps_marked": 0,
-                "evasion_excluded": 0, "decoy_rejected": 0}
+        return {
+            "gaps_checked": 0,
+            "outages_detected": 0,
+            "gaps_marked": 0,
+            "evasion_excluded": 0,
+            "decoy_rejected": 0,
+        }
 
     # Group gaps by (corridor_id, 2h time window)
     clusters = _cluster_gaps(gaps)
@@ -131,16 +150,16 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
 
         if vessel_count >= threshold:
             # E7: Anti-decoy check — reject if too many high-risk vessels
-            high_risk_count = sum(
-                1 for vid in unique_vessels if vid in high_risk_vessel_ids
-            )
+            high_risk_count = sum(1 for vid in unique_vessels if vid in high_risk_vessel_ids)
             if vessel_count > 0 and (high_risk_count / vessel_count) > max_outage_ratio:
                 decoy_rejected += 1
                 logger.info(
                     "Feed outage cluster rejected (decoy): corridor=%s window=%s "
                     "high_risk=%d/%d (%.0f%% > %.0f%% threshold)",
-                    cluster.corridor_id, cluster.window_start,
-                    high_risk_count, vessel_count,
+                    cluster.corridor_id,
+                    cluster.window_start,
+                    high_risk_count,
+                    vessel_count,
                     high_risk_count / vessel_count * 100,
                     max_outage_ratio * 100,
                 )
@@ -154,10 +173,11 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
             if dominant_source is not None:
                 source_outages_detected += 1
                 logger.info(
-                    "Source outage detected: corridor=%s window=%s source=%s "
-                    "(%d gaps)",
-                    cluster.corridor_id, cluster.window_start,
-                    dominant_source, len(cluster.gaps),
+                    "Source outage detected: corridor=%s window=%s source=%s (%d gaps)",
+                    cluster.corridor_id,
+                    cluster.window_start,
+                    dominant_source,
+                    len(cluster.gaps),
                 )
 
             outages_detected += 1
@@ -177,8 +197,12 @@ def detect_feed_outages(db: Session, max_outage_ratio: float = 0.3) -> dict:
     logger.info(
         "Feed outage detection: checked %d gaps, found %d outages (%d source-specific), "
         "marked %d gaps, evasion-excluded %d, decoy-rejected %d clusters.",
-        len(gaps), outages_detected, source_outages_detected, gaps_marked,
-        evasion_excluded, decoy_rejected,
+        len(gaps),
+        outages_detected,
+        source_outages_detected,
+        gaps_marked,
+        evasion_excluded,
+        decoy_rejected,
     )
     return {
         "gaps_checked": len(gaps),
@@ -206,28 +230,37 @@ def _has_evasion_signals(db: Session, gap: AISGapEvent) -> bool:
     try:
         from app.models.spoofing_anomaly import SpoofingAnomaly
 
-        spoof_count = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == gap.vessel_id,
-            SpoofingAnomaly.start_time_utc <= time_hi,
-            SpoofingAnomaly.start_time_utc >= time_lo,
-        ).count()
+        spoof_count = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == gap.vessel_id,
+                SpoofingAnomaly.start_time_utc <= time_hi,
+                SpoofingAnomaly.start_time_utc >= time_lo,
+            )
+            .count()
+        )
         if spoof_count > 0:
             return True
     except Exception:
         logger.warning("SpoofingAnomaly query failed for vessel %s", gap.vessel_id, exc_info=True)
 
     try:
-        from app.models.sts_transfer import StsTransferEvent
         from sqlalchemy import or_
 
-        sts_count = db.query(StsTransferEvent).filter(
-            or_(
-                StsTransferEvent.vessel_1_id == gap.vessel_id,
-                StsTransferEvent.vessel_2_id == gap.vessel_id,
-            ),
-            StsTransferEvent.start_time_utc <= time_hi,
-            StsTransferEvent.end_time_utc >= time_lo,
-        ).count()
+        from app.models.sts_transfer import StsTransferEvent
+
+        sts_count = (
+            db.query(StsTransferEvent)
+            .filter(
+                or_(
+                    StsTransferEvent.vessel_1_id == gap.vessel_id,
+                    StsTransferEvent.vessel_2_id == gap.vessel_id,
+                ),
+                StsTransferEvent.start_time_utc <= time_hi,
+                StsTransferEvent.end_time_utc >= time_lo,
+            )
+            .count()
+        )
         if sts_count > 0:
             return True
     except Exception:
@@ -244,12 +277,7 @@ def _get_high_risk_vessel_ids(db: Session) -> set[int]:
     """
     high_risk: set[int] = set()
     try:
-        rows = (
-            db.query(AISGapEvent.vessel_id)
-            .filter(AISGapEvent.risk_score > 50)
-            .distinct()
-            .all()
-        )
+        rows = db.query(AISGapEvent.vessel_id).filter(AISGapEvent.risk_score > 50).distinct().all()
         high_risk = {r[0] for r in rows}
     except Exception:
         pass
@@ -297,10 +325,7 @@ def _cluster_gaps(gaps: list[AISGapEvent]) -> list[_GapCluster]:
         key = (gap.corridor_id, window_start)
         buckets[key].append(gap)
 
-    return [
-        _GapCluster(corridor_id=k[0], window_start=k[1], gaps=v)
-        for k, v in buckets.items()
-    ]
+    return [_GapCluster(corridor_id=k[0], window_start=k[1], gaps=v) for k, v in buckets.items()]
 
 
 def tag_coverage_quality(db: Session) -> dict:
@@ -361,10 +386,11 @@ def _get_threshold(db: Session, corridor_id: int | None, reference_time: datetim
     """
     if corridor_id is None:
         from app.models.gap_event import AISGapEvent as _GE
+
         cutoff_7d = reference_time - timedelta(days=7)
         null_vessel_count = (
             db.query(_GE.vessel_id)
-            .filter(_GE.corridor_id == None, _GE.gap_start_utc >= cutoff_7d)
+            .filter(_GE.corridor_id == None, _GE.gap_start_utc >= cutoff_7d)  # noqa: E711
             .distinct()
             .count()
         )
@@ -394,11 +420,9 @@ def _get_threshold(db: Session, corridor_id: int | None, reference_time: datetim
     # _FALLBACK_VESSEL_RATIO of them (minimum _MIN_VESSELS_FOR_OUTAGE).
     try:
         from app.models.gap_event import AISGapEvent as _GE
+
         corridor_vessel_count = (
-            db.query(_GE.vessel_id)
-            .filter(_GE.corridor_id == corridor_id)
-            .distinct()
-            .count()
+            db.query(_GE.vessel_id).filter(_GE.corridor_id == corridor_id).distinct().count()
         )
         if corridor_vessel_count > 0:
             proportional = max(

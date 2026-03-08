@@ -6,10 +6,10 @@ ports (e.g., Fujairah, Sohar, Ceuta) to disguise Russian-origin petroleum.
 This detector scans PortCall sequences per vessel for suspicious 2-hop and
 3-hop patterns.
 """
+
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -29,17 +29,21 @@ logger = logging.getLogger(__name__)
 # ── Sanctioned destination countries (simplified list) ────────────────────
 # Countries under comprehensive oil import sanctions or where deliveries
 # would require sanctions circumvention.
-_SANCTIONED_DESTINATIONS: frozenset[str] = frozenset({
-    "KP",  # North Korea
-    "SY",  # Syria
-    "IR",  # Iran
-    "CU",  # Cuba
-    "VE",  # Venezuela
-})
+_SANCTIONED_DESTINATIONS: frozenset[str] = frozenset(
+    {
+        "KP",  # North Korea
+        "SY",  # Syria
+        "IR",  # Iran
+        "CU",  # Cuba
+        "VE",  # Venezuela
+    }
+)
 
-_RUSSIAN_ORIGIN_COUNTRIES: frozenset[str] = frozenset({
-    "RU",  # Russia
-})
+_RUSSIAN_ORIGIN_COUNTRIES: frozenset[str] = frozenset(
+    {
+        "RU",  # Russia
+    }
+)
 
 _INTERMEDIARY_CONFIG: dict[str, Any] | None = None
 
@@ -125,10 +129,14 @@ def run_route_laundering_detection(db: Session) -> dict:
             continue
 
         # Check for existing anomaly
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == vessel.vessel_id,
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.ROUTE_LAUNDERING,
-        ).first()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.ROUTE_LAUNDERING,
+            )
+            .first()
+        )
         if existing:
             continue
 
@@ -136,7 +144,9 @@ def run_route_laundering_detection(db: Session) -> dict:
         classified: list[tuple[PortCall, str]] = []  # (port_call, category)
         for pc in port_calls:
             port = all_ports.get(pc.port_id) if pc.port_id else None
-            category = _classify_port(port, pc.raw_port_name, intermediary_countries, intermediary_names)
+            category = _classify_port(
+                port, pc.raw_port_name, intermediary_countries, intermediary_names
+            )
             classified.append((pc, category))
 
         # Scan for patterns
@@ -172,7 +182,8 @@ def run_route_laundering_detection(db: Session) -> dict:
     db.commit()
     logger.info(
         "Route laundering: %d anomalies from %d vessels checked",
-        anomalies_created, len(vessels),
+        anomalies_created,
+        len(vessels),
     )
     return {
         "status": "ok",
@@ -243,9 +254,21 @@ def _find_best_pattern(
                         "first_call_utc": pc_i.arrival_utc,
                         "last_call_utc": pc_k.arrival_utc,
                         "port_sequence": [
-                            {"port_id": pc_i.port_id, "raw_name": pc_i.raw_port_name, "category": "russian"},
-                            {"port_id": pc_j.port_id, "raw_name": pc_j.raw_port_name, "category": "intermediary"},
-                            {"port_id": pc_k.port_id, "raw_name": pc_k.raw_port_name, "category": "sanctioned"},
+                            {
+                                "port_id": pc_i.port_id,
+                                "raw_name": pc_i.raw_port_name,
+                                "category": "russian",
+                            },
+                            {
+                                "port_id": pc_j.port_id,
+                                "raw_name": pc_j.raw_port_name,
+                                "category": "intermediary",
+                            },
+                            {
+                                "port_id": pc_k.port_id,
+                                "raw_name": pc_k.raw_port_name,
+                                "category": "sanctioned",
+                            },
                         ],
                     }
                     if best is None or 3 > best[0]:
@@ -260,8 +283,16 @@ def _find_best_pattern(
                     "first_call_utc": pc_i.arrival_utc,
                     "last_call_utc": pc_j.arrival_utc,
                     "port_sequence": [
-                        {"port_id": pc_i.port_id, "raw_name": pc_i.raw_port_name, "category": "russian"},
-                        {"port_id": pc_j.port_id, "raw_name": pc_j.raw_port_name, "category": "intermediary"},
+                        {
+                            "port_id": pc_i.port_id,
+                            "raw_name": pc_i.raw_port_name,
+                            "category": "russian",
+                        },
+                        {
+                            "port_id": pc_j.port_id,
+                            "raw_name": pc_j.raw_port_name,
+                            "category": "intermediary",
+                        },
                     ],
                 }
                 if best is None or (best[0] < 2):

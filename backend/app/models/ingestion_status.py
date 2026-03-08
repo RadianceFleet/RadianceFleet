@@ -3,9 +3,10 @@
 Replaces app.state-based in-memory tracking (lost on restart) with a
 database-backed model that persists across server restarts.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import Session
@@ -26,8 +27,8 @@ class IngestionStatus(Base):
     status = Column(String(20), default="idle")  # idle, running, error, completed
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -52,7 +53,7 @@ def update_ingestion_status(
         The updated IngestionStatus record.
     """
     row = db.query(IngestionStatus).filter(IngestionStatus.source == source).first()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if row is None:
         row = IngestionStatus(source=source)

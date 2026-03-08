@@ -1,4 +1,5 @@
 """Integration tests for merge pipeline diagnostics and identity resolution."""
+
 from __future__ import annotations
 
 import logging
@@ -10,13 +11,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
 
+from app.cli import app
 from app.models import Base
-from app.models.vessel import Vessel
 from app.models.ais_point import AISPoint
 from app.models.gap_event import AISGapEvent
-from app.models.merge_candidate import MergeCandidate
-from app.cli import app
-
+from app.models.vessel import Vessel
 
 runner = CliRunner()
 
@@ -33,8 +32,18 @@ def db():
 # Helper to create vessels + AIS points
 # ---------------------------------------------------------------------------
 
-def _make_vessel(db, mmsi, imo=None, name=None, flag=None, vessel_type=None,
-                 deadweight=None, callsign=None, first_seen=None):
+
+def _make_vessel(
+    db,
+    mmsi,
+    imo=None,
+    name=None,
+    flag=None,
+    vessel_type=None,
+    deadweight=None,
+    callsign=None,
+    first_seen=None,
+):
     v = Vessel(
         mmsi=mmsi,
         imo=imo,
@@ -79,6 +88,7 @@ def _make_gap_event(db, vessel_id, start, end):
 # Test 1: diagnose identifies no gap events
 # ---------------------------------------------------------------------------
 
+
 def test_diagnose_identifies_no_gap_events(db):
     """Vessels with no gap events trigger an issue."""
     from app.modules.identity_resolver import diagnose_merge_readiness
@@ -97,6 +107,7 @@ def test_diagnose_identifies_no_gap_events(db):
 # ---------------------------------------------------------------------------
 # Test 2: diagnose identifies no dark candidates
 # ---------------------------------------------------------------------------
+
 
 def test_diagnose_identifies_no_dark_candidates(db):
     """Vessels with gaps but recent AIS -> no dark candidates issue."""
@@ -119,6 +130,7 @@ def test_diagnose_identifies_no_dark_candidates(db):
 # Test 3: diagnose identifies sparse data
 # ---------------------------------------------------------------------------
 
+
 def test_diagnose_identifies_sparse_data(db):
     """Few AIS points per vessel trigger sparse data warning."""
     from app.modules.identity_resolver import diagnose_merge_readiness
@@ -139,6 +151,7 @@ def test_diagnose_identifies_sparse_data(db):
 # Test 4: diagnose returns merge config
 # ---------------------------------------------------------------------------
 
+
 def test_diagnose_returns_config(db):
     """Result includes merge_config with all 4 threshold keys."""
     from app.modules.identity_resolver import diagnose_merge_readiness
@@ -155,6 +168,7 @@ def test_diagnose_returns_config(db):
 # Test 5: detect creates candidate for valid pair
 # ---------------------------------------------------------------------------
 
+
 def test_detect_creates_candidate_for_valid_pair(db):
     """Dark vessel + new vessel with same IMO and nearby -> candidate created."""
     from app.modules.identity_resolver import detect_merge_candidates
@@ -162,14 +176,21 @@ def test_detect_creates_candidate_for_valid_pair(db):
     now = datetime.utcnow()
 
     # Dark vessel: has gap event, last AIS >2h ago
-    dark_v = _make_vessel(db, "300000001", imo="9876543", vessel_type="Crude Oil Tanker",
-                          deadweight=150000.0)
+    dark_v = _make_vessel(
+        db, "300000001", imo="9876543", vessel_type="Crude Oil Tanker", deadweight=150000.0
+    )
     _make_ais_point(db, dark_v.vessel_id, now - timedelta(hours=5), lat=55.0, lon=20.0)
     _make_gap_event(db, dark_v.vessel_id, now - timedelta(hours=6), now - timedelta(hours=5))
 
     # New vessel: appeared recently, same IMO, nearby position
-    new_v = _make_vessel(db, "300000002", imo="9876543", vessel_type="Crude Oil Tanker",
-                         deadweight=150000.0, first_seen=now - timedelta(hours=3))
+    new_v = _make_vessel(
+        db,
+        "300000002",
+        imo="9876543",
+        vessel_type="Crude Oil Tanker",
+        deadweight=150000.0,
+        first_seen=now - timedelta(hours=3),
+    )
     _make_ais_point(db, new_v.vessel_id, now - timedelta(hours=3), lat=55.1, lon=20.1)
     db.flush()
 
@@ -181,22 +202,37 @@ def test_detect_creates_candidate_for_valid_pair(db):
 # Test 6: auto merge at high confidence
 # ---------------------------------------------------------------------------
 
+
 def test_auto_merge_at_high_confidence(db):
     """Pair with IMO + type + DWT + name + callsign match -> auto-merged."""
     from app.modules.identity_resolver import detect_merge_candidates
 
     now = datetime.utcnow()
 
-    dark_v = _make_vessel(db, "400000001", imo="1234567", name="SHADOW TANKER",
-                          vessel_type="Crude Oil Tanker", deadweight=150000.0,
-                          callsign="ABCD", flag="PA")
+    dark_v = _make_vessel(
+        db,
+        "400000001",
+        imo="1234567",
+        name="SHADOW TANKER",
+        vessel_type="Crude Oil Tanker",
+        deadweight=150000.0,
+        callsign="ABCD",
+        flag="PA",
+    )
     _make_ais_point(db, dark_v.vessel_id, now - timedelta(hours=5), lat=55.0, lon=20.0)
     _make_gap_event(db, dark_v.vessel_id, now - timedelta(hours=6), now - timedelta(hours=5))
 
-    new_v = _make_vessel(db, "400000002", imo="1234567", name="SHADOW TANKER",
-                         vessel_type="Crude Oil Tanker", deadweight=150000.0,
-                         callsign="ABCD", flag="PA",
-                         first_seen=now - timedelta(hours=3))
+    new_v = _make_vessel(
+        db,
+        "400000002",
+        imo="1234567",
+        name="SHADOW TANKER",
+        vessel_type="Crude Oil Tanker",
+        deadweight=150000.0,
+        callsign="ABCD",
+        flag="PA",
+        first_seen=now - timedelta(hours=3),
+    )
     _make_ais_point(db, new_v.vessel_id, now - timedelta(hours=3), lat=55.05, lon=20.05)
     db.flush()
 
@@ -207,6 +243,7 @@ def test_auto_merge_at_high_confidence(db):
 # ---------------------------------------------------------------------------
 # Test 7: detect logs when no candidates
 # ---------------------------------------------------------------------------
+
 
 def test_detect_logs_when_no_candidates(db, caplog):
     """When no dark or new vessels exist, a log message with counts is emitted."""
@@ -224,6 +261,7 @@ def test_detect_logs_when_no_candidates(db, caplog):
 # Test 8: check-vessels --diagnose prints and exits
 # ---------------------------------------------------------------------------
 
+
 def test_check_vessels_diagnose_prints_and_exits():
     """--diagnose prints diagnostic and does NOT scan for vessel identity."""
     mock_db = MagicMock()
@@ -235,12 +273,20 @@ def test_check_vessels_diagnose_prints_and_exits():
         "vessels_with_gaps": 5,
         "avg_points_per_vessel": 3.2,
         "issues": ["No dark candidates found (need vessels with gap events + last AIS >2h ago)"],
-        "merge_config": {"max_gap_days": 30, "max_speed_kn": 16.0,
-                         "auto_threshold": 85, "min_threshold": 50},
+        "merge_config": {
+            "max_gap_days": 30,
+            "max_speed_kn": 16.0,
+            "auto_threshold": 85,
+            "min_threshold": 50,
+        },
     }
 
-    with patch("app.database.SessionLocal", return_value=mock_db), \
-         patch("app.modules.identity_resolver.diagnose_merge_readiness", return_value=diag_result) as mock_diag:
+    with (
+        patch("app.database.SessionLocal", return_value=mock_db),
+        patch(
+            "app.modules.identity_resolver.diagnose_merge_readiness", return_value=diag_result
+        ) as mock_diag,
+    ):
         result = runner.invoke(app, ["check-vessels", "--diagnose"])
 
     assert result.exit_code == 0
@@ -253,6 +299,7 @@ def test_check_vessels_diagnose_prints_and_exits():
 # Test 9: check-vessels --diagnose overrides --auto
 # ---------------------------------------------------------------------------
 
+
 def test_check_vessels_diagnose_overrides_auto():
     """--diagnose takes precedence over --auto."""
     mock_db = MagicMock()
@@ -264,13 +311,19 @@ def test_check_vessels_diagnose_overrides_auto():
         "vessels_with_gaps": 0,
         "avg_points_per_vessel": 0.0,
         "issues": ["No vessels have gap events"],
-        "merge_config": {"max_gap_days": 30, "max_speed_kn": 16.0,
-                         "auto_threshold": 85, "min_threshold": 50},
+        "merge_config": {
+            "max_gap_days": 30,
+            "max_speed_kn": 16.0,
+            "auto_threshold": 85,
+            "min_threshold": 50,
+        },
     }
 
-    with patch("app.database.SessionLocal", return_value=mock_db), \
-         patch("app.modules.identity_resolver.diagnose_merge_readiness", return_value=diag_result), \
-         patch("app.modules.identity_resolver.detect_merge_candidates") as mock_detect:
+    with (
+        patch("app.database.SessionLocal", return_value=mock_db),
+        patch("app.modules.identity_resolver.diagnose_merge_readiness", return_value=diag_result),
+        patch("app.modules.identity_resolver.detect_merge_candidates") as mock_detect,
+    ):
         result = runner.invoke(app, ["check-vessels", "--diagnose", "--auto"])
 
     assert result.exit_code == 0
@@ -282,6 +335,7 @@ def test_check_vessels_diagnose_overrides_auto():
 # Test 10: pipeline runs identity resolution
 # ---------------------------------------------------------------------------
 
+
 def test_pipeline_runs_identity_resolution():
     """discover_dark_vessels result dict contains 'identity_resolution' key.
 
@@ -292,16 +346,19 @@ def test_pipeline_runs_identity_resolution():
 
     mock_db = MagicMock()
 
-    with patch("app.modules.gap_detector.run_gap_detection", return_value={}), \
-         patch("app.modules.gap_detector.run_spoofing_detection", return_value={}), \
-         patch("app.modules.loitering_detector.run_loitering_detection", return_value={}), \
-         patch("app.modules.sts_detector.detect_sts_events", return_value={}), \
-         patch("app.modules.risk_scoring.rescore_all_alerts", return_value={}), \
-         patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value={}), \
-         patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}), \
-         patch("app.modules.identity_resolver.detect_merge_candidates",
-               return_value={"candidates_created": 0, "auto_merged": 0, "skipped": 0}):
-
+    with (
+        patch("app.modules.gap_detector.run_gap_detection", return_value={}),
+        patch("app.modules.gap_detector.run_spoofing_detection", return_value={}),
+        patch("app.modules.loitering_detector.run_loitering_detection", return_value={}),
+        patch("app.modules.sts_detector.detect_sts_events", return_value={}),
+        patch("app.modules.risk_scoring.rescore_all_alerts", return_value={}),
+        patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value={}),
+        patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}),
+        patch(
+            "app.modules.identity_resolver.detect_merge_candidates",
+            return_value={"candidates_created": 0, "auto_merged": 0, "skipped": 0},
+        ),
+    ):
         result = discover_dark_vessels(
             mock_db,
             start_date="2025-01-01",

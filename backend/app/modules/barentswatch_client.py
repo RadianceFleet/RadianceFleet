@@ -4,10 +4,11 @@ REST API complement to Kystverket TCP stream. Covers Murmansk corridor.
 Auth: OAuth 2.0 Client Credentials grant.
 CRITICAL LIMITATION: Max 14 days of history. Data older than 14 days is purged.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 from sqlalchemy.exc import IntegrityError
@@ -42,7 +43,8 @@ def get_barentswatch_token(
     cid = client_id or getattr(settings, "BARENTSWATCH_CLIENT_ID", "")
     csecret = client_secret or getattr(settings, "BARENTSWATCH_CLIENT_SECRET", "")
     url = token_url or getattr(
-        settings, "BARENTSWATCH_TOKEN_URL",
+        settings,
+        "BARENTSWATCH_TOKEN_URL",
         "https://id.barentswatch.no/connect/token",
     )
 
@@ -98,7 +100,7 @@ def fetch_barentswatch_tracks(
     stats = {"points_imported": 0, "vessels_seen": 0, "api_calls": 0, "errors": 0}
 
     # Enforce 14-day limit
-    now = datetime.now(timezone.utc).date()
+    now = datetime.now(UTC).date()
     if start_date and start_date < now - timedelta(days=14):
         logger.warning("BarentsWatch: clamping start_date to 14 days ago (was %s)", start_date)
         start_date = now - timedelta(days=14)
@@ -113,7 +115,8 @@ def fetch_barentswatch_tracks(
             return stats
 
     api_base = getattr(
-        settings, "BARENTSWATCH_API_URL",
+        settings,
+        "BARENTSWATCH_API_URL",
         "https://live.ais.barentswatch.no/api",
     ).rstrip("/")
 
@@ -149,10 +152,15 @@ def fetch_barentswatch_tracks(
 
                         for feat in features:
                             _ingest_barentswatch_feature(
-                                db, feat, vessels_seen, stats,
-                                mmsi_to_flag, flag_to_risk_category,
+                                db,
+                                feat,
+                                vessels_seen,
+                                stats,
+                                mmsi_to_flag,
+                                flag_to_risk_category,
                                 is_non_vessel_mmsi,
-                                Vessel, AISPoint,
+                                Vessel,
+                                AISPoint,
                             )
 
                     except httpx.HTTPStatusError as e:
@@ -185,10 +193,15 @@ def fetch_barentswatch_tracks(
 
                 for feat in features:
                     _ingest_barentswatch_feature(
-                        db, feat, vessels_seen, stats,
-                        mmsi_to_flag, flag_to_risk_category,
+                        db,
+                        feat,
+                        vessels_seen,
+                        stats,
+                        mmsi_to_flag,
+                        flag_to_risk_category,
                         is_non_vessel_mmsi,
-                        Vessel, AISPoint,
+                        Vessel,
+                        AISPoint,
                     )
 
         db.commit()
@@ -200,16 +213,24 @@ def fetch_barentswatch_tracks(
     stats["vessels_seen"] = len(vessels_seen)
     logger.info(
         "BarentsWatch: %d points, %d vessels, %d api_calls, %d errors",
-        stats["points_imported"], stats["vessels_seen"],
-        stats["api_calls"], stats["errors"],
+        stats["points_imported"],
+        stats["vessels_seen"],
+        stats["api_calls"],
+        stats["errors"],
     )
     return stats
 
 
 def _ingest_barentswatch_feature(
-    db, feat, vessels_seen, stats,
-    mmsi_to_flag, flag_to_risk_category, is_non_vessel_mmsi,
-    Vessel, AISPoint,
+    db,
+    feat,
+    vessels_seen,
+    stats,
+    mmsi_to_flag,
+    flag_to_risk_category,
+    is_non_vessel_mmsi,
+    Vessel,
+    AISPoint,
 ):
     """Ingest a single GeoJSON feature from BarentsWatch."""
     try:
@@ -242,9 +263,9 @@ def _ingest_barentswatch_feature(
                 if isinstance(ts_raw, (int, float)):
                     timestamp = datetime.utcfromtimestamp(ts_raw / 1000)
                 else:
-                    timestamp = datetime.fromisoformat(
-                        str(ts_raw).replace("Z", "+00:00")
-                    ).replace(tzinfo=None)
+                    timestamp = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00")).replace(
+                        tzinfo=None
+                    )
             except Exception:
                 pass
 

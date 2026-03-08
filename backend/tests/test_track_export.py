@@ -1,18 +1,19 @@
 """Tests for vessel track export (GeoJSON and KML)."""
+
 import xml.etree.ElementTree as ET
-from datetime import date, datetime, timezone
-from unittest.mock import MagicMock, patch
+from datetime import UTC, date, datetime
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.database import get_db
+from app.main import app
 from app.modules.track_export import export_track_geojson, export_track_kml
-from tests.conftest import make_mock_point, make_mock_vessel
-
+from tests.conftest import make_mock_point
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _mock_db_with_points(points):
     """Return a MagicMock db session whose AISPoint query returns the given points."""
@@ -25,6 +26,7 @@ def _mock_db_with_points(points):
 
 
 # ── GeoJSON Tests ────────────────────────────────────────────────────────────
+
 
 def test_geojson_feature_collection_structure():
     """GeoJSON output has valid FeatureCollection structure."""
@@ -75,7 +77,7 @@ def test_geojson_date_filtering():
 
 def test_geojson_properties_contain_point_data():
     """Properties include timestamps and point_data arrays."""
-    ts = datetime(2024, 6, 15, 10, 30, tzinfo=timezone.utc)
+    ts = datetime(2024, 6, 15, 10, 30, tzinfo=UTC)
     pts = [make_mock_point(lat=55.0, lon=12.5, ts=ts, sog=10.5, cog=180.0)]
     db = _mock_db_with_points(pts)
     result = export_track_geojson(db, vessel_id=42)
@@ -90,6 +92,7 @@ def test_geojson_properties_contain_point_data():
 
 
 # ── KML Tests ────────────────────────────────────────────────────────────────
+
 
 def test_kml_valid_xml():
     """KML output is valid XML."""
@@ -119,7 +122,7 @@ def test_kml_vessel_name_with_ampersand():
 
 def test_kml_gx_track_elements():
     """KML contains gx:Track with when and gx:coord elements."""
-    ts = datetime(2024, 6, 15, 10, 30, tzinfo=timezone.utc)
+    ts = datetime(2024, 6, 15, 10, 30, tzinfo=UTC)
     pts = [make_mock_point(lat=55.0, lon=12.5, ts=ts)]
     db = _mock_db_with_points(pts)
     kml_str = export_track_kml(db, vessel_id=1, vessel_name="Test")
@@ -140,6 +143,7 @@ def test_kml_gx_track_elements():
 
 
 # ── API Endpoint Tests ───────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def api_client_with_mock():

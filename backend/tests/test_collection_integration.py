@@ -1,8 +1,6 @@
 """Tests for /health/collection-status endpoint and collection pipeline integration."""
-from unittest.mock import MagicMock, patch, PropertyMock
-from datetime import datetime, timezone, timedelta
 
-import pytest
+from unittest.mock import patch
 
 
 class TestCollectionStatusEndpointShape:

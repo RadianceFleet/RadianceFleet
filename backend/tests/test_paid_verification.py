@@ -8,12 +8,13 @@ are not yet implemented in routes.py, these tests verify:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock
 
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # VesselOwner Model Structure
 # ---------------------------------------------------------------------------
+
 
 class TestVesselOwnerModel:
     """Verify VesselOwner model has the expected columns."""
@@ -46,6 +47,7 @@ class TestVesselOwnerModel:
 # ---------------------------------------------------------------------------
 # Vessel Detail — Owner Context
 # ---------------------------------------------------------------------------
+
 
 class TestVesselDetailOwnerContext:
     """Vessel detail includes owner-adjacent data (flag, type)."""
@@ -115,6 +117,7 @@ class TestVesselDetailOwnerContext:
 # PATCH Vessel Owner (if endpoint exists)
 # ---------------------------------------------------------------------------
 
+
 class TestVesselOwnerUpdate:
     """Verify VesselOwner model can be constructed with expected fields."""
 
@@ -146,6 +149,7 @@ class TestVesselOwnerUpdate:
 # Verification Budget / Tracking Model
 # ---------------------------------------------------------------------------
 
+
 class TestVerificationModels:
     """Verify that the models needed for paid verification exist."""
 
@@ -162,6 +166,7 @@ class TestVerificationModels:
 
         col = VesselOwner.__table__.columns["vessel_id"]
         assert col.index is True or any(
-            idx for idx in VesselOwner.__table__.indexes
+            idx
+            for idx in VesselOwner.__table__.indexes
             if "vessel_id" in [c.name for c in idx.columns]
         )

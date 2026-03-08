@@ -1,17 +1,27 @@
 """CLI commands: history status, gaps, backfill, schedule."""
+
 from __future__ import annotations
 
 import logging
+
 import typer
 
 logger = logging.getLogger(__name__)
-from datetime import date, timedelta
+from datetime import UTC, date, timedelta
+
 from rich.table import Table
 
 from app.cli_app import console, history_app
 
-
-_HISTORY_SOURCES = ["noaa", "dma", "barentswatch", "gfw", "gfw-gaps", "gfw-encounters", "gfw-port-visits"]
+_HISTORY_SOURCES = [
+    "noaa",
+    "dma",
+    "barentswatch",
+    "gfw",
+    "gfw-gaps",
+    "gfw-encounters",
+    "gfw-port-visits",
+]
 
 
 @history_app.command("status")
@@ -53,9 +63,11 @@ def history_status():
 
         # Recent collection runs (from CollectionScheduler / update)
         try:
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             from app.models.collection_run import CollectionRun
-            cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+
+            cutoff = datetime.now(UTC) - timedelta(days=7)
             runs = (
                 db.query(CollectionRun)
                 .filter(CollectionRun.started_at >= cutoff)
@@ -71,7 +83,9 @@ def history_status():
                 runs_table.add_column("Points", justify="right")
                 runs_table.add_column("Errors", justify="right")
                 for run in runs:
-                    status_style = {"completed": "green", "running": "yellow", "failed": "red"}.get(run.status, "white")
+                    status_style = {"completed": "green", "running": "yellow", "failed": "red"}.get(
+                        run.status, "white"
+                    )
                     runs_table.add_row(
                         run.source,
                         str(run.started_at.strftime("%Y-%m-%d %H:%M") if run.started_at else "?"),
@@ -133,12 +147,18 @@ def history_gaps(
 
 @history_app.command("backfill")
 def history_backfill(
-    source: str = typer.Option(..., "--source", help=f"Data source ({', '.join(_HISTORY_SOURCES)})"),
+    source: str = typer.Option(
+        ..., "--source", help=f"Data source ({', '.join(_HISTORY_SOURCES)})"
+    ),
     start: str = typer.Option(None, "--start", help="Start date (ISO format)"),
     end: str = typer.Option(None, "--end", help="End date (ISO format)"),
     days: int = typer.Option(0, "--days", help="Alternative to --start/--end: import last N days"),
     detect: bool = typer.Option(True, "--detect/--no-detect", help="Run detection after import"),
-    corridor_filter: bool = typer.Option(True, "--corridor-filter/--no-corridor-filter", help="Only import within corridor bounding boxes (NOAA)"),
+    corridor_filter: bool = typer.Option(
+        True,
+        "--corridor-filter/--no-corridor-filter",
+        help="Only import within corridor bounding boxes (NOAA)",
+    ),
 ):
     """Backfill historical data for a specific source and date range."""
     if source not in _HISTORY_SOURCES:
@@ -178,6 +198,7 @@ def history_backfill(
 
         if source == "noaa":
             from app.modules.noaa_client import fetch_and_import_noaa
+
             stats = fetch_and_import_noaa(
                 db,
                 start_date=start_date,
@@ -193,6 +214,7 @@ def history_backfill(
 
         elif source == "dma":
             from app.modules.dma_client import fetch_and_import_dma
+
             stats = fetch_and_import_dma(db, start_date, end_date)
             console.print(
                 f"  {stats['days_processed']} days processed, "
@@ -202,8 +224,12 @@ def history_backfill(
 
         elif source == "barentswatch":
             from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
             stats = fetch_barentswatch_tracks(
-                db, mmsis=[], start_date=start_date, end_date=end_date,
+                db,
+                mmsis=[],
+                start_date=start_date,
+                end_date=end_date,
             )
             console.print(
                 f"  {stats['points_imported']:,} points imported, "
@@ -212,6 +238,7 @@ def history_backfill(
 
         elif source == "gfw":
             from app.modules.gfw_client import import_sar_detections_to_db
+
             stats = import_sar_detections_to_db(
                 db,
                 start_date=start_date.isoformat(),
@@ -221,6 +248,7 @@ def history_backfill(
 
         elif source == "gfw-gaps":
             from app.modules.gfw_client import import_gfw_gap_events
+
             stats = import_gfw_gap_events(
                 db,
                 start_date=start_date.isoformat(),
@@ -230,6 +258,7 @@ def history_backfill(
 
         elif source == "gfw-encounters":
             from app.modules.gfw_client import import_gfw_encounters
+
             stats = import_gfw_encounters(
                 db,
                 start_date=start_date.isoformat(),
@@ -239,6 +268,7 @@ def history_backfill(
 
         elif source == "gfw-port-visits":
             from app.modules.gfw_client import import_gfw_port_visits
+
             stats = import_gfw_port_visits(
                 db,
                 start_date=start_date.isoformat(),
@@ -249,8 +279,12 @@ def history_backfill(
         # Record coverage window
         try:
             from app.modules.coverage_tracker import record_coverage_window
+
             record_coverage_window(
-                db, source, start_date, end_date,
+                db,
+                source,
+                start_date,
+                end_date,
                 status="completed",
             )
             db.commit()
@@ -261,6 +295,7 @@ def history_backfill(
             lookback_start = start_date - timedelta(days=90)
             with console.status("[bold]Analyzing vessel behavior..."):
                 from app.modules.dark_vessel_discovery import discover_dark_vessels
+
                 discover_dark_vessels(
                     db,
                     start_date=lookback_start.isoformat(),
@@ -281,7 +316,9 @@ def history_backfill(
 
 @history_app.command("schedule")
 def history_schedule(
-    dry_run: bool = typer.Option(True, "--dry-run/--execute", help="Show planned actions without executing"),
+    dry_run: bool = typer.Option(
+        True, "--dry-run/--execute", help="Show planned actions without executing"
+    ),
 ):
     """Run the history scheduler once (or preview planned actions)."""
     from app.database import SessionLocal
@@ -292,7 +329,9 @@ def history_schedule(
 
     if not enabled:
         console.print("[yellow]No backfill sources enabled.[/yellow]")
-        console.print("[dim]Enable sources via NOAA_BACKFILL_ENABLED, DMA_BACKFILL_ENABLED, etc.[/dim]")
+        console.print(
+            "[dim]Enable sources via NOAA_BACKFILL_ENABLED, DMA_BACKFILL_ENABLED, etc.[/dim]"
+        )
         return
 
     console.print(f"[bold]Enabled sources:[/bold] {', '.join(enabled)}")

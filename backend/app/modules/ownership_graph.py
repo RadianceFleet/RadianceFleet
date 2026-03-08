@@ -7,12 +7,13 @@ Provides:
 
 Stage 5-A: Corporate Ownership Graph
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -35,15 +36,15 @@ def _normalize_name(name: str) -> str:
 
 def _build_parent_chain(
     owner_id: int,
-    parent_map: Dict[int, Optional[int]],
+    parent_map: dict[int, int | None],
     max_depth: int = MAX_CHAIN_DEPTH,
-) -> List[int]:
+) -> list[int]:
     """Walk the parent_owner_id chain upward, returning the chain of owner_ids.
 
     Returns list from leaf to root. Stops at max_depth or on cycle detection.
     """
-    chain: List[int] = [owner_id]
-    visited: Set[int] = {owner_id}
+    chain: list[int] = [owner_id]
+    visited: set[int] = {owner_id}
     current = owner_id
 
     for _ in range(max_depth):
@@ -62,17 +63,17 @@ def _build_parent_chain(
 
 
 def _detect_circular_ownership(
-    parent_map: Dict[int, Optional[int]],
-) -> List[List[int]]:
+    parent_map: dict[int, int | None],
+) -> list[list[int]]:
     """Detect circular ownership chains where owner chain loops back."""
-    circles: List[List[int]] = []
-    checked: Set[int] = set()
+    circles: list[list[int]] = []
+    checked: set[int] = set()
 
     for owner_id in parent_map:
         if owner_id in checked:
             continue
 
-        visited: Dict[int, int] = {}  # owner_id -> position in chain
+        visited: dict[int, int] = {}  # owner_id -> position in chain
         current = owner_id
         pos = 0
 
@@ -121,9 +122,8 @@ def build_ownership_graph(db: Session) -> dict:
         }
 
     from app.models.vessel_owner import VesselOwner
-    from app.models.vessel import Vessel
 
-    stats: Dict[str, Any] = {
+    stats: dict[str, Any] = {
         "status": "ok",
         "clusters_found": 0,
         "shell_chains": 0,
@@ -137,8 +137,8 @@ def build_ownership_graph(db: Session) -> dict:
         return stats
 
     # Build owner lookup and parent map
-    owner_by_id: Dict[int, Any] = {o.owner_id: o for o in owners}
-    parent_map: Dict[int, Optional[int]] = {}
+    {o.owner_id: o for o in owners}
+    parent_map: dict[int, int | None] = {}
     for o in owners:
         parent_id = getattr(o, "parent_owner_id", None)
         if isinstance(parent_id, int):
@@ -147,7 +147,7 @@ def build_ownership_graph(db: Session) -> dict:
             parent_map[o.owner_id] = None
 
     # Group by normalized owner name -> list of vessel_ids
-    name_groups: Dict[str, List[int]] = defaultdict(list)
+    name_groups: dict[str, list[int]] = defaultdict(list)
     for o in owners:
         norm = _normalize_name(o.owner_name)
         if norm:
@@ -169,7 +169,7 @@ def build_ownership_graph(db: Session) -> dict:
     stats["circular_ownership"] = len(circles)
 
     # Detect post-sanction reshuffling: >2 ownership changes in 12 months per vessel
-    vessel_owners: Dict[int, List[Any]] = defaultdict(list)
+    vessel_owners: dict[int, list[Any]] = defaultdict(list)
     for o in owners:
         vessel_owners[o.vessel_id].append(o)
 
@@ -191,7 +191,7 @@ def build_ownership_graph(db: Session) -> dict:
 
     # Detect shared address with sanctioned entity
     # Collect sanctioned owner countries
-    sanctioned_countries: Set[str] = set()
+    sanctioned_countries: set[str] = set()
     for o in owners:
         if o.is_sanctioned and o.country:
             sanctioned_countries.add(o.country.strip().lower())
@@ -226,29 +226,37 @@ def propagate_sanctions(db: Session) -> dict:
         logger.info("Ownership graph disabled -- skipping sanctions propagation")
         return {"status": "disabled", "vessels_flagged": 0, "clusters_propagated": 0}
 
-    from app.models.vessel_owner import VesselOwner
     from app.models.owner_cluster import OwnerCluster
     from app.models.owner_cluster_member import OwnerClusterMember
+    from app.models.vessel_owner import VesselOwner
 
-    stats: Dict[str, Any] = {
+    stats: dict[str, Any] = {
         "status": "ok",
         "vessels_flagged": 0,
         "clusters_propagated": 0,
     }
 
     # Find sanctioned owners
-    sanctioned_owners = db.query(VesselOwner).filter(
-        VesselOwner.is_sanctioned == True,
-    ).all()
+    sanctioned_owners = (
+        db.query(VesselOwner)
+        .filter(
+            VesselOwner.is_sanctioned,
+        )
+        .all()
+    )
 
     if not sanctioned_owners:
         return stats
 
     # Find clusters containing sanctioned owners
     sanctioned_owner_ids = {o.owner_id for o in sanctioned_owners}
-    sanctioned_members = db.query(OwnerClusterMember).filter(
-        OwnerClusterMember.owner_id.in_(sanctioned_owner_ids),
-    ).all()
+    sanctioned_members = (
+        db.query(OwnerClusterMember)
+        .filter(
+            OwnerClusterMember.owner_id.in_(sanctioned_owner_ids),
+        )
+        .all()
+    )
 
     if not sanctioned_members:
         return stats
@@ -258,25 +266,37 @@ def propagate_sanctions(db: Session) -> dict:
     # For each sanctioned cluster, find all member owners and flag them
     for cluster_id in sanctioned_cluster_ids:
         # Mark cluster as sanctioned
-        cluster = db.query(OwnerCluster).filter(
-            OwnerCluster.cluster_id == cluster_id,
-        ).first()
+        cluster = (
+            db.query(OwnerCluster)
+            .filter(
+                OwnerCluster.cluster_id == cluster_id,
+            )
+            .first()
+        )
         if cluster and not cluster.is_sanctioned:
             cluster.is_sanctioned = True
 
         # Get all owners in this cluster
-        all_members = db.query(OwnerClusterMember).filter(
-            OwnerClusterMember.cluster_id == cluster_id,
-        ).all()
+        all_members = (
+            db.query(OwnerClusterMember)
+            .filter(
+                OwnerClusterMember.cluster_id == cluster_id,
+            )
+            .all()
+        )
 
         cluster_owner_ids = {m.owner_id for m in all_members}
         non_sanctioned_ids = cluster_owner_ids - sanctioned_owner_ids
 
         # Flag non-sanctioned owners in the same cluster
         for owner_id in non_sanctioned_ids:
-            owner = db.query(VesselOwner).filter(
-                VesselOwner.owner_id == owner_id,
-            ).first()
+            owner = (
+                db.query(VesselOwner)
+                .filter(
+                    VesselOwner.owner_id == owner_id,
+                )
+                .first()
+            )
             if owner and not owner.is_sanctioned:
                 # Don't set is_sanctioned=True (that means directly sanctioned),
                 # but we count them as flagged for risk propagation

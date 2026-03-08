@@ -9,8 +9,9 @@ Tests:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
+
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
-from datetime import datetime, timezone, timedelta
 
 
 class TestVesselDetailFields:
@@ -31,7 +32,7 @@ class TestVesselDetailFields:
         vessel.flag_risk_category = MagicMock(value="high_risk")
         vessel.pi_coverage_status = MagicMock(value="active")
         vessel.psc_detained_last_12m = True
-        vessel.mmsi_first_seen_utc = datetime(2020, 6, 1, tzinfo=timezone.utc)
+        vessel.mmsi_first_seen_utc = datetime(2020, 6, 1, tzinfo=UTC)
         vessel.vessel_laid_up_30d = True
         vessel.vessel_laid_up_60d = False
         vessel.vessel_laid_up_in_sts_zone = True
@@ -151,6 +152,7 @@ class TestMergedVesselRedirect:
         mock_db.query.side_effect = query_side_effect
 
         from unittest.mock import patch
+
         with patch("app.modules.identity_resolver.resolve_canonical", return_value=10):
             resp = api_client.get("/api/v1/vessels/20")
             assert resp.status_code == 200
@@ -192,8 +194,9 @@ class TestVesselTimeline:
         vessel.vessel_id = 1
         mock_db.query.return_value.get.return_value = vessel
 
-        with MagicMock() as timeline:
+        with MagicMock():
             from unittest.mock import patch
+
             with patch("app.modules.identity_resolver.get_vessel_timeline", return_value=[]):
                 resp = api_client.get("/api/v1/vessels/1/timeline")
                 assert resp.status_code == 200
@@ -217,7 +220,11 @@ class TestVesselAliases:
         mock_db.query.return_value.get.return_value = vessel
 
         from unittest.mock import patch
-        with patch("app.modules.identity_resolver.get_vessel_aliases", return_value=["123456789", "987654321"]):
+
+        with patch(
+            "app.modules.identity_resolver.get_vessel_aliases",
+            return_value=["123456789", "987654321"],
+        ):
             resp = api_client.get("/api/v1/vessels/1/aliases")
             assert resp.status_code == 200
             data = resp.json()

@@ -23,24 +23,23 @@ Performance note: AIS points are first indexed into a 1-degree lat/lon grid
 so that only vessels sharing a grid cell are compared, avoiding an O(n²)
 full cross-product.
 """
+
 from __future__ import annotations
 
 import logging
 import math
 from collections import defaultdict
-from datetime import datetime, date, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 import yaml
-
 from sqlalchemy.orm import Session
 
 from app.models.ais_point import AISPoint
+from app.models.base import CorridorTypeEnum, STSDetectionTypeEnum
 from app.models.corridor import Corridor
 from app.models.sts_transfer import StsTransferEvent
 from app.models.vessel import Vessel
-from app.models.base import STSDetectionTypeEnum, CorridorTypeEnum
 from app.utils.geo import parse_wkt_bbox as _parse_wkt_bbox
 
 logger = logging.getLogger(__name__)
@@ -55,7 +54,11 @@ def _load_bunkering_exclusions() -> set[str]:
     global _BUNKERING_EXCLUSIONS
     if _BUNKERING_EXCLUSIONS is not None:
         return _BUNKERING_EXCLUSIONS
-    config_path = Path(__file__).resolve().parent.parent.parent.parent / "config" / "bunkering_exclusions.yaml"
+    config_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "config"
+        / "bunkering_exclusions.yaml"
+    )
     _BUNKERING_EXCLUSIONS = set()
     if config_path.exists():
         try:
@@ -85,17 +88,18 @@ def _is_bunkering_vessel(db: Session, vessel_id: int) -> bool:
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 _NM_TO_METERS: float = 1852.0
-_BUCKET_MINUTES: int = 15          # width of each time bucket
+_BUCKET_MINUTES: int = 15  # width of each time bucket
 from app.config import settings as _settings
+
 _MIN_CONSECUTIVE_WINDOWS: int = _settings.STS_MIN_WINDOWS
 _PROXIMITY_METERS: float = _settings.STS_PROXIMITY_METERS
-_SOG_STATIONARY: float = 1.0       # knots — Phase A "not moving"
+_SOG_STATIONARY: float = 1.0  # knots — Phase A "not moving"
 _SOG_STATIONARY_STRICT: float = 0.5  # knots — Phase A anchorage exclusion zone threshold
-_SOG_STATIONARY_B: float = 0.5     # knots — Phase B "anchor-like"
+_SOG_STATIONARY_B: float = 0.5  # knots — Phase B "anchor-like"
 _SOG_APPROACHING_MIN: float = 0.5  # knots
 _SOG_APPROACHING_MAX: float = 3.0  # knots
-_COG_PARALLEL_DEG: float = 30.0    # tolerance for parallel / anti-parallel heading check
-_ETA_MAX_MINUTES: int = 240        # 4-hour horizon for Phase B
+_COG_PARALLEL_DEG: float = 30.0  # tolerance for parallel / anti-parallel heading check
+_ETA_MAX_MINUTES: int = 240  # 4-hour horizon for Phase B
 _TANKER_MIN_DWT: float = 20_000.0  # DWT threshold when vessel_type not available
 
 # risk_score_component values
@@ -106,10 +110,11 @@ _RISK_APPROACHING: int = 20
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+
 def detect_sts_events(
     db: Session,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> dict:
     """Run both detection phases and persist new StsTransferEvents.
 
@@ -123,6 +128,7 @@ def detect_sts_events(
         inserted across both phases.
     """
     from app.modules.risk_scoring import load_scoring_config
+
     config = load_scoring_config()
 
     corridors = db.query(Corridor).all()
@@ -147,12 +153,16 @@ def detect_sts_events(
     total = created_a + created_b + created_c
     logger.info(
         "STS detector complete: %d events created (Phase A: %d, Phase B: %d, Phase C: %d).",
-        total, created_a, created_b, created_c,
+        total,
+        created_a,
+        created_b,
+        created_c,
     )
     return {"sts_events_created": total}
 
 
 # ── Geometry helpers ──────────────────────────────────────────────────────────
+
 
 def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in metres between two WGS-84 coordinates.
@@ -160,12 +170,11 @@ def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> flo
     Thin wrapper around app.utils.geo.haversine_meters for backward compatibility.
     """
     from app.utils.geo import haversine_meters
+
     return haversine_meters(lat1, lon1, lat2, lon2)
 
 
-def _heading_to_point(
-    from_lat: float, from_lon: float, to_lat: float, to_lon: float
-) -> float:
+def _heading_to_point(from_lat: float, from_lon: float, to_lat: float, to_lon: float) -> float:
     """Initial bearing (degrees 0-360) from one point to another."""
     lat1, lon1 = math.radians(from_lat), math.radians(from_lon)
     lat2, lon2 = math.radians(to_lat), math.radians(to_lon)
@@ -184,9 +193,11 @@ def _heading_diff(h1: float, h2: float) -> float:
 
 # ── Data loading helpers ──────────────────────────────────────────────────────
 
+
 def _tanker_vessel_ids(db: Session) -> list[int]:
     """Return vessel_ids for tankers (configurable via vessel_filter.yaml)."""
     from app.utils.vessel_filter import is_tanker_type
+
     vessels = db.query(Vessel).all()
     return [v.vessel_id for v in vessels if is_tanker_type(v)]
 
@@ -194,8 +205,8 @@ def _tanker_vessel_ids(db: Session) -> list[int]:
 def _load_ais_points(
     db: Session,
     vessel_ids: list[int],
-    date_from: Optional[date],
-    date_to: Optional[date],
+    date_from: date | None,
+    date_to: date | None,
 ) -> list[AISPoint]:
     """Load AIS points for given vessel IDs within the optional date window."""
     query = (
@@ -239,17 +250,16 @@ def _in_bbox(
     tolerance: float = 0.05,
 ) -> bool:
     min_lon, min_lat, max_lon, max_lat = bbox
-    return (
-        (min_lon - tolerance) <= lon <= (max_lon + tolerance)
-        and (min_lat - tolerance) <= lat <= (max_lat + tolerance)
-    )
+    return (min_lon - tolerance) <= lon <= (max_lon + tolerance) and (
+        min_lat - tolerance
+    ) <= lat <= (max_lat + tolerance)
 
 
 def _corridor_for_position(
     lat: float,
     lon: float,
     sts_zone_bboxes: list[tuple[Corridor, tuple]],
-) -> Optional[Corridor]:
+) -> Corridor | None:
     """Return the first STS-zone corridor whose bounding box contains the point."""
     for corridor, bbox in sts_zone_bboxes:
         if _in_bbox(lat, lon, bbox):
@@ -259,7 +269,7 @@ def _corridor_for_position(
 
 def _any_sts_zone_corridor(
     corridors: list[Corridor],
-) -> Optional[Corridor]:
+) -> Corridor | None:
     """Return the first STS-zone corridor (used as a fallback reference)."""
     for c in corridors:
         ct = str(c.corridor_type.value if hasattr(c.corridor_type, "value") else c.corridor_type)
@@ -304,6 +314,7 @@ def _in_any_anchorage_exclusion(
 
 # ── Bucketing helpers ─────────────────────────────────────────────────────────
 
+
 def _bucket_key(ts: datetime) -> int:
     """Map a timestamp to an integer 15-minute bucket index (minutes since epoch)."""
     epoch_minutes = int(ts.timestamp() // 60)
@@ -320,7 +331,7 @@ def _grid_cell(lat: float, lon: float) -> tuple[int, int]:
 
 def _apply_dark_vessel_bonus(
     db: Session,
-    event: "StsTransferEvent",
+    event: StsTransferEvent,
     vessel_1_id: int,
     vessel_2_id: int,
     config: dict,
@@ -333,18 +344,23 @@ def _apply_dark_vessel_bonus(
     If detect-sts is run before detect-gaps, no gap records will exist and this check
     silently returns 0 (correct — no false fire, but signal will be missing).
     """
-    from app.models.gap_event import AISGapEvent
     from sqlalchemy import or_
 
+    from app.models.gap_event import AISGapEvent
+
     two_hours = timedelta(hours=2)
-    dark_gap = db.query(AISGapEvent).filter(
-        or_(
-            AISGapEvent.vessel_id == vessel_1_id,
-            AISGapEvent.vessel_id == vessel_2_id,
-        ),
-        AISGapEvent.gap_start_utc < event.end_time_utc + two_hours,
-        AISGapEvent.gap_end_utc > event.start_time_utc - two_hours,
-    ).first()
+    dark_gap = (
+        db.query(AISGapEvent)
+        .filter(
+            or_(
+                AISGapEvent.vessel_id == vessel_1_id,
+                AISGapEvent.vessel_id == vessel_2_id,
+            ),
+            AISGapEvent.gap_start_utc < event.end_time_utc + two_hours,
+            AISGapEvent.gap_end_utc > event.start_time_utc - two_hours,
+        )
+        .first()
+    )
 
     if dark_gap:
         bonus = config.get("sts", {}).get("one_vessel_dark_during_proximity", 15)
@@ -352,6 +368,7 @@ def _apply_dark_vessel_bonus(
 
 
 # ── Deduplication helper ──────────────────────────────────────────────────────
+
 
 def _overlap_exists(
     db: Session,
@@ -379,6 +396,7 @@ def _overlap_exists(
 
 
 # ── Phase A — confirmed visible-visible transfers ─────────────────────────────
+
 
 def _phase_a(
     db: Session,
@@ -429,9 +447,9 @@ def _phase_a(
     # pair -> list of consecutive window passing timestamps
     # pair = (min_vessel_id, max_vessel_id) for canonical ordering
     # Value: list of (bucket_key, dist_m, mean_lat, mean_lon, max_sog)
-    pair_windows: dict[
-        tuple[int, int], list[tuple[int, float, float, float, float]]
-    ] = defaultdict(list)
+    pair_windows: dict[tuple[int, int], list[tuple[int, float, float, float, float]]] = defaultdict(
+        list
+    )
 
     for bk in sorted(bucket_grid.keys()):
         grid = bucket_grid[bk]
@@ -482,10 +500,7 @@ def _phase_a(
 
         for idx in range(1, len(windows) + 1):
             is_last = idx == len(windows)
-            consecutive = (
-                not is_last
-                and windows[idx][0] - windows[idx - 1][0] == _BUCKET_MINUTES
-            )
+            consecutive = not is_last and windows[idx][0] - windows[idx - 1][0] == _BUCKET_MINUTES
 
             if not consecutive:
                 run_len = idx - run_start
@@ -493,8 +508,8 @@ def _phase_a(
                     run = windows[run_start:idx]
                     start_bk = run[0][0]
                     end_bk = run[-1][0]
-                    start_dt = datetime.fromtimestamp(start_bk * 60, tz=timezone.utc)
-                    end_dt = datetime.fromtimestamp((end_bk + _BUCKET_MINUTES) * 60, tz=timezone.utc)
+                    start_dt = datetime.fromtimestamp(start_bk * 60, tz=UTC)
+                    end_dt = datetime.fromtimestamp((end_bk + _BUCKET_MINUTES) * 60, tz=UTC)
 
                     if _overlap_exists(db, vid1, vid2, start_dt, end_dt):
                         run_start = idx
@@ -505,7 +520,9 @@ def _phase_a(
                     mean_lon = sum(w[3] for w in run) / len(run)
 
                     # Anchorage exclusion zone: stricter thresholds
-                    if exclusion_bboxes and _in_any_anchorage_exclusion(mean_lat, mean_lon, exclusion_bboxes):
+                    if exclusion_bboxes and _in_any_anchorage_exclusion(
+                        mean_lat, mean_lon, exclusion_bboxes
+                    ):
                         # Require 12 windows (3h) instead of 8 (2h)
                         if run_len < _MIN_CONSECUTIVE_WINDOWS_STRICT:
                             run_start = idx
@@ -520,8 +537,9 @@ def _phase_a(
                     # Port proximity filter: skip if both vessels are within 3nm of a major port
                     from app.models.port import Port
                     from app.utils.geo import haversine_nm, load_geometry
+
                     try:
-                        ports = db.query(Port).filter(Port.major_port == True).all()
+                        ports = db.query(Port).filter(Port.major_port).all()
                         in_port = False
                         for port in ports:
                             port_shape = load_geometry(port.geometry)
@@ -540,7 +558,9 @@ def _phase_a(
 
                     # Bunkering vessel exclusion: skip if either vessel is a known bunkering vessel
                     if _is_bunkering_vessel(db, vid1) or _is_bunkering_vessel(db, vid2):
-                        logger.debug("STS Phase A: skipping bunkering vessel pair (%d, %d)", vid1, vid2)
+                        logger.debug(
+                            "STS Phase A: skipping bunkering vessel pair (%d, %d)", vid1, vid2
+                        )
                         run_start = idx
                         continue
 
@@ -577,6 +597,7 @@ def _phase_a(
 
 
 # ── Phase B — approaching vectors ─────────────────────────────────────────────
+
 
 def _phase_b(
     db: Session,
@@ -629,9 +650,7 @@ def _phase_b(
             dist_m = _haversine_meters(stat_pt.lat, stat_pt.lon, mov_pt.lat, mov_pt.lon)
 
             # Compute the bearing from the moving vessel toward the stationary one.
-            bearing_to_stat = _heading_to_point(
-                mov_pt.lat, mov_pt.lon, stat_pt.lat, stat_pt.lon
-            )
+            bearing_to_stat = _heading_to_point(mov_pt.lat, mov_pt.lon, stat_pt.lat, stat_pt.lon)
             mov_cog = mov_pt.cog if mov_pt.cog is not None else mov_pt.heading
             if mov_cog is None:
                 continue
@@ -653,9 +672,7 @@ def _phase_b(
             # Canonical pair ordering.
             vid1 = min(stat_pt.vessel_id, mov_pt.vessel_id)
             vid2 = max(stat_pt.vessel_id, mov_pt.vessel_id)
-            eta_end = datetime.fromtimestamp(
-                event_time.timestamp() + eta_minutes * 60, tz=timezone.utc
-            )
+            eta_end = datetime.fromtimestamp(event_time.timestamp() + eta_minutes * 60, tz=UTC)
 
             if _overlap_exists(db, vid1, vid2, event_time, eta_end):
                 continue
@@ -717,14 +734,21 @@ def _phase_c_dark_dark(
     from app.models.gap_event import AISGapEvent
     from app.models.satellite_tasking_candidate import SatelliteTaskingCandidate
     from app.modules.gap_rate_baseline import is_above_p95
-    from app.utils.geo import haversine_nm
 
     dark_sts_config = (config or {}).get("dark_sts", {})
-    risk_high = dark_sts_config.get("dark_dark_high_confidence", dark_sts_config.get("high_confidence_5nm", 30))
-    risk_medium = dark_sts_config.get("dark_dark_medium_confidence", dark_sts_config.get("medium_confidence_15nm", 20))
-    risk_low = dark_sts_config.get("dark_dark_low_confidence", dark_sts_config.get("low_confidence_50nm", 10))
+    risk_high = dark_sts_config.get(
+        "dark_dark_high_confidence", dark_sts_config.get("high_confidence_5nm", 30)
+    )
+    risk_medium = dark_sts_config.get(
+        "dark_dark_medium_confidence", dark_sts_config.get("medium_confidence_15nm", 20)
+    )
+    risk_low = dark_sts_config.get(
+        "dark_dark_low_confidence", dark_sts_config.get("low_confidence_50nm", 10)
+    )
     min_overlap_hours = dark_sts_config.get("min_overlap_hours", _DARK_DARK_MIN_OVERLAP_HOURS)
-    max_candidates = dark_sts_config.get("max_candidates_per_corridor", _DARK_DARK_MAX_CANDIDATES_PER_CORRIDOR)
+    max_candidates = dark_sts_config.get(
+        "max_candidates_per_corridor", _DARK_DARK_MAX_CANDIDATES_PER_CORRIDOR
+    )
     p95_suppression = dark_sts_config.get("p95_suppression", True)
 
     corridor_bboxes: list[tuple[Corridor, tuple[float, float, float, float]]] = []
@@ -757,7 +781,8 @@ def _phase_c_dark_dark(
     for corridor, bbox in corridor_bboxes:
         if p95_suppression:
             corridor_gap_list = [
-                g for g in tanker_gaps
+                g
+                for g in tanker_gaps
                 if g.corridor_id == corridor.corridor_id or _gap_in_bbox(g, bbox)
             ]
             if corridor_gap_list:
@@ -766,8 +791,7 @@ def _phase_c_dark_dark(
                     continue
 
         corridor_gaps = [
-            g for g in tanker_gaps
-            if g.corridor_id == corridor.corridor_id or _gap_in_bbox(g, bbox)
+            g for g in tanker_gaps if g.corridor_id == corridor.corridor_id or _gap_in_bbox(g, bbox)
         ]
 
         if len(corridor_gaps) < 2:
@@ -879,7 +903,7 @@ def _gap_in_bbox(gap, bbox: tuple[float, float, float, float]) -> bool:
     return False
 
 
-def _dark_dark_proximity(gap_a, gap_b) -> Optional[float]:
+def _dark_dark_proximity(gap_a, gap_b) -> float | None:
     """Compute proximity in nm between two gaps using position pairs."""
     from app.utils.geo import haversine_nm
 
@@ -899,22 +923,27 @@ def _dark_dark_proximity(gap_a, gap_b) -> Optional[float]:
 def _vessel_has_risk_factor(vessel) -> bool:
     """Check if a vessel has at least one risk factor."""
     from app.models.base import FlagRiskEnum
+
     if vessel.flag_risk_category is not None:
-        flag_val = vessel.flag_risk_category.value if hasattr(vessel.flag_risk_category, "value") else str(vessel.flag_risk_category)
+        flag_val = (
+            vessel.flag_risk_category.value
+            if hasattr(vessel.flag_risk_category, "value")
+            else str(vessel.flag_risk_category)
+        )
         if flag_val == FlagRiskEnum.HIGH_RISK.value:
             return True
     if vessel.year_built is not None:
         age = datetime.now().year - vessel.year_built
         if age > 20:
             return True
-    if getattr(vessel, 'psc_detained_last_12m', False):
+    if getattr(vessel, "psc_detained_last_12m", False):
         return True
-    if getattr(vessel, 'vessel_laid_up_in_sts_zone', False):
+    if getattr(vessel, "vessel_laid_up_in_sts_zone", False):
         return True
     return False
 
 
-def _mean_position_lat(gap_a, gap_b) -> Optional[float]:
+def _mean_position_lat(gap_a, gap_b) -> float | None:
     """Compute mean latitude from available gap positions."""
     lats = []
     for gap in (gap_a, gap_b):
@@ -925,7 +954,7 @@ def _mean_position_lat(gap_a, gap_b) -> Optional[float]:
     return sum(lats) / len(lats) if lats else None
 
 
-def _mean_position_lon(gap_a, gap_b) -> Optional[float]:
+def _mean_position_lon(gap_a, gap_b) -> float | None:
     """Compute mean longitude from available gap positions."""
     lons = []
     for gap in (gap_a, gap_b):

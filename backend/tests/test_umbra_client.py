@@ -1,12 +1,13 @@
 """Tests for Umbra Space SAR satellite provider client."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import httpx
 import pybreaker
+import pytest
 
 from app.modules.satellite_providers.base import (
     ArchiveSearchResult,
@@ -14,12 +15,11 @@ from app.modules.satellite_providers.base import (
     OrderSubmitResult,
 )
 
-
 # -- Helpers -------------------------------------------------------------------
 
 AOI_WKT = "POLYGON((10 55, 11 55, 11 56, 10 56, 10 55))"
-START = datetime(2026, 1, 1, tzinfo=timezone.utc)
-END = datetime(2026, 1, 15, tzinfo=timezone.utc)
+START = datetime(2026, 1, 1, tzinfo=UTC)
+END = datetime(2026, 1, 15, tzinfo=UTC)
 
 _TOKEN_RESPONSE = {
     "access_token": "test-umbra-token",
@@ -54,9 +54,7 @@ def _make_stac_response(features: list[dict] | None = None) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
-def _make_task_response(
-    task_id: str = "task-umbra-abc", status: str = "SUBMITTED"
-) -> dict:
+def _make_task_response(task_id: str = "task-umbra-abc", status: str = "SUBMITTED") -> dict:
     return {
         "taskId": task_id,
         "status": status,
@@ -80,9 +78,7 @@ def reset_umbra_breaker():
     from app.modules.circuit_breakers import breakers
     from app.modules.satellite_providers import umbra_client
 
-    breakers["umbra"] = pybreaker.CircuitBreaker(
-        fail_max=5, reset_timeout=60, name="umbra"
-    )
+    breakers["umbra"] = pybreaker.CircuitBreaker(fail_max=5, reset_timeout=60, name="umbra")
     umbra_client._token_cache.clear()
     yield
 
@@ -214,7 +210,6 @@ def test_cancel_order(umbra_provider):
 
 def test_circuit_breaker_trips(umbra_provider):
     """Circuit breaker trips after 5 repeated failures."""
-    from app.modules.circuit_breakers import breakers
 
     def _raise(*args, **kwargs):
         raise httpx.ConnectError("Connection refused")

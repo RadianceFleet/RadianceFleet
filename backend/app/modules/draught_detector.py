@@ -6,20 +6,21 @@ or near STS transfer events.  Draught is a corroborating signal only:
 AIS draught is manually entered and unreliable on its own, but extreme
 swings far from port strengthen other detectors.
 """
+
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.ais_point import AISPoint
-from app.models.vessel import Vessel
-from app.models.port import Port
-from app.models.gap_event import AISGapEvent
-from app.models.sts_transfer import StsTransferEvent
 from app.models.draught_event import DraughtChangeEvent
-from app.utils.geo import haversine_nm as _haversine_nm, parse_wkt_point as _parse_port_coords
+from app.models.gap_event import AISGapEvent
+from app.models.port import Port
+from app.models.sts_transfer import StsTransferEvent
+from app.models.vessel import Vessel
+from app.utils.geo import haversine_nm as _haversine_nm
+from app.utils.geo import parse_wkt_point as _parse_port_coords
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +63,9 @@ def _get_class_threshold(deadweight: float | None) -> float:
     return 1.0
 
 
-
-def _find_nearest_port(lat: float, lon: float, ports: list) -> tuple[Optional[int], Optional[float], bool]:
+def _find_nearest_port(
+    lat: float, lon: float, ports: list
+) -> tuple[int | None, float | None, bool]:
     """Find nearest port to given coordinates.
 
     Returns (port_id, distance_nm, is_offshore_terminal).
@@ -93,17 +95,24 @@ def _is_valid_draught(draught: float | None) -> bool:
     return _DRAUGHT_MIN_M < draught <= _DRAUGHT_MAX_M
 
 
-def _find_nearby_sts(db: Session, vessel_id: int, timestamp: datetime) -> Optional[int]:
+def _find_nearby_sts(db: Session, vessel_id: int, timestamp: datetime) -> int | None:
     """Find STS event near the given timestamp for this vessel."""
     window = timedelta(hours=_STS_LINKAGE_HOURS)
     t_start = timestamp - window
     t_end = timestamp + window
 
-    sts = db.query(StsTransferEvent).filter(
-        ((StsTransferEvent.vessel_1_id == vessel_id) | (StsTransferEvent.vessel_2_id == vessel_id)),
-        StsTransferEvent.start_time_utc <= t_end,
-        StsTransferEvent.end_time_utc >= t_start,
-    ).first()
+    sts = (
+        db.query(StsTransferEvent)
+        .filter(
+            (
+                (StsTransferEvent.vessel_1_id == vessel_id)
+                | (StsTransferEvent.vessel_2_id == vessel_id)
+            ),
+            StsTransferEvent.start_time_utc <= t_end,
+            StsTransferEvent.end_time_utc >= t_start,
+        )
+        .first()
+    )
     return sts.sts_id if sts else None
 
 
@@ -124,7 +133,7 @@ def run_draught_detection(db: Session) -> dict:
     vessels_skipped = 0
 
     for batch_start in range(0, len(vessels), _VESSEL_BATCH_SIZE):
-        batch = vessels[batch_start:batch_start + _VESSEL_BATCH_SIZE]
+        batch = vessels[batch_start : batch_start + _VESSEL_BATCH_SIZE]
 
         for vessel in batch:
             threshold = _get_class_threshold(vessel.deadweight)
@@ -165,7 +174,9 @@ def run_draught_detection(db: Session) -> dict:
                             continue
 
                         # Check if within 24h sliding window
-                        time_diff = (points[j].timestamp_utc - points[i].timestamp_utc).total_seconds() / 3600.0
+                        time_diff = (
+                            points[j].timestamp_utc - points[i].timestamp_utc
+                        ).total_seconds() / 3600.0
                         if time_diff > _SLIDING_WINDOW_HOURS:
                             break
 
@@ -196,7 +207,11 @@ def run_draught_detection(db: Session) -> dict:
                             )
 
                             # Skip if near offshore terminal (legitimate loading)
-                            if is_offshore_terminal and port_dist is not None and port_dist < _OFFSHORE_TERMINAL_SKIP_NM:
+                            if (
+                                is_offshore_terminal
+                                and port_dist is not None
+                                and port_dist < _OFFSHORE_TERMINAL_SKIP_NM
+                            ):
                                 j += 1
                                 continue
 
@@ -226,7 +241,9 @@ def run_draught_detection(db: Session) -> dict:
                                 new_draught_m=new_draught,
                                 delta_m=delta,
                                 nearest_port_id=port_id,
-                                distance_to_port_nm=round(port_dist, 1) if port_dist is not None else None,
+                                distance_to_port_nm=round(port_dist, 1)
+                                if port_dist is not None
+                                else None,
                                 is_offshore=is_offshore,
                                 linked_sts_id=sts_id,
                                 risk_score_component=risk_score,
@@ -249,9 +266,7 @@ def run_draught_detection(db: Session) -> dict:
             # in the filtered set), since gap analysis queries its own pre/post
             # gap draught readings independently.
             gap_events = (
-                db.query(AISGapEvent)
-                .filter(AISGapEvent.vessel_id == vessel.vessel_id)
-                .all()
+                db.query(AISGapEvent).filter(AISGapEvent.vessel_id == vessel.vessel_id).all()
             )
 
             for gap in gap_events:
@@ -282,7 +297,9 @@ def run_draught_detection(db: Session) -> dict:
                 if not pre_gap_point or not post_gap_point:
                     continue
 
-                if not _is_valid_draught(pre_gap_point.draught) or not _is_valid_draught(post_gap_point.draught):
+                if not _is_valid_draught(pre_gap_point.draught) or not _is_valid_draught(
+                    post_gap_point.draught
+                ):
                     continue
 
                 gap_delta = post_gap_point.draught - pre_gap_point.draught
@@ -314,7 +331,9 @@ def run_draught_detection(db: Session) -> dict:
     db.commit()
     logger.info(
         "Draught detection: %d events from %d vessels (%d skipped)",
-        events_created, vessels_processed, vessels_skipped,
+        events_created,
+        vessels_processed,
+        vessels_skipped,
     )
     return {
         "events_created": events_created,

@@ -1,8 +1,6 @@
 """Tests for Phase A4-5: bunkering vessel exclusion and transliteration normalization."""
+
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ── Bunkering exclusion tests ────────────────────────────────────────────────
 
@@ -11,11 +9,13 @@ class TestLoadBunkeringExclusions:
     def setup_method(self):
         """Reset the module-level cache before each test."""
         import app.modules.sts_detector as mod
+
         mod._BUNKERING_EXCLUSIONS = None
 
     def test_load_bunkering_exclusions(self):
         """Verify the YAML loads and returns a non-empty set."""
         from app.modules.sts_detector import _load_bunkering_exclusions
+
         result = _load_bunkering_exclusions()
         assert isinstance(result, set)
         assert len(result) > 0
@@ -49,6 +49,7 @@ class TestLoadBunkeringExclusions:
     def test_missing_bunkering_yaml_returns_empty(self):
         """Verify graceful handling when YAML file doesn't exist."""
         import app.modules.sts_detector as mod
+
         mod._BUNKERING_EXCLUSIONS = None
 
         with patch("app.modules.sts_detector.Path") as mock_path_cls:
@@ -69,6 +70,7 @@ class TestNormalizeName:
     def test_normalize_name_cyrillic(self):
         """Cyrillic vessel names should transliterate to ASCII."""
         from app.modules.watchlist_loader import _normalize_name
+
         result = _normalize_name("\u0411\u0410\u041b\u0422\u0418\u0419\u0421\u041a")
         # unidecode transliterates Cyrillic to ASCII
         assert result.isascii()
@@ -77,27 +79,32 @@ class TestNormalizeName:
     def test_normalize_name_accented(self):
         """Accented Latin characters should be normalized."""
         from app.modules.watchlist_loader import _normalize_name
+
         result = _normalize_name("S\u00e3o Tom\u00e9")
         assert result == "SAO TOME"
 
     def test_normalize_name_already_ascii(self):
         """ASCII names should pass through unchanged (uppercased)."""
         from app.modules.watchlist_loader import _normalize_name
+
         assert _normalize_name("EAGLE S") == "EAGLE S"
 
     def test_normalize_name_empty(self):
         """Empty string should return empty string."""
         from app.modules.watchlist_loader import _normalize_name
+
         assert _normalize_name("") == ""
 
     def test_normalize_name_lowercase(self):
         """Lowercase input should be uppercased."""
         from app.modules.watchlist_loader import _normalize_name
+
         assert _normalize_name("tanker one") == "TANKER ONE"
 
     def test_normalize_name_whitespace(self):
         """Leading/trailing whitespace should be stripped."""
         from app.modules.watchlist_loader import _normalize_name
+
         assert _normalize_name("  EAGLE S  ") == "EAGLE S"
 
 
@@ -118,7 +125,9 @@ class TestFuzzyMatchWithTransliteration:
         db.query.return_value.filter.return_value.all.return_value = [vessel]
 
         # Search with Cyrillic name
-        result = _fuzzy_match_vessel(db, "\u0411\u0410\u041b\u0422\u0418\u0418\u0421\u041a", threshold=85)
+        result = _fuzzy_match_vessel(
+            db, "\u0411\u0410\u041b\u0422\u0418\u0418\u0421\u041a", threshold=85
+        )
         # After transliteration, both sides become ASCII and should match
         assert result is not None
         assert result[0] is vessel

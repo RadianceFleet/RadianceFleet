@@ -8,8 +8,9 @@ Tests:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
+
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
-from datetime import datetime, timezone
 
 
 class TestListAuditLogs:
@@ -41,7 +42,7 @@ class TestListAuditLogs:
         log_entry.entity_type = "alert"
         log_entry.entity_id = 42
         log_entry.details = {"old_status": "new", "new_status": "under_review"}
-        log_entry.created_at = datetime(2026, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+        log_entry.created_at = datetime(2026, 1, 15, 14, 30, 0, tzinfo=UTC)
 
         mock_db.query.return_value.order_by.return_value.count.return_value = 1
         mock_db.query.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [

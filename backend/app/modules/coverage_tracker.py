@@ -2,10 +2,11 @@
 
 Pure functions for querying and recording data coverage windows.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -87,7 +88,7 @@ def record_coverage_window(
 ) -> DataCoverageWindow:
     """Upsert a coverage window record (idempotent on source+date_from+date_to+status)."""
     if started_at is None:
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
     existing = (
         db.query(DataCoverageWindow)
         .filter(

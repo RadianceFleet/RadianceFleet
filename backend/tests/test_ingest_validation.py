@@ -5,10 +5,9 @@ Verifies:
   2. Impossible SOG warning (> 50 knots) — tags but doesn't reject
   3. Anchored + high SOG warning (nav_status=1 and SOG > 3) — tags but doesn't reject
 """
-import logging
-from datetime import datetime, timedelta, timezone
 
-import pytest
+import logging
+from datetime import UTC, datetime, timedelta
 
 from app.modules.normalize import validate_ais_row
 
@@ -30,12 +29,13 @@ def _valid_row(**overrides):
 
 # ── E2.1: Future timestamp ceiling ──────────────────────────────────────────
 
+
 class TestFutureTimestampCeiling:
     """Timestamps > now + 7 days should be rejected; within 7 days should pass."""
 
     def test_far_future_timestamp_rejected(self):
         """Timestamp 10 days in the future should be rejected."""
-        far_future = (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
+        far_future = (datetime.now(UTC) + timedelta(days=10)).isoformat()
         row = _valid_row(timestamp_utc=far_future)
         error = validate_ais_row(row)
         assert error is not None, "Timestamp 10 days in future should be rejected"
@@ -43,30 +43,31 @@ class TestFutureTimestampCeiling:
 
     def test_far_future_timestamp_logs_warning(self, caplog):
         """Rejection of far-future timestamp should log a warning."""
-        far_future = (datetime.now(timezone.utc) + timedelta(days=10)).isoformat()
+        far_future = (datetime.now(UTC) + timedelta(days=10)).isoformat()
         row = _valid_row(timestamp_utc=far_future)
         with caplog.at_level(logging.WARNING, logger="app.modules.normalize"):
             validate_ais_row(row)
-        assert any("future timestamp" in msg.lower() for msg in caplog.messages), \
+        assert any("future timestamp" in msg.lower() for msg in caplog.messages), (
             f"Expected future timestamp warning, got: {caplog.messages}"
+        )
 
     def test_near_future_timestamp_accepted(self):
         """Timestamp 1 day in the future should be accepted (within 7-day ceiling)."""
-        near_future = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        near_future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
         row = _valid_row(timestamp_utc=near_future)
         error = validate_ais_row(row)
         assert error is None, f"Timestamp 1 day in future should be accepted, got: {error}"
 
     def test_timestamp_6_days_future_accepted(self):
         """Timestamp 6 days in the future should be accepted (under 7-day ceiling)."""
-        future_6d = (datetime.now(timezone.utc) + timedelta(days=6)).isoformat()
+        future_6d = (datetime.now(UTC) + timedelta(days=6)).isoformat()
         row = _valid_row(timestamp_utc=future_6d)
         error = validate_ais_row(row)
         assert error is None, f"Timestamp 6 days in future should be accepted, got: {error}"
 
     def test_timestamp_8_days_future_rejected(self):
         """Timestamp 8 days in the future should be rejected (over 7-day ceiling)."""
-        future_8d = (datetime.now(timezone.utc) + timedelta(days=8)).isoformat()
+        future_8d = (datetime.now(UTC) + timedelta(days=8)).isoformat()
         row = _valid_row(timestamp_utc=future_8d)
         error = validate_ais_row(row)
         assert error is not None, "Timestamp 8 days in future should be rejected"
@@ -87,6 +88,7 @@ class TestFutureTimestampCeiling:
 
 # ── E2.2: Impossible SOG warning ─────────────────────────────────────────────
 
+
 class TestImpossibleSOGWarning:
     """SOG > 50 knots should be flagged with a warning (but SOG > 35 still rejects)."""
 
@@ -98,16 +100,18 @@ class TestImpossibleSOGWarning:
             error = validate_ais_row(row)
         # SOG 55 > 35 so it will be rejected
         assert error is not None, "SOG 55 should still be rejected (> 35 physical limit)"
-        assert any("Suspicious SOG" in msg for msg in caplog.messages), \
+        assert any("Suspicious SOG" in msg for msg in caplog.messages), (
             f"Expected suspicious SOG warning, got: {caplog.messages}"
+        )
 
     def test_sog_above_50_adds_quality_flag(self):
         """SOG > 50 should add a quality flag to the row."""
         row = _valid_row(sog=55.0)
         validate_ais_row(row)
         flags = row.get("_quality_flags", [])
-        assert any("suspicious_sog" in f for f in flags), \
+        assert any("suspicious_sog" in f for f in flags), (
             f"Expected suspicious_sog quality flag, got: {flags}"
+        )
 
     def test_sog_40_no_warning(self, caplog):
         """SOG of 40 (> 35 but < 50) should be rejected but NOT log suspicious SOG warning."""
@@ -115,8 +119,9 @@ class TestImpossibleSOGWarning:
         with caplog.at_level(logging.WARNING, logger="app.modules.normalize"):
             error = validate_ais_row(row)
         assert error is not None, "SOG 40 should be rejected (> 35)"
-        assert not any("Suspicious SOG" in msg for msg in caplog.messages), \
+        assert not any("Suspicious SOG" in msg for msg in caplog.messages), (
             "SOG 40 should not trigger suspicious SOG warning (only > 50)"
+        )
 
     def test_sog_30_no_warning(self, caplog):
         """SOG of 30 (normal) should pass without warnings."""
@@ -138,6 +143,7 @@ class TestImpossibleSOGWarning:
 
 # ── E2.3: Anchored + high SOG warning ───────────────────────────────────────
 
+
 class TestAnchoredHighSOGWarning:
     """Anchored vessel (nav_status=1) with SOG > 3 should be flagged."""
 
@@ -147,18 +153,19 @@ class TestAnchoredHighSOGWarning:
         with caplog.at_level(logging.WARNING, logger="app.modules.normalize"):
             error = validate_ais_row(row)
         assert error is None, "Anchored+high SOG should not reject the row"
-        assert any("Anchored vessel" in msg for msg in caplog.messages), \
+        assert any("Anchored vessel" in msg for msg in caplog.messages), (
             f"Expected anchored vessel warning, got: {caplog.messages}"
-        assert any("241234567" in msg for msg in caplog.messages), \
-            "Warning should include MMSI"
+        )
+        assert any("241234567" in msg for msg in caplog.messages), "Warning should include MMSI"
 
     def test_anchored_high_sog_adds_quality_flag(self):
         """Anchored + high SOG should add a quality flag."""
         row = _valid_row(sog=5.0, nav_status=1)
         validate_ais_row(row)
         flags = row.get("_quality_flags", [])
-        assert any("anchored_high_sog" in f for f in flags), \
+        assert any("anchored_high_sog" in f for f in flags), (
             f"Expected anchored_high_sog quality flag, got: {flags}"
+        )
 
     def test_anchored_low_sog_no_warning(self, caplog):
         """Anchored vessel with SOG 2 knots (below threshold) should not warn."""

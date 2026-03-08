@@ -16,13 +16,13 @@ Also includes floating storage detection and Arctic corridor no-ice-class scorin
 Performance: AIS points are indexed into a 1-degree lat/lon grid (same pattern
 as sts_detector) to avoid O(n^2) comparisons.
 """
+
 from __future__ import annotations
 
 import logging
 import math
 from collections import defaultdict
-from datetime import datetime, date, timedelta, timezone
-from typing import Optional
+from datetime import UTC, date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -38,15 +38,16 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-_CONVOY_DISTANCE_NM: float = 5.0     # max distance for convoy pairing
-_CONVOY_MIN_SOG_KN: float = 3.0      # both vessels must be underway
+_CONVOY_DISTANCE_NM: float = 5.0  # max distance for convoy pairing
+_CONVOY_MIN_SOG_KN: float = 3.0  # both vessels must be underway
 _CONVOY_HEADING_DELTA_DEG: float = 15.0  # max heading difference
-_BUCKET_MINUTES: int = 15            # time bucket width (match sts_detector)
-_MIN_CONSECUTIVE_WINDOWS: int = 16   # 16 * 15 min = 4 hours minimum
-_MAX_PAIRS_PER_RUN: int = 5000       # safety cap on pair comparisons
+_BUCKET_MINUTES: int = 15  # time bucket width (match sts_detector)
+_MIN_CONSECUTIVE_WINDOWS: int = 16  # 16 * 15 min = 4 hours minimum
+_MAX_PAIRS_PER_RUN: int = 5000  # safety cap on pair comparisons
 
 
 # ── Geometry helpers ──────────────────────────────────────────────────────────
+
 
 def _grid_cell(lat: float, lon: float) -> tuple[int, int]:
     """Map coordinates to a 1-degree integer grid cell."""
@@ -67,6 +68,7 @@ def _bucket_key(ts: datetime) -> int:
 
 # ── Scoring helper ────────────────────────────────────────────────────────────
 
+
 def _convoy_score(duration_hours: float, config: dict | None = None) -> int:
     """Return risk score component based on convoy duration tier."""
     convoy_cfg = (config or {}).get("convoy", {})
@@ -81,7 +83,8 @@ def _convoy_score(duration_hours: float, config: dict | None = None) -> int:
 
 # ── Corridor matching ─────────────────────────────────────────────────────────
 
-def _parse_wkt_bbox(geometry_value: object) -> Optional[tuple[float, float, float, float]]:
+
+def _parse_wkt_bbox(geometry_value: object) -> tuple[float, float, float, float] | None:
     """Thin wrapper around :func:`app.utils.geo.parse_wkt_bbox`."""
     if geometry_value is None:
         return None
@@ -97,7 +100,7 @@ def _find_corridor(
     lat: float,
     lon: float,
     corridor_bboxes: list[tuple[Corridor, tuple[float, float, float, float]]],
-) -> Optional[int]:
+) -> int | None:
     """Return corridor_id of the first corridor whose bbox contains the point."""
     for corridor, bbox in corridor_bboxes:
         if _in_bbox(lat, lon, bbox):
@@ -106,6 +109,7 @@ def _find_corridor(
 
 
 # ── Deduplication ─────────────────────────────────────────────────────────────
+
 
 def _convoy_overlap_exists(
     db: Session,
@@ -133,10 +137,11 @@ def _convoy_overlap_exists(
 
 # ── Main detection function ───────────────────────────────────────────────────
 
+
 def detect_convoys(
     db: Session,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> dict:
     """Detect convoy events — pairs of vessels moving together in formation.
 
@@ -193,9 +198,9 @@ def detect_convoys(
         bucket_grid[bk][cell].append((vessel_id, pt))
 
     # Step 3: Find convoy pairs — vessels close, underway, same heading
-    pair_windows: dict[
-        tuple[int, int], list[tuple[int, float, float, float, float]]
-    ] = defaultdict(list)
+    pair_windows: dict[tuple[int, int], list[tuple[int, float, float, float, float]]] = defaultdict(
+        list
+    )
 
     for bk in sorted(bucket_grid.keys()):
         grid = bucket_grid[bk]
@@ -243,10 +248,7 @@ def detect_convoys(
 
         for idx in range(1, len(windows) + 1):
             is_last = idx == len(windows)
-            consecutive = (
-                not is_last
-                and windows[idx][0] - windows[idx - 1][0] == _BUCKET_MINUTES
-            )
+            consecutive = not is_last and windows[idx][0] - windows[idx - 1][0] == _BUCKET_MINUTES
 
             if not consecutive:
                 run_len = idx - run_start
@@ -254,8 +256,8 @@ def detect_convoys(
                     run = windows[run_start:idx]
                     start_bk = run[0][0]
                     end_bk = run[-1][0]
-                    start_dt = datetime.fromtimestamp(start_bk * 60, tz=timezone.utc)
-                    end_dt = datetime.fromtimestamp((end_bk + _BUCKET_MINUTES) * 60, tz=timezone.utc)
+                    start_dt = datetime.fromtimestamp(start_bk * 60, tz=UTC)
+                    end_dt = datetime.fromtimestamp((end_bk + _BUCKET_MINUTES) * 60, tz=UTC)
 
                     duration_hours = (end_dt - start_dt).total_seconds() / 3600.0
 
@@ -300,6 +302,7 @@ def detect_convoys(
 
 # ── Floating storage detection ────────────────────────────────────────────────
 
+
 def detect_floating_storage(db: Session) -> dict:
     """Detect floating storage intermediaries.
 
@@ -312,20 +315,17 @@ def detect_floating_storage(db: Session) -> dict:
     if not settings.CONVOY_DETECTION_ENABLED:
         return {"floating_storage_detected": 0, "status": "disabled"}
 
+    from sqlalchemy import or_
+
     from app.models.loitering_event import LoiteringEvent
     from app.models.sts_transfer import StsTransferEvent
-    from sqlalchemy import or_, func
 
     config = load_scoring_config()
     convoy_cfg = config.get("convoy", {})
     fs_score = convoy_cfg.get("floating_storage_intermediary", 25)
 
     # Find vessels with extended loitering (>30 days = 720 hours)
-    long_loiter = (
-        db.query(LoiteringEvent)
-        .filter(LoiteringEvent.duration_hours >= 720.0)
-        .all()
-    )
+    long_loiter = db.query(LoiteringEvent).filter(LoiteringEvent.duration_hours >= 720.0).all()
 
     if not long_loiter:
         return {"floating_storage_detected": 0}
@@ -333,12 +333,16 @@ def detect_floating_storage(db: Session) -> dict:
     detected = 0
     for loiter in long_loiter:
         # Count STS events for this vessel
-        sts_count = db.query(StsTransferEvent).filter(
-            or_(
-                StsTransferEvent.vessel_1_id == loiter.vessel_id,
-                StsTransferEvent.vessel_2_id == loiter.vessel_id,
+        sts_count = (
+            db.query(StsTransferEvent)
+            .filter(
+                or_(
+                    StsTransferEvent.vessel_1_id == loiter.vessel_id,
+                    StsTransferEvent.vessel_2_id == loiter.vessel_id,
+                )
             )
-        ).count()
+            .count()
+        )
 
         if sts_count >= 2:
             # Create a ConvoyEvent to record floating storage detection

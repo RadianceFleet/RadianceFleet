@@ -1,10 +1,10 @@
 """ConvoyEvent entity — detected synchronized vessel movement (convoy) events."""
+
 from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import Column, Integer, String, DateTime, Float, JSON
-
+from sqlalchemy import JSON, Column, DateTime, Float, Integer
 
 from app.models.base import Base
 
@@ -23,6 +23,4 @@ class ConvoyEvent(Base):
     corridor_id = Column(Integer, nullable=True)
     risk_score_component = Column(Integer, default=0)
     evidence_json = Column(JSON)
-    created_at = Column(
-        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
-    )
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))

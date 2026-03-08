@@ -1,16 +1,17 @@
 """Tests for GET /sts-chains endpoint."""
-import pytest
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 
-def _make_fleet_alert(alert_id=1, alert_type="sts_relay_chain",
-                      chain_vessel_ids=None, risk_score=50):
+def _make_fleet_alert(
+    alert_id=1, alert_type="sts_relay_chain", chain_vessel_ids=None, risk_score=50
+):
     a = MagicMock()
     a.alert_id = alert_id
     a.alert_type = alert_type
     a.risk_score_component = risk_score
-    a.created_utc = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    a.created_utc = datetime(2025, 6, 1, tzinfo=UTC)
     a.evidence_json = {
         "chain_vessel_ids": chain_vessel_ids or [1, 2, 3],
         "intermediary_vessel_ids": [2],

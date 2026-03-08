@@ -1,0 +1,180 @@
+name: E2E Production Tests
+
+on:
+  schedule:
+    - cron: '17 */2 * * *'   # smoke every 2h
+    - cron: '43 3 * * 1'     # weekly k6 load (Monday)
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Test suite to run'
+        required: false
+        default: 'smoke'
+        type: choice
+        options: [smoke, security, mobile, load, all]
+  deployment_status:
+
+env:
+  BASE_URL: ${{ secrets.BASE_URL || 'https://radiancefleet.com' }}
+  SITE_API_KEY: ${{ secrets.SITE_API_KEY }}
+  SMOKE_DB_API_KEY: ${{ secrets.SMOKE_DB_API_KEY }}
+
+jobs:
+  # ------------------------------------------------------------------
+  # Preflight: verify the site is reachable before running any tests
+  # ------------------------------------------------------------------
+  preflight:
+    runs-on: ubuntu-latest
+    # Only run deployment_status on success state
+    if: >-
+      github.event_name != 'deployment_status' ||
+      github.event.deployment_status.state == 'success'
+    outputs:
+      site_up: ${{ steps.health.outputs.up }}
+      api_gate_active: ${{ steps.gate.outputs.active }}
+    steps:
+      - name: Check /health
+        id: health
+        run: |
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/health" || echo "000")
+          if [ "$STATUS" = "200" ]; then
+            echo "up=true" >> "$GITHUB_OUTPUT"
+            echo "Site is up (HTTP $STATUS)"
+          else
+            echo "up=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Site is down or unreachable (HTTP $STATUS)"
+          fi
+
+      - name: Detect API key gate
+        id: gate
+        run: |
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/api/v1/vessels" || echo "000")
+          if [ "$STATUS" = "401" ]; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            echo "API key gate is active (HTTP 401 without key)"
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "API key gate is not active (HTTP $STATUS)"
+          fi
+
+  # ------------------------------------------------------------------
+  # Smoke tests — Playwright browser tests against production
+  # ------------------------------------------------------------------
+  smoke:
+    needs: preflight
+    if: >-
+      needs.preflight.outputs.site_up == 'true' && (
+        github.event_name == 'schedule' ||
+        github.event_name == 'deployment_status' ||
+        (github.event_name == 'workflow_dispatch' &&
+         (inputs.test_suite == 'smoke' || inputs.test_suite == 'all'))
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: e2e/
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run smoke tests
+        run: npx playwright test --project=desktop smoke/ sse/
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+          SITE_API_KEY: ${{ env.SITE_API_KEY }}
+          SMOKE_DB_API_KEY: ${{ env.SMOKE_DB_API_KEY }}
+          API_GATE_ACTIVE: ${{ needs.preflight.outputs.api_gate_active }}
+
+  # ------------------------------------------------------------------
+  # Security tests
+  # ------------------------------------------------------------------
+  security:
+    needs: preflight
+    if: >-
+      needs.preflight.outputs.site_up == 'true' && (
+        github.event_name == 'deployment_status' ||
+        (github.event_name == 'workflow_dispatch' &&
+         (inputs.test_suite == 'security' || inputs.test_suite == 'all'))
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: e2e/
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run security tests
+        run: npx playwright test --project=desktop security/
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+          SITE_API_KEY: ${{ env.SITE_API_KEY }}
+
+  # ------------------------------------------------------------------
+  # Mobile tests
+  # ------------------------------------------------------------------
+  mobile:
+    needs: preflight
+    if: >-
+      needs.preflight.outputs.site_up == 'true' && (
+        github.event_name == 'schedule' ||
+        github.event_name == 'deployment_status' ||
+        (github.event_name == 'workflow_dispatch' &&
+         (inputs.test_suite == 'mobile' || inputs.test_suite == 'all'))
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: e2e/
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run mobile tests
+        run: npx playwright test --project=mobile-chrome mobile/
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+          SITE_API_KEY: ${{ env.SITE_API_KEY }}
+
+  # ------------------------------------------------------------------
+  # k6 load tests — weekly schedule or manual dispatch
+  # ------------------------------------------------------------------
+  load-test:
+    needs: preflight
+    if: >-
+      needs.preflight.outputs.site_up == 'true' && (
+        (github.event_name == 'schedule' && github.event.schedule == '43 3 * * 1') ||
+        (github.event_name == 'workflow_dispatch' &&
+         (inputs.test_suite == 'load' || inputs.test_suite == 'all'))
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Set up k6
+        uses: grafana/setup-k6-action@484fa6694a2ff1390f7e2bb0cf533204ed498eb0 # v1
+      - name: Run k6 smoke load test
+        run: k6 run k6/smoke.js
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+          SITE_API_KEY: ${{ env.SITE_API_KEY }}

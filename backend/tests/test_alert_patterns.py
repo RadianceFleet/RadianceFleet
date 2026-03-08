@@ -1,6 +1,7 @@
 """Tests for H3: Alert recurring pattern fields — prior_similar_count and is_recurring_pattern."""
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
+
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 
 class TestAlertPatterns:
@@ -10,8 +11,8 @@ class TestAlertPatterns:
         alert.gap_event_id = 1
         alert.vessel_id = 10
         alert.corridor_id = 5
-        alert.gap_start_utc = datetime(2026, 1, 15, tzinfo=timezone.utc)
-        alert.gap_end_utc = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
+        alert.gap_start_utc = datetime(2026, 1, 15, tzinfo=UTC)
+        alert.gap_end_utc = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
         alert.duration_minutes = 720
         alert.risk_score = 75
         alert.risk_breakdown_json = None
@@ -37,9 +38,10 @@ class TestAlertPatterns:
 
         # Default: return alert for first query, vessel for second, None for rest
         query_results = [alert, vessel, None, None, None, None]
-        filter_results = iter(query_results)
+        iter(query_results)
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -51,6 +53,7 @@ class TestAlertPatterns:
             elif call_count[0] == 2:
                 result.filter.return_value.first.return_value = vessel
             return result
+
         mock_db.query.side_effect = query_side_effect
 
         return alert, vessel

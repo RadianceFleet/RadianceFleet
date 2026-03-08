@@ -4,16 +4,14 @@ Covers dark-dark STS detection (both vessels AIS-dark simultaneously),
 gap rate baseline computation, satellite tasking candidate creation,
 and feature flag gating.
 """
-import math
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
 
-import pytest
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
-from app.models.base import STSDetectionTypeEnum, FlagRiskEnum, CorridorTypeEnum
-
+from app.models.base import STSDetectionTypeEnum
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _make_vessel(
     vessel_id: int,
@@ -111,6 +109,7 @@ def _standard_config():
 
 # ── Tests: _phase_c_dark_dark ───────────────────────────────────────────────
 
+
 class TestDarkDarkHighConfidence:
     """Two tankers 3nm apart, 6h gap overlap -> HIGH confidence event."""
 
@@ -130,13 +129,30 @@ class TestDarkDarkHighConfidence:
         vessel_a = _make_vessel(1, flag_risk="high_risk", year_built=1995)
         vessel_b = _make_vessel(2, flag_risk="high_risk", year_built=1993)
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
-        gap_a = _make_gap(1, t0, t0 + timedelta(hours=8), corridor_id=1,
-                          off_lat=36.5, off_lon=22.5, on_lat=36.5, on_lon=22.5)
-        gap_b = _make_gap(2, t0 + timedelta(hours=1), t0 + timedelta(hours=7), corridor_id=1,
-                          off_lat=36.52, off_lon=22.52, on_lat=36.52, on_lon=22.52)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
+        gap_a = _make_gap(
+            1,
+            t0,
+            t0 + timedelta(hours=8),
+            corridor_id=1,
+            off_lat=36.5,
+            off_lon=22.5,
+            on_lat=36.5,
+            on_lon=22.5,
+        )
+        gap_b = _make_gap(
+            2,
+            t0 + timedelta(hours=1),
+            t0 + timedelta(hours=7),
+            corridor_id=1,
+            off_lat=36.52,
+            off_lon=22.52,
+            on_lat=36.52,
+            on_lon=22.52,
+        )
 
         db = MagicMock()
+
         # db.query(AISGapEvent).all() returns our gaps
         # db.query(Vessel).all() returns our vessels
         # We need the queries to return the right data
@@ -191,11 +207,16 @@ class TestDarkDarkJammingSuppression:
         vessel_a = _make_vessel(1, flag_risk="high_risk")
         vessel_b = _make_vessel(2, flag_risk="high_risk")
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
-        gap_a = _make_gap(1, t0, t0 + timedelta(hours=8), corridor_id=1,
-                          off_lat=36.5, off_lon=22.5)
-        gap_b = _make_gap(2, t0 + timedelta(hours=1), t0 + timedelta(hours=7), corridor_id=1,
-                          off_lat=36.52, off_lon=22.52)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
+        gap_a = _make_gap(1, t0, t0 + timedelta(hours=8), corridor_id=1, off_lat=36.5, off_lon=22.5)
+        gap_b = _make_gap(
+            2,
+            t0 + timedelta(hours=1),
+            t0 + timedelta(hours=7),
+            corridor_id=1,
+            off_lat=36.52,
+            off_lon=22.52,
+        )
 
         db = MagicMock()
 
@@ -238,11 +259,16 @@ class TestDarkDarkTankerFilter:
         vessel_a = _make_vessel(1, vessel_type="Crude Oil Tanker", flag_risk="high_risk")
         vessel_b = _make_vessel(2, vessel_type="Bulk Carrier", flag_risk="high_risk")
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
-        gap_a = _make_gap(1, t0, t0 + timedelta(hours=8), corridor_id=1,
-                          off_lat=36.5, off_lon=22.5)
-        gap_b = _make_gap(2, t0 + timedelta(hours=1), t0 + timedelta(hours=7), corridor_id=1,
-                          off_lat=36.52, off_lon=22.52)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
+        gap_a = _make_gap(1, t0, t0 + timedelta(hours=8), corridor_id=1, off_lat=36.5, off_lon=22.5)
+        gap_b = _make_gap(
+            2,
+            t0 + timedelta(hours=1),
+            t0 + timedelta(hours=7),
+            corridor_id=1,
+            off_lat=36.52,
+            off_lon=22.52,
+        )
 
         db = MagicMock()
 
@@ -284,12 +310,17 @@ class TestDarkDarkMinimumOverlap:
         vessel_a = _make_vessel(1, flag_risk="high_risk")
         vessel_b = _make_vessel(2, flag_risk="high_risk")
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
         # Only 30 minutes of overlap
-        gap_a = _make_gap(1, t0, t0 + timedelta(hours=2), corridor_id=1,
-                          off_lat=36.5, off_lon=22.5)
-        gap_b = _make_gap(2, t0 + timedelta(hours=1, minutes=30), t0 + timedelta(hours=4), corridor_id=1,
-                          off_lat=36.52, off_lon=22.52)
+        gap_a = _make_gap(1, t0, t0 + timedelta(hours=2), corridor_id=1, off_lat=36.5, off_lon=22.5)
+        gap_b = _make_gap(
+            2,
+            t0 + timedelta(hours=1, minutes=30),
+            t0 + timedelta(hours=4),
+            corridor_id=1,
+            off_lat=36.52,
+            off_lon=22.52,
+        )
 
         db = MagicMock()
 
@@ -321,14 +352,16 @@ class TestDarkDarkMaxCandidates:
     @patch("app.modules.sts_detector._overlap_exists", return_value=False)
     @patch("app.modules.gap_rate_baseline.is_above_p95", return_value=False)
     @patch("app.utils.geo.haversine_nm", return_value=3.0)
-    def test_early_exit_at_max_candidates(self, mock_haversine, mock_p95, mock_overlap, mock_settings):
+    def test_early_exit_at_max_candidates(
+        self, mock_haversine, mock_p95, mock_overlap, mock_settings
+    ):
         from app.modules.sts_detector import _phase_c_dark_dark
 
         mock_settings.DARK_STS_DETECTION_ENABLED = True
 
         corridor = _make_corridor()
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
 
         # Create many vessels and gaps to exceed the limit
         # With max_candidates=5 for this test
@@ -338,9 +371,14 @@ class TestDarkDarkMaxCandidates:
             v = _make_vessel(i, flag_risk="high_risk", year_built=1990)
             vessels.append(v)
             g = _make_gap(
-                i, t0, t0 + timedelta(hours=8), corridor_id=1,
-                off_lat=36.5 + i * 0.001, off_lon=22.5 + i * 0.001,
-                on_lat=36.5 + i * 0.001, on_lon=22.5 + i * 0.001,
+                i,
+                t0,
+                t0 + timedelta(hours=8),
+                corridor_id=1,
+                off_lat=36.5 + i * 0.001,
+                off_lon=22.5 + i * 0.001,
+                on_lat=36.5 + i * 0.001,
+                on_lon=22.5 + i * 0.001,
             )
             gaps.append(g)
 
@@ -398,7 +436,9 @@ class TestDarkDarkMediumConfidence:
     @patch("app.modules.sts_detector._overlap_exists", return_value=False)
     @patch("app.modules.gap_rate_baseline.is_above_p95", return_value=False)
     @patch("app.utils.geo.haversine_nm", return_value=10.0)
-    def test_medium_confidence_detection(self, mock_haversine, mock_p95, mock_overlap, mock_settings):
+    def test_medium_confidence_detection(
+        self, mock_haversine, mock_p95, mock_overlap, mock_settings
+    ):
         from app.modules.sts_detector import _phase_c_dark_dark
 
         mock_settings.DARK_STS_DETECTION_ENABLED = True
@@ -407,11 +447,27 @@ class TestDarkDarkMediumConfidence:
         vessel_a = _make_vessel(1, flag_risk="high_risk", year_built=1995)
         vessel_b = _make_vessel(2, flag_risk="high_risk", year_built=1993)
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
-        gap_a = _make_gap(1, t0, t0 + timedelta(hours=8), corridor_id=1,
-                          off_lat=36.5, off_lon=22.5, on_lat=36.5, on_lon=22.5)
-        gap_b = _make_gap(2, t0 + timedelta(hours=1), t0 + timedelta(hours=7), corridor_id=1,
-                          off_lat=36.6, off_lon=22.6, on_lat=36.6, on_lon=22.6)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
+        gap_a = _make_gap(
+            1,
+            t0,
+            t0 + timedelta(hours=8),
+            corridor_id=1,
+            off_lat=36.5,
+            off_lon=22.5,
+            on_lat=36.5,
+            on_lon=22.5,
+        )
+        gap_b = _make_gap(
+            2,
+            t0 + timedelta(hours=1),
+            t0 + timedelta(hours=7),
+            corridor_id=1,
+            off_lat=36.6,
+            off_lon=22.6,
+            on_lat=36.6,
+            on_lon=22.6,
+        )
 
         db = MagicMock()
 
@@ -449,7 +505,9 @@ class TestDarkDarkLowConfidence:
     @patch("app.modules.sts_detector._overlap_exists", return_value=False)
     @patch("app.modules.gap_rate_baseline.is_above_p95", return_value=False)
     @patch("app.utils.geo.haversine_nm", return_value=30.0)
-    def test_low_confidence_both_high_risk(self, mock_haversine, mock_p95, mock_overlap, mock_settings):
+    def test_low_confidence_both_high_risk(
+        self, mock_haversine, mock_p95, mock_overlap, mock_settings
+    ):
         from app.modules.sts_detector import _phase_c_dark_dark
 
         mock_settings.DARK_STS_DETECTION_ENABLED = True
@@ -459,11 +517,27 @@ class TestDarkDarkLowConfidence:
         vessel_a = _make_vessel(1, flag_risk="high_risk", year_built=1990)
         vessel_b = _make_vessel(2, flag_risk="high_risk", year_built=1992)
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
-        gap_a = _make_gap(1, t0, t0 + timedelta(hours=8), corridor_id=1,
-                          off_lat=36.5, off_lon=22.5, on_lat=36.5, on_lon=22.5)
-        gap_b = _make_gap(2, t0 + timedelta(hours=1), t0 + timedelta(hours=7), corridor_id=1,
-                          off_lat=36.8, off_lon=22.8, on_lat=36.8, on_lon=22.8)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
+        gap_a = _make_gap(
+            1,
+            t0,
+            t0 + timedelta(hours=8),
+            corridor_id=1,
+            off_lat=36.5,
+            off_lon=22.5,
+            on_lat=36.5,
+            on_lon=22.5,
+        )
+        gap_b = _make_gap(
+            2,
+            t0 + timedelta(hours=1),
+            t0 + timedelta(hours=7),
+            corridor_id=1,
+            off_lat=36.8,
+            off_lon=22.8,
+            on_lat=36.8,
+            on_lon=22.8,
+        )
 
         db = MagicMock()
 
@@ -509,11 +583,27 @@ class TestDarkDarkDistanceTooFar:
         vessel_a = _make_vessel(1, flag_risk="high_risk")
         vessel_b = _make_vessel(2, flag_risk="high_risk")
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
-        gap_a = _make_gap(1, t0, t0 + timedelta(hours=8), corridor_id=1,
-                          off_lat=36.5, off_lon=22.5, on_lat=36.5, on_lon=22.5)
-        gap_b = _make_gap(2, t0 + timedelta(hours=1), t0 + timedelta(hours=7), corridor_id=1,
-                          off_lat=37.5, off_lon=23.5, on_lat=37.5, on_lon=23.5)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
+        gap_a = _make_gap(
+            1,
+            t0,
+            t0 + timedelta(hours=8),
+            corridor_id=1,
+            off_lat=36.5,
+            off_lon=22.5,
+            on_lat=36.5,
+            on_lon=22.5,
+        )
+        gap_b = _make_gap(
+            2,
+            t0 + timedelta(hours=1),
+            t0 + timedelta(hours=7),
+            corridor_id=1,
+            off_lat=37.5,
+            off_lon=23.5,
+            on_lat=37.5,
+            on_lon=23.5,
+        )
 
         db = MagicMock()
 
@@ -545,7 +635,9 @@ class TestDarkDarkSatelliteCandidate:
     @patch("app.modules.sts_detector._overlap_exists", return_value=False)
     @patch("app.modules.gap_rate_baseline.is_above_p95", return_value=False)
     @patch("app.utils.geo.haversine_nm", return_value=2.0)
-    def test_candidate_has_correct_fields(self, mock_haversine, mock_p95, mock_overlap, mock_settings):
+    def test_candidate_has_correct_fields(
+        self, mock_haversine, mock_p95, mock_overlap, mock_settings
+    ):
         from app.modules.sts_detector import _phase_c_dark_dark
 
         mock_settings.DARK_STS_DETECTION_ENABLED = True
@@ -554,11 +646,27 @@ class TestDarkDarkSatelliteCandidate:
         vessel_a = _make_vessel(10, flag_risk="high_risk", year_built=1995)
         vessel_b = _make_vessel(20, flag_risk="high_risk", year_built=1993)
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
-        gap_a = _make_gap(10, t0, t0 + timedelta(hours=10), corridor_id=5,
-                          off_lat=36.5, off_lon=22.5, on_lat=36.5, on_lon=22.5)
-        gap_b = _make_gap(20, t0 + timedelta(hours=2), t0 + timedelta(hours=8), corridor_id=5,
-                          off_lat=36.52, off_lon=22.52, on_lat=36.52, on_lon=22.52)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
+        gap_a = _make_gap(
+            10,
+            t0,
+            t0 + timedelta(hours=10),
+            corridor_id=5,
+            off_lat=36.5,
+            off_lon=22.5,
+            on_lat=36.5,
+            on_lon=22.5,
+        )
+        gap_b = _make_gap(
+            20,
+            t0 + timedelta(hours=2),
+            t0 + timedelta(hours=8),
+            corridor_id=5,
+            off_lat=36.52,
+            off_lon=22.52,
+            on_lat=36.52,
+            on_lon=22.52,
+        )
 
         db = MagicMock()
 
@@ -598,6 +706,7 @@ class TestDarkDarkSatelliteCandidate:
 
 # ── Tests: Gap Rate Baseline ────────────────────────────────────────────────
 
+
 class TestGapRateBaselineComputation:
     """Test compute_gap_rate_baseline."""
 
@@ -621,7 +730,7 @@ class TestGapRateBaselineComputation:
 
         corridor = _make_corridor()
 
-        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=timezone.utc)
+        t0 = datetime(2025, 6, 1, 0, 0, tzinfo=UTC)
         gaps = [
             _make_gap(1, t0, t0 + timedelta(hours=4), corridor_id=1),
             _make_gap(2, t0 + timedelta(days=1), t0 + timedelta(days=1, hours=6), corridor_id=1),
@@ -684,7 +793,7 @@ class TestIsAboveP95:
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = baseline
 
-        ref_time = datetime(2025, 6, 5, 12, 0, tzinfo=timezone.utc)
+        ref_time = datetime(2025, 6, 5, 12, 0, tzinfo=UTC)
         assert is_above_p95(db, 1, ref_time) is True
 
     def test_below_p95_returns_false(self):
@@ -697,7 +806,7 @@ class TestIsAboveP95:
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = baseline
 
-        ref_time = datetime(2025, 6, 5, 12, 0, tzinfo=timezone.utc)
+        ref_time = datetime(2025, 6, 5, 12, 0, tzinfo=UTC)
         assert is_above_p95(db, 1, ref_time) is False
 
     def test_no_baseline_returns_false(self):
@@ -706,11 +815,12 @@ class TestIsAboveP95:
         db = MagicMock()
         db.query.return_value.filter.return_value.first.return_value = None
 
-        ref_time = datetime(2025, 6, 5, 12, 0, tzinfo=timezone.utc)
+        ref_time = datetime(2025, 6, 5, 12, 0, tzinfo=UTC)
         assert is_above_p95(db, 1, ref_time) is False
 
 
 # ── Tests: Helper functions ──────────────────────────────────────────────────
+
 
 class TestPercentile:
     """Test _percentile helper."""
@@ -773,13 +883,13 @@ class TestDarkDarkProximity:
 
         mock_haversine.return_value = 3.5
 
-        t0 = datetime(2025, 6, 1, tzinfo=timezone.utc)
-        gap_a = _make_gap(1, t0, t0 + timedelta(hours=6),
-                          off_lat=36.5, off_lon=22.5,
-                          on_lat=36.6, on_lon=22.6)
-        gap_b = _make_gap(2, t0, t0 + timedelta(hours=6),
-                          off_lat=36.52, off_lon=22.52,
-                          on_lat=36.62, on_lon=22.62)
+        t0 = datetime(2025, 6, 1, tzinfo=UTC)
+        gap_a = _make_gap(
+            1, t0, t0 + timedelta(hours=6), off_lat=36.5, off_lon=22.5, on_lat=36.6, on_lon=22.6
+        )
+        gap_b = _make_gap(
+            2, t0, t0 + timedelta(hours=6), off_lat=36.52, off_lon=22.52, on_lat=36.62, on_lon=22.62
+        )
 
         result = _dark_dark_proximity(gap_a, gap_b)
         assert result == 3.5
@@ -787,7 +897,7 @@ class TestDarkDarkProximity:
     def test_no_positions_returns_none(self):
         from app.modules.sts_detector import _dark_dark_proximity
 
-        t0 = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        t0 = datetime(2025, 6, 1, tzinfo=UTC)
         gap_a = _make_gap(1, t0, t0 + timedelta(hours=6))
         gap_b = _make_gap(2, t0, t0 + timedelta(hours=6))
 
@@ -796,6 +906,7 @@ class TestDarkDarkProximity:
 
 
 # ── Tests: Model creation ────────────────────────────────────────────────────
+
 
 class TestModels:
     """Verify the new models can be instantiated."""

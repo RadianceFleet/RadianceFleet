@@ -7,18 +7,18 @@ Detects port calls by finding periods where a vessel is:
 
 Creates PortCall records used by risk scoring's EU port call legitimacy signal.
 """
+
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.vessel import Vessel
 from app.models.ais_point import AISPoint
 from app.models.port import Port
 from app.models.port_call import PortCall
+from app.models.vessel import Vessel
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,8 @@ MIN_DURATION_HOURS = 2.0
 
 def run_port_call_detection(
     db: Session,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> dict:
     """Detect port calls for all vessels in the given date range."""
     vessels = db.query(Vessel).all()
@@ -41,15 +41,17 @@ def run_port_call_detection(
         calls = detect_port_calls_for_vessel(db, vessel, date_from, date_to)
         total_calls += calls
 
-    logger.info("Port call detection complete: %d calls across %d vessels", total_calls, len(vessels))
+    logger.info(
+        "Port call detection complete: %d calls across %d vessels", total_calls, len(vessels)
+    )
     return {"port_calls_detected": total_calls, "vessels_processed": len(vessels)}
 
 
 def detect_port_calls_for_vessel(
     db: Session,
     vessel: Vessel,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> int:
     """Detect port calls for a single vessel. Returns count of new PortCall records."""
     from app.utils.geo import haversine_nm
@@ -60,21 +62,26 @@ def detect_port_calls_for_vessel(
         .order_by(AISPoint.timestamp_utc)
     )
     if date_from:
-        query = query.filter(AISPoint.timestamp_utc >= datetime.combine(date_from, datetime.min.time()))
+        query = query.filter(
+            AISPoint.timestamp_utc >= datetime.combine(date_from, datetime.min.time())
+        )
     if date_to:
-        query = query.filter(AISPoint.timestamp_utc <= datetime.combine(date_to, datetime.max.time()))
+        query = query.filter(
+            AISPoint.timestamp_utc <= datetime.combine(date_to, datetime.max.time())
+        )
 
     points = query.all()
     if len(points) < 2:
         return 0
 
     # Pre-fetch all ports for proximity checks
-    ports = db.query(Port).filter(Port.major_port == True).all()
+    ports = db.query(Port).filter(Port.major_port).all()
     if not ports:
         return 0
 
     # Build simple port lookup with lat/lon from WKT geometry
     from app.utils.geo import load_geometry
+
     port_coords = []
     for port in ports:
         pt = load_geometry(port.geometry)
@@ -130,8 +137,11 @@ def detect_port_calls_for_vessel(
 
 
 def _maybe_create_port_call(
-    db: Session, vessel: Vessel, port: Port,
-    arrival: datetime, departure: datetime,
+    db: Session,
+    vessel: Vessel,
+    port: Port,
+    arrival: datetime,
+    departure: datetime,
 ) -> int:
     """Create a PortCall if duration >= threshold and not already recorded."""
     duration_h = (departure - arrival).total_seconds() / 3600
@@ -139,19 +149,25 @@ def _maybe_create_port_call(
         return 0
 
     # Dedup: check for existing port call at same port within 24h
-    existing = db.query(PortCall).filter(
-        PortCall.vessel_id == vessel.vessel_id,
-        PortCall.port_id == port.port_id,
-        PortCall.arrival_utc >= arrival - timedelta(hours=24),
-        PortCall.arrival_utc <= arrival + timedelta(hours=24),
-    ).first()
+    existing = (
+        db.query(PortCall)
+        .filter(
+            PortCall.vessel_id == vessel.vessel_id,
+            PortCall.port_id == port.port_id,
+            PortCall.arrival_utc >= arrival - timedelta(hours=24),
+            PortCall.arrival_utc <= arrival + timedelta(hours=24),
+        )
+        .first()
+    )
     if existing:
         return 0
 
-    db.add(PortCall(
-        vessel_id=vessel.vessel_id,
-        port_id=port.port_id,
-        arrival_utc=arrival,
-        departure_utc=departure,
-    ))
+    db.add(
+        PortCall(
+            vessel_id=vessel.vessel_id,
+            port_id=port.port_id,
+            arrival_utc=arrival,
+            departure_utc=departure,
+        )
+    )
     return 1

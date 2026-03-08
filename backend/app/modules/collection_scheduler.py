@@ -8,14 +8,15 @@ Design decisions:
 - Digitraffic downsampled to 1 point per 30 min per vessel
 - Retention pruning: DELETE FROM ais_points WHERE timestamp_utc < now - 90d
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import threading
 import time
-from datetime import datetime, timedelta, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -45,13 +46,12 @@ class CollectionScheduler:
 
     def start(self, duration_seconds: int = 0):
         """Start collection. duration_seconds=0 means run indefinitely."""
-        from app.modules.collection_sources import get_available_sources, get_all_sources
+        from app.modules.collection_sources import get_all_sources, get_available_sources
 
         if self._requested_sources:
             all_sources = get_all_sources()
             source_map = {
-                name: info for name, info in all_sources.items()
-                if name in self._requested_sources
+                name: info for name, info in all_sources.items() if name in self._requested_sources
             }
         else:
             source_map = get_available_sources()
@@ -67,11 +67,7 @@ class CollectionScheduler:
         )
 
         # Calculate absolute deadline
-        deadline = (
-            time.monotonic() + duration_seconds
-            if duration_seconds > 0
-            else None
-        )
+        deadline = time.monotonic() + duration_seconds if duration_seconds > 0 else None
 
         for name, info in source_map.items():
             t = threading.Thread(
@@ -163,9 +159,10 @@ class CollectionScheduler:
         """Create a CollectionRun record."""
         try:
             from app.models.collection_run import CollectionRun
+
             run = CollectionRun(
                 source=source_name,
-                started_at=datetime.now(timezone.utc),
+                started_at=datetime.now(UTC),
                 status="running",
             )
             db.add(run)
@@ -180,7 +177,7 @@ class CollectionScheduler:
         if run is None:
             return
         try:
-            run.finished_at = datetime.now(timezone.utc)
+            run.finished_at = datetime.now(UTC)
             run.points_imported = result.get("points_imported", result.get("points_ingested", 0))
             run.vessels_seen = result.get("vessels_seen", 0)
             run.errors = result.get("errors", 0)
@@ -195,7 +192,7 @@ class CollectionScheduler:
         if run is None:
             return
         try:
-            run.finished_at = datetime.now(timezone.utc)
+            run.finished_at = datetime.now(UTC)
             run.status = "failed"
             run.details_json = json.dumps({"error": error_msg})
             db.commit()
@@ -208,6 +205,7 @@ class CollectionScheduler:
         """Persist ingestion status to DB."""
         try:
             from app.models.ingestion_status import update_ingestion_status
+
             records = 0
             if result:
                 records = result.get("points_ingested", result.get("points_imported", 0))
@@ -221,6 +219,7 @@ class CollectionScheduler:
         db = self._db_factory()
         try:
             from app.models.ais_observation import AISObservation
+
             deleted = AISObservation.purge_old(db)
             if deleted:
                 db.commit()
@@ -245,13 +244,15 @@ class CollectionScheduler:
         retention_days = getattr(settings, "RETENTION_DAYS_REALTIME", None)
         if retention_days is None or not isinstance(retention_days, (int, float)):
             retention_days = getattr(settings, "COLLECT_RETENTION_DAYS", 90)
-        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cutoff = datetime.now(UTC) - timedelta(days=retention_days)
 
         db = self._db_factory()
         try:
+            from sqlalchemy import or_, select
+
             from app.models.ais_point import AISPoint
             from app.models.gap_event import AISGapEvent
-            from sqlalchemy import or_, select
+
             # Exclude points still referenced by gap event FK columns.
             referenced = db.execute(
                 select(AISGapEvent.start_point_id, AISGapEvent.end_point_id).where(
@@ -278,7 +279,9 @@ class CollectionScheduler:
             if deleted:
                 logger.info(
                     "Retention pruning (%s): deleted %d realtime points older than %d days",
-                    source_name, deleted, retention_days,
+                    source_name,
+                    deleted,
+                    retention_days,
                 )
         except Exception as e:
             logger.warning("Retention pruning failed: %s", e)

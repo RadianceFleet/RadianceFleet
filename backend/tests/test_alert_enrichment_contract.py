@@ -5,13 +5,14 @@ schema with both legacy and new fields. Tests backward compatibility.
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock, patch, PropertyMock
-from datetime import datetime, timezone
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Alert Detail — Schema Contract
 # ---------------------------------------------------------------------------
+
 
 class TestAlertDetailContract:
     """GET /api/v1/alerts/{id} must return all GapEventDetailRead fields."""
@@ -21,8 +22,8 @@ class TestAlertDetailContract:
         alert = MagicMock()
         alert.gap_event_id = 1
         alert.vessel_id = 10
-        alert.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        alert.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=timezone.utc)
+        alert.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+        alert.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=UTC)
         alert.duration_minutes = 360
         alert.corridor_id = 5
         alert.risk_score = 72
@@ -51,14 +52,14 @@ class TestAlertDetailContract:
 
         # AIS points
         last_pt = MagicMock()
-        last_pt.timestamp_utc = datetime(2026, 1, 15, 11, 58, 0, tzinfo=timezone.utc)
+        last_pt.timestamp_utc = datetime(2026, 1, 15, 11, 58, 0, tzinfo=UTC)
         last_pt.lat = 36.5
         last_pt.lon = 22.8
         last_pt.sog = 8.5
         last_pt.cog = 180.0
 
         first_pt = MagicMock()
-        first_pt.timestamp_utc = datetime(2026, 1, 15, 18, 2, 0, tzinfo=timezone.utc)
+        first_pt.timestamp_utc = datetime(2026, 1, 15, 18, 2, 0, tzinfo=UTC)
         first_pt.lat = 36.2
         first_pt.lon = 23.1
         first_pt.sog = 7.2
@@ -218,8 +219,8 @@ class TestAlertDetailNullFields:
         alert = MagicMock()
         alert.gap_event_id = 2
         alert.vessel_id = 10
-        alert.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        alert.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=timezone.utc)
+        alert.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+        alert.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=UTC)
         alert.duration_minutes = 360
         alert.corridor_id = None  # No corridor
         alert.risk_score = 30
@@ -276,8 +277,8 @@ class TestAlertDetailPerformance:
         alert = MagicMock()
         alert.gap_event_id = 1
         alert.vessel_id = 10
-        alert.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
-        alert.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=timezone.utc)
+        alert.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
+        alert.gap_end_utc = datetime(2026, 1, 15, 18, 0, 0, tzinfo=UTC)
         alert.duration_minutes = 360
         alert.corridor_id = None
         alert.risk_score = 50

@@ -3,10 +3,11 @@
 Produces a downloadable PDF report for a single AIS gap alert,
 mirroring the data in the JSON/Markdown evidence card exports.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fpdf import FPDF
 from fpdf.fonts import FontFace
@@ -37,9 +38,11 @@ def export_evidence_pdf(alert_id: int, db: Session) -> bytes:
 
     vessel = db.query(Vessel).filter(Vessel.vessel_id == gap.vessel_id).first()
     from app.models.corridor import Corridor
+
     corridor = (
         db.query(Corridor).filter(Corridor.corridor_id == gap.corridor_id).first()
-        if gap.corridor_id else None
+        if gap.corridor_id
+        else None
     )
     card = _build_card(gap, vessel, corridor=corridor, db=db)
 
@@ -61,18 +64,32 @@ def _render_pdf(card: dict) -> bytes:
 
     # ── Title ─────────────────────────────────────────────────────────
     pdf.set_font(font_family, size=16)
-    pdf.cell(text=f"RadianceFleet Evidence Card -- Alert #{card['alert_id']}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        text=f"RadianceFleet Evidence Card -- Alert #{card['alert_id']}",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
     pdf.ln(4)
 
     pdf.set_font(font_family, size=10)
-    pdf.cell(text=f"Exported: {card.get('exported_at', datetime.now(timezone.utc).isoformat())}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        text=f"Exported: {card.get('exported_at', datetime.now(UTC).isoformat())}",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
     pdf.cell(text=f"Status: {card.get('status', 'N/A')}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(6)
 
     # ── Vessel ────────────────────────────────────────────────────────
     _section_heading(pdf, font_family, "Vessel")
     v = card.get("vessel", {})
-    for label, key in [("MMSI", "mmsi"), ("IMO", "imo"), ("Name", "name"), ("Flag", "flag"), ("Type", "vessel_type")]:
+    for label, key in [
+        ("MMSI", "mmsi"),
+        ("IMO", "imo"),
+        ("Name", "name"),
+        ("Flag", "flag"),
+        ("Type", "vessel_type"),
+    ]:
         pdf.cell(text=f"  {label}: {_safe(v.get(key))}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
@@ -112,23 +129,47 @@ def _render_pdf(card: dict) -> bytes:
     max_d = env.get("max_plausible_distance_nm")
     act_d = env.get("actual_gap_distance_nm")
     vel_r = env.get("velocity_plausibility_ratio")
-    pdf.cell(text=f"  Max plausible distance: {f'{max_d:.1f} nm' if max_d is not None else 'N/A'}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(text=f"  Actual gap distance: {f'{act_d:.1f} nm' if act_d is not None else 'N/A'}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(text=f"  Velocity ratio: {f'{vel_r:.2f}' if vel_r is not None else 'N/A'}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(text=f"  Impossible speed flag: {_safe(env.get('impossible_speed_flag'))}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(
+        text=f"  Max plausible distance: {f'{max_d:.1f} nm' if max_d is not None else 'N/A'}",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
+    pdf.cell(
+        text=f"  Actual gap distance: {f'{act_d:.1f} nm' if act_d is not None else 'N/A'}",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
+    pdf.cell(
+        text=f"  Velocity ratio: {f'{vel_r:.2f}' if vel_r is not None else 'N/A'}",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
+    pdf.cell(
+        text=f"  Impossible speed flag: {_safe(env.get('impossible_speed_flag'))}",
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
     pdf.ln(4)
 
     # ── AIS Boundary Points ───────────────────────────────────────────
     _section_heading(pdf, font_family, "AIS Boundary Points")
     lkp = card.get("last_known_position")
     if lkp:
-        pdf.cell(text=f"  Last known: {lkp['lat']}, {lkp['lon']} at {lkp['timestamp_utc']}  SOG={lkp['sog']} COG={lkp['cog']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(
+            text=f"  Last known: {lkp['lat']}, {lkp['lon']} at {lkp['timestamp_utc']}  SOG={lkp['sog']} COG={lkp['cog']}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
     else:
         pdf.cell(text="  Last known position: unavailable", new_x="LMARGIN", new_y="NEXT")
 
     fpa = card.get("first_position_after_gap")
     if fpa:
-        pdf.cell(text=f"  First after gap: {fpa['lat']}, {fpa['lon']} at {fpa['timestamp_utc']}  SOG={fpa['sog']} COG={fpa['cog']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(
+            text=f"  First after gap: {fpa['lat']}, {fpa['lon']} at {fpa['timestamp_utc']}  SOG={fpa['sog']} COG={fpa['cog']}",
+            new_x="LMARGIN",
+            new_y="NEXT",
+        )
     else:
         pdf.cell(text="  First position after gap: unavailable", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)

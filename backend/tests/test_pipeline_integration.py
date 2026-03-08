@@ -4,16 +4,16 @@ Tests scoring pipeline composition, speed subsumption, multiplier behavior,
 interpolation method selection, vessel filtering, config consistency,
 evidence export blocking, and scoring date reproducibility.
 """
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
-import pytest
+
+from datetime import datetime
+from unittest.mock import MagicMock
 
 from app.modules.risk_scoring import compute_gap_score, load_scoring_config
-
 
 # ---------------------------------------------------------------------------
 # Helpers (matches pattern from test_risk_scoring_complete.py)
 # ---------------------------------------------------------------------------
+
 
 def _make_gap(
     duration_minutes=0,
@@ -80,6 +80,7 @@ def _make_gap(
 # Full Scoring Pipeline Integration
 # ---------------------------------------------------------------------------
 
+
 class TestScoringPipelineComposition:
     """Tests that the full scoring pipeline correctly composes signals
     from multiple categories and applies multipliers correctly."""
@@ -89,8 +90,9 @@ class TestScoringPipelineComposition:
         config = load_scoring_config()
         gap = _make_gap(duration_minutes=1560)  # 26h
         score, breakdown = compute_gap_score(gap, config)
-        assert any("gap_duration" in k for k in breakdown), \
+        assert any("gap_duration" in k for k in breakdown), (
             f"Expected gap_duration in breakdown, got: {list(breakdown.keys())}"
+        )
 
     def test_score_never_goes_below_zero(self):
         """Even with many legitimacy deductions, final score should be >= 0."""
@@ -118,13 +120,13 @@ class TestScoringPipelineComposition:
         has_speed = "speed_impossible" in breakdown
         assert has_duration, "Expected gap_duration signal"
         assert has_speed, "Expected speed_impossible signal"
-        assert score > breakdown.get("speed_impossible", 0), \
-            "Total should exceed any single signal"
+        assert score > breakdown.get("speed_impossible", 0), "Total should exceed any single signal"
 
 
 # ---------------------------------------------------------------------------
 # Speed Impossible vs Spoof Subsumption
 # ---------------------------------------------------------------------------
+
 
 class TestSpeedSubsumption:
     """Speed impossible (>30kn) should supersede spoof; only one should fire."""
@@ -149,13 +151,15 @@ class TestSpeedSubsumption:
         config = load_scoring_config()
         gap = _make_gap(duration_minutes=1560, pre_gap_sog=35.0, deadweight=80000)
         score, breakdown = compute_gap_score(gap, config)
-        assert "gap_duration_speed_spike_bonus" not in breakdown, \
+        assert "gap_duration_speed_spike_bonus" not in breakdown, (
             "Impossible speed should not trigger the 1.4× duration bonus"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Dark Zone Scoring Integration
 # ---------------------------------------------------------------------------
+
 
 class TestDarkZoneIntegration:
     """Dark zone gaps get -10 deduction when gap is entirely within a jamming zone."""
@@ -171,8 +175,7 @@ class TestDarkZoneIntegration:
         score, breakdown = compute_gap_score(gap, config)
         dark_keys = [k for k in breakdown if "dark" in k.lower() or "jamming" in k.lower()]
         has_deduction = any(
-            isinstance(breakdown.get(k), (int, float)) and breakdown[k] < 0
-            for k in dark_keys
+            isinstance(breakdown.get(k), (int, float)) and breakdown[k] < 0 for k in dark_keys
         )
         assert has_deduction, f"Expected dark zone deduction, got: {breakdown}"
 
@@ -180,6 +183,7 @@ class TestDarkZoneIntegration:
 # ---------------------------------------------------------------------------
 # Gap Frequency Subsumption
 # ---------------------------------------------------------------------------
+
 
 class TestGapFrequencySubsumption:
     """The highest frequency tier should fire — not all of them."""
@@ -197,6 +201,7 @@ class TestGapFrequencySubsumption:
 # Vessel Size Multiplier
 # ---------------------------------------------------------------------------
 
+
 class TestVesselSizeMultiplier:
     """Large vessels (>100k DWT) should get higher scores."""
 
@@ -206,30 +211,36 @@ class TestVesselSizeMultiplier:
         gap_medium = _make_gap(duration_minutes=1560, deadweight=50000)
         score_large, _ = compute_gap_score(gap_large, config)
         score_medium, _ = compute_gap_score(gap_medium, config)
-        assert score_large >= score_medium, \
+        assert score_large >= score_medium, (
             f"Large vessel ({score_large}) should score >= medium ({score_medium})"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Corridor Multiplier
 # ---------------------------------------------------------------------------
 
+
 class TestCorridorMultiplier:
     """Corridor multiplier amplifies positive signals."""
 
     def test_sts_zone_corridor_amplifies(self):
         config = load_scoring_config()
-        gap_sts = _make_gap(duration_minutes=1560, corridor_type="sts_zone", corridor_risk_weight=2.0)
+        gap_sts = _make_gap(
+            duration_minutes=1560, corridor_type="sts_zone", corridor_risk_weight=2.0
+        )
         gap_none = _make_gap(duration_minutes=1560)
         score_sts, _ = compute_gap_score(gap_sts, config)
         score_none, _ = compute_gap_score(gap_none, config)
-        assert score_sts >= score_none, \
+        assert score_sts >= score_none, (
             f"STS zone ({score_sts}) should score >= no corridor ({score_none})"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Legitimacy Signals
 # ---------------------------------------------------------------------------
+
 
 class TestLegitimacySignals:
     """Legitimacy deductions should reduce the score."""
@@ -254,11 +265,13 @@ class TestLegitimacySignals:
 # Evidence Export Blocking
 # ---------------------------------------------------------------------------
 
+
 class TestEvidenceExportBlocking:
     """Evidence export should be blocked for status='new' alerts (NFR7)."""
 
     def test_export_blocked_for_new_status(self):
         from app.modules.evidence_export import export_evidence_card
+
         db = MagicMock()
         gap = MagicMock()
         gap.status = "new"
@@ -272,14 +285,18 @@ class TestEvidenceExportBlocking:
 # Interpolation Method Selection
 # ---------------------------------------------------------------------------
 
+
 class TestInterpolationMethodSelection:
     """Movement envelope should select correct interpolation method based on gap duration."""
 
     def test_short_gap_uses_linear(self):
         from app.utils.interpolation import interpolate_linear
+
         positions, ellipse = interpolate_linear(
-            start_lat=25.0, start_lon=55.0,
-            end_lat=25.1, end_lon=55.1,
+            start_lat=25.0,
+            start_lon=55.0,
+            end_lat=25.1,
+            end_lon=55.1,
             duration_h=1.5,
         )
         assert len(positions) == 2
@@ -287,11 +304,16 @@ class TestInterpolationMethodSelection:
 
     def test_medium_gap_uses_hermite(self):
         from app.utils.interpolation import interpolate_hermite
+
         positions, ellipse = interpolate_hermite(
-            start_lat=25.0, start_lon=55.0,
-            end_lat=26.0, end_lon=56.0,
-            start_sog=10.0, start_cog=45.0,
-            end_sog=10.0, end_cog=45.0,
+            start_lat=25.0,
+            start_lon=55.0,
+            end_lat=26.0,
+            end_lon=56.0,
+            start_sog=10.0,
+            start_cog=45.0,
+            end_sog=10.0,
+            end_cog=45.0,
             duration_h=4.0,
         )
         assert len(positions) >= 10
@@ -300,10 +322,14 @@ class TestInterpolationMethodSelection:
 
     def test_long_gap_uses_scenarios(self):
         from app.utils.interpolation import interpolate_scenarios
+
         positions, hull_wkt = interpolate_scenarios(
-            start_lat=25.0, start_lon=55.0,
-            end_lat=27.0, end_lon=57.0,
-            start_sog=10.0, start_cog=45.0,
+            start_lat=25.0,
+            start_lon=55.0,
+            end_lat=27.0,
+            end_lon=57.0,
+            start_sog=10.0,
+            start_cog=45.0,
             max_speed_kn=15.0,
             duration_h=10.0,
         )
@@ -316,11 +342,13 @@ class TestInterpolationMethodSelection:
 # Vessel Filter Config
 # ---------------------------------------------------------------------------
 
+
 class TestVesselFilterIntegration:
     """Vessel type filtering should work based on type keywords."""
 
     def test_tanker_detection_by_type(self):
         import app.utils.vessel_filter as vf
+
         vf._FILTER_CONFIG = None
         vessel = MagicMock()
         vessel.vessel_type = "Crude Oil Tanker"
@@ -330,6 +358,7 @@ class TestVesselFilterIntegration:
 
     def test_non_tanker_rejected(self):
         import app.utils.vessel_filter as vf
+
         vf._FILTER_CONFIG = None
         vessel = MagicMock()
         vessel.vessel_type = "Container Ship"
@@ -339,6 +368,7 @@ class TestVesselFilterIntegration:
 
     def test_tanker_by_dwt_fallback(self):
         import app.utils.vessel_filter as vf
+
         vf._FILTER_CONFIG = None
         vessel = MagicMock()
         vessel.vessel_type = None
@@ -352,25 +382,37 @@ class TestVesselFilterIntegration:
 # YAML Config Consistency
 # ---------------------------------------------------------------------------
 
+
 class TestYAMLConfigConsistency:
     """All scoring signals should have a YAML config entry."""
 
     def test_all_config_sections_present(self):
-        import yaml
         from pathlib import Path
+
+        import yaml
+
         config_path = Path(__file__).resolve().parent.parent.parent / "config" / "risk_scoring.yaml"
         with open(config_path) as f:
             config = yaml.safe_load(f)
         required_sections = [
-            "gap_duration", "spoofing", "metadata", "legitimacy",
-            "dark_zone", "corridor", "sts", "behavioral", "watchlist",
+            "gap_duration",
+            "spoofing",
+            "metadata",
+            "legitimacy",
+            "dark_zone",
+            "corridor",
+            "sts",
+            "behavioral",
+            "watchlist",
         ]
         for section in required_sections:
             assert section in config, f"Missing required config section: {section}"
 
     def test_gap_duration_keys_present(self):
-        import yaml
         from pathlib import Path
+
+        import yaml
+
         config_path = Path(__file__).resolve().parent.parent.parent / "config" / "risk_scoring.yaml"
         with open(config_path) as f:
             config = yaml.safe_load(f)
@@ -384,15 +426,14 @@ class TestYAMLConfigConsistency:
 # Scoring Date Reproducibility (NFR3)
 # ---------------------------------------------------------------------------
 
+
 class TestScoringDateReproducibility:
     """compute_gap_score should accept scoring_date param for NFR3 reproducibility."""
 
     def test_scoring_date_param_accepted(self):
         config = load_scoring_config()
         gap = _make_gap(duration_minutes=1560, year_built=2003)
-        score, breakdown = compute_gap_score(
-            gap, config, scoring_date=datetime(2026, 1, 20)
-        )
+        score, breakdown = compute_gap_score(gap, config, scoring_date=datetime(2026, 1, 20))
         assert isinstance(score, int)
         assert isinstance(breakdown, dict)
         assert any("gap_duration" in k for k in breakdown)
@@ -406,18 +447,22 @@ class TestScoringDateReproducibility:
         # In 2026 age=25 (age_20_25y); in 2028 age=27 (age_25_plus)
         age_keys_2026 = [k for k in bd_2026 if "age" in k.lower()]
         age_keys_2028 = [k for k in bd_2028 if "age" in k.lower()]
-        assert age_keys_2026 != age_keys_2028 or \
-            any(bd_2026.get(k) != bd_2028.get(k) for k in set(age_keys_2026 + age_keys_2028))
+        assert age_keys_2026 != age_keys_2028 or any(
+            bd_2026.get(k) != bd_2028.get(k) for k in set(age_keys_2026 + age_keys_2028)
+        )
 
 
 # ---------------------------------------------------------------------------
 # Port Detector Data Flow
 # ---------------------------------------------------------------------------
 
+
 class TestPortDetectorDataFlow:
     def test_port_call_detection_interface(self):
-        from app.modules.port_detector import run_port_call_detection
         import inspect
+
+        from app.modules.port_detector import run_port_call_detection
+
         sig = inspect.signature(run_port_call_detection)
         params = list(sig.parameters.keys())
         assert "db" in params

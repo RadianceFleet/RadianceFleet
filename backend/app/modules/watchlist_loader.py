@@ -21,6 +21,7 @@ Before any insert the loaders check for an existing VesselWatchlist row
 for the same (vessel_id, watchlist_source) and update is_active=True
 instead of creating a duplicate.
 """
+
 from __future__ import annotations
 
 import csv
@@ -28,7 +29,6 @@ import json
 import logging
 import re
 from datetime import date, datetime
-from typing import Optional
 
 from rapidfuzz import fuzz
 from sqlalchemy.orm import Session
@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Fuzzy match threshold (0-100).
 from app.config import settings as _settings
+
 _FUZZY_THRESHOLD: int = _settings.FUZZY_MATCH_THRESHOLD
 
 # Compiled regex for MMSI validation: 9 digits, first digit 2-7 (ship MID range).
@@ -49,6 +50,7 @@ _MMSI_RE = re.compile(r"^[2-7]\d{8}$")
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
 
 def _is_valid_mmsi(value: str) -> bool:
     """Return True if *value* looks like a valid ship MMSI (9 digits, MID 200–799)."""
@@ -71,14 +73,15 @@ def _upsert_watchlist(
     db: Session,
     vessel: Vessel,
     watchlist_source: str,
-    reason: Optional[str] = None,
-    date_listed: Optional[date] = None,
-    source_url: Optional[str] = None,
+    reason: str | None = None,
+    date_listed: date | None = None,
+    source_url: str | None = None,
     match_confidence: int = 100,
     match_type: str = "unknown",
 ) -> None:
     """Insert a VesselWatchlist row or re-activate an existing one."""
     from sqlalchemy.exc import IntegrityError
+
     # Flush pending inserts before querying so same-session duplicates are visible.
     try:
         db.flush()
@@ -133,9 +136,9 @@ def _upsert_watchlist(
 def _fuzzy_match_vessel(
     db: Session,
     name: str,
-    flag: Optional[str] = None,
+    flag: str | None = None,
     threshold: int = _FUZZY_THRESHOLD,
-) -> Optional[tuple[Vessel, str, int]]:
+) -> tuple[Vessel, str, int] | None:
     """Return (vessel, match_type, confidence) for best name match above threshold.
 
     If *flag* is supplied, only vessels with an exact (case-insensitive) flag
@@ -165,7 +168,7 @@ def _fuzzy_match_vessel(
         query = query.filter(Vessel.flag.ilike(flag.strip()))
 
     candidates = query.all()
-    best_vessel: Optional[Vessel] = None
+    best_vessel: Vessel | None = None
     best_score: float = 0.0
 
     for vessel in candidates:
@@ -180,7 +183,9 @@ def _fuzzy_match_vessel(
         if best_score < 95:
             logger.warning(
                 "Low-confidence name match: '%s' -> '%s' (score=%.1f)",
-                name, best_vessel.name if best_vessel else None, best_score,
+                name,
+                best_vessel.name if best_vessel else None,
+                best_score,
             )
         return (best_vessel, "fuzzy_name", int(best_score))
 
@@ -189,11 +194,11 @@ def _fuzzy_match_vessel(
 
 def _resolve_vessel(
     db: Session,
-    mmsi: Optional[str],
-    imo: Optional[str],
-    name: Optional[str],
-    flag: Optional[str] = None,
-) -> Optional[tuple[Vessel, str, int]]:
+    mmsi: str | None,
+    imo: str | None,
+    name: str | None,
+    flag: str | None = None,
+) -> tuple[Vessel, str, int] | None:
     """Resolve a vessel using MMSI, IMO, then fuzzy name match.
 
     Returns ``(vessel, match_type, confidence)`` or ``None``.
@@ -217,16 +222,17 @@ def _resolve_vessel(
 def _get_or_create_stub_vessel(
     db: Session,
     mmsi: str,
-    imo: Optional[str],
-    name: Optional[str],
-    flag: Optional[str],
+    imo: str | None,
+    name: str | None,
+    flag: str | None,
 ) -> Vessel:
     """Create a minimal vessel stub for a sanctioned vessel not yet seen on AIS.
 
     Called only when _resolve_vessel() returns None and a valid MMSI is known.
     Uses db.flush() — caller commits after _upsert_watchlist().
     """
-    from app.utils.vessel_identity import mmsi_to_flag, flag_to_risk_category
+    from app.utils.vessel_identity import flag_to_risk_category, mmsi_to_flag
+
     derived_flag = flag or mmsi_to_flag(mmsi)
     vessel = Vessel(
         mmsi=mmsi,
@@ -236,15 +242,24 @@ def _get_or_create_stub_vessel(
         flag_risk_category=flag_to_risk_category(derived_flag),
     )
     db.add(vessel)
-    db.flush()   # get vessel_id before _upsert_watchlist()
+    db.flush()  # get vessel_id before _upsert_watchlist()
     return vessel
 
 
 # Official OFAC SDN CSV column order (headerless format from sdn.csv).
 _OFAC_SDN_FIELDNAMES = [
-    "ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-    "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-    "Vess_owner", "REMARKS",
+    "ent_num",
+    "SDN_NAME",
+    "SDN_TYPE",
+    "Program",
+    "Title",
+    "Call_Sign",
+    "Vess_type",
+    "Tonnage",
+    "GRT",
+    "Vess_flag",
+    "Vess_owner",
+    "REMARKS",
 ]
 
 
@@ -261,6 +276,7 @@ def _ofac_csv_reader(fh) -> csv.DictReader:
 
 
 # ── OFAC SDN loader ───────────────────────────────────────────────────────────
+
 
 def load_ofac_sdn(db: Session, csv_path: str) -> dict:
     """Load OFAC Specially Designated Nationals (SDN) CSV into the watchlist.
@@ -299,13 +315,13 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
 
             # Parse IMO from REMARKS (e.g. "IMO 9187629")
             imo = None
-            imo_match = re.search(r'IMO\s*(\d{7})', remarks_text)
+            imo_match = re.search(r"IMO\s*(\d{7})", remarks_text)
             if imo_match:
                 imo = imo_match.group(1)
 
             # Parse MMSI from REMARKS (e.g. "MMSI 572469210")
             mmsi = None
-            mmsi_match = re.search(r'MMSI\s*(\d{9})', remarks_text)
+            mmsi_match = re.search(r"MMSI\s*(\d{9})", remarks_text)
             if mmsi_match:
                 mmsi = mmsi_match.group(1)
 
@@ -318,7 +334,9 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
                 else:
                     logger.warning(
                         "OFAC SDN: no vessel match for name=%r mmsi=%r imo=%r",
-                        name, mmsi, imo,
+                        name,
+                        mmsi,
+                        imo,
                     )
                     unmatched += 1
                     continue
@@ -327,34 +345,53 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
 
             # Backfill identity data from watchlist onto vessel (exact matches only)
             if match_type in ("exact_mmsi", "exact_imo"):
-                from app.utils.vessel_identity import validate_imo_checksum
                 from app.models.vessel_history import VesselHistory
+                from app.utils.vessel_identity import validate_imo_checksum
+
                 _src = "watchlist_backfill:ofac"
                 if imo and not vessel.imo and validate_imo_checksum(imo):
                     vessel.imo = imo
-                    if not db.query(VesselHistory).filter(
-                        VesselHistory.vessel_id == vessel.vessel_id,
-                        VesselHistory.field_changed == "imo",
-                        VesselHistory.source == _src,
-                    ).first():
-                        db.add(VesselHistory(
-                            vessel_id=vessel.vessel_id, field_changed="imo",
-                            old_value="", new_value=imo,
-                            observed_at=datetime.utcnow(), source=_src,
-                        ))
+                    if (
+                        not db.query(VesselHistory)
+                        .filter(
+                            VesselHistory.vessel_id == vessel.vessel_id,
+                            VesselHistory.field_changed == "imo",
+                            VesselHistory.source == _src,
+                        )
+                        .first()
+                    ):
+                        db.add(
+                            VesselHistory(
+                                vessel_id=vessel.vessel_id,
+                                field_changed="imo",
+                                old_value="",
+                                new_value=imo,
+                                observed_at=datetime.utcnow(),
+                                source=_src,
+                            )
+                        )
                 callsign_raw = (row.get("Call_Sign") or "").strip()
                 if callsign_raw and not vessel.callsign:
                     vessel.callsign = callsign_raw
-                    if not db.query(VesselHistory).filter(
-                        VesselHistory.vessel_id == vessel.vessel_id,
-                        VesselHistory.field_changed == "callsign",
-                        VesselHistory.source == _src,
-                    ).first():
-                        db.add(VesselHistory(
-                            vessel_id=vessel.vessel_id, field_changed="callsign",
-                            old_value="", new_value=callsign_raw,
-                            observed_at=datetime.utcnow(), source=_src,
-                        ))
+                    if (
+                        not db.query(VesselHistory)
+                        .filter(
+                            VesselHistory.vessel_id == vessel.vessel_id,
+                            VesselHistory.field_changed == "callsign",
+                            VesselHistory.source == _src,
+                        )
+                        .first()
+                    ):
+                        db.add(
+                            VesselHistory(
+                                vessel_id=vessel.vessel_id,
+                                field_changed="callsign",
+                                old_value="",
+                                new_value=callsign_raw,
+                                observed_at=datetime.utcnow(),
+                                source=_src,
+                            )
+                        )
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -370,12 +407,21 @@ def load_ofac_sdn(db: Session, csv_path: str) -> dict:
     db.commit()
     logger.info(
         "OFAC SDN load complete: matched=%d unmatched=%d skipped=%d stubs_created=%d",
-        matched, unmatched, skipped, stubs_created,
+        matched,
+        unmatched,
+        skipped,
+        stubs_created,
     )
-    return {"matched": matched, "unmatched": unmatched, "skipped": skipped, "stubs_created": stubs_created}
+    return {
+        "matched": matched,
+        "unmatched": unmatched,
+        "skipped": skipped,
+        "stubs_created": stubs_created,
+    }
 
 
 # ── KSE Institute loader ──────────────────────────────────────────────────────
+
 
 def load_kse_list(db: Session, csv_path: str) -> dict:
     """Load KSE Institute shadow-fleet CSV into the watchlist.
@@ -401,7 +447,7 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
     _IMO_FIELDS = ["imo", "imo_number", "IMO", "IMO_NUMBER"]
     _MMSI_FIELDS = ["mmsi", "MMSI"]
 
-    def _first(row: dict, keys: list[str]) -> Optional[str]:
+    def _first(row: dict, keys: list[str]) -> str | None:
         for k in keys:
             val = row.get(k, "")
             if val and val.strip():
@@ -425,7 +471,10 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
                 else:
                     logger.warning(
                         "KSE: no vessel match for name=%r flag=%r mmsi=%r imo=%r",
-                        name, flag, mmsi, imo,
+                        name,
+                        flag,
+                        mmsi,
+                        imo,
                     )
                     unmatched += 1
                     continue
@@ -434,21 +483,31 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
 
             # Backfill IMO from watchlist onto vessel (exact matches only)
             if match_type in ("exact_mmsi", "exact_imo"):
-                from app.utils.vessel_identity import validate_imo_checksum
                 from app.models.vessel_history import VesselHistory
+                from app.utils.vessel_identity import validate_imo_checksum
+
                 _src = "watchlist_backfill:kse"
                 if imo and not vessel.imo and validate_imo_checksum(imo):
                     vessel.imo = imo
-                    if not db.query(VesselHistory).filter(
-                        VesselHistory.vessel_id == vessel.vessel_id,
-                        VesselHistory.field_changed == "imo",
-                        VesselHistory.source == _src,
-                    ).first():
-                        db.add(VesselHistory(
-                            vessel_id=vessel.vessel_id, field_changed="imo",
-                            old_value="", new_value=imo,
-                            observed_at=datetime.utcnow(), source=_src,
-                        ))
+                    if (
+                        not db.query(VesselHistory)
+                        .filter(
+                            VesselHistory.vessel_id == vessel.vessel_id,
+                            VesselHistory.field_changed == "imo",
+                            VesselHistory.source == _src,
+                        )
+                        .first()
+                    ):
+                        db.add(
+                            VesselHistory(
+                                vessel_id=vessel.vessel_id,
+                                field_changed="imo",
+                                old_value="",
+                                new_value=imo,
+                                observed_at=datetime.utcnow(),
+                                source=_src,
+                            )
+                        )
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -464,7 +523,9 @@ def load_kse_list(db: Session, csv_path: str) -> dict:
     db.commit()
     logger.info(
         "KSE Institute load complete: matched=%d unmatched=%d stubs_created=%d",
-        matched, unmatched, stubs_created,
+        matched,
+        unmatched,
+        stubs_created,
     )
     return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}
 
@@ -498,14 +559,21 @@ def _load_opensanctions_entities(json_path: str) -> list[dict] | None:
                             continue
                         try:
                             entity = json.loads(line)
-                            if isinstance(entity, dict) and (entity.get("schema") or entity.get("type") or "") == "Vessel":
+                            if (
+                                isinstance(entity, dict)
+                                and (entity.get("schema") or entity.get("type") or "") == "Vessel"
+                            ):
                                 vessels.append(entity)
                         except json.JSONDecodeError as e:
                             skipped_lines += 1
                             logger.warning("Skipped malformed NDJSON line in %s: %s", json_path, e)
                             continue
                     if skipped_lines:
-                        logger.warning("Total skipped malformed NDJSON lines in %s: %d", json_path, skipped_lines)
+                        logger.warning(
+                            "Total skipped malformed NDJSON lines in %s: %d",
+                            json_path,
+                            skipped_lines,
+                        )
                     return vessels
             except json.JSONDecodeError:
                 pass
@@ -569,7 +637,7 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
             name = raw_name.strip() or None
 
         # ── Extract identifiers ───────────────────────────────────────────────
-        def _first_prop(key: str) -> Optional[str]:
+        def _first_prop(key: str) -> str | None:
             val = props.get(key)
             if isinstance(val, list):
                 return val[0].strip() if val else None
@@ -604,7 +672,10 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
             else:
                 logger.warning(
                     "OpenSanctions: no vessel match for name=%r mmsi=%r imo=%r dataset=%r",
-                    name, mmsi, imo, dataset_id,
+                    name,
+                    mmsi,
+                    imo,
+                    dataset_id,
                 )
                 unmatched += 1
                 continue
@@ -613,21 +684,31 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
 
         # Backfill IMO from watchlist onto vessel (exact matches only)
         if match_type in ("exact_mmsi", "exact_imo"):
-            from app.utils.vessel_identity import validate_imo_checksum
             from app.models.vessel_history import VesselHistory
+            from app.utils.vessel_identity import validate_imo_checksum
+
             _src = "watchlist_backfill:opensanctions"
             if imo and not vessel.imo and validate_imo_checksum(imo):
                 vessel.imo = imo
-                if not db.query(VesselHistory).filter(
-                    VesselHistory.vessel_id == vessel.vessel_id,
-                    VesselHistory.field_changed == "imo",
-                    VesselHistory.source == _src,
-                ).first():
-                    db.add(VesselHistory(
-                        vessel_id=vessel.vessel_id, field_changed="imo",
-                        old_value="", new_value=imo,
-                        observed_at=datetime.utcnow(), source=_src,
-                    ))
+                if (
+                    not db.query(VesselHistory)
+                    .filter(
+                        VesselHistory.vessel_id == vessel.vessel_id,
+                        VesselHistory.field_changed == "imo",
+                        VesselHistory.source == _src,
+                    )
+                    .first()
+                ):
+                    db.add(
+                        VesselHistory(
+                            vessel_id=vessel.vessel_id,
+                            field_changed="imo",
+                            old_value="",
+                            new_value=imo,
+                            observed_at=datetime.utcnow(),
+                            source=_src,
+                        )
+                    )
         _upsert_watchlist(
             db,
             vessel=vessel,
@@ -646,7 +727,8 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
     # the schema may have changed (e.g. OpenSanctions renamed the type).
     total_entities = len(entities)
     vessel_entities = sum(
-        1 for e in entities
+        1
+        for e in entities
         if isinstance(e, dict) and (e.get("schema") or e.get("type") or "") == "Vessel"
     )
     if total_entities > 10 and vessel_entities == 0:
@@ -659,7 +741,9 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
 
     logger.info(
         "OpenSanctions load complete: matched=%d unmatched=%d stubs_created=%d",
-        matched, unmatched, stubs_created,
+        matched,
+        unmatched,
+        stubs_created,
     )
     return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}
 
@@ -691,11 +775,7 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
         logger.error("Failed to parse FleetLeaks file %s: %s", json_path, exc)
         return {"matched": 0, "unmatched": 0}
 
-    vessels_list = (
-        data
-        if isinstance(data, list)
-        else data.get("vessels", data.get("data", []))
-    )
+    vessels_list = data if isinstance(data, list) else data.get("vessels", data.get("data", []))
 
     for entry in vessels_list:
         if not isinstance(entry, dict):
@@ -703,9 +783,7 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
 
         name = (entry.get("name") or entry.get("vessel_name") or "").strip() or None
         mmsi = str(entry.get("mmsi") or "").strip() or None
-        imo = (
-            str(entry.get("imo") or entry.get("imo_number") or "").strip() or None
-        )
+        imo = str(entry.get("imo") or entry.get("imo_number") or "").strip() or None
         flag = (entry.get("flag") or entry.get("flag_state") or "").strip() or None
 
         result = _resolve_vessel(db, mmsi=mmsi, imo=imo, name=name, flag=flag)
@@ -715,9 +793,7 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
                 match_type, confidence = "stub_created", 100
                 stubs_created += 1
             else:
-                logger.warning(
-                    "FleetLeaks: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo
-                )
+                logger.warning("FleetLeaks: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo)
                 unmatched += 1
                 continue
         else:
@@ -725,21 +801,31 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
 
         # Backfill IMO from watchlist onto vessel (exact matches only)
         if match_type in ("exact_mmsi", "exact_imo"):
-            from app.utils.vessel_identity import validate_imo_checksum
             from app.models.vessel_history import VesselHistory
+            from app.utils.vessel_identity import validate_imo_checksum
+
             _src = "watchlist_backfill:fleetleaks"
             if imo and not vessel.imo and validate_imo_checksum(imo):
                 vessel.imo = imo
-                if not db.query(VesselHistory).filter(
-                    VesselHistory.vessel_id == vessel.vessel_id,
-                    VesselHistory.field_changed == "imo",
-                    VesselHistory.source == _src,
-                ).first():
-                    db.add(VesselHistory(
-                        vessel_id=vessel.vessel_id, field_changed="imo",
-                        old_value="", new_value=imo,
-                        observed_at=datetime.utcnow(), source=_src,
-                    ))
+                if (
+                    not db.query(VesselHistory)
+                    .filter(
+                        VesselHistory.vessel_id == vessel.vessel_id,
+                        VesselHistory.field_changed == "imo",
+                        VesselHistory.source == _src,
+                    )
+                    .first()
+                ):
+                    db.add(
+                        VesselHistory(
+                            vessel_id=vessel.vessel_id,
+                            field_changed="imo",
+                            old_value="",
+                            new_value=imo,
+                            observed_at=datetime.utcnow(),
+                            source=_src,
+                        )
+                    )
         _upsert_watchlist(
             db,
             vessel=vessel,
@@ -753,7 +839,9 @@ def load_fleetleaks(db: Session, json_path: str) -> dict:
     db.commit()
     logger.info(
         "FleetLeaks load: matched=%d unmatched=%d stubs_created=%d",
-        matched, unmatched, stubs_created,
+        matched,
+        unmatched,
+        stubs_created,
     )
     return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}
 
@@ -784,7 +872,7 @@ def load_gur_list(db: Session, csv_path: str) -> dict:
     _IMO_FIELDS = ["imo", "IMO", "imo_number"]
     _FLAG_FIELDS = ["flag", "FLAG", "flag_state"]
 
-    def _first(row: dict, keys: list[str]) -> Optional[str]:
+    def _first(row: dict, keys: list[str]) -> str | None:
         for k in keys:
             val = row.get(k, "")
             if val and str(val).strip():
@@ -806,9 +894,7 @@ def load_gur_list(db: Session, csv_path: str) -> dict:
                     match_type, confidence = "stub_created", 100
                     stubs_created += 1
                 else:
-                    logger.warning(
-                        "GUR: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo
-                    )
+                    logger.warning("GUR: no match for name=%r mmsi=%r imo=%r", name, mmsi, imo)
                     unmatched += 1
                     continue
             else:
@@ -816,21 +902,31 @@ def load_gur_list(db: Session, csv_path: str) -> dict:
 
             # Backfill IMO from watchlist onto vessel (exact matches only)
             if match_type in ("exact_mmsi", "exact_imo"):
-                from app.utils.vessel_identity import validate_imo_checksum
                 from app.models.vessel_history import VesselHistory
+                from app.utils.vessel_identity import validate_imo_checksum
+
                 _src = "watchlist_backfill:gur"
                 if imo and not vessel.imo and validate_imo_checksum(imo):
                     vessel.imo = imo
-                    if not db.query(VesselHistory).filter(
-                        VesselHistory.vessel_id == vessel.vessel_id,
-                        VesselHistory.field_changed == "imo",
-                        VesselHistory.source == _src,
-                    ).first():
-                        db.add(VesselHistory(
-                            vessel_id=vessel.vessel_id, field_changed="imo",
-                            old_value="", new_value=imo,
-                            observed_at=datetime.utcnow(), source=_src,
-                        ))
+                    if (
+                        not db.query(VesselHistory)
+                        .filter(
+                            VesselHistory.vessel_id == vessel.vessel_id,
+                            VesselHistory.field_changed == "imo",
+                            VesselHistory.source == _src,
+                        )
+                        .first()
+                    ):
+                        db.add(
+                            VesselHistory(
+                                vessel_id=vessel.vessel_id,
+                                field_changed="imo",
+                                old_value="",
+                                new_value=imo,
+                                observed_at=datetime.utcnow(),
+                                source=_src,
+                            )
+                        )
             _upsert_watchlist(
                 db,
                 vessel=vessel,
@@ -844,6 +940,8 @@ def load_gur_list(db: Session, csv_path: str) -> dict:
     db.commit()
     logger.info(
         "GUR load: matched=%d unmatched=%d stubs_created=%d",
-        matched, unmatched, stubs_created,
+        matched,
+        unmatched,
+        stubs_created,
     )
     return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}

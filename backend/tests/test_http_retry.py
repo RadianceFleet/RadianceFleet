@@ -1,4 +1,5 @@
 """Tests for the shared HTTP retry utility."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
@@ -6,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from app.utils.http_retry import retry_request, _RETRYABLE_STATUS_CODES
+from app.utils.http_retry import _RETRYABLE_STATUS_CODES, retry_request
 
 
 def _make_response(status_code: int, headers: dict | None = None) -> httpx.Response:

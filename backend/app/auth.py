@@ -1,10 +1,12 @@
 import hmac
+from datetime import UTC, datetime, timedelta
+
 import jwt
-from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+
 from app.config import settings
 
 security = HTTPBearer(auto_error=False)
@@ -14,6 +16,7 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # ---------------------------------------------------------------------------
 # Password hashing
 # ---------------------------------------------------------------------------
+
 
 def hash_password(plain: str) -> str:
     """Hash a plaintext password using bcrypt."""
@@ -36,9 +39,10 @@ def verify_admin_password(plain: str) -> bool:
 # JWT creation
 # ---------------------------------------------------------------------------
 
+
 def create_token(analyst_id: int, username: str, role: str) -> str:
     """Create a 30-minute JWT for an analyst session."""
-    exp = datetime.now(timezone.utc) + timedelta(minutes=30)
+    exp = datetime.now(UTC) + timedelta(minutes=30)
     payload = {
         "exp": exp,
         "sub": username,
@@ -60,6 +64,7 @@ def create_admin_token() -> str:
 # API Key verification
 # ---------------------------------------------------------------------------
 
+
 def verify_api_key(key: str, db: Session) -> dict | None:
     """Check a raw API key against all active ApiKey records.
 
@@ -78,6 +83,7 @@ def verify_api_key(key: str, db: Session) -> dict | None:
 # Auth dependencies
 # ---------------------------------------------------------------------------
 
+
 def require_auth(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     request: Request = None,
@@ -92,6 +98,7 @@ def require_auth(
     api_key_header = request.headers.get("X-API-Key") if request else None
     if api_key_header:
         from app.database import get_db
+
         db: Session = next(get_db())
         try:
             result = verify_api_key(api_key_header, db)

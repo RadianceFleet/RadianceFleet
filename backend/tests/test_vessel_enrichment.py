@@ -1,10 +1,9 @@
 """Tests for vessel metadata enrichment via GFW API."""
-from unittest.mock import patch, MagicMock, PropertyMock
 
-import pytest
+from unittest.mock import MagicMock, patch
 
-from app.modules.vessel_enrichment import enrich_vessels_from_gfw, infer_pi_coverage
 from app.models.base import FlagRiskEnum
+from app.modules.vessel_enrichment import enrich_vessels_from_gfw, infer_pi_coverage
 
 
 def _make_mock_db(vessels):
@@ -16,11 +15,21 @@ def _make_mock_db(vessels):
     return db
 
 
-def _make_vessel(mmsi, imo=None, deadweight=None, year_built=None, flag=None, flag_risk=None,
-                 vessel_type=None, is_heuristic_dwt=False):
+def _make_vessel(
+    mmsi,
+    imo=None,
+    deadweight=None,
+    year_built=None,
+    flag=None,
+    flag_risk=None,
+    vessel_type=None,
+    is_heuristic_dwt=False,
+):
     """Create a vessel-like object with real attributes (not MagicMock attributes)."""
+
     class FakeVessel:
         pass
+
     v = FakeVessel()
     v.mmsi = mmsi
     v.imo = imo
@@ -41,13 +50,15 @@ def test_enrich_populates_missing_fields(mock_search, mock_sleep):
     vessel = _make_vessel("273123456", flag="RU", flag_risk=FlagRiskEnum.HIGH_RISK)
     db = _make_mock_db([vessel])
 
-    mock_search.return_value = [{
-        "mmsi": "273123456",
-        "imo": "9876543",
-        "tonnage_gt": 120000,
-        "flag": "RU",
-        "year_built": 2001,
-    }]
+    mock_search.return_value = [
+        {
+            "mmsi": "273123456",
+            "imo": "9876543",
+            "tonnage_gt": 120000,
+            "flag": "RU",
+            "year_built": 2001,
+        }
+    ]
 
     result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
@@ -64,17 +75,20 @@ def test_enrich_populates_missing_fields(mock_search, mock_sleep):
 @patch("app.modules.gfw_client.search_vessel")
 def test_enrich_tanker_gt_to_dwt_conversion(mock_search, mock_sleep):
     """Tanker vessel: DWT = GT × 1.5 conversion factor."""
-    vessel = _make_vessel("273123456", flag="RU", flag_risk=FlagRiskEnum.HIGH_RISK,
-                          vessel_type="Crude Oil Tanker")
+    vessel = _make_vessel(
+        "273123456", flag="RU", flag_risk=FlagRiskEnum.HIGH_RISK, vessel_type="Crude Oil Tanker"
+    )
     db = _make_mock_db([vessel])
 
-    mock_search.return_value = [{
-        "mmsi": "273123456",
-        "imo": "9876543",
-        "tonnage_gt": 80000,
-        "flag": "RU",
-        "year_built": 2001,
-    }]
+    mock_search.return_value = [
+        {
+            "mmsi": "273123456",
+            "imo": "9876543",
+            "tonnage_gt": 80000,
+            "flag": "RU",
+            "year_built": 2001,
+        }
+    ]
 
     result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
@@ -89,17 +103,23 @@ def test_enrich_tanker_gt_to_dwt_conversion(mock_search, mock_sleep):
 def test_enrich_skips_already_populated(mock_search, mock_sleep):
     """Vessel with existing metadata fields is not overwritten."""
     vessel = _make_vessel(
-        "366000001", imo="1234567", deadweight=150000.0,
-        year_built=2005, flag="US", flag_risk=FlagRiskEnum.LOW_RISK,
+        "366000001",
+        imo="1234567",
+        deadweight=150000.0,
+        year_built=2005,
+        flag="US",
+        flag_risk=FlagRiskEnum.LOW_RISK,
     )
     db = _make_mock_db([vessel])
 
-    mock_search.return_value = [{
-        "mmsi": "366000001",
-        "imo": "9999999",
-        "tonnage_gt": 200000,
-        "flag": "PA",
-    }]
+    mock_search.return_value = [
+        {
+            "mmsi": "366000001",
+            "imo": "9999999",
+            "tonnage_gt": 200000,
+            "flag": "PA",
+        }
+    ]
 
     result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
@@ -163,14 +183,16 @@ def test_enrich_stores_vessel_type_before_dwt(mock_search, mock_sleep):
     assert vessel.deadweight is None
 
     db = _make_mock_db([vessel])
-    mock_search.return_value = [{
-        "mmsi": "273900001",
-        "imo": "9111111",
-        "vessel_type": "Crude Oil Tanker",
-        "tonnage_gt": 50000,
-        "flag": "RU",
-        "year_built": 2008,
-    }]
+    mock_search.return_value = [
+        {
+            "mmsi": "273900001",
+            "imo": "9111111",
+            "vessel_type": "Crude Oil Tanker",
+            "tonnage_gt": 50000,
+            "flag": "RU",
+            "year_built": 2008,
+        }
+    ]
 
     result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
@@ -190,11 +212,13 @@ def test_enrich_sets_is_heuristic_dwt_for_gt_derived(mock_search, mock_sleep):
     assert vessel.is_heuristic_dwt is False
 
     db = _make_mock_db([vessel])
-    mock_search.return_value = [{
-        "mmsi": "273900002",
-        "imo": "9222222",
-        "tonnage_gt": 30000,
-    }]
+    mock_search.return_value = [
+        {
+            "mmsi": "273900002",
+            "imo": "9222222",
+            "tonnage_gt": 30000,
+        }
+    ]
 
     result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
@@ -211,11 +235,13 @@ def test_enrich_re_enriches_heuristic_dwt_vessels(mock_search, mock_sleep):
     vessel = _make_vessel("273900003", deadweight=50000.0, is_heuristic_dwt=True)
 
     db = _make_mock_db([vessel])
-    mock_search.return_value = [{
-        "mmsi": "273900003",
-        "imo": "9333333",
-        "tonnage_gt": 60000,
-    }]
+    mock_search.return_value = [
+        {
+            "mmsi": "273900003",
+            "imo": "9333333",
+            "tonnage_gt": 60000,
+        }
+    ]
 
     result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
@@ -232,11 +258,13 @@ def test_enrich_non_tanker_uses_1x_gt_multiplier(mock_search, mock_sleep):
     vessel = _make_vessel("273900004", flag="PA")
 
     db = _make_mock_db([vessel])
-    mock_search.return_value = [{
-        "mmsi": "273900004",
-        "vessel_type": "General Cargo",
-        "tonnage_gt": 10000,
-    }]
+    mock_search.return_value = [
+        {
+            "mmsi": "273900004",
+            "vessel_type": "General Cargo",
+            "tonnage_gt": 10000,
+        }
+    ]
 
     result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 

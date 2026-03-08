@@ -1,28 +1,30 @@
 """Tests for satellite_order_manager module."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app.modules.satellite_order_manager import (
+    _compute_aoi,
+    cancel_order,
     get_satellite_budget_status,
+    poll_order_status,
     search_archive_for_alert,
     submit_order,
-    poll_order_status,
-    cancel_order,
-    _compute_aoi,
 )
 from app.modules.satellite_providers.base import (
     ArchiveSearchResult,
-    OrderSubmitResult,
     OrderStatusResult,
+    OrderSubmitResult,
 )
-
 
 # ---------------------------------------------------------------------------
 # Budget
 # ---------------------------------------------------------------------------
+
 
 def test_budget_no_orders(mock_db):
     """Budget status with no orders returns full budget."""
@@ -45,13 +47,14 @@ def test_budget_with_existing_orders(mock_db):
 # Archive search
 # ---------------------------------------------------------------------------
 
+
 def test_search_archive_creates_draft(mock_db):
     """search_archive_for_alert creates a draft order and returns scene list."""
     # Mock alert
     alert = MagicMock()
     alert.gap_event_id = 42
-    alert.gap_start_utc = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-    alert.gap_end_utc = datetime(2026, 1, 1, 18, 0, tzinfo=timezone.utc)
+    alert.gap_start_utc = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+    alert.gap_end_utc = datetime(2026, 1, 1, 18, 0, tzinfo=UTC)
     alert.gap_off_lat = 55.0
     alert.gap_off_lon = 20.0
     alert.gap_on_lat = 56.0
@@ -66,7 +69,7 @@ def test_search_archive_creates_draft(mock_db):
     scene = ArchiveSearchResult(
         scene_id="PSScene:abc123",
         provider="planet",
-        acquired_at=datetime(2026, 1, 1, 14, 0, tzinfo=timezone.utc),
+        acquired_at=datetime(2026, 1, 1, 14, 0, tzinfo=UTC),
         cloud_cover_pct=5.0,
         resolution_m=3.0,
         estimated_cost_usd=50.0,
@@ -97,6 +100,7 @@ def test_search_archive_alert_not_found(mock_db):
 # ---------------------------------------------------------------------------
 # Submit order
 # ---------------------------------------------------------------------------
+
 
 def test_submit_order_changes_status(mock_db):
     """submit_order changes order status to submitted."""
@@ -157,6 +161,7 @@ def test_submit_order_not_draft(mock_db):
 # Poll status
 # ---------------------------------------------------------------------------
 
+
 def test_poll_order_status_updates(mock_db):
     """poll_order_status updates order status from provider."""
     order = MagicMock()
@@ -188,6 +193,7 @@ def test_poll_order_status_updates(mock_db):
 # ---------------------------------------------------------------------------
 # Cancel
 # ---------------------------------------------------------------------------
+
 
 def test_cancel_order_changes_status(mock_db):
     """cancel_order sets status to cancelled."""
@@ -223,6 +229,7 @@ def test_cancel_delivered_raises_error(mock_db):
 # ---------------------------------------------------------------------------
 # AOI computation
 # ---------------------------------------------------------------------------
+
 
 def test_compute_aoi_with_gap_positions():
     """_compute_aoi builds a bounding box from gap off/on positions."""

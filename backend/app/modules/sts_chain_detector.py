@@ -11,11 +11,12 @@ Scoring:
 
 Results are stored as FleetAlert records with alert_type='sts_relay_chain'.
 """
+
 from __future__ import annotations
 
 import logging
 from collections import defaultdict, deque
-from datetime import datetime, timedelta, date, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -43,12 +44,12 @@ def detect_sts_chains(
     if not settings.STS_CHAIN_DETECTION_ENABLED:
         return {"status": "disabled", "chains_found": 0, "alerts_created": 0}
 
-    from app.models.sts_transfer import StsTransferEvent
     from app.models.fleet_alert import FleetAlert
+    from app.models.sts_transfer import StsTransferEvent
 
     # Default window: last 30 days
     if date_to is None:
-        date_to = datetime.now(timezone.utc).date()
+        date_to = datetime.now(UTC).date()
     if date_from is None:
         date_from = date_to - timedelta(days=30)
 
@@ -147,12 +148,14 @@ def detect_sts_chains(
         # Build evidence
         hops = []
         for ev in component_events:
-            hops.append({
-                "from_vessel_id": ev.vessel_1_id,
-                "to_vessel_id": ev.vessel_2_id,
-                "start_time": ev.start_time_utc.isoformat() if ev.start_time_utc else None,
-                "end_time": ev.end_time_utc.isoformat() if ev.end_time_utc else None,
-            })
+            hops.append(
+                {
+                    "from_vessel_id": ev.vessel_1_id,
+                    "to_vessel_id": ev.vessel_2_id,
+                    "start_time": ev.start_time_utc.isoformat() if ev.start_time_utc else None,
+                    "end_time": ev.end_time_utc.isoformat() if ev.end_time_utc else None,
+                }
+            )
 
         evidence = {
             "subtype": "sts_relay_chain",

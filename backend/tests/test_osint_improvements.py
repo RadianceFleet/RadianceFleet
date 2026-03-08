@@ -11,22 +11,21 @@ Covers:
 - Phase 4a: Per-vessel behavioral baseline (Z-score)
 - Phase 4b: Pillar score separation
 """
+
 from __future__ import annotations
 
-import math
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from unittest.mock import MagicMock
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Phase 1c: Temporal Recency Factor
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestTemporalRecencyFactor:
     def _get_fn(self):
         from app.modules.risk_scoring import _temporal_recency_factor
+
         return _temporal_recency_factor
 
     def test_none_signal_returns_1(self):
@@ -75,9 +74,11 @@ class TestTemporalRecencyFactor:
 # Phase 2b: EEZ Boundary Distance Utility
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestEEZBoundaryDistance:
     def test_returns_tuple_distance_name(self):
         from app.utils.eez_boundaries import distance_to_nearest_eez_boundary_nm
+
         dist, name = distance_to_nearest_eez_boundary_nm(59.5, 27.0)
         assert isinstance(dist, float)
         assert isinstance(name, str)
@@ -85,12 +86,14 @@ class TestEEZBoundaryDistance:
 
     def test_point_very_close_to_russian_baltic_eez(self):
         from app.utils.eez_boundaries import distance_to_nearest_eez_boundary_nm
+
         # Point near Gulf of Finland boundary
         dist, name = distance_to_nearest_eez_boundary_nm(59.5, 27.0)
         assert dist < 50  # Should be well under 50nm from the boundary point
 
     def test_point_far_from_all_boundaries(self):
         from app.utils.eez_boundaries import distance_to_nearest_eez_boundary_nm
+
         # Mid-Atlantic, far from all listed boundaries
         dist, name = distance_to_nearest_eez_boundary_nm(0.0, -30.0)
         # No boundary segment is nearby mid-Atlantic
@@ -98,12 +101,14 @@ class TestEEZBoundaryDistance:
 
     def test_non_negative_distance(self):
         from app.utils.eez_boundaries import distance_to_nearest_eez_boundary_nm
+
         for lat, lon in [(0, 0), (45, 45), (-30, 120), (70, 20)]:
             dist, _ = distance_to_nearest_eez_boundary_nm(lat, lon)
             assert dist >= 0
 
     def test_iranian_gulf_proximity(self):
         from app.utils.eez_boundaries import distance_to_nearest_eez_boundary_nm
+
         # Point near Iranian EEZ boundary in Persian Gulf
         dist, name = distance_to_nearest_eez_boundary_nm(26.0, 57.5)
         assert dist < 100  # Should be near the boundary
@@ -111,6 +116,7 @@ class TestEEZBoundaryDistance:
     def test_segment_distance_not_haversine_only(self):
         """Ensure segment projection works (not just endpoint-to-endpoint)."""
         from app.utils.eez_boundaries import _point_to_segment_distance_nm
+
         # Point perpendicular to a horizontal segment
         d = _point_to_segment_distance_nm(0, 1, 0, 0, 0, 2)  # lon, lat, ax, ay, bx, by
         assert d < 60  # 1 degree lat ≈ 60 NM
@@ -120,9 +126,10 @@ class TestEEZBoundaryDistance:
 # Phase 3a: Class-Median DWT Fallback
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestClassMedianDWT:
     def test_fills_null_dwt_for_crude_tanker(self):
-        from app.modules.vessel_enrichment import apply_class_median_dwt, _VESSEL_TYPE_MEDIAN_DWT
+        from app.modules.vessel_enrichment import _VESSEL_TYPE_MEDIAN_DWT, apply_class_median_dwt
 
         mock_vessel = MagicMock()
         mock_vessel.deadweight = None
@@ -132,7 +139,7 @@ class TestClassMedianDWT:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.all.return_value = [mock_vessel]
 
-        result = apply_class_median_dwt(mock_db)
+        apply_class_median_dwt(mock_db)
 
         assert mock_vessel.deadweight == float(_VESSEL_TYPE_MEDIAN_DWT["Crude Oil Tanker"])
         assert mock_vessel.is_heuristic_dwt is True
@@ -163,6 +170,7 @@ class TestClassMedianDWT:
 
     def test_median_values_are_plausible(self):
         from app.modules.vessel_enrichment import _VESSEL_TYPE_MEDIAN_DWT
+
         assert _VESSEL_TYPE_MEDIAN_DWT["Crude Oil Tanker"] > 100_000
         assert _VESSEL_TYPE_MEDIAN_DWT["Product Tanker"] < 80_000
         assert _VESSEL_TYPE_MEDIAN_DWT["Bulk Carrier"] > 50_000
@@ -172,37 +180,46 @@ class TestClassMedianDWT:
 # Phase 3c: MID Table Completeness
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestMIDTableCompleteness:
     def test_belize_mid(self):
         from app.utils.vessel_identity import MID_TO_FLAG
+
         assert MID_TO_FLAG.get("312") == "BZ"
 
     def test_iraq_mid(self):
         from app.utils.vessel_identity import MID_TO_FLAG
+
         assert MID_TO_FLAG.get("401") == "IQ"
 
     def test_qatar_mid(self):
         from app.utils.vessel_identity import MID_TO_FLAG
+
         assert MID_TO_FLAG.get("466") == "QA"
 
     def test_bangladesh_mid(self):
         from app.utils.vessel_identity import MID_TO_FLAG
+
         assert MID_TO_FLAG.get("405") == "BD"
 
     def test_myanmar_mid(self):
         from app.utils.vessel_identity import MID_TO_FLAG
+
         assert MID_TO_FLAG.get("506") == "MM"
 
     def test_nigeria_coverage(self):
         from app.utils.vessel_identity import MID_TO_FLAG
+
         assert MID_TO_FLAG.get("657") == "NG"
 
     def test_ghana_mid(self):
         from app.utils.vessel_identity import MID_TO_FLAG
+
         assert MID_TO_FLAG.get("627") == "GH"
 
     def test_mmsi_to_flag_uses_new_mids(self):
         from app.utils.vessel_identity import mmsi_to_flag
+
         # BZ MID 312
         assert mmsi_to_flag("312001234") == "BZ"
 
@@ -211,10 +228,19 @@ class TestMIDTableCompleteness:
 # Shared test fixture builder for compute_gap_score tests
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _make_test_gap(name="TEST", flag="KM", flag_risk="high_risk", vtype="Crude Oil Tanker",
-                   dwt=100_000, year_built=2000, mmsi="620123456"):
+
+def _make_test_gap(
+    name="TEST",
+    flag="KM",
+    flag_risk="high_risk",
+    vtype="Crude Oil Tanker",
+    dwt=100_000,
+    year_built=2000,
+    mmsi="620123456",
+):
     """Create a gap mock with vessel attached via gap.vessel, matching actual ORM pattern."""
     from app.modules.risk_scoring import load_scoring_config
+
     config = load_scoring_config()
 
     gap = MagicMock()
@@ -266,9 +292,11 @@ def _make_test_gap(name="TEST", flag="KM", flag_risk="high_risk", vtype="Crude O
 # Phase 3b: Vessel Name Quality Signals
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestNameQualitySignals:
     def test_empty_name_triggers_no_name_at_all(self):
         from app.modules.risk_scoring import compute_gap_score
+
         gap, config = _make_test_gap(name="")
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert "no_name_at_all" in breakdown
@@ -276,6 +304,7 @@ class TestNameQualitySignals:
 
     def test_generic_name_triggers_invalid_metadata(self):
         from app.modules.risk_scoring import compute_gap_score
+
         gap, config = _make_test_gap(name="TANKER")
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert "invalid_metadata_generic_name" in breakdown
@@ -283,12 +312,14 @@ class TestNameQualitySignals:
 
     def test_all_caps_number_pattern(self):
         from app.modules.risk_scoring import compute_gap_score
+
         gap, config = _make_test_gap(name="SHIP 22")
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert "name_all_caps_numbers" in breakdown
 
     def test_normal_name_no_penalty(self):
         from app.modules.risk_scoring import compute_gap_score
+
         gap, config = _make_test_gap(name="CRUDE OCEAN STAR")
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert "no_name_at_all" not in breakdown
@@ -299,13 +330,21 @@ class TestNameQualitySignals:
 # Phase 2a: KSE Shadow Fleet Archetype
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestKSEShadowFleetArchetype:
     def test_strong_archetype_match_4_plus(self):
         """Vessel with 4+ KSE dimensions: high-risk flag, old age, tanker type, large DWT."""
         from app.modules.risk_scoring import compute_gap_score
+
         # PW=Palau (high_risk), >15y old, crude tanker, >80k DWT, high_risk flag → 5/5 hits
-        gap, config = _make_test_gap(flag="PW", flag_risk="high_risk", vtype="Crude Oil Tanker",
-                                      dwt=100_000, year_built=2000, mmsi="511123456")
+        gap, config = _make_test_gap(
+            flag="PW",
+            flag_risk="high_risk",
+            vtype="Crude Oil Tanker",
+            dwt=100_000,
+            year_built=2000,
+            mmsi="511123456",
+        )
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert "kse_shadow_profile_strong" in breakdown
         assert breakdown["kse_shadow_profile_strong"] == 35
@@ -313,9 +352,16 @@ class TestKSEShadowFleetArchetype:
     def test_moderate_archetype_match_3(self):
         """Vessel with 3 KSE dimensions (open registry, old, large tanker)."""
         from app.modules.risk_scoring import compute_gap_score
+
         # PA=Panama (medium risk, open registry), old tanker, large DWT
-        gap, config = _make_test_gap(flag="PA", flag_risk="medium_risk", vtype="Crude Oil Tanker",
-                                      dwt=100_000, year_built=2000, mmsi="351123456")
+        gap, config = _make_test_gap(
+            flag="PA",
+            flag_risk="medium_risk",
+            vtype="Crude Oil Tanker",
+            dwt=100_000,
+            year_built=2000,
+            mmsi="351123456",
+        )
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         # 3 hits minimum: age≥15, type=tanker, DWT>80k → profile_match
         assert "kse_shadow_profile_match" in breakdown or "kse_shadow_profile_strong" in breakdown
@@ -323,8 +369,15 @@ class TestKSEShadowFleetArchetype:
     def test_young_small_low_risk_vessel_no_kse(self):
         """Young, small, low-risk flag vessel should not trigger KSE archetype."""
         from app.modules.risk_scoring import compute_gap_score
-        gap, config = _make_test_gap(flag="NO", flag_risk="low_risk", vtype="Bulk Carrier",
-                                      dwt=5000, year_built=2020, mmsi="257123456")
+
+        gap, config = _make_test_gap(
+            flag="NO",
+            flag_risk="low_risk",
+            vtype="Bulk Carrier",
+            dwt=5000,
+            year_built=2020,
+            mmsi="257123456",
+        )
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert "kse_shadow_profile_strong" not in breakdown
         assert "kse_shadow_profile_match" not in breakdown
@@ -334,11 +387,19 @@ class TestKSEShadowFleetArchetype:
 # Phase 4b: Pillar Score Separation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestPillarScoreSeparation:
     def test_pillar_keys_present_in_breakdown(self):
         from app.modules.risk_scoring import compute_gap_score
-        gap, config = _make_test_gap(flag="NO", flag_risk="low_risk", vtype="Bulk Carrier",
-                                      dwt=50_000, year_built=2015, mmsi="257123456")
+
+        gap, config = _make_test_gap(
+            flag="NO",
+            flag_risk="low_risk",
+            vtype="Bulk Carrier",
+            dwt=50_000,
+            year_built=2015,
+            mmsi="257123456",
+        )
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert "_pillar_vessel" in breakdown
         assert "_pillar_position" in breakdown
@@ -346,8 +407,15 @@ class TestPillarScoreSeparation:
 
     def test_pillar_values_are_numeric(self):
         from app.modules.risk_scoring import compute_gap_score
-        gap, config = _make_test_gap(flag="NO", flag_risk="low_risk", vtype="Bulk Carrier",
-                                      dwt=50_000, year_built=2015, mmsi="257123456")
+
+        gap, config = _make_test_gap(
+            flag="NO",
+            flag_risk="low_risk",
+            vtype="Bulk Carrier",
+            dwt=50_000,
+            year_built=2015,
+            mmsi="257123456",
+        )
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert isinstance(breakdown["_pillar_vessel"], (int, float))
         assert isinstance(breakdown["_pillar_position"], (int, float))
@@ -355,8 +423,15 @@ class TestPillarScoreSeparation:
 
     def test_pillar_values_non_negative(self):
         from app.modules.risk_scoring import compute_gap_score
-        gap, config = _make_test_gap(flag="NO", flag_risk="low_risk", vtype="Bulk Carrier",
-                                      dwt=50_000, year_built=2015, mmsi="257123456")
+
+        gap, config = _make_test_gap(
+            flag="NO",
+            flag_risk="low_risk",
+            vtype="Bulk Carrier",
+            dwt=50_000,
+            year_built=2015,
+            mmsi="257123456",
+        )
         score, breakdown = compute_gap_score(gap, config=config, db=None)
         assert breakdown["_pillar_vessel"] >= 0
         assert breakdown["_pillar_position"] >= 0
@@ -367,21 +442,26 @@ class TestPillarScoreSeparation:
 # Phase 1b: Sanctioned port model
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestSanctionedPortModel:
     def test_port_has_is_sanctioned_attribute(self):
         from app.models.port import Port
+
         p = Port(name="Test", country="RU", major_port=True)
         assert hasattr(p, "is_sanctioned")
 
     def test_is_sanctioned_column_exists_on_model(self):
         """Verify is_sanctioned column is declared on the ORM model."""
         from sqlalchemy import inspect as sa_inspect
+
         from app.models.port import Port
+
         cols = {c.key for c in sa_inspect(Port).columns}
         assert "is_sanctioned" in cols
 
     def test_sanctioned_terminals_set_is_defined(self):
         from scripts.seed_ports import _SANCTIONED_TERMINALS
+
         assert "Primorsk" in _SANCTIONED_TERMINALS
         assert "Novorossiysk" in _SANCTIONED_TERMINALS
         assert "Nakhodka/Kozmino" in _SANCTIONED_TERMINALS

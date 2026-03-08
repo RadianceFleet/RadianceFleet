@@ -1,19 +1,22 @@
 """Tests for evidence chain-of-custody: export sets exported_by, approve/reject endpoints."""
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
+
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.database import get_db
 from app.auth import require_auth, require_senior_or_admin
+from app.database import get_db
+from app.main import app
 
 
 def _make_auth_override(role="analyst", analyst_id=1, username="test_analyst"):
     """Return a dependency override function for require_auth or require_senior_or_admin."""
+
     def _override():
         return {"analyst_id": analyst_id, "username": username, "role": role}
+
     return _override
 
 
@@ -24,7 +27,7 @@ def _make_mock_card(**kwargs):
         "gap_event_id": 1,
         "version": 1,
         "export_format": "json",
-        "created_at": datetime(2024, 1, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2024, 1, 1, tzinfo=UTC),
         "exported_by": None,
         "approved_by": None,
         "approved_at": None,
@@ -41,8 +44,8 @@ def _make_mock_gap(**kwargs):
     defaults = {
         "gap_event_id": 1,
         "vessel_id": 1,
-        "gap_start_utc": datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc),
-        "gap_end_utc": datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc),
+        "gap_start_utc": datetime(2024, 1, 1, 0, 0, tzinfo=UTC),
+        "gap_end_utc": datetime(2024, 1, 1, 12, 0, tzinfo=UTC),
         "duration_minutes": 720,
         "risk_score": 80,
         "risk_breakdown_json": {"H1": 30, "H2": 50},
@@ -70,12 +73,15 @@ def mock_db():
 @pytest.fixture
 def client_with_auth(mock_db):
     """TestClient with DB + auth overrides for analyst role."""
+
     def override_get_db():
         yield mock_db
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[require_auth] = _make_auth_override("analyst", 42, "jane")
-    app.dependency_overrides[require_senior_or_admin] = _make_auth_override("senior", 99, "senior_bob")
+    app.dependency_overrides[require_senior_or_admin] = _make_auth_override(
+        "senior", 99, "senior_bob"
+    )
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
@@ -84,6 +90,7 @@ def client_with_auth(mock_db):
 @pytest.fixture
 def client_viewer_only(mock_db):
     """TestClient where require_senior_or_admin is NOT overridden (should 403)."""
+
     def override_get_db():
         yield mock_db
 

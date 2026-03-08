@@ -1,4 +1,5 @@
 """Watchlist loader tests — MMSI validation, fuzzy matching, and stub creation."""
+
 import csv
 import json
 import os
@@ -13,19 +14,19 @@ from app.models import Base  # noqa: F401 -- registers all models
 from app.models.vessel import Vessel
 from app.models.vessel_watchlist import VesselWatchlist
 from app.modules.watchlist_loader import (
-    _is_valid_mmsi,
     _fuzzy_match_vessel,
-    load_ofac_sdn,
-    load_kse_list,
-    load_opensanctions,
+    _is_valid_mmsi,
     load_fleetleaks,
     load_gur_list,
+    load_kse_list,
+    load_ofac_sdn,
+    load_opensanctions,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared fixture: in-memory SQLite session
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db():
@@ -49,15 +50,29 @@ def db():
 # Helpers for creating temp fixture files
 # ---------------------------------------------------------------------------
 
+
 def _write_ofac_csv(rows):
     """Write OFAC SDN CSV with header row. Returns path to temp file."""
     fd, path = tempfile.mkstemp(suffix=".csv")
     with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=[
-            "ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-            "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-            "Vess_owner", "REMARKS", "VESSEL_ID",
-        ])
+        writer = csv.DictWriter(
+            fh,
+            fieldnames=[
+                "ent_num",
+                "SDN_NAME",
+                "SDN_TYPE",
+                "Program",
+                "Title",
+                "Call_Sign",
+                "Vess_type",
+                "Tonnage",
+                "GRT",
+                "Vess_flag",
+                "Vess_owner",
+                "REMARKS",
+                "VESSEL_ID",
+            ],
+        )
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -107,6 +122,7 @@ def _write_fleetleaks_json(vessels):
 # Unit tests for _is_valid_mmsi
 # ---------------------------------------------------------------------------
 
+
 class TestIsValidMMSI:
     def test_valid_9_digit(self):
         assert _is_valid_mmsi("273456789") is True  # MID 273 = Russia
@@ -139,6 +155,7 @@ class TestIsValidMMSI:
 # ---------------------------------------------------------------------------
 # Unit tests for _fuzzy_match_vessel (mock DB)
 # ---------------------------------------------------------------------------
+
 
 class TestFuzzyMatchVessel:
     def _make_vessel(self, name, flag=None):
@@ -202,20 +219,31 @@ class TestFuzzyMatchVessel:
 # Integration tests for stub vessel creation
 # ---------------------------------------------------------------------------
 
+
 class TestOfacStubCreation:
     """OFAC loader creates a vessel stub when MMSI is present but no DB match."""
 
     def test_stub_created_for_unmatched_mmsi(self, db):
         """Empty DB: OFAC entry with valid MMSI creates a stub vessel and watchlist entry."""
-        path = _write_ofac_csv([{
-            "ent_num": "",
-            "SDN_NAME": "SHADOW TANKER",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "",
-            "Call_Sign": "", "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "RU",
-            "Vess_owner": "", "REMARKS": "MMSI 273123456",  # OFAC loader reads MMSI from REMARKS regex
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": "",
+                    "SDN_NAME": "SHADOW TANKER",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "",
+                    "Call_Sign": "",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "RU",
+                    "Vess_owner": "",
+                    "REMARKS": "MMSI 273123456",  # OFAC loader reads MMSI from REMARKS regex
+                }
+            ]
+        )
         try:
             result = load_ofac_sdn(db, path)
         finally:
@@ -231,25 +259,39 @@ class TestOfacStubCreation:
         assert vessel.name == "SHADOW TANKER"
 
         # A VesselWatchlist entry was created
-        wl = db.query(VesselWatchlist).filter(
-            VesselWatchlist.vessel_id == vessel.vessel_id,
-            VesselWatchlist.watchlist_source == "OFAC_SDN",
-        ).first()
+        wl = (
+            db.query(VesselWatchlist)
+            .filter(
+                VesselWatchlist.vessel_id == vessel.vessel_id,
+                VesselWatchlist.watchlist_source == "OFAC_SDN",
+            )
+            .first()
+        )
         assert wl is not None
         assert wl.is_active is True
         assert wl.match_type == "stub_created"
 
     def test_stub_not_created_for_imo_only_entry(self, db):
         """OFAC entry with IMO but no MMSI: no stub, counted as unmatched."""
-        path = _write_ofac_csv([{
-            "ent_num": "1234567",
-            "SDN_NAME": "IMO ONLY VESSEL",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "",  # no MMSI
-            "Call_Sign": "", "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": "1234567",
+                    "SDN_NAME": "IMO ONLY VESSEL",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "",  # no MMSI
+                    "Call_Sign": "",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "",
+                }
+            ]
+        )
         try:
             result = load_ofac_sdn(db, path)
         finally:
@@ -266,15 +308,25 @@ class TestOfacStubCreation:
         db.add(vessel)
         db.flush()
 
-        path = _write_ofac_csv([{
-            "ent_num": "",
-            "SDN_NAME": "EXISTING VESSEL",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "273123456",
-            "Call_Sign": "", "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "",
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": "",
+                    "SDN_NAME": "EXISTING VESSEL",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "273123456",
+                    "Call_Sign": "",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "",
+                }
+            ]
+        )
         try:
             result = load_ofac_sdn(db, path)
         finally:
@@ -288,23 +340,37 @@ class TestOfacStubCreation:
         assert db.query(Vessel).count() == 1
 
         # Watchlist entry was created for the existing vessel
-        wl = db.query(VesselWatchlist).filter(
-            VesselWatchlist.vessel_id == vessel.vessel_id,
-            VesselWatchlist.watchlist_source == "OFAC_SDN",
-        ).first()
+        wl = (
+            db.query(VesselWatchlist)
+            .filter(
+                VesselWatchlist.vessel_id == vessel.vessel_id,
+                VesselWatchlist.watchlist_source == "OFAC_SDN",
+            )
+            .first()
+        )
         assert wl is not None
 
     def test_stub_vessel_has_correct_flag_from_mmsi(self, db):
         """Stub vessel derived from Russian MMSI (MID 273) gets flag 'RU'."""
-        path = _write_ofac_csv([{
-            "ent_num": "",
-            "SDN_NAME": "RUSSIAN SHADOW",
-            "SDN_TYPE": "Vessel",
-            "VESSEL_ID": "",
-            "Call_Sign": "", "Program": "", "Title": "", "Vess_type": "",
-            "Tonnage": "", "GRT": "", "Vess_flag": "",
-            "Vess_owner": "", "REMARKS": "MMSI 273999001",  # MID 273 = RU; OFAC reads MMSI from REMARKS regex
-        }])
+        path = _write_ofac_csv(
+            [
+                {
+                    "ent_num": "",
+                    "SDN_NAME": "RUSSIAN SHADOW",
+                    "SDN_TYPE": "Vessel",
+                    "VESSEL_ID": "",
+                    "Call_Sign": "",
+                    "Program": "",
+                    "Title": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "MMSI 273999001",  # MID 273 = RU; OFAC reads MMSI from REMARKS regex
+                }
+            ]
+        )
         try:
             result = load_ofac_sdn(db, path)
         finally:
@@ -321,10 +387,16 @@ class TestKseStubCreation:
 
     def test_stub_created_for_unmatched_mmsi(self, db):
         """Empty DB: KSE entry with valid MMSI creates a stub vessel and watchlist entry."""
-        path = _write_kse_csv([{
-            "vessel_name": "KSE SHADOW", "flag": "PW",
-            "imo": "", "mmsi": "511234567",
-        }])
+        path = _write_kse_csv(
+            [
+                {
+                    "vessel_name": "KSE SHADOW",
+                    "flag": "PW",
+                    "imo": "",
+                    "mmsi": "511234567",
+                }
+            ]
+        )
         try:
             result = load_kse_list(db, path)
         finally:
@@ -338,19 +410,29 @@ class TestKseStubCreation:
         assert vessel is not None
         assert vessel.name == "KSE SHADOW"
 
-        wl = db.query(VesselWatchlist).filter(
-            VesselWatchlist.vessel_id == vessel.vessel_id,
-            VesselWatchlist.watchlist_source == "KSE_SHADOW",
-        ).first()
+        wl = (
+            db.query(VesselWatchlist)
+            .filter(
+                VesselWatchlist.vessel_id == vessel.vessel_id,
+                VesselWatchlist.watchlist_source == "KSE_SHADOW",
+            )
+            .first()
+        )
         assert wl is not None
         assert wl.match_type == "stub_created"
 
     def test_no_stub_for_imo_only(self, db):
         """KSE entry with IMO but no MMSI: no stub created, counted as unmatched."""
-        path = _write_kse_csv([{
-            "vessel_name": "IMO ONLY", "flag": "RU",
-            "imo": "1234567", "mmsi": "",
-        }])
+        path = _write_kse_csv(
+            [
+                {
+                    "vessel_name": "IMO ONLY",
+                    "flag": "RU",
+                    "imo": "1234567",
+                    "mmsi": "",
+                }
+            ]
+        )
         try:
             result = load_kse_list(db, path)
         finally:
@@ -391,10 +473,14 @@ class TestOpenSanctionsStubCreation:
         assert vessel.name == "OPEN SHADOW"
         assert vessel.flag == "KM"
 
-        wl = db.query(VesselWatchlist).filter(
-            VesselWatchlist.vessel_id == vessel.vessel_id,
-            VesselWatchlist.watchlist_source == "OPENSANCTIONS",
-        ).first()
+        wl = (
+            db.query(VesselWatchlist)
+            .filter(
+                VesselWatchlist.vessel_id == vessel.vessel_id,
+                VesselWatchlist.watchlist_source == "OPENSANCTIONS",
+            )
+            .first()
+        )
         assert wl is not None
         assert wl.match_type == "stub_created"
 
@@ -441,10 +527,14 @@ class TestFleetLeaksStubCreation:
         assert vessel.name == "FLEET SHADOW"
         assert vessel.flag == "SL"
 
-        wl = db.query(VesselWatchlist).filter(
-            VesselWatchlist.vessel_id == vessel.vessel_id,
-            VesselWatchlist.watchlist_source == "FLEETLEAKS",
-        ).first()
+        wl = (
+            db.query(VesselWatchlist)
+            .filter(
+                VesselWatchlist.vessel_id == vessel.vessel_id,
+                VesselWatchlist.watchlist_source == "FLEETLEAKS",
+            )
+            .first()
+        )
         assert wl is not None
         assert wl.match_type == "stub_created"
 
@@ -467,10 +557,16 @@ class TestGurStubCreation:
 
     def test_stub_created_for_unmatched_mmsi(self, db):
         """Empty DB: GUR entry with valid MMSI creates stub and watchlist entry."""
-        path = _write_gur_csv([{
-            "name": "GUR SHADOW", "flag": "PW",
-            "imo": "", "mmsi": "511987654",
-        }])
+        path = _write_gur_csv(
+            [
+                {
+                    "name": "GUR SHADOW",
+                    "flag": "PW",
+                    "imo": "",
+                    "mmsi": "511987654",
+                }
+            ]
+        )
         try:
             result = load_gur_list(db, path)
         finally:
@@ -484,19 +580,29 @@ class TestGurStubCreation:
         assert vessel is not None
         assert vessel.name == "GUR SHADOW"
 
-        wl = db.query(VesselWatchlist).filter(
-            VesselWatchlist.vessel_id == vessel.vessel_id,
-            VesselWatchlist.watchlist_source == "UKRAINE_GUR",
-        ).first()
+        wl = (
+            db.query(VesselWatchlist)
+            .filter(
+                VesselWatchlist.vessel_id == vessel.vessel_id,
+                VesselWatchlist.watchlist_source == "UKRAINE_GUR",
+            )
+            .first()
+        )
         assert wl is not None
         assert wl.match_type == "stub_created"
 
     def test_no_stub_for_imo_only(self, db):
         """GUR entry with IMO but no MMSI: no stub, counted as unmatched."""
-        path = _write_gur_csv([{
-            "name": "IMO ONLY GUR", "flag": "RU",
-            "imo": "1234567", "mmsi": "",
-        }])
+        path = _write_gur_csv(
+            [
+                {
+                    "name": "IMO ONLY GUR",
+                    "flag": "RU",
+                    "imo": "1234567",
+                    "mmsi": "",
+                }
+            ]
+        )
         try:
             result = load_gur_list(db, path)
         finally:
@@ -512,10 +618,16 @@ class TestGurStubCreation:
         db.add(vessel)
         db.flush()
 
-        path = _write_gur_csv([{
-            "name": "EXISTING GUR VESSEL", "flag": "PW",
-            "imo": "", "mmsi": "511987654",
-        }])
+        path = _write_gur_csv(
+            [
+                {
+                    "name": "EXISTING GUR VESSEL",
+                    "flag": "PW",
+                    "imo": "",
+                    "mmsi": "511987654",
+                }
+            ]
+        )
         try:
             result = load_gur_list(db, path)
         finally:

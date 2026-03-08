@@ -3,15 +3,14 @@
 Tests the STS chain detector, scoring integration, pipeline wiring,
 and configuration plumbing.
 """
+
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, call
-
-import pytest
-
+from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_sts_event(vessel_1_id, vessel_2_id, start_time, hours=4):
     """Create a mock STS transfer event."""
@@ -36,6 +35,7 @@ def _make_fleet_alert(alert_type, vessel_ids, evidence, score=0):
 # ---------------------------------------------------------------------------
 # 1. Feature flag gating
 # ---------------------------------------------------------------------------
+
 
 class TestFeatureFlagGating:
     """Tests that the detector respects its feature flag."""
@@ -75,6 +75,7 @@ class TestFeatureFlagGating:
 # 2. No STS events
 # ---------------------------------------------------------------------------
 
+
 class TestNoStsEvents:
     """Tests behaviour when there are no STS events."""
 
@@ -97,6 +98,7 @@ class TestNoStsEvents:
 # ---------------------------------------------------------------------------
 # 3. Simple 2-hop (no chain alert)
 # ---------------------------------------------------------------------------
+
 
 class TestTwoHopNoChain:
     """A->B is only 2 vessels; no chain alert should be created."""
@@ -122,6 +124,7 @@ class TestTwoHopNoChain:
 # 4. Three-hop chain (A->B->C)
 # ---------------------------------------------------------------------------
 
+
 class TestThreeHopChain:
     """A->B->C is a 3-vessel chain, should score +20."""
 
@@ -136,7 +139,10 @@ class TestThreeHopChain:
 
         db = MagicMock()
         # STS events query
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ev1, ev2]
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            ev1,
+            ev2,
+        ]
         # Dedup query: no existing alerts
         db.query.return_value.filter.return_value.all.return_value = []
 
@@ -165,7 +171,10 @@ class TestThreeHopChain:
         ev2 = _make_sts_event(2, 3, datetime(2025, 6, 2))
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ev1, ev2]
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            ev1,
+            ev2,
+        ]
         db.query.return_value.filter.return_value.all.return_value = []
 
         detect_sts_chains(db)
@@ -183,6 +192,7 @@ class TestThreeHopChain:
 # 5. Four-hop chain (A->B->C->D)
 # ---------------------------------------------------------------------------
 
+
 class TestFourHopChain:
     """A->B->C->D is a 4-vessel chain, should score +40."""
 
@@ -197,7 +207,11 @@ class TestFourHopChain:
         ev3 = _make_sts_event(3, 4, datetime(2025, 6, 3))
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ev1, ev2, ev3]
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            ev1,
+            ev2,
+            ev3,
+        ]
         db.query.return_value.filter.return_value.all.return_value = []
 
         result = detect_sts_chains(db)
@@ -218,7 +232,11 @@ class TestFourHopChain:
         ev3 = _make_sts_event(3, 4, datetime(2025, 6, 3))
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ev1, ev2, ev3]
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            ev1,
+            ev2,
+            ev3,
+        ]
         db.query.return_value.filter.return_value.all.return_value = []
 
         detect_sts_chains(db)
@@ -235,6 +253,7 @@ class TestFourHopChain:
 # 6. Deduplication
 # ---------------------------------------------------------------------------
 
+
 class TestDeduplication:
     """Existing chain alerts should not be duplicated."""
 
@@ -248,13 +267,17 @@ class TestDeduplication:
         ev2 = _make_sts_event(2, 3, datetime(2025, 6, 2))
 
         existing_alert = _make_fleet_alert(
-            "sts_relay_chain", [1, 2, 3],
+            "sts_relay_chain",
+            [1, 2, 3],
             {"chain_length": 3, "subtype": "sts_relay_chain"},
         )
 
         db = MagicMock()
         # First call: STS events query (via filter().order_by().all())
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ev1, ev2]
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            ev1,
+            ev2,
+        ]
         # Second call: dedup query (via filter().all())
         db.query.return_value.filter.return_value.all.return_value = [existing_alert]
 
@@ -268,6 +291,7 @@ class TestDeduplication:
 # ---------------------------------------------------------------------------
 # 7. Hops evidence structure
 # ---------------------------------------------------------------------------
+
 
 class TestHopsEvidence:
     """Tests that the hops evidence is correctly structured."""
@@ -284,7 +308,10 @@ class TestHopsEvidence:
         ev2 = _make_sts_event(20, 30, t2)
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ev1, ev2]
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            ev1,
+            ev2,
+        ]
         db.query.return_value.filter.return_value.all.return_value = []
 
         detect_sts_chains(db)
@@ -302,6 +329,7 @@ class TestHopsEvidence:
 # 8. Date range filtering
 # ---------------------------------------------------------------------------
 
+
 class TestDateRange:
     """Tests date_from and date_to parameters."""
 
@@ -309,8 +337,9 @@ class TestDateRange:
     def test_custom_date_range(self, mock_settings):
         """Custom date range is passed to the STS query filter."""
         mock_settings.STS_CHAIN_DETECTION_ENABLED = True
-        from app.modules.sts_chain_detector import detect_sts_chains
         from datetime import date
+
+        from app.modules.sts_chain_detector import detect_sts_chains
 
         db = MagicMock()
         db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
@@ -329,6 +358,7 @@ class TestDateRange:
 # ---------------------------------------------------------------------------
 # 9. Pipeline wiring
 # ---------------------------------------------------------------------------
+
 
 class TestPipelineWiring:
     """Tests that the chain detector is wired into dark_vessel_discovery."""
@@ -349,20 +379,24 @@ class TestPipelineWiring:
 
         db = MagicMock()
         # Mock all pipeline step dependencies
-        with patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[]), \
-             patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}), \
-             patch("app.modules.gap_detector.run_gap_detection", return_value={}), \
-             patch("app.modules.gap_detector.run_spoofing_detection", return_value={}), \
-             patch("app.modules.sts_detector.detect_sts_events", return_value={}), \
-             patch("app.modules.sts_chain_detector.detect_sts_chains", return_value={"chains_found": 2}) as mock_chain, \
-             patch("app.modules.risk_scoring.rescore_all_alerts", return_value={}), \
-             patch("app.modules.identity_resolver.detect_merge_candidates", return_value={}), \
-             patch("app.modules.mmsi_cloning_detector.detect_mmsi_cloning", return_value={}):
+        with (
+            patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[]),
+            patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}),
+            patch("app.modules.gap_detector.run_gap_detection", return_value={}),
+            patch("app.modules.gap_detector.run_spoofing_detection", return_value={}),
+            patch("app.modules.sts_detector.detect_sts_events", return_value={}),
+            patch(
+                "app.modules.sts_chain_detector.detect_sts_chains", return_value={"chains_found": 2}
+            ) as mock_chain,
+            patch("app.modules.risk_scoring.rescore_all_alerts", return_value={}),
+            patch("app.modules.identity_resolver.detect_merge_candidates", return_value={}),
+            patch("app.modules.mmsi_cloning_detector.detect_mmsi_cloning", return_value={}),
+        ):
             # Mock loitering import
             try:
-                result = discover_dark_vessels(db, "2025-01-01", "2025-06-30", skip_fetch=True)
+                discover_dark_vessels(db, "2025-01-01", "2025-06-30", skip_fetch=True)
             except Exception:
-                result = {"steps": {}}
+                pass
 
             # Verify chain detection was called
             mock_chain.assert_called_once()
@@ -381,14 +415,16 @@ class TestPipelineWiring:
         from app.modules.dark_vessel_discovery import discover_dark_vessels
 
         db = MagicMock()
-        with patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[]), \
-             patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}), \
-             patch("app.modules.gap_detector.run_gap_detection", return_value={}), \
-             patch("app.modules.gap_detector.run_spoofing_detection", return_value={}), \
-             patch("app.modules.sts_detector.detect_sts_events", return_value={}), \
-             patch("app.modules.risk_scoring.rescore_all_alerts", return_value={}), \
-             patch("app.modules.identity_resolver.detect_merge_candidates", return_value={}), \
-             patch("app.modules.mmsi_cloning_detector.detect_mmsi_cloning", return_value={}):
+        with (
+            patch("app.modules.dark_vessel_discovery.cluster_dark_detections", return_value=[]),
+            patch("app.modules.dark_vessel_discovery.auto_hunt_dark_vessels", return_value={}),
+            patch("app.modules.gap_detector.run_gap_detection", return_value={}),
+            patch("app.modules.gap_detector.run_spoofing_detection", return_value={}),
+            patch("app.modules.sts_detector.detect_sts_events", return_value={}),
+            patch("app.modules.risk_scoring.rescore_all_alerts", return_value={}),
+            patch("app.modules.identity_resolver.detect_merge_candidates", return_value={}),
+            patch("app.modules.mmsi_cloning_detector.detect_mmsi_cloning", return_value={}),
+        ):
             try:
                 result = discover_dark_vessels(db, "2025-01-01", "2025-06-30", skip_fetch=True)
             except Exception:
@@ -401,6 +437,7 @@ class TestPipelineWiring:
 # ---------------------------------------------------------------------------
 # 10. Integration: config plumbing
 # ---------------------------------------------------------------------------
+
 
 class TestConfigIntegration:
     """Tests that feature flags and YAML sections are correctly defined."""
@@ -426,8 +463,9 @@ class TestConfigIntegration:
 
     def test_yaml_section_exists(self):
         """risk_scoring.yaml has an sts_chains section."""
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         config_path = Path(__file__).parent.parent / "config" / "risk_scoring.yaml"
         # Try project root path
@@ -442,7 +480,7 @@ class TestConfigIntegration:
 
     def test_expected_sections_includes_sts_chains(self):
         """_EXPECTED_SECTIONS in risk_scoring.py includes 'sts_chains'."""
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
 
         assert "sts_chains" in _EXPECTED_SECTIONS
 
@@ -450,6 +488,7 @@ class TestConfigIntegration:
 # ---------------------------------------------------------------------------
 # 11. Scoring integration
 # ---------------------------------------------------------------------------
+
 
 class TestScoringIntegration:
     """Tests that scoring block in risk_scoring.py works correctly."""
@@ -460,6 +499,7 @@ class TestScoringIntegration:
         mock_settings.STS_CHAIN_SCORING_ENABLED = False
         # This test verifies the flag exists and defaults to True
         from app.config import Settings
+
         s = Settings(_env_file=None)
         assert s.STS_CHAIN_SCORING_ENABLED is True
 
@@ -467,6 +507,7 @@ class TestScoringIntegration:
 # ---------------------------------------------------------------------------
 # 12. _build_chain helper
 # ---------------------------------------------------------------------------
+
 
 class TestBuildChain:
     """Tests the _build_chain helper function."""
@@ -522,6 +563,7 @@ class TestBuildChain:
 # 13. Commit and vessel_ids_json sorted
 # ---------------------------------------------------------------------------
 
+
 class TestCommitBehavior:
     """Tests that db.commit() is called after chain processing."""
 
@@ -535,7 +577,10 @@ class TestCommitBehavior:
         ev2 = _make_sts_event(2, 3, datetime(2025, 6, 2))
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ev1, ev2]
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            ev1,
+            ev2,
+        ]
         db.query.return_value.filter.return_value.all.return_value = []
 
         detect_sts_chains(db)
@@ -552,7 +597,10 @@ class TestCommitBehavior:
         ev2 = _make_sts_event(1, 2, datetime(2025, 6, 2))
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [ev1, ev2]
+        db.query.return_value.filter.return_value.order_by.return_value.all.return_value = [
+            ev1,
+            ev2,
+        ]
         db.query.return_value.filter.return_value.all.return_value = []
 
         detect_sts_chains(db)

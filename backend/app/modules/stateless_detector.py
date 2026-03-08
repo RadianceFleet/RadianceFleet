@@ -5,10 +5,11 @@ MIDs are the first 3 digits of a 9-digit MMSI for ship stations.
 Vessels broadcasting with truly unallocated MIDs are operating outside
 any national registry, which is a strong indicator of identity fraud.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
@@ -18,9 +19,9 @@ from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
 from app.utils.itu_mid_table import (
     ITU_MID_ALLOCATION,
-    UNALLOCATED_MIDS,
     LANDLOCKED_MIDS,
     MICRO_TERRITORY_MIDS,
+    UNALLOCATED_MIDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ def run_stateless_detection(db: Session) -> dict:
         return {"status": "disabled"}
 
     vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     tier1_count = 0
     tier2_count = 0
@@ -104,10 +105,14 @@ def run_stateless_detection(db: Session) -> dict:
             continue
 
         # Check for existing anomaly to avoid duplicates
-        existing = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == vessel.vessel_id,
-            SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI,
-        ).first()
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.STATELESS_MMSI,
+            )
+            .first()
+        )
         if existing:
             continue
 
@@ -136,7 +141,11 @@ def run_stateless_detection(db: Session) -> dict:
     total = tier1_count + tier2_count + tier3_count
     logger.info(
         "Stateless MMSI: %d anomalies (T1=%d, T2=%d, T3=%d) from %d vessels",
-        total, tier1_count, tier2_count, tier3_count, vessels_checked,
+        total,
+        tier1_count,
+        tier2_count,
+        tier3_count,
+        vessels_checked,
     )
     return {
         "status": "ok",

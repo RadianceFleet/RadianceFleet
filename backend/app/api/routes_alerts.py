@@ -1,23 +1,23 @@
 """Alert, scoring, and dashboard statistics endpoints."""
+
 from __future__ import annotations
 
 import csv
 import io
 import json
 import logging
-from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.database import get_db
-from app.config import settings
-from app.auth import require_auth, require_senior_or_admin
-from app.schemas.alerts import BulkStatusUpdateRequest, NoteAddRequest
 from app.api._helpers import _audit_log, _validate_date_range, limiter
+from app.auth import require_auth, require_senior_or_admin
+from app.config import settings
+from app.database import get_db
+from app.schemas.alerts import BulkStatusUpdateRequest, NoteAddRequest
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +28,21 @@ router = APIRouter()
 # Alerts
 # ---------------------------------------------------------------------------
 
+
 @router.get("/alerts", tags=["alerts"])
 def list_alerts(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-    corridor_id: Optional[int] = None,
-    vessel_id: Optional[int] = None,
-    vessel_name: Optional[str] = None,
-    min_score: Optional[int] = None,
-    status: Optional[str] = None,
-    assigned_to: Optional[int] = None,
-    sort_by: str = Query("risk_score", description="Field to sort by: risk_score|gap_start_utc|duration_minutes|vessel_name"),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    corridor_id: int | None = None,
+    vessel_id: int | None = None,
+    vessel_name: str | None = None,
+    min_score: int | None = None,
+    status: str | None = None,
+    assigned_to: int | None = None,
+    sort_by: str = Query(
+        "risk_score",
+        description="Field to sort by: risk_score|gap_start_utc|duration_minutes|vessel_name",
+    ),
     sort_order: str = Query("desc", description="asc or desc"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
@@ -91,15 +95,20 @@ def list_alerts(
     results = q.offset(skip).limit(limit).all()
     items = []
     for r in results:
-        item = {
-            c.name: getattr(r, c.name) for c in r.__table__.columns
-        }
+        item = {c.name: getattr(r, c.name) for c in r.__table__.columns}
         item["last_lat"] = r.start_point.lat if r.start_point else None
         item["last_lon"] = r.start_point.lon if r.start_point else None
         item["vessel_name"] = r.vessel.name if r.vessel else None
         item["vessel_mmsi"] = r.vessel.mmsi if r.vessel else None
-        item["assigned_to"] = r.assigned_to if isinstance(getattr(r, "assigned_to", None), int) else None
-        item["assigned_to_username"] = r.assigned_analyst.username if isinstance(getattr(r, "assigned_to", None), int) and getattr(r, "assigned_analyst", None) else None
+        item["assigned_to"] = (
+            r.assigned_to if isinstance(getattr(r, "assigned_to", None), int) else None
+        )
+        item["assigned_to_username"] = (
+            r.assigned_analyst.username
+            if isinstance(getattr(r, "assigned_to", None), int)
+            and getattr(r, "assigned_analyst", None)
+            else None
+        )
         item["version"] = r.version if isinstance(getattr(r, "version", None), int) else 1
         items.append(item)
     return {"items": items, "total": total}
@@ -136,17 +145,16 @@ def list_alert_map_points(db: Session = Depends(get_db)):
 
 @router.get("/alerts/export", tags=["alerts"])
 def export_alerts_csv(
-    status: Optional[str] = None,
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
-    min_score: Optional[int] = None,
-    ids: Optional[str] = Query(None, description="Comma-separated alert IDs to export"),
-    columns: Optional[str] = Query(None, description="Comma-separated column names to include"),
+    status: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    min_score: int | None = None,
+    ids: str | None = Query(None, description="Comma-separated alert IDs to export"),
+    columns: str | None = Query(None, description="Comma-separated column names to include"),
     db: Session = Depends(get_db),
 ):
     """Bulk export alerts as publication-ready CSV."""
     from app.models.gap_event import AISGapEvent
-    from app.models.vessel import Vessel
 
     _validate_date_range(date_from, date_to)
 
@@ -167,9 +175,18 @@ def export_alerts_csv(
     alerts = q.order_by(AISGapEvent.risk_score.desc()).all()
 
     all_columns = [
-        "alert_id", "vessel_mmsi", "vessel_name", "flag", "dwt",
-        "gap_start_utc", "gap_end_utc", "duration_hours",
-        "corridor_name", "risk_score", "status", "analyst_notes",
+        "alert_id",
+        "vessel_mmsi",
+        "vessel_name",
+        "flag",
+        "dwt",
+        "gap_start_utc",
+        "gap_end_utc",
+        "duration_hours",
+        "corridor_name",
+        "risk_score",
+        "status",
+        "analyst_notes",
     ]
 
     if columns:
@@ -191,7 +208,9 @@ def export_alerts_csv(
             "dwt": vessel.deadweight if vessel else "",
             "gap_start_utc": alert.gap_start_utc.isoformat() if alert.gap_start_utc else "",
             "gap_end_utc": alert.gap_end_utc.isoformat() if alert.gap_end_utc else "",
-            "duration_hours": round(alert.duration_minutes / 60, 2) if alert.duration_minutes else "",
+            "duration_hours": round(alert.duration_minutes / 60, 2)
+            if alert.duration_minutes
+            else "",
             "corridor_name": corridor.name if corridor else "",
             "risk_score": alert.risk_score,
             "status": alert.status,
@@ -216,7 +235,7 @@ def export_alerts_csv(
         except Exception as e:
             logger.error("CSV export error mid-stream: %s", e, exc_info=True)
 
-    filename = f"radiancefleet_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.csv"
+    filename = f"radiancefleet_export_{datetime.now(UTC).strftime('%Y%m%d_%H%M')}.csv"
     return StreamingResponse(
         generate(),
         media_type="text/csv",
@@ -234,9 +253,13 @@ def my_alerts(
     """Get alerts assigned to current analyst."""
     from app.models.gap_event import AISGapEvent
 
-    q = db.query(AISGapEvent).options(
-        joinedload(AISGapEvent.vessel),
-    ).filter(AISGapEvent.assigned_to == auth["analyst_id"])
+    q = (
+        db.query(AISGapEvent)
+        .options(
+            joinedload(AISGapEvent.vessel),
+        )
+        .filter(AISGapEvent.assigned_to == auth["analyst_id"])
+    )
     total = q.count()
     results = q.order_by(AISGapEvent.risk_score.desc()).offset(skip).limit(limit).all()
     items = []
@@ -252,6 +275,7 @@ def my_alerts(
 # Saved Filters
 # ---------------------------------------------------------------------------
 
+
 @router.get("/alerts/saved-filters", tags=["alerts"])
 def list_saved_filters(
     db: Session = Depends(get_db),
@@ -259,9 +283,13 @@ def list_saved_filters(
 ):
     """List saved filters for the current analyst."""
     from app.models.saved_filter import SavedFilter
-    filters = db.query(SavedFilter).filter(
-        SavedFilter.analyst_id == auth["analyst_id"]
-    ).order_by(SavedFilter.created_at.desc()).all()
+
+    filters = (
+        db.query(SavedFilter)
+        .filter(SavedFilter.analyst_id == auth["analyst_id"])
+        .order_by(SavedFilter.created_at.desc())
+        .all()
+    )
     return {
         "items": [
             {
@@ -297,7 +325,7 @@ def create_saved_filter(
     if is_default:
         db.query(SavedFilter).filter(
             SavedFilter.analyst_id == auth["analyst_id"],
-            SavedFilter.is_default == True,
+            SavedFilter.is_default,
         ).update({"is_default": False})
 
     sf = SavedFilter(
@@ -321,10 +349,15 @@ def delete_saved_filter(
 ):
     """Delete a saved filter."""
     from app.models.saved_filter import SavedFilter
-    deleted = db.query(SavedFilter).filter(
-        SavedFilter.filter_id == filter_id,
-        SavedFilter.analyst_id == auth["analyst_id"],
-    ).delete()
+
+    deleted = (
+        db.query(SavedFilter)
+        .filter(
+            SavedFilter.filter_id == filter_id,
+            SavedFilter.analyst_id == auth["analyst_id"],
+        )
+        .delete()
+    )
     db.commit()
     if not deleted:
         raise HTTPException(status_code=404, detail="Filter not found")
@@ -334,6 +367,7 @@ def delete_saved_filter(
 # ---------------------------------------------------------------------------
 # Alert Trends
 # ---------------------------------------------------------------------------
+
 
 @router.get("/alerts/trends", tags=["dashboard"])
 def get_alert_trends(
@@ -345,19 +379,25 @@ def get_alert_trends(
 
     days_map = {"7d": 7, "30d": 30, "90d": 90}
     days = days_map.get(period, 7)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=days)
 
     # Bucket by day
-    alerts = db.query(AISGapEvent).filter(
-        AISGapEvent.gap_start_utc >= cutoff
-    ).all()
+    alerts = db.query(AISGapEvent).filter(AISGapEvent.gap_start_utc >= cutoff).all()
 
     daily_counts: dict[str, dict] = {}
     for a in alerts:
         day_key = a.gap_start_utc.strftime("%Y-%m-%d") if a.gap_start_utc else "unknown"
         if day_key not in daily_counts:
-            daily_counts[day_key] = {"date": day_key, "total": 0, "critical": 0, "high": 0, "medium": 0, "low": 0, "reviewed": 0}
+            daily_counts[day_key] = {
+                "date": day_key,
+                "total": 0,
+                "critical": 0,
+                "high": 0,
+                "medium": 0,
+                "low": 0,
+                "reviewed": 0,
+            }
         daily_counts[day_key]["total"] += 1
         score = a.risk_score or 0
         if score >= 76:
@@ -389,18 +429,23 @@ def get_alert_trends(
 
 @router.get("/alerts/{alert_id}", tags=["alerts"])
 def get_alert(alert_id: int, db: Session = Depends(get_db)):
-    from app.models.gap_event import AISGapEvent
-    from app.models.vessel import Vessel
+    from app.models.ais_point import AISPoint
     from app.models.corridor import Corridor
+    from app.models.gap_event import AISGapEvent
+    from app.models.loitering_event import LoiteringEvent
     from app.models.movement_envelope import MovementEnvelope
     from app.models.satellite_check import SatelliteCheck
-    from app.models.ais_point import AISPoint
     from app.models.spoofing_anomaly import SpoofingAnomaly
-    from app.models.loitering_event import LoiteringEvent
     from app.models.sts_transfer import StsTransferEvent
+    from app.models.vessel import Vessel
     from app.schemas.gap_event import (
-        GapEventDetailRead, MovementEnvelopeRead, SatelliteCheckSummary, AISPointSummary,
-        SpoofingAnomalySummary, LoiteringSummary, StsSummary,
+        AISPointSummary,
+        GapEventDetailRead,
+        LoiteringSummary,
+        MovementEnvelopeRead,
+        SatelliteCheckSummary,
+        SpoofingAnomalySummary,
+        StsSummary,
     )
 
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
@@ -410,21 +455,20 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
     vessel = db.query(Vessel).filter(Vessel.vessel_id == alert.vessel_id).first()
     corridor = (
         db.query(Corridor).filter(Corridor.corridor_id == alert.corridor_id).first()
-        if alert.corridor_id else None
+        if alert.corridor_id
+        else None
     )
-    envelope = db.query(MovementEnvelope).filter(
-        MovementEnvelope.gap_event_id == alert_id
-    ).first()
-    sat_check = db.query(SatelliteCheck).filter(
-        SatelliteCheck.gap_event_id == alert_id
-    ).first()
+    envelope = db.query(MovementEnvelope).filter(MovementEnvelope.gap_event_id == alert_id).first()
+    sat_check = db.query(SatelliteCheck).filter(SatelliteCheck.gap_event_id == alert_id).first()
     last_pt = (
         db.query(AISPoint).filter(AISPoint.ais_point_id == alert.start_point_id).first()
-        if alert.start_point_id else None
+        if alert.start_point_id
+        else None
     )
     first_pt = (
         db.query(AISPoint).filter(AISPoint.ais_point_id == alert.end_point_id).first()
-        if alert.end_point_id else None
+        if alert.end_point_id
+        else None
     )
 
     envelope_data = None
@@ -432,8 +476,10 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
         geojson_str = None
         if envelope.confidence_ellipse_geometry is not None:
             try:
-                from app.utils.geo import load_geometry
                 import shapely.geometry
+
+                from app.utils.geo import load_geometry
+
                 shape = load_geometry(envelope.confidence_ellipse_geometry)
                 if shape is not None:
                     geojson_str = json.dumps(shapely.geometry.mapping(shape))
@@ -451,74 +497,104 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
             confidence_ellipse_geojson=json.loads(geojson_str) if geojson_str else None,
             interpolated_positions_json=envelope.interpolated_positions_json,
             estimated_method=str(envelope.estimated_method.value)
-                if hasattr(envelope.estimated_method, "value") else envelope.estimated_method,
+            if hasattr(envelope.estimated_method, "value")
+            else envelope.estimated_method,
         )
 
     # Alert enrichment: linked anomalies
     spoofing_list = None
     if alert.vessel_id:
-        spoofing_raw = db.query(SpoofingAnomaly).filter(
-            SpoofingAnomaly.vessel_id == alert.vessel_id,
-            SpoofingAnomaly.start_time_utc >= alert.gap_start_utc - timedelta(days=1),
-            SpoofingAnomaly.start_time_utc <= alert.gap_end_utc + timedelta(days=1),
-        ).all()
+        spoofing_raw = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == alert.vessel_id,
+                SpoofingAnomaly.start_time_utc >= alert.gap_start_utc - timedelta(days=1),
+                SpoofingAnomaly.start_time_utc <= alert.gap_end_utc + timedelta(days=1),
+            )
+            .all()
+        )
         if spoofing_raw:
-            spoofing_list = [SpoofingAnomalySummary(
-                anomaly_id=s.anomaly_id,
-                anomaly_type=str(s.anomaly_type.value) if hasattr(s.anomaly_type, "value") else str(s.anomaly_type),
-                start_time_utc=s.start_time_utc,
-                risk_score_component=s.risk_score_component,
-                evidence_json=s.evidence_json,
-            ) for s in spoofing_raw]
+            spoofing_list = [
+                SpoofingAnomalySummary(
+                    anomaly_id=s.anomaly_id,
+                    anomaly_type=str(s.anomaly_type.value)
+                    if hasattr(s.anomaly_type, "value")
+                    else str(s.anomaly_type),
+                    start_time_utc=s.start_time_utc,
+                    risk_score_component=s.risk_score_component,
+                    evidence_json=s.evidence_json,
+                )
+                for s in spoofing_raw
+            ]
 
     loitering_list = None
     if alert.vessel_id:
-        loitering_raw = db.query(LoiteringEvent).filter(
-            LoiteringEvent.vessel_id == alert.vessel_id,
-            LoiteringEvent.start_time_utc >= alert.gap_start_utc - timedelta(days=7),
-            LoiteringEvent.start_time_utc <= alert.gap_end_utc + timedelta(days=7),
-        ).all()
+        loitering_raw = (
+            db.query(LoiteringEvent)
+            .filter(
+                LoiteringEvent.vessel_id == alert.vessel_id,
+                LoiteringEvent.start_time_utc >= alert.gap_start_utc - timedelta(days=7),
+                LoiteringEvent.start_time_utc <= alert.gap_end_utc + timedelta(days=7),
+            )
+            .all()
+        )
         if loitering_raw:
-            loitering_list = [LoiteringSummary(
-                loiter_id=le.loiter_id,
-                start_time_utc=le.start_time_utc,
-                duration_hours=le.duration_hours,
-                mean_lat=le.mean_lat,
-                mean_lon=le.mean_lon,
-                median_sog_kn=le.median_sog_kn,
-            ) for le in loitering_raw]
+            loitering_list = [
+                LoiteringSummary(
+                    loiter_id=le.loiter_id,
+                    start_time_utc=le.start_time_utc,
+                    duration_hours=le.duration_hours,
+                    mean_lat=le.mean_lat,
+                    mean_lon=le.mean_lon,
+                    median_sog_kn=le.median_sog_kn,
+                )
+                for le in loitering_raw
+            ]
 
     sts_list = None
     if alert.vessel_id:
-        sts_raw = db.query(StsTransferEvent).filter(
-            or_(
-                StsTransferEvent.vessel_1_id == alert.vessel_id,
-                StsTransferEvent.vessel_2_id == alert.vessel_id,
-            ),
-            StsTransferEvent.start_time_utc >= alert.gap_start_utc - timedelta(days=7),
-            StsTransferEvent.start_time_utc <= alert.gap_end_utc + timedelta(days=7),
-        ).all()
+        sts_raw = (
+            db.query(StsTransferEvent)
+            .filter(
+                or_(
+                    StsTransferEvent.vessel_1_id == alert.vessel_id,
+                    StsTransferEvent.vessel_2_id == alert.vessel_id,
+                ),
+                StsTransferEvent.start_time_utc >= alert.gap_start_utc - timedelta(days=7),
+                StsTransferEvent.start_time_utc <= alert.gap_end_utc + timedelta(days=7),
+            )
+            .all()
+        )
         if sts_raw:
             sts_list = []
             for s in sts_raw:
                 partner_id = s.vessel_2_id if s.vessel_1_id == alert.vessel_id else s.vessel_1_id
                 partner = db.query(Vessel).filter(Vessel.vessel_id == partner_id).first()
-                sts_list.append(StsSummary(
-                    sts_id=s.sts_id,
-                    partner_name=partner.name if partner else None,
-                    partner_mmsi=partner.mmsi if partner else None,
-                    detection_type=str(s.detection_type.value) if hasattr(s.detection_type, "value") else str(s.detection_type),
-                    start_time_utc=s.start_time_utc,
-                ))
+                sts_list.append(
+                    StsSummary(
+                        sts_id=s.sts_id,
+                        partner_name=partner.name if partner else None,
+                        partner_mmsi=partner.mmsi if partner else None,
+                        detection_type=str(s.detection_type.value)
+                        if hasattr(s.detection_type, "value")
+                        else str(s.detection_type),
+                        start_time_utc=s.start_time_utc,
+                    )
+                )
 
     # H3: Prior similar count
-    prior_count = db.query(func.count(AISGapEvent.gap_event_id)).filter(
-        AISGapEvent.vessel_id == alert.vessel_id,
-        AISGapEvent.corridor_id == alert.corridor_id,
-        AISGapEvent.gap_event_id != alert.gap_event_id,
-        AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=90),
-        AISGapEvent.gap_start_utc < alert.gap_start_utc,
-    ).scalar() or 0
+    prior_count = (
+        db.query(func.count(AISGapEvent.gap_event_id))
+        .filter(
+            AISGapEvent.vessel_id == alert.vessel_id,
+            AISGapEvent.corridor_id == alert.corridor_id,
+            AISGapEvent.gap_event_id != alert.gap_event_id,
+            AISGapEvent.gap_start_utc >= alert.gap_start_utc - timedelta(days=90),
+            AISGapEvent.gap_start_utc < alert.gap_start_utc,
+        )
+        .scalar()
+        or 0
+    )
 
     status_val = str(alert.status.value) if hasattr(alert.status, "value") else str(alert.status)
     return GapEventDetailRead(
@@ -545,13 +621,23 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
         movement_envelope=envelope_data,
         satellite_check=SatelliteCheckSummary.model_validate(sat_check) if sat_check else None,
         last_point=AISPointSummary(
-            timestamp_utc=last_pt.timestamp_utc, lat=last_pt.lat,
-            lon=last_pt.lon, sog=last_pt.sog, cog=last_pt.cog
-        ) if last_pt else None,
+            timestamp_utc=last_pt.timestamp_utc,
+            lat=last_pt.lat,
+            lon=last_pt.lon,
+            sog=last_pt.sog,
+            cog=last_pt.cog,
+        )
+        if last_pt
+        else None,
         first_point_after=AISPointSummary(
-            timestamp_utc=first_pt.timestamp_utc, lat=first_pt.lat,
-            lon=first_pt.lon, sog=first_pt.sog, cog=first_pt.cog
-        ) if first_pt else None,
+            timestamp_utc=first_pt.timestamp_utc,
+            lat=first_pt.lat,
+            lon=first_pt.lon,
+            sog=first_pt.sog,
+            cog=first_pt.cog,
+        )
+        if first_pt
+        else None,
         spoofing_anomalies=spoofing_list,
         loitering_events=loitering_list,
         sts_events=sts_list,
@@ -560,9 +646,16 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
         is_false_positive=alert.is_false_positive,
         reviewed_by=alert.reviewed_by,
         review_date=alert.review_date,
-        assigned_to=getattr(alert, "assigned_to", None) if isinstance(getattr(alert, "assigned_to", None), int) else None,
-        assigned_to_username=alert.assigned_analyst.username if isinstance(getattr(alert, "assigned_to", None), int) and getattr(alert, "assigned_analyst", None) else None,
-        assigned_at=alert.assigned_at.isoformat() if isinstance(getattr(alert, "assigned_at", None), datetime) else None,
+        assigned_to=getattr(alert, "assigned_to", None)
+        if isinstance(getattr(alert, "assigned_to", None), int)
+        else None,
+        assigned_to_username=alert.assigned_analyst.username
+        if isinstance(getattr(alert, "assigned_to", None), int)
+        and getattr(alert, "assigned_analyst", None)
+        else None,
+        assigned_at=alert.assigned_at.isoformat()
+        if isinstance(getattr(alert, "assigned_at", None), datetime)
+        else None,
         version=alert.version if isinstance(getattr(alert, "version", None), int) else 1,
     )
 
@@ -577,9 +670,10 @@ def update_alert_status(
     auth: dict = Depends(require_auth),
 ):
     """Explicitly set alert status. Body: {status: '...', reason: '...'}"""
-    from app.models.gap_event import AISGapEvent
     from app.models.base import AlertStatusEnum
+    from app.models.gap_event import AISGapEvent
     from app.schemas.gap_event import AlertStatusUpdate
+
     body = AlertStatusUpdate(**body)
 
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
@@ -592,19 +686,29 @@ def update_alert_status(
 
     valid_statuses = [e.value for e in AlertStatusEnum]
     if body.status not in valid_statuses:
-        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}"
+        )
 
     old_status = alert.status
     alert.status = body.status
     alert.version += 1
     if body.reason:
         existing_notes = alert.analyst_notes or ""
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
-        alert.analyst_notes = f"{existing_notes}\n[{timestamp}] Status → {body.status}: {body.reason}".strip()
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+        alert.analyst_notes = (
+            f"{existing_notes}\n[{timestamp}] Status → {body.status}: {body.reason}".strip()
+        )
 
-    _audit_log(db, "status_change", "alert", alert_id,
-               {"old_status": old_status, "new_status": body.status, "reason": body.reason},
-               request, analyst_id=auth["analyst_id"])
+    _audit_log(
+        db,
+        "status_change",
+        "alert",
+        alert_id,
+        {"old_status": old_status, "new_status": body.status, "reason": body.reason},
+        request,
+        analyst_id=auth["analyst_id"],
+    )
     db.commit()
     return {"status": "ok", "new_status": body.status}
 
@@ -626,7 +730,9 @@ def submit_alert_verdict(
 
     valid_verdicts = {"confirmed_tp", "confirmed_fp"}
     if body.verdict not in valid_verdicts:
-        raise HTTPException(status_code=400, detail=f"Invalid verdict. Must be one of: {sorted(valid_verdicts)}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid verdict. Must be one of: {sorted(valid_verdicts)}"
+        )
 
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
     if not alert:
@@ -638,11 +744,11 @@ def submit_alert_verdict(
 
     alert.is_false_positive = body.verdict == "confirmed_fp"
     alert.reviewed_by = auth["username"]
-    alert.review_date = datetime.now(timezone.utc)
+    alert.review_date = datetime.now(UTC)
     alert.status = body.verdict
     alert.version += 1
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
     verdict_note = f"[{timestamp}] Verdict: {body.verdict}"
     if body.reason:
         verdict_note += f" — {body.reason}"
@@ -650,16 +756,28 @@ def submit_alert_verdict(
     existing_notes = alert.analyst_notes or ""
     alert.analyst_notes = f"{existing_notes}\n{verdict_note}".strip()
 
-    _audit_log(db, "verdict", "alert", alert_id,
-               {"verdict": body.verdict, "reason": body.reason, "reviewed_by": auth["username"]},
-               request, analyst_id=auth["analyst_id"])
+    _audit_log(
+        db,
+        "verdict",
+        "alert",
+        alert_id,
+        {"verdict": body.verdict, "reason": body.reason, "reviewed_by": auth["username"]},
+        request,
+        analyst_id=auth["analyst_id"],
+    )
     db.commit()
     return {"status": "ok", "verdict": body.verdict, "is_false_positive": alert.is_false_positive}
 
 
 @router.post("/alerts/{alert_id}/notes", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def add_note(request: Request, alert_id: int, body: NoteAddRequest, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+def add_note(
+    request: Request,
+    alert_id: int,
+    body: NoteAddRequest,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     from app.models.gap_event import AISGapEvent
 
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
@@ -673,7 +791,12 @@ def add_note(request: Request, alert_id: int, body: NoteAddRequest, db: Session 
 
 @router.post("/alerts/bulk-status", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def bulk_update_alert_status(request: Request, payload: BulkStatusUpdateRequest, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+def bulk_update_alert_status(
+    request: Request,
+    payload: BulkStatusUpdateRequest,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Bulk-update alert statuses for triage workflow."""
     from app.models.gap_event import AISGapEvent
 
@@ -682,11 +805,16 @@ def bulk_update_alert_status(request: Request, payload: BulkStatusUpdateRequest,
     valid_statuses = {"new", "under_review", "needs_satellite_check", "documented", "dismissed"}
 
     if new_status not in valid_statuses:
-        raise HTTPException(status_code=422, detail=f"Invalid status '{new_status}'. Must be one of: {', '.join(sorted(valid_statuses))}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid status '{new_status}'. Must be one of: {', '.join(sorted(valid_statuses))}",
+        )
 
-    updated = db.query(AISGapEvent).filter(
-        AISGapEvent.gap_event_id.in_(alert_ids)
-    ).update({"status": new_status}, synchronize_session="fetch")
+    updated = (
+        db.query(AISGapEvent)
+        .filter(AISGapEvent.gap_event_id.in_(alert_ids))
+        .update({"status": new_status}, synchronize_session="fetch")
+    )
     db.commit()
     return {"updated": updated}
 
@@ -694,39 +822,66 @@ def bulk_update_alert_status(request: Request, payload: BulkStatusUpdateRequest,
 @router.post("/alerts/{alert_id}/satellite-check", tags=["alerts"])
 def prepare_satellite_check(alert_id: int, db: Session = Depends(get_db)):
     from app.modules.satellite_query import prepare_satellite_check as _prepare
+
     return _prepare(alert_id, db)
 
 
 @router.post("/alerts/{alert_id}/export", tags=["alerts"])
-def export_evidence(alert_id: int, format: str = "json", request=None, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+def export_evidence(
+    alert_id: int,
+    format: str = "json",
+    request=None,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     if format == "pdf":
         from app.modules.evidence_pdf import export_evidence_pdf
+
         try:
             pdf_bytes = export_evidence_pdf(alert_id, db)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        _audit_log(db, "evidence_export", "alert", alert_id, {"format": "pdf"},
-                   request, analyst_id=auth["analyst_id"])
+        _audit_log(
+            db,
+            "evidence_export",
+            "alert",
+            alert_id,
+            {"format": "pdf"},
+            request,
+            analyst_id=auth["analyst_id"],
+        )
         db.commit()
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="evidence_{alert_id}.pdf"'}
+            headers={"Content-Disposition": f'attachment; filename="evidence_{alert_id}.pdf"'},
         )
     from app.modules.evidence_export import export_evidence_card
+
     result = export_evidence_card(alert_id, format, db)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
     # Track exported_by on evidence card
     from app.models.evidence_card import EvidenceCard
-    card = db.query(EvidenceCard).filter(
-        EvidenceCard.gap_event_id == alert_id
-    ).order_by(EvidenceCard.created_at.desc()).first()
+
+    card = (
+        db.query(EvidenceCard)
+        .filter(EvidenceCard.gap_event_id == alert_id)
+        .order_by(EvidenceCard.created_at.desc())
+        .first()
+    )
     if card:
         card.exported_by = auth["analyst_id"]
         card.approval_status = "draft"
-    _audit_log(db, "evidence_export", "alert", alert_id, {"format": format},
-               request, analyst_id=auth["analyst_id"])
+    _audit_log(
+        db,
+        "evidence_export",
+        "alert",
+        alert_id,
+        {"format": format},
+        request,
+        analyst_id=auth["analyst_id"],
+    )
     db.commit()
     return result
 
@@ -746,39 +901,67 @@ def export_gov_package(alert_id: int, db: Session = Depends(get_db)):
 # Evidence Approval
 # ---------------------------------------------------------------------------
 
+
 @router.post("/evidence-cards/{card_id}/approve", tags=["evidence"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def approve_evidence(card_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_senior_or_admin)):
+def approve_evidence(
+    card_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_senior_or_admin),
+):
     """Senior/admin approves evidence card."""
     from app.models.evidence_card import EvidenceCard
+
     card = db.query(EvidenceCard).filter(EvidenceCard.evidence_card_id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Evidence card not found")
     if card.approval_status == "approved":
         raise HTTPException(status_code=400, detail="Already approved")
     card.approved_by = auth["analyst_id"]
-    card.approved_at = datetime.now(timezone.utc)
+    card.approved_at = datetime.now(UTC)
     card.approval_status = "approved"
-    _audit_log(db, "evidence_approve", "evidence_card", card_id,
-               {"approved_by": auth["username"]}, request, analyst_id=auth["analyst_id"])
+    _audit_log(
+        db,
+        "evidence_approve",
+        "evidence_card",
+        card_id,
+        {"approved_by": auth["username"]},
+        request,
+        analyst_id=auth["analyst_id"],
+    )
     db.commit()
     return {"status": "ok", "approval_status": "approved"}
 
 
 @router.post("/evidence-cards/{card_id}/reject", tags=["evidence"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def reject_evidence(card_id: int, body: dict, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_senior_or_admin)):
+def reject_evidence(
+    card_id: int,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_senior_or_admin),
+):
     """Senior/admin rejects evidence card with notes."""
     from app.models.evidence_card import EvidenceCard
+
     card = db.query(EvidenceCard).filter(EvidenceCard.evidence_card_id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Evidence card not found")
     card.approved_by = auth["analyst_id"]
-    card.approved_at = datetime.now(timezone.utc)
+    card.approved_at = datetime.now(UTC)
     card.approval_status = "rejected"
     card.approval_notes = body.get("notes", "")
-    _audit_log(db, "evidence_reject", "evidence_card", card_id,
-               {"rejected_by": auth["username"], "notes": body.get("notes")}, request, analyst_id=auth["analyst_id"])
+    _audit_log(
+        db,
+        "evidence_reject",
+        "evidence_card",
+        card_id,
+        {"rejected_by": auth["username"], "notes": body.get("notes")},
+        request,
+        analyst_id=auth["analyst_id"],
+    )
     db.commit()
     return {"status": "ok", "approval_status": "rejected"}
 
@@ -787,12 +970,19 @@ def reject_evidence(card_id: int, body: dict, request: Request, db: Session = De
 # Assignment
 # ---------------------------------------------------------------------------
 
+
 @router.post("/alerts/{alert_id}/assign", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def assign_alert(alert_id: int, body: dict, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+def assign_alert(
+    alert_id: int,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Assign alert to an analyst."""
-    from app.models.gap_event import AISGapEvent
     from app.models.analyst import Analyst
+    from app.models.gap_event import AISGapEvent
 
     analyst_id = body.get("analyst_id")
     if not analyst_id:
@@ -804,15 +994,27 @@ def assign_alert(alert_id: int, body: dict, request: Request, db: Session = Depe
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     alert.assigned_to = analyst_id
-    alert.assigned_at = datetime.now(timezone.utc)
-    _audit_log(db, "assign", "alert", alert_id, {"analyst_id": analyst_id, "by": auth["analyst_id"]}, request)
+    alert.assigned_at = datetime.now(UTC)
+    _audit_log(
+        db,
+        "assign",
+        "alert",
+        alert_id,
+        {"analyst_id": analyst_id, "by": auth["analyst_id"]},
+        request,
+    )
     db.commit()
     return {"status": "ok", "assigned_to": analyst_id}
 
 
 @router.delete("/alerts/{alert_id}/assign", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def unassign_alert(alert_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+def unassign_alert(
+    alert_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Unassign alert."""
     from app.models.gap_event import AISGapEvent
 
@@ -829,9 +1031,15 @@ def unassign_alert(alert_id: int, request: Request, db: Session = Depends(get_db
 # Edit Locks
 # ---------------------------------------------------------------------------
 
+
 @router.post("/alerts/{alert_id}/lock", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def acquire_lock(alert_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+def acquire_lock(
+    alert_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Acquire edit lock. Returns 409 if held by another analyst."""
     from app.models.alert_edit_lock import AlertEditLock
     from app.models.gap_event import AISGapEvent
@@ -840,20 +1048,25 @@ def acquire_lock(alert_id: int, request: Request, db: Session = Depends(get_db),
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # Clean expired locks
     db.query(AlertEditLock).filter(AlertEditLock.expires_at < now).delete()
 
     existing = db.query(AlertEditLock).filter(AlertEditLock.alert_id == alert_id).first()
     if existing:
         if existing.analyst_id != auth["analyst_id"]:
-            raise HTTPException(status_code=409, detail=f"Lock held by analyst {existing.analyst_id}")
+            raise HTTPException(
+                status_code=409, detail=f"Lock held by analyst {existing.analyst_id}"
+            )
         # Extend own lock
         existing.expires_at = now + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS)
         db.commit()
         return {
-            "lock_id": existing.lock_id, "alert_id": alert_id, "analyst_id": auth["analyst_id"],
-            "analyst_username": auth["username"], "acquired_at": existing.acquired_at.isoformat(),
+            "lock_id": existing.lock_id,
+            "alert_id": alert_id,
+            "analyst_id": auth["analyst_id"],
+            "analyst_username": auth["username"],
+            "acquired_at": existing.acquired_at.isoformat(),
             "expires_at": existing.expires_at.isoformat(),
         }
 
@@ -866,39 +1079,60 @@ def acquire_lock(alert_id: int, request: Request, db: Session = Depends(get_db),
     db.add(lock)
     db.commit()
     return {
-        "lock_id": lock.lock_id, "alert_id": alert_id, "analyst_id": auth["analyst_id"],
-        "analyst_username": auth["username"], "acquired_at": lock.acquired_at.isoformat(),
+        "lock_id": lock.lock_id,
+        "alert_id": alert_id,
+        "analyst_id": auth["analyst_id"],
+        "analyst_username": auth["username"],
+        "acquired_at": lock.acquired_at.isoformat(),
         "expires_at": lock.expires_at.isoformat(),
     }
 
 
 @router.post("/alerts/{alert_id}/lock/heartbeat", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def heartbeat_lock(alert_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+def heartbeat_lock(
+    alert_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Extend lock TTL."""
     from app.models.alert_edit_lock import AlertEditLock
 
-    lock = db.query(AlertEditLock).filter(
-        AlertEditLock.alert_id == alert_id,
-        AlertEditLock.analyst_id == auth["analyst_id"],
-    ).first()
+    lock = (
+        db.query(AlertEditLock)
+        .filter(
+            AlertEditLock.alert_id == alert_id,
+            AlertEditLock.analyst_id == auth["analyst_id"],
+        )
+        .first()
+    )
     if not lock:
         raise HTTPException(status_code=404, detail="No lock held")
-    lock.expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS)
+    lock.expires_at = datetime.now(UTC) + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS)
     db.commit()
     return {"status": "ok", "expires_at": lock.expires_at.isoformat()}
 
 
 @router.delete("/alerts/{alert_id}/lock", tags=["alerts"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def release_lock(alert_id: int, request: Request, db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+def release_lock(
+    alert_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
     """Release edit lock."""
     from app.models.alert_edit_lock import AlertEditLock
 
-    deleted = db.query(AlertEditLock).filter(
-        AlertEditLock.alert_id == alert_id,
-        AlertEditLock.analyst_id == auth["analyst_id"],
-    ).delete()
+    deleted = (
+        db.query(AlertEditLock)
+        .filter(
+            AlertEditLock.alert_id == alert_id,
+            AlertEditLock.analyst_id == auth["analyst_id"],
+        )
+        .delete()
+    )
     db.commit()
     return {"status": "ok", "released": deleted > 0}
 
@@ -907,11 +1141,13 @@ def release_lock(alert_id: int, request: Request, db: Session = Depends(get_db),
 # Scoring
 # ---------------------------------------------------------------------------
 
+
 @router.post("/score-alerts", tags=["scoring"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def score_alerts(request: Request, db: Session = Depends(get_db)):
     """Score all unscored gap events."""
     from app.modules.risk_scoring import score_all_alerts
+
     return score_all_alerts(db)
 
 
@@ -944,14 +1180,16 @@ def rescore_all_alerts(
             after_score = alert.risk_score
             after_band = _score_band_label(after_score)
             if before["score"] != after_score:
-                changes.append({
-                    "gap_event_id": alert.gap_event_id,
-                    "before_score": before["score"],
-                    "after_score": after_score,
-                    "before_band": before["band"],
-                    "after_band": after_band,
-                    "delta": after_score - before["score"],
-                })
+                changes.append(
+                    {
+                        "gap_event_id": alert.gap_event_id,
+                        "before_score": before["score"],
+                        "after_score": after_score,
+                        "before_band": before["band"],
+                        "after_band": after_band,
+                        "delta": after_score - before["score"],
+                    }
+                )
 
         result["diff"] = {
             "total_changed": len(changes),
@@ -961,13 +1199,17 @@ def rescore_all_alerts(
         return result
 
     from app.modules.risk_scoring import rescore_all_alerts as _rescore
+
     return _rescore(db)
 
 
 def _score_band_label(score: int) -> str:
-    if score >= 76: return "critical"
-    if score >= 51: return "high"
-    if score >= 21: return "medium"
+    if score >= 76:
+        return "critical"
+    if score >= 51:
+        return "high"
+    if score >= 21:
+        return "medium"
     return "low"
 
 
@@ -975,15 +1217,15 @@ def _score_band_label(score: int) -> str:
 # Dashboard Stats
 # ---------------------------------------------------------------------------
 
+
 @router.get("/stats", tags=["dashboard"])
 def get_stats(
-    date_from: Optional[date] = None,
-    date_to: Optional[date] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     db: Session = Depends(get_db),
 ):
     """Dashboard statistics for the analyst overview."""
     from app.models.gap_event import AISGapEvent
-    from app.models.vessel import Vessel
 
     q = db.query(AISGapEvent)
     if date_from:
@@ -1008,24 +1250,26 @@ def get_stats(
 
     # Aggregate by status in SQL
     by_status: dict[str, int] = {}
-    status_rows = q.with_entities(
-        AISGapEvent.status, func.count()
-    ).group_by(AISGapEvent.status).all()
+    status_rows = (
+        q.with_entities(AISGapEvent.status, func.count()).group_by(AISGapEvent.status).all()
+    )
     for row in status_rows:
         s = str(row[0].value) if hasattr(row[0], "value") else str(row[0])
         by_status[s] = row[1]
 
     # Aggregate by corridor in SQL
     by_corridor: dict[str, int] = {}
-    corridor_rows = q.with_entities(
-        AISGapEvent.corridor_id, func.count()
-    ).group_by(AISGapEvent.corridor_id).all()
+    corridor_rows = (
+        q.with_entities(AISGapEvent.corridor_id, func.count())
+        .group_by(AISGapEvent.corridor_id)
+        .all()
+    )
     for row in corridor_rows:
         key = str(row[0]) if row[0] else "no_corridor"
         by_corridor[key] = row[1]
 
     # Vessels with multiple gaps in last 7 days
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     multi_gap_subq = (
         db.query(AISGapEvent.vessel_id)
         .filter(AISGapEvent.gap_start_utc >= now - timedelta(days=7))

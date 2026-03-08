@@ -1,8 +1,9 @@
 """Pydantic schemas for AISGapEvent."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional, Any, List
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -11,37 +12,37 @@ class AISPointSummary(BaseModel):
     timestamp_utc: datetime
     lat: float
     lon: float
-    sog: Optional[float] = None
-    cog: Optional[float] = None
-    heading: Optional[float] = None
-    source: Optional[str] = None
-    draught: Optional[float] = None
-    destination: Optional[str] = None
-    nav_status: Optional[int] = None
+    sog: float | None = None
+    cog: float | None = None
+    heading: float | None = None
+    source: str | None = None
+    draught: float | None = None
+    destination: str | None = None
+    nav_status: int | None = None
 
 
 class MovementEnvelopeRead(BaseModel):
     envelope_id: int
-    max_plausible_distance_nm: Optional[float] = None
-    actual_gap_distance_nm: Optional[float] = None
-    velocity_plausibility_ratio: Optional[float] = None
-    envelope_semi_major_nm: Optional[float] = None
-    envelope_semi_minor_nm: Optional[float] = None
-    envelope_heading_degrees: Optional[float] = None
-    confidence_ellipse_geojson: Optional[Any] = None
-    interpolated_positions_json: Optional[List] = None
-    estimated_method: Optional[str] = None
+    max_plausible_distance_nm: float | None = None
+    actual_gap_distance_nm: float | None = None
+    velocity_plausibility_ratio: float | None = None
+    envelope_semi_major_nm: float | None = None
+    envelope_semi_minor_nm: float | None = None
+    envelope_heading_degrees: float | None = None
+    confidence_ellipse_geojson: Any | None = None
+    interpolated_positions_json: list | None = None
+    estimated_method: str | None = None
 
     model_config = {"from_attributes": True}
 
 
 class SatelliteCheckSummary(BaseModel):
     sat_check_id: int
-    provider: Optional[str] = None
+    provider: str | None = None
     review_status: str
-    copernicus_url: Optional[str] = None
-    imagery_url: Optional[str] = None
-    cloud_cover_pct: Optional[float] = None
+    copernicus_url: str | None = None
+    imagery_url: str | None = None
+    cloud_cover_pct: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -50,24 +51,24 @@ class SpoofingAnomalySummary(BaseModel):
     anomaly_id: int
     anomaly_type: str
     start_time_utc: datetime
-    risk_score_component: Optional[int] = None
-    evidence_json: Optional[Any] = None
+    risk_score_component: int | None = None
+    evidence_json: Any | None = None
 
 
 class LoiteringSummary(BaseModel):
     loiter_id: int
     start_time_utc: datetime
-    duration_hours: Optional[float] = None
-    mean_lat: Optional[float] = None
-    mean_lon: Optional[float] = None
-    median_sog_kn: Optional[float] = None
+    duration_hours: float | None = None
+    mean_lat: float | None = None
+    mean_lon: float | None = None
+    median_sog_kn: float | None = None
 
 
 class StsSummary(BaseModel):
     sts_id: int
-    partner_name: Optional[str] = None
-    partner_mmsi: Optional[str] = None
-    detection_type: Optional[str] = None
+    partner_name: str | None = None
+    partner_mmsi: str | None = None
+    detection_type: str | None = None
     start_time_utc: datetime
 
 
@@ -77,68 +78,68 @@ class GapEventRead(BaseModel):
     gap_start_utc: datetime
     gap_end_utc: datetime
     duration_minutes: int
-    corridor_id: Optional[int] = None
+    corridor_id: int | None = None
     risk_score: int
-    risk_breakdown_json: Optional[dict[str, Any]] = None
+    risk_breakdown_json: dict[str, Any] | None = None
     status: str
-    analyst_notes: Optional[str] = None
+    analyst_notes: str | None = None
     impossible_speed_flag: bool
-    velocity_plausibility_ratio: Optional[float] = None
-    max_plausible_distance_nm: Optional[float] = None
-    actual_gap_distance_nm: Optional[float] = None
+    velocity_plausibility_ratio: float | None = None
+    max_plausible_distance_nm: float | None = None
+    actual_gap_distance_nm: float | None = None
     in_dark_zone: bool
-    prior_similar_count: Optional[int] = None
-    is_recurring_pattern: Optional[bool] = None
-    coverage_quality: Optional[str] = None
-    is_feed_outage: Optional[bool] = None
-    original_vessel_id: Optional[int] = None
-    is_false_positive: Optional[bool] = None
-    reviewed_by: Optional[str] = None
-    review_date: Optional[datetime] = None
+    prior_similar_count: int | None = None
+    is_recurring_pattern: bool | None = None
+    coverage_quality: str | None = None
+    is_feed_outage: bool | None = None
+    original_vessel_id: int | None = None
+    is_false_positive: bool | None = None
+    reviewed_by: str | None = None
+    review_date: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 
 class GapEventDetailRead(GapEventRead):
-    assigned_to: Optional[int] = None
-    assigned_to_username: Optional[str] = None
-    assigned_at: Optional[str] = None
+    assigned_to: int | None = None
+    assigned_to_username: str | None = None
+    assigned_at: str | None = None
     version: int = 1
 
-    vessel_name: Optional[str] = None
-    vessel_mmsi: Optional[str] = None
-    vessel_flag: Optional[str] = None
-    vessel_deadweight: Optional[float] = None
-    corridor_name: Optional[str] = None
-    movement_envelope: Optional[MovementEnvelopeRead] = None
-    satellite_check: Optional[SatelliteCheckSummary] = None
-    last_point: Optional[AISPointSummary] = None
-    first_point_after: Optional[AISPointSummary] = None
-    spoofing_anomalies: Optional[list[SpoofingAnomalySummary]] = None
-    loitering_events: Optional[list[LoiteringSummary]] = None
-    sts_events: Optional[list[StsSummary]] = None
+    vessel_name: str | None = None
+    vessel_mmsi: str | None = None
+    vessel_flag: str | None = None
+    vessel_deadweight: float | None = None
+    corridor_name: str | None = None
+    movement_envelope: MovementEnvelopeRead | None = None
+    satellite_check: SatelliteCheckSummary | None = None
+    last_point: AISPointSummary | None = None
+    first_point_after: AISPointSummary | None = None
+    spoofing_anomalies: list[SpoofingAnomalySummary] | None = None
+    loitering_events: list[LoiteringSummary] | None = None
+    sts_events: list[StsSummary] | None = None
 
     model_config = {"from_attributes": False}
 
 
 class GapEventStatusUpdate(BaseModel):
     status: str
-    analyst_notes: Optional[str] = None
+    analyst_notes: str | None = None
 
 
 class AlertStatusUpdate(BaseModel):
     status: str
-    reason: Optional[str] = None
-    version: Optional[int] = None
+    reason: str | None = None
+    version: int | None = None
 
 
 class AlertNoteUpdate(BaseModel):
-    notes: Optional[str] = None
-    text: Optional[str] = None  # legacy key
+    notes: str | None = None
+    text: str | None = None  # legacy key
 
 
 class AlertVerdictRequest(BaseModel):
     verdict: str  # "confirmed_tp" or "confirmed_fp"
-    reason: Optional[str] = None
-    reviewed_by: Optional[str] = None
-    version: Optional[int] = None
+    reason: str | None = None
+    reviewed_by: str | None = None
+    version: int | None = None

@@ -3,21 +3,19 @@
 Validates CSV output: minimum counts, scenario correctness, coordinate validity,
 merge pair IMO checksums, and deterministic output.
 """
+
 from __future__ import annotations
 
-import csv
 import math
-from io import StringIO
 
 import pytest
 
 # Import the generator and constants
 from scripts.generate_sample_data import (
-    FIELDNAMES,
     _MERGE_PAIR_IMOS,
+    FIELDNAMES,
     _valid_imo,
     generate,
-    ts,
 )
 
 
@@ -63,7 +61,7 @@ def test_merge_pair_has_shared_imo(rows):
             # Find max gap between any two consecutive timestamps
             from datetime import datetime
 
-            parsed = [datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ") for t in times]
+            [datetime.strptime(t, "%Y-%m-%dT%H:%M:%SZ") for t in times]
             # Group timestamps by MMSI
             mmsi_times: dict[str, list[datetime]] = {}
             for r in rows:
@@ -129,7 +127,7 @@ def test_loitering_scenario(rows_by_mmsi):
 
 def test_sts_proximity(rows):
     """Two vessels have overlapping timestamps within 0.002 deg lat/lon."""
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     # Group by timestamp (rounded to nearest 15 min)
     by_time: dict[str, list[dict]] = {}
@@ -213,6 +211,7 @@ def test_all_merge_pair_imos_checksum_valid():
     """All IMOs used in merge-pair scenarios pass validate_imo_checksum()."""
     # Import the real validator
     import sys
+
     sys.path.insert(0, "/home/dyn/devel/RadianceFleet/backend")
     from app.utils.vessel_identity import validate_imo_checksum
 
@@ -229,8 +228,11 @@ def test_generator_deterministic_with_seed():
     rows1 = generate()
     rows2 = generate()
     assert len(rows1) == len(rows2), "Row counts differ between runs"
+
     # Sort both by timestamp + mmsi for stable comparison
-    key = lambda r: (r["timestamp"], r["mmsi"], str(r["lat"]), str(r["lon"]))
+    def key(r):
+        return (r["timestamp"], r["mmsi"], str(r["lat"]), str(r["lon"]))
+
     rows1.sort(key=key)
     rows2.sort(key=key)
     for i, (r1, r2) in enumerate(zip(rows1, rows2)):

@@ -5,10 +5,11 @@ Provides:
   - cluster_dark_detections()  — spatial+temporal clustering of unmatched SAR
   - discover_dark_vessels()    — full pipeline orchestrator
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -36,8 +37,8 @@ def auto_hunt_dark_vessels(
     from app.models.gap_event import AISGapEvent
     from app.models.stubs import DarkVesselDetection
     from app.modules.vessel_hunt import (
-        create_target_profile,
         create_search_mission,
+        create_target_profile,
         find_hunt_candidates,
     )
     from app.utils.geo import haversine_nm
@@ -78,8 +79,10 @@ def auto_hunt_dark_vessels(
 
         try:
             profile = create_target_profile(
-                gap.vessel_id, db,
-                last_lat=hunt_lat, last_lon=hunt_lon,
+                gap.vessel_id,
+                db,
+                last_lat=hunt_lat,
+                last_lon=hunt_lon,
             )
 
             search_end = gap.gap_end_utc + timedelta(hours=6)
@@ -112,21 +115,33 @@ def auto_hunt_dark_vessels(
     # STS dark confirmation: for each STS event, find dark detections within 1nm + ±2h
     try:
         from app.models.sts_transfer import StsTransferEvent
+
         sts_events = db.query(StsTransferEvent).all()
         for sts in sts_events:
-            if sts.mean_lat is None or sts.mean_lon is None or sts.start_time_utc is None or sts.end_time_utc is None:
+            if (
+                sts.mean_lat is None
+                or sts.mean_lon is None
+                or sts.start_time_utc is None
+                or sts.end_time_utc is None
+            ):
                 continue
-            dark_nearby = db.query(DarkVesselDetection).filter(
-                DarkVesselDetection.ais_match_result == "unmatched",
-                DarkVesselDetection.detection_time_utc.between(
-                    sts.start_time_utc - timedelta(hours=2),
-                    sts.end_time_utc + timedelta(hours=2),
-                ),
-            ).all()
+            dark_nearby = (
+                db.query(DarkVesselDetection)
+                .filter(
+                    DarkVesselDetection.ais_match_result == "unmatched",
+                    DarkVesselDetection.detection_time_utc.between(
+                        sts.start_time_utc - timedelta(hours=2),
+                        sts.end_time_utc + timedelta(hours=2),
+                    ),
+                )
+                .all()
+            )
             for det in dark_nearby:
                 if det.detection_lat is None or det.detection_lon is None:
                     continue
-                dist = haversine_nm(sts.mean_lat, sts.mean_lon, det.detection_lat, det.detection_lon)
+                dist = haversine_nm(
+                    sts.mean_lat, sts.mean_lon, det.detection_lat, det.detection_lon
+                )
                 if dist <= 1.0:
                     stats["sts_confirmed"] += 1
                     break  # One confirmation per STS event
@@ -190,8 +205,10 @@ def cluster_dark_detections(
                     continue
 
                 dist = haversine_nm(
-                    det.detection_lat, det.detection_lon,
-                    ndet.detection_lat, ndet.detection_lon,
+                    det.detection_lat,
+                    det.detection_lon,
+                    ndet.detection_lat,
+                    ndet.detection_lon,
                 )
                 time_diff = abs((det.detection_time_utc - ndet.detection_time_utc).total_seconds())
                 if dist <= radius_nm and time_diff <= days_window * 86400:
@@ -208,8 +225,12 @@ def cluster_dark_detections(
         cluster_ids = [best_center_id] + best_neighbors
         cluster_dets = [remaining[cid] for cid in cluster_ids]
 
-        center_lat = sum(d.detection_lat for d in cluster_dets if d.detection_lat) / len(cluster_dets)
-        center_lon = sum(d.detection_lon for d in cluster_dets if d.detection_lon) / len(cluster_dets)
+        center_lat = sum(d.detection_lat for d in cluster_dets if d.detection_lat) / len(
+            cluster_dets
+        )
+        center_lon = sum(d.detection_lon for d in cluster_dets if d.detection_lon) / len(
+            cluster_dets
+        )
 
         # Time span
         times = [d.detection_time_utc for d in cluster_dets if d.detection_time_utc]
@@ -224,12 +245,14 @@ def cluster_dark_detections(
         if cluster_corridor is not None:
             # Check if STS zone corridor
             from app.models.corridor import Corridor
+
             corr = db.query(Corridor).filter(Corridor.corridor_id == cluster_corridor).first()
             if corr and corr.corridor_type in ("sts_zone", "STS_ZONE"):
                 score += 20
         score += max(0, (len(cluster_dets) - min_detections)) * 15
         tanker_count = sum(
-            1 for d in cluster_dets
+            1
+            for d in cluster_dets
             if d.vessel_type_inferred and "tanker" in (d.vessel_type_inferred or "").lower()
         )
         if tanker_count > 0:
@@ -237,23 +260,27 @@ def cluster_dark_detections(
         if time_span_days > 7:
             score += 25
 
-        clusters.append({
-            "center_lat": center_lat,
-            "center_lon": center_lon,
-            "detection_ids": cluster_ids,
-            "count": len(cluster_ids),
-            "score": score,
-            "corridor_id": cluster_corridor,
-            "time_span_days": round(time_span_days, 1),
-            "first_seen": min(times).isoformat() if times else None,
-            "last_seen": max(times).isoformat() if times else None,
-        })
+        clusters.append(
+            {
+                "center_lat": center_lat,
+                "center_lon": center_lon,
+                "detection_ids": cluster_ids,
+                "count": len(cluster_ids),
+                "score": score,
+                "corridor_id": cluster_corridor,
+                "time_span_days": round(time_span_days, 1),
+                "first_seen": min(times).isoformat() if times else None,
+                "last_seen": max(times).isoformat() if times else None,
+            }
+        )
 
         # Remove clustered detections from remaining
         for cid in cluster_ids:
             remaining.pop(cid, None)
 
-    logger.info("Dark detection clustering: %d clusters from %d detections", len(clusters), len(detections))
+    logger.info(
+        "Dark detection clustering: %d clusters from %d detections", len(clusters), len(detections)
+    )
     return clusters
 
 
@@ -289,7 +316,7 @@ def discover_dark_vessels(
 
     Returns dict with run_status, steps, top_alerts.
     """
-    from datetime import date as _date, datetime as _datetime
+    from datetime import date as _date
 
     result: dict[str, Any] = {
         "run_status": "complete",
@@ -303,6 +330,7 @@ def discover_dark_vessels(
     pipeline_run = None
     try:
         from app.models.pipeline_run import PipelineRun
+
         pipeline_run = PipelineRun(status="running")
         db.add(pipeline_run)
         db.flush()  # get run_id
@@ -330,9 +358,13 @@ def discover_dark_vessels(
     if not skip_fetch:
         try:
             from app.modules.gfw_client import import_gfw_gap_events
-            gfw_result = _run_step(
-                "gfw_gap_events", import_gfw_gap_events,
-                db, start_date=start_date, end_date=end_date,
+
+            _run_step(
+                "gfw_gap_events",
+                import_gfw_gap_events,
+                db,
+                start_date=start_date,
+                end_date=end_date,
             )
         except Exception:
             pass  # Soft fail — already recorded
@@ -343,9 +375,13 @@ def discover_dark_vessels(
     if not skip_fetch:
         try:
             from app.modules.gfw_client import sweep_corridors_sar
+
             _run_step(
-                "sar_corridor_sweep", sweep_corridors_sar,
-                db, start_date=start_date, end_date=end_date,
+                "sar_corridor_sweep",
+                sweep_corridors_sar,
+                db,
+                start_date=start_date,
+                end_date=end_date,
             )
         except Exception:
             pass
@@ -357,18 +393,26 @@ def discover_dark_vessels(
     if not skip_fetch:
         try:
             from app.modules.vessel_enrichment import enrich_vessels_from_gfw
+
             _run_step("vessel_enrichment", enrich_vessels_from_gfw, db)
         except ImportError:
-            result["steps"]["vessel_enrichment"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["vessel_enrichment"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
     else:
         result["steps"]["vessel_enrichment"] = {"status": "skipped", "detail": "--skip-fetch"}
 
     # Step 3: Gap detection (HARD)
     try:
         from app.modules.gap_detector import run_gap_detection
+
         _run_step(
-            "gap_detection", run_gap_detection,
-            db, date_from=date_from, date_to=date_to,
+            "gap_detection",
+            run_gap_detection,
+            db,
+            date_from=date_from,
+            date_to=date_to,
             hard=True,
         )
     except Exception:
@@ -381,70 +425,111 @@ def discover_dark_vessels(
     if settings.COVERAGE_QUALITY_TAGGING_ENABLED:
         try:
             from app.modules.feed_outage_detector import tag_coverage_quality
+
             _run_step("coverage_quality_tagging", tag_coverage_quality, db)
         except ImportError:
-            result["steps"]["coverage_quality_tagging"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["coverage_quality_tagging"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 3d: Compute corridor gap baselines (needed by feed outage + STS P95)
     try:
         from app.modules.gap_rate_baseline import compute_gap_rate_baseline
+
         _run_step("gap_rate_baselines", compute_gap_rate_baseline, db)
     except ImportError:
-        result["steps"]["gap_rate_baselines"] = {"status": "skipped", "detail": "module not available"}
+        result["steps"]["gap_rate_baselines"] = {
+            "status": "skipped",
+            "detail": "module not available",
+        }
 
     # Step 4: Spoofing detection (SOFT)
     from app.modules.gap_detector import run_spoofing_detection
+
     _run_step(
-        "spoofing_detection", run_spoofing_detection,
-        db, date_from=date_from, date_to=date_to,
+        "spoofing_detection",
+        run_spoofing_detection,
+        db,
+        date_from=date_from,
+        date_to=date_to,
     )
 
     # Step 4a: Stale AIS detection (SOFT, feature-gated)
     if settings.STALE_AIS_DETECTION_ENABLED:
         try:
             from app.modules.gap_detector import detect_stale_ais_data
+
             _run_step(
-                "stale_ais_detection", detect_stale_ais_data,
-                db, date_from=date_from, date_to=date_to,
+                "stale_ais_detection",
+                detect_stale_ais_data,
+                db,
+                date_from=date_from,
+                date_to=date_to,
             )
         except ImportError:
-            result["steps"]["stale_ais_detection"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["stale_ais_detection"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 4b: Destination manipulation detection (SOFT, feature-gated)
     if settings.DESTINATION_DETECTION_ENABLED:
         try:
             from app.modules.destination_detector import detect_destination_anomalies
+
             _run_step(
-                "destination_detection", detect_destination_anomalies,
-                db, date_from=date_from, date_to=date_to,
+                "destination_detection",
+                detect_destination_anomalies,
+                db,
+                date_from=date_from,
+                date_to=date_to,
             )
         except ImportError:
-            result["steps"]["destination_detection"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["destination_detection"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 4c: Track naturalness (SOFT, feature-gated)
     if settings.TRACK_NATURALNESS_ENABLED:
         try:
             from app.modules.track_naturalness_detector import run_track_naturalness_detection
+
             _run_step("track_naturalness", run_track_naturalness_detection, db)
         except ImportError:
-            result["steps"]["track_naturalness"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["track_naturalness"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 5: Loitering detection (SOFT)
     try:
         from app.modules.loitering_detector import run_loitering_detection
+
         _run_step(
-            "loitering_detection", run_loitering_detection,
-            db, date_from=date_from, date_to=date_to,
+            "loitering_detection",
+            run_loitering_detection,
+            db,
+            date_from=date_from,
+            date_to=date_to,
         )
     except ImportError:
-        result["steps"]["loitering_detection"] = {"status": "skipped", "detail": "module not available"}
+        result["steps"]["loitering_detection"] = {
+            "status": "skipped",
+            "detail": "module not available",
+        }
 
     # Step 6: STS detection (SOFT)
     try:
         from app.modules.sts_detector import detect_sts_events
+
         _run_step(
-            "sts_detection", detect_sts_events,
-            db, date_from=date_from, date_to=date_to,
+            "sts_detection",
+            detect_sts_events,
+            db,
+            date_from=date_from,
+            date_to=date_to,
         )
     except ImportError:
         result["steps"]["sts_detection"] = {"status": "skipped", "detail": "module not available"}
@@ -453,20 +538,31 @@ def discover_dark_vessels(
     if settings.STS_CHAIN_DETECTION_ENABLED:
         try:
             from app.modules.sts_chain_detector import detect_sts_chains
+
             _run_step(
-                "sts_chain_detection", detect_sts_chains,
-                db, date_from=date_from, date_to=date_to,
+                "sts_chain_detection",
+                detect_sts_chains,
+                db,
+                date_from=date_from,
+                date_to=date_to,
             )
         except ImportError:
-            result["steps"]["sts_chain_detection"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["sts_chain_detection"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 6c: Draught detection (SOFT, feature-gated)
     if settings.DRAUGHT_DETECTION_ENABLED:
         try:
             from app.modules.draught_detector import run_draught_detection
+
             _run_step("draught_detection", run_draught_detection, db)
         except ImportError:
-            result["steps"]["draught_detection"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["draught_detection"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 6e: Feed outage detection (SOFT, feature-gated)
     # Runs AFTER anomaly detection (Steps 4-6d) so gaps with co-occurring
@@ -478,6 +574,7 @@ def discover_dark_vessels(
         # (mirrors early-skip at feed_outage_detector.py:80-93)
         try:
             from app.models.corridor_gap_baseline import CorridorGapBaseline
+
             _has_baselines = db.query(CorridorGapBaseline).first() is not None
         except Exception:
             _has_baselines = False
@@ -494,10 +591,13 @@ def discover_dark_vessels(
         _flagged_gap_ids = []
         if _has_baselines or _has_corridor_gaps:
             _flagged_gap_ids = [
-                gid for (gid,) in db.query(AISGapEvent.gap_event_id).filter(
-                    AISGapEvent.is_feed_outage == True,
+                gid
+                for (gid,) in db.query(AISGapEvent.gap_event_id)
+                .filter(
+                    AISGapEvent.is_feed_outage,
                     AISGapEvent.risk_score == 0,
-                ).all()
+                )
+                .all()
             ]
             if _flagged_gap_ids:
                 db.query(AISGapEvent).filter(
@@ -508,10 +608,14 @@ def discover_dark_vessels(
 
         try:
             from app.modules.feed_outage_detector import detect_feed_outages
+
             _fo_result = _run_step("feed_outage_detection", detect_feed_outages, db)
         except ImportError:
             _fo_result = None
-            result["steps"]["feed_outage_detection"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["feed_outage_detection"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
         if _flagged_gap_ids and (
             _fo_result is None
@@ -526,12 +630,15 @@ def discover_dark_vessels(
             # Compensating rollback: clear any newly committed feed_outage marks
             # from a partially completed detection run
             db.query(AISGapEvent).filter(
-                AISGapEvent.is_feed_outage == True,
+                AISGapEvent.is_feed_outage,
                 AISGapEvent.risk_score == 0,
                 ~AISGapEvent.gap_event_id.in_(_flagged_gap_ids),
             ).update({AISGapEvent.is_feed_outage: False}, synchronize_session=False)
             db.commit()
-            logger.warning("Feed outage detection failed — restored %d flags + cleared new marks", len(_flagged_gap_ids))
+            logger.warning(
+                "Feed outage detection failed — restored %d flags + cleared new marks",
+                len(_flagged_gap_ids),
+            )
 
     # Steps 6d-6h: Identity fraud + scrapped + convoy detectors (MOVED before scoring)
     # These detectors create SpoofingAnomaly records that scoring reads.
@@ -539,18 +646,27 @@ def discover_dark_vessels(
     if settings.STATELESS_MMSI_DETECTION_ENABLED:
         try:
             from app.modules.stateless_detector import run_stateless_detection
+
             _run_step("stateless_mmsi", run_stateless_detection, db)
         except ImportError:
-            result["steps"]["stateless_mmsi"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["stateless_mmsi"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
     if settings.FLAG_HOPPING_DETECTION_ENABLED:
         try:
             from app.modules.flag_hopping_detector import run_flag_hopping_detection
+
             _run_step("flag_hopping", run_flag_hopping_detection, db)
         except ImportError:
-            result["steps"]["flag_hopping"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["flag_hopping"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
     if settings.IMO_FRAUD_DETECTION_ENABLED:
         try:
             from app.modules.imo_fraud_detector import run_imo_fraud_detection
+
             _run_step("imo_fraud", run_imo_fraud_detection, db)
         except ImportError:
             result["steps"]["imo_fraud"] = {"status": "skipped", "detail": "module not available"}
@@ -559,65 +675,105 @@ def discover_dark_vessels(
     if settings.IMO_FRAUD_DETECTION_ENABLED:
         try:
             from app.modules.identity_resolver import recheck_merges_for_imo_fraud
+
             _run_step("imo_fraud_merge_recheck", recheck_merges_for_imo_fraud, db)
         except ImportError:
-            result["steps"]["imo_fraud_merge_recheck"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["imo_fraud_merge_recheck"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 6f: Scrapped vessel registry detection (SOFT, feature-gated)
     if settings.SCRAPPED_REGISTRY_DETECTION_ENABLED:
         try:
             from app.modules.scrapped_registry import detect_scrapped_imo_reuse
+
             _run_step(
-                "scrapped_registry", detect_scrapped_imo_reuse,
-                db, date_from=date_from, date_to=date_to,
+                "scrapped_registry",
+                detect_scrapped_imo_reuse,
+                db,
+                date_from=date_from,
+                date_to=date_to,
             )
         except ImportError:
-            result["steps"]["scrapped_registry"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["scrapped_registry"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 6g: Track replay detection (SOFT, feature-gated)
     if settings.TRACK_REPLAY_DETECTION_ENABLED:
         try:
             from app.modules.scrapped_registry import detect_track_replay
+
             _run_step(
-                "track_replay", detect_track_replay,
-                db, date_from=date_from, date_to=date_to,
+                "track_replay",
+                detect_track_replay,
+                db,
+                date_from=date_from,
+                date_to=date_to,
             )
         except ImportError:
-            result["steps"]["track_replay"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["track_replay"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 6h: Convoy detection (SOFT, feature-gated)
     if settings.CONVOY_DETECTION_ENABLED:
         try:
-            from app.modules.convoy_detector import detect_convoys, detect_floating_storage, detect_arctic_no_ice_class
+            from app.modules.convoy_detector import (
+                detect_arctic_no_ice_class,
+                detect_convoys,
+                detect_floating_storage,
+            )
+
             _run_step(
-                "convoy_detection", detect_convoys,
-                db, date_from=date_from, date_to=date_to,
+                "convoy_detection",
+                detect_convoys,
+                db,
+                date_from=date_from,
+                date_to=date_to,
             )
             _run_step("floating_storage", detect_floating_storage, db)
             _run_step("arctic_no_ice_class", detect_arctic_no_ice_class, db)
         except ImportError:
-            result["steps"]["convoy_detection"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["convoy_detection"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 6i: Vessel type consistency (SOFT, feature-gated)
     if settings.TYPE_CONSISTENCY_DETECTION_ENABLED:
         try:
-            from app.modules.vessel_type_consistency_detector import run_vessel_type_consistency_detection
+            from app.modules.vessel_type_consistency_detector import (
+                run_vessel_type_consistency_detection,
+            )
+
             _run_step("vessel_type_consistency", run_vessel_type_consistency_detection, db)
         except ImportError:
-            result["steps"]["vessel_type_consistency"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["vessel_type_consistency"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 6k: Route laundering (SOFT, feature-gated)
     if settings.ROUTE_LAUNDERING_DETECTION_ENABLED:
         try:
             from app.modules.route_laundering_detector import run_route_laundering_detection
+
             _run_step("route_laundering", run_route_laundering_detection, db)
         except ImportError:
-            result["steps"]["route_laundering"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["route_laundering"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 6l: P&I cycling (SOFT, feature-gated)
     if settings.PI_CYCLING_DETECTION_ENABLED:
         try:
             from app.modules.pi_cycling_detector import run_pi_cycling_detection
+
             _run_step("pi_cycling", run_pi_cycling_detection, db)
         except ImportError:
             result["steps"]["pi_cycling"] = {"status": "skipped", "detail": "module not available"}
@@ -626,13 +782,18 @@ def discover_dark_vessels(
     if settings.SPARSE_TRANSMISSION_DETECTION_ENABLED:
         try:
             from app.modules.sparse_transmission_detector import run_sparse_transmission_detection
+
             _run_step("sparse_transmission", run_sparse_transmission_detection, db)
         except ImportError:
-            result["steps"]["sparse_transmission"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["sparse_transmission"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 7: Score all alerts (HARD)
     try:
         from app.modules.risk_scoring import rescore_all_alerts
+
         _run_step("scoring", rescore_all_alerts, db, hard=True)
     except Exception:
         return result
@@ -641,9 +802,13 @@ def discover_dark_vessels(
     # Runs after scoring to classify vessels into CONFIRMED/HIGH/MEDIUM/LOW/NONE
     try:
         from app.modules.confidence_classifier import classify_all_vessels
+
         _run_step("confidence_classification", classify_all_vessels, db)
     except ImportError:
-        result["steps"]["confidence_classification"] = {"status": "skipped", "detail": "module not available"}
+        result["steps"]["confidence_classification"] = {
+            "status": "skipped",
+            "detail": "module not available",
+        }
 
     # Step 7c: Score watchlist-only stubs (vessels never seen on AIS)
     # Runs after gap scoring and confidence classification.
@@ -652,6 +817,7 @@ def discover_dark_vessels(
     # in Step 10, its score is cleared on the NEXT run's Phase 1 cleanup.
     try:
         from app.modules.risk_scoring import score_watchlist_stubs
+
         _run_step("stub_scoring", score_watchlist_stubs, db)
     except ImportError:
         result["steps"]["stub_scoring"] = {"status": "skipped", "detail": "module not available"}
@@ -666,38 +832,55 @@ def discover_dark_vessels(
     if settings.SAR_CORRELATION_ENABLED:
         try:
             from app.modules.sar_correlator import correlate_sar_detections
+
             _run_step("sar_correlation", correlate_sar_detections, db)
         except ImportError:
-            result["steps"]["sar_correlation"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["sar_correlation"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 9c: Behavioral fingerprinting (SOFT, feature-gated)
     # Runs BEFORE identity resolution so fingerprint distance informs merge scoring.
     if settings.FINGERPRINT_ENABLED:
         try:
             from app.modules.vessel_fingerprint import run_fingerprint_computation
+
             _run_step("fingerprint_computation", run_fingerprint_computation, db)
         except ImportError:
-            result["steps"]["fingerprint_computation"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["fingerprint_computation"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 10: Identity resolution (SOFT)
     try:
         from app.modules.identity_resolver import detect_merge_candidates
+
         _run_step("identity_resolution", detect_merge_candidates, db)
     except ImportError:
-        result["steps"]["identity_resolution"] = {"status": "skipped", "detail": "module not available"}
+        result["steps"]["identity_resolution"] = {
+            "status": "skipped",
+            "detail": "module not available",
+        }
 
     # Step 10b: Extended merge pass + chain detection (SOFT, feature-gated)
     if settings.MERGE_CHAIN_DETECTION_ENABLED:
         try:
-            from app.modules.identity_resolver import extended_merge_pass, detect_merge_chains
+            from app.modules.identity_resolver import detect_merge_chains, extended_merge_pass
+
             _run_step("extended_merge_pass", extended_merge_pass, db)
             _run_step("merge_chain_detection", detect_merge_chains, db)
         except ImportError:
-            result["steps"]["merge_chain_detection"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["merge_chain_detection"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 11: MMSI cloning (SOFT)
     try:
         from app.modules.mmsi_cloning_detector import detect_mmsi_cloning
+
         _run_step("mmsi_cloning", detect_mmsi_cloning, db)
     except ImportError:
         result["steps"]["mmsi_cloning"] = {"status": "skipped", "detail": "module not available"}
@@ -710,39 +893,56 @@ def discover_dark_vessels(
     if settings.FLEET_ANALYSIS_ENABLED:
         try:
             from app.modules.owner_dedup import run_owner_dedup
+
             _run_step("owner_dedup", run_owner_dedup, db)
         except ImportError:
             result["steps"]["owner_dedup"] = {"status": "skipped", "detail": "module not available"}
         try:
             from app.modules.fleet_analyzer import run_fleet_analysis
+
             _run_step("fleet_analysis", run_fleet_analysis, db)
         except ImportError:
-            result["steps"]["fleet_analysis"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["fleet_analysis"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 11c2: ISM/P&I continuity detection (SOFT, feature-gated)
     if settings.ISM_CONTINUITY_DETECTION_ENABLED:
         try:
             from app.modules.fleet_analyzer import detect_ism_pi_continuity
+
             _run_step("ism_pi_continuity", detect_ism_pi_continuity, db)
         except ImportError:
-            result["steps"]["ism_pi_continuity"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["ism_pi_continuity"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 11d: Ownership graph (SOFT, feature-gated)
     if settings.OWNERSHIP_GRAPH_ENABLED:
         try:
             from app.modules.ownership_graph import build_ownership_graph, propagate_sanctions
+
             _run_step("ownership_graph", build_ownership_graph, db)
             _run_step("sanctions_propagation", propagate_sanctions, db)
         except ImportError:
-            result["steps"]["ownership_graph"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["ownership_graph"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 11h: Voyage prediction (SOFT, feature-gated)
     if settings.VOYAGE_PREDICTION_ENABLED:
         try:
             from app.modules.voyage_predictor import build_route_templates
+
             _run_step("route_templates", build_route_templates, db)
         except ImportError:
-            result["steps"]["route_templates"] = {"status": "skipped", "detail": "module not available"}
+            result["steps"]["route_templates"] = {
+                "status": "skipped",
+                "detail": "module not available",
+            }
 
     # Step 11z: Incremental second scoring pass.
     # Fingerprint, voyage predictor, fleet analysis, and ownership graph can all
@@ -750,11 +950,13 @@ def discover_dark_vessels(
     # Score only NEW gaps (risk_score == 0) — do NOT reset existing scores.
     try:
         from app.modules.risk_scoring import score_all_alerts as _score_incremental
+
         _run_step("scoring_second_pass", _score_incremental, db)
     except Exception:
         pass  # Non-fatal — first pass scores are still valid
     try:
         from app.modules.confidence_classifier import classify_all_vessels as _classify_second
+
         _run_step("confidence_classification_second_pass", _classify_second, db)
     except ImportError:
         pass
@@ -787,9 +989,13 @@ def discover_dark_vessels(
         try:
             # E4: Skip drift detection during warm-up period (< 3 pipeline runs)
             from app.models.pipeline_run import PipelineRun as _PR_warmup
+
             run_count = db.query(_PR_warmup).count()
             if run_count < 3:
-                result["steps"]["drift_detection"] = {"status": "skipped", "detail": "warm_up_period"}
+                result["steps"]["drift_detection"] = {
+                    "status": "skipped",
+                    "detail": "warm_up_period",
+                }
                 _finalize_pipeline_run(db, pipeline_run, result, skip_drift=True)
             else:
                 _finalize_pipeline_run(db, pipeline_run, result)
@@ -799,7 +1005,9 @@ def discover_dark_vessels(
     return result
 
 
-def _finalize_pipeline_run(db: Session, pipeline_run, result: dict, skip_drift: bool = False) -> None:
+def _finalize_pipeline_run(
+    db: Session, pipeline_run, result: dict, skip_drift: bool = False
+) -> None:
     """Record anomaly counts, data volume, and detect drift.
 
     Drift detection: if any detector's anomaly count changed >50% between
@@ -810,21 +1018,26 @@ def _finalize_pipeline_run(db: Session, pipeline_run, result: dict, skip_drift: 
         skip_drift: If True, skip drift detection (warm-up period, E4).
     """
     from datetime import datetime as _dt
+
     from sqlalchemy import func
 
+    from app.models.ais_point import AISPoint
+    from app.models.gap_event import AISGapEvent
     from app.models.pipeline_run import PipelineRun
     from app.models.spoofing_anomaly import SpoofingAnomaly
-    from app.models.gap_event import AISGapEvent
-    from app.models.ais_point import AISPoint
     from app.models.vessel import Vessel
 
     # Collect anomaly counts per detector type
     anomaly_counts: dict[str, int] = {}
     try:
-        rows = db.query(
-            SpoofingAnomaly.anomaly_type,
-            func.count(SpoofingAnomaly.spoofing_id),
-        ).group_by(SpoofingAnomaly.anomaly_type).all()
+        rows = (
+            db.query(
+                SpoofingAnomaly.anomaly_type,
+                func.count(SpoofingAnomaly.spoofing_id),
+            )
+            .group_by(SpoofingAnomaly.anomaly_type)
+            .all()
+        )
         for atype, count in rows:
             atype_str = atype.value if hasattr(atype, "value") else str(atype)
             anomaly_counts[atype_str] = count
@@ -841,7 +1054,7 @@ def _finalize_pipeline_run(db: Session, pipeline_run, result: dict, skip_drift: 
 
     pipeline_run.detector_anomaly_counts_json = anomaly_counts
     pipeline_run.data_volume_json = data_volume
-    pipeline_run.completed_at = _dt.now(tz=__import__('datetime').timezone.utc)
+    pipeline_run.completed_at = _dt.now(tz=__import__("datetime").timezone.utc)
     pipeline_run.status = result.get("run_status", "complete")
 
     # Drift detection — compare with previous run
@@ -883,7 +1096,9 @@ def _finalize_pipeline_run(db: Session, pipeline_run, result: dict, skip_drift: 
                     logger.warning(
                         "Drift detected: %s anomaly count changed %.0f%% "
                         "(data volume change: %.0f%%) — scoring auto-disabled",
-                        detector, count_change_pct, data_change_pct,
+                        detector,
+                        count_change_pct,
+                        data_change_pct,
                     )
                     drift_disabled.append(detector)
 

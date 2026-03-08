@@ -18,10 +18,10 @@ Usage:
     db = SessionLocal()
     seed_ports(db)
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -42,15 +42,13 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Murmansk", "RU", 68.97, 33.05),
     ("De-Kastri", "RU", 51.47, 140.78),
     ("Varandey", "RU", 68.82, 58.07),
-
     # ── India (major refinery destinations) ──────────────────────────────────
-    ("Jamnagar (Reliance)", "IN", 21.85, 69.08),      # World's largest refinery
+    ("Jamnagar (Reliance)", "IN", 21.85, 69.08),  # World's largest refinery
     ("Vadinar Terminal", "IN", 21.58, 69.20),
     ("Sikka (Hindustan Petroleum)", "IN", 21.70, 69.40),
     ("Paradip (IOCL)", "IN", 20.07, 86.68),
     ("Visakhapatnam (HPCL)", "IN", 17.67, 83.30),
     ("Mangalore (MRPL)", "IN", 12.92, 74.86),
-
     # ── Major EU ports ─────────────────────────────────────────────────────────
     ("Rotterdam", "NL", 51.94, 4.14),
     ("Hamburg", "DE", 53.55, 10.00),
@@ -62,7 +60,6 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Venice", "IT", 45.44, 12.32),
     ("Piraeus", "GR", 37.94, 23.63),
     ("Thessaloniki", "GR", 40.63, 22.93),
-
     # ── Mediterranean / North Africa ──────────────────────────────────────────
     ("Valletta / Malta Freeport", "MT", 35.89, 14.52),
     ("Marsaxlokk", "MT", 35.83, 14.55),
@@ -72,7 +69,6 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Ceuta Anchorage", "ES", 35.89, -5.30),
     ("Tarragona", "ES", 41.11, 1.25),
     ("Barcelona", "ES", 41.34, 2.17),
-
     # ── Turkish Strait / Black Sea ─────────────────────────────────────────────
     ("Istanbul", "TR", 41.01, 28.97),
     ("Canakkale Anchorage", "TR", 40.15, 26.40),
@@ -84,10 +80,8 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Poti", "GE", 42.15, 41.68),
     ("Odessa", "UA", 46.49, 30.74),
     ("Constanta", "RO", 44.17, 28.63),
-
     # ── Egypt ────────────────────────────────────────────────────────────────
     ("Ain Sukhna (SUMED)", "EG", 29.96, 32.50),
-
     # ── Far East ──────────────────────────────────────────────────────────────
     ("Singapore", "SG", 1.27, 103.83),
     ("Port Klang", "MY", 3.00, 101.39),
@@ -104,7 +98,6 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Chiba", "JP", 35.56, 140.07),
     ("Yokohama", "JP", 35.43, 139.65),
     ("Vladivostok", "RU", 43.12, 131.89),
-
     # ── Gulf / Indian Ocean ───────────────────────────────────────────────────
     ("Fujairah Anchorage", "AE", 25.13, 56.34),
     ("Salalah", "OM", 16.94, 54.00),
@@ -112,65 +105,86 @@ MAJOR_PORTS: list[tuple[str, str, float, float]] = [
     ("Ras Tanura", "SA", 26.67, 50.16),
     ("Kuwait City", "KW", 29.37, 48.00),
     ("Basra / Khor Al Zubair", "IQ", 30.53, 47.83),
-
     # ── West Africa ──────────────────────────────────────────────────────────
     ("Lomé (Togo)", "TG", 6.10, 1.23),
     ("Lagos (Nigeria)", "NG", 6.46, 3.39),
-
     # ── Brazil ───────────────────────────────────────────────────────────────
     ("São Luís (Maranhão)", "BR", -2.90, -44.30),
-
     # ── Additional ports (stress-test gap closure) ──────────────────────────
-    ("Taman", "RU", 45.06, 36.72),                 # Black Sea crude terminal
-    ("Daesan", "KR", 36.98, 126.35),               # Korean refinery complex
-    ("Rizhao", "CN", 35.38, 119.53),               # Shandong crude import
-    ("Dongying", "CN", 37.43, 118.67),              # Shandong independent refineries
-    ("Ras Lanuf", "LY", 30.50, 18.57),             # Libyan oil terminal
-    ("Brega", "LY", 30.41, 19.58),                 # Libyan oil terminal
-    ("Bonny Island", "NG", 4.43, 7.15),            # Nigerian crude terminal
-    ("Nador", "MA", 35.17, -2.93),                 # Morocco STS anchorage
-    ("Tangier Med", "MA", 35.89, -5.50),            # Morocco container + crude
+    ("Taman", "RU", 45.06, 36.72),  # Black Sea crude terminal
+    ("Daesan", "KR", 36.98, 126.35),  # Korean refinery complex
+    ("Rizhao", "CN", 35.38, 119.53),  # Shandong crude import
+    ("Dongying", "CN", 37.43, 118.67),  # Shandong independent refineries
+    ("Ras Lanuf", "LY", 30.50, 18.57),  # Libyan oil terminal
+    ("Brega", "LY", 30.41, 19.58),  # Libyan oil terminal
+    ("Bonny Island", "NG", 4.43, 7.15),  # Nigerian crude terminal
+    ("Nador", "MA", 35.17, -2.93),  # Morocco STS anchorage
+    ("Tangier Med", "MA", 35.89, -5.50),  # Morocco container + crude
 ]
 
 
 # EU member state ISO-2 codes (for is_eu flag on Port records)
 _EU_COUNTRIES = {
-    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
-    "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL",
-    "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE",
 }
 
 
 # Major Russian crude oil export terminals (for russian_port_call scoring signal)
 _RUSSIAN_OIL_TERMINALS: set[str] = {
-    "Primorsk",       # Baltic, crude
-    "Ust-Luga",       # Baltic, crude + products
-    "Novorossiysk",   # Black Sea, crude
-    "Kavkaz",         # Black Sea, crude (Kerch Strait terminal)
-    "Vysotsk",        # Baltic, products
+    "Primorsk",  # Baltic, crude
+    "Ust-Luga",  # Baltic, crude + products
+    "Novorossiysk",  # Black Sea, crude
+    "Kavkaz",  # Black Sea, crude (Kerch Strait terminal)
+    "Vysotsk",  # Baltic, products
     "St Petersburg",  # Baltic, products
-    "Tuapse",         # Black Sea, products
+    "Tuapse",  # Black Sea, products
     "Nakhodka/Kozmino",  # Pacific, crude (ESPO)
-    "Murmansk",       # Arctic, crude
-    "De-Kastri",      # Sakhalin, crude
-    "Varandey",       # Arctic, crude
-    "Taman",          # Black Sea, crude
+    "Murmansk",  # Arctic, crude
+    "De-Kastri",  # Sakhalin, crude
+    "Varandey",  # Arctic, crude
+    "Taman",  # Black Sea, crude
 }
 
 # Sanctioned Russian energy terminals — confirmed under US/EU/UK sanctions
 # Visiting these terminals is a direct indicator of shadow fleet operations.
 # Sources: OFAC Russia Energy Sector, EU Council Reg 833/2014, CSIS maritime advisories.
 _SANCTIONED_TERMINALS: set[str] = {
-    "Primorsk",          # OFAC-listed Baltic crude terminal
-    "Ust-Luga",          # OFAC-listed Baltic crude + products
-    "Novorossiysk",      # OFAC-listed Black Sea crude terminal
-    "Kavkaz",            # Kerch Strait terminal — sanctions evasion hub
-    "Tuapse",            # Black Sea products terminal
+    "Primorsk",  # OFAC-listed Baltic crude terminal
+    "Ust-Luga",  # OFAC-listed Baltic crude + products
+    "Novorossiysk",  # OFAC-listed Black Sea crude terminal
+    "Kavkaz",  # Kerch Strait terminal — sanctions evasion hub
+    "Tuapse",  # Black Sea products terminal
     "Nakhodka/Kozmino",  # ESPO Pacific crude terminal
-    "De-Kastri",         # Sakhalin crude terminal
-    "Varandey",          # Arctic crude — Lukoil operated
-    "Taman",             # Black Sea crude — active shadow fleet loading point
-    "Vysotsk",           # Baltic products terminal
+    "De-Kastri",  # Sakhalin crude terminal
+    "Varandey",  # Arctic crude — Lukoil operated
+    "Taman",  # Black Sea crude — active shadow fleet loading point
+    "Vysotsk",  # Baltic products terminal
 }
 
 
@@ -181,8 +195,9 @@ def seed_ports(db: Session) -> dict:
     Sets is_russian_oil_terminal=True for major Russian crude export terminals.
     Sets is_sanctioned=True for terminals under active OFAC/EU/UK sanctions.
     """
-    from app.models.port import Port
     from shapely.geometry import Point
+
+    from app.models.port import Port
 
     def make_point(lat: float, lon: float) -> str:
         return Point(lon, lat).wkt
@@ -227,9 +242,16 @@ def seed_ports(db: Session) -> dict:
     db.commit()
     logger.info(
         "seed_ports: inserted=%d skipped=%d updated_eu=%d updated_terminal=%d updated_sanctioned=%d",
-        inserted, skipped, updated_eu, updated_terminal, updated_sanctioned,
+        inserted,
+        skipped,
+        updated_eu,
+        updated_terminal,
+        updated_sanctioned,
     )
     return {
-        "inserted": inserted, "skipped": skipped, "updated_eu": updated_eu,
-        "updated_terminal": updated_terminal, "updated_sanctioned": updated_sanctioned,
+        "inserted": inserted,
+        "skipped": skipped,
+        "updated_eu": updated_eu,
+        "updated_terminal": updated_terminal,
+        "updated_sanctioned": updated_sanctioned,
     }

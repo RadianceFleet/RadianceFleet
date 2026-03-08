@@ -1,22 +1,22 @@
 """Tests for satellite order API endpoints in routes_detection.py."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
-
-from tests.conftest import make_mock_vessel
-
 
 # ---------------------------------------------------------------------------
 # GET /satellite/providers
 # ---------------------------------------------------------------------------
 
+
 def test_list_providers(api_client, mock_db):
     """GET /satellite/providers returns provider list and budget."""
     mock_db.query.return_value.filter.return_value.scalar.return_value = 0.0
 
-    with patch("app.modules.satellite_providers.list_providers", return_value=["planet", "capella"]):
+    with patch(
+        "app.modules.satellite_providers.list_providers", return_value=["planet", "capella"]
+    ):
         resp = api_client.get("/api/v1/satellite/providers")
 
     assert resp.status_code == 200
@@ -31,6 +31,7 @@ def test_list_providers(api_client, mock_db):
 # GET /satellite/orders
 # ---------------------------------------------------------------------------
 
+
 def test_list_orders(api_client, mock_db):
     """GET /satellite/orders returns paginated list."""
     order = MagicMock()
@@ -40,8 +41,8 @@ def test_list_orders(api_client, mock_db):
     order.external_order_id = None
     order.status = "draft"
     order.cost_usd = None
-    order.created_utc = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    order.updated_utc = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    order.created_utc = datetime(2026, 1, 1, tzinfo=UTC)
+    order.updated_utc = datetime(2026, 1, 1, tzinfo=UTC)
 
     q = mock_db.query.return_value.order_by.return_value
     q.filter.return_value = q  # chain .filter() calls
@@ -58,6 +59,7 @@ def test_list_orders(api_client, mock_db):
 # ---------------------------------------------------------------------------
 # GET /satellite/orders/{id}
 # ---------------------------------------------------------------------------
+
 
 def test_get_order_detail(api_client, mock_db):
     """GET /satellite/orders/{id} returns order columns."""
@@ -95,6 +97,7 @@ def test_get_order_not_found(api_client, mock_db):
 # POST /satellite/orders/search
 # ---------------------------------------------------------------------------
 
+
 def test_search_archive(api_client, mock_db):
     """POST /satellite/orders/search creates draft order."""
     mock_result = {
@@ -129,6 +132,7 @@ def test_search_archive_missing_alert_id(api_client, mock_db):
 # POST /satellite/orders/{id}/submit
 # ---------------------------------------------------------------------------
 
+
 def test_submit_order(api_client, mock_db):
     """POST /satellite/orders/{id}/submit calls submit_order."""
     with patch(
@@ -147,6 +151,7 @@ def test_submit_order(api_client, mock_db):
 # POST /satellite/orders/{id}/cancel
 # ---------------------------------------------------------------------------
 
+
 def test_cancel_order(api_client, mock_db):
     """POST /satellite/orders/{id}/cancel cancels the order."""
     with patch(
@@ -160,6 +165,7 @@ def test_cancel_order(api_client, mock_db):
 # ---------------------------------------------------------------------------
 # POST /satellite/orders/poll
 # ---------------------------------------------------------------------------
+
 
 def test_poll_orders(api_client, mock_db):
     """POST /satellite/orders/poll returns poll results."""
@@ -175,6 +181,7 @@ def test_poll_orders(api_client, mock_db):
 # ---------------------------------------------------------------------------
 # GET /satellite/budget
 # ---------------------------------------------------------------------------
+
 
 def test_budget_endpoint(api_client, mock_db):
     """GET /satellite/budget returns budget info."""

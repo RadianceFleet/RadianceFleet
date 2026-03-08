@@ -3,9 +3,10 @@
 Covers score_watchlist_stubs(), API exposure, CLI command, and pipeline integration.
 Uses in-memory SQLite for tests requiring real SQL queries.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,17 +14,17 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base  # noqa: F401 -- registers all models
-from app.models.base import FlagRiskEnum
-from app.models.vessel import Vessel
-from app.models.vessel_watchlist import VesselWatchlist
-from app.models.vessel_owner import VesselOwner
 from app.models.ais_point import AISPoint
+from app.models.base import FlagRiskEnum
 from app.models.gap_event import AISGapEvent
-
+from app.models.vessel import Vessel
+from app.models.vessel_owner import VesselOwner
+from app.models.vessel_watchlist import VesselWatchlist
 
 # ---------------------------------------------------------------------------
 # Shared fixture: in-memory SQLite session
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db():
@@ -47,6 +48,7 @@ def db():
 # Helper factories
 # ---------------------------------------------------------------------------
 
+
 def _make_vessel(db, mmsi, **kwargs) -> Vessel:
     v = Vessel(mmsi=mmsi, **kwargs)
     db.add(v)
@@ -64,7 +66,7 @@ def _add_watchlist(db, vessel_id, source="OFAC_SDN", is_active=True) -> VesselWa
 def _add_ais_point(db, vessel_id) -> AISPoint:
     p = AISPoint(
         vessel_id=vessel_id,
-        timestamp_utc=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        timestamp_utc=datetime(2024, 1, 1, tzinfo=UTC),
         lat=25.0,
         lon=55.0,
     )
@@ -76,8 +78,8 @@ def _add_ais_point(db, vessel_id) -> AISPoint:
 def _add_gap_event(db, vessel_id) -> AISGapEvent:
     g = AISGapEvent(
         vessel_id=vessel_id,
-        gap_start_utc=datetime(2024, 1, 1, tzinfo=timezone.utc),
-        gap_end_utc=datetime(2024, 1, 2, tzinfo=timezone.utc),
+        gap_start_utc=datetime(2024, 1, 1, tzinfo=UTC),
+        gap_end_utc=datetime(2024, 1, 2, tzinfo=UTC),
         duration_minutes=1440,
     )
     db.add(g)
@@ -90,7 +92,7 @@ def _add_verified_owner(db, vessel_id) -> VesselOwner:
         vessel_id=vessel_id,
         owner_name="Verified Owner LLC",
         verified_by="skylight",
-        verified_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        verified_at=datetime(2024, 1, 1, tzinfo=UTC),
     )
     db.add(o)
     db.flush()
@@ -131,6 +133,7 @@ _MINIMAL_CONFIG = {
 # Test 1: Basic score calculation
 # ---------------------------------------------------------------------------
 
+
 class TestBasicScoreCalculation:
     def test_ofac_stub_all_missing_metadata(self, db):
         """OFAC watchlist + high risk flag + missing DWT/type + no AIS.
@@ -138,9 +141,14 @@ class TestBasicScoreCalculation:
         """
         from app.modules.risk_scoring import score_watchlist_stubs
 
-        v = _make_vessel(db, "123456789",
-                         flag_risk_category=FlagRiskEnum.HIGH_RISK,
-                         deadweight=None, vessel_type=None, year_built=None)
+        v = _make_vessel(
+            db,
+            "123456789",
+            flag_risk_category=FlagRiskEnum.HIGH_RISK,
+            deadweight=None,
+            vessel_type=None,
+            year_built=None,
+        )
         _add_watchlist(db, v.vessel_id, source="OFAC_SDN")
         db.commit()
 
@@ -156,9 +164,14 @@ class TestBasicScoreCalculation:
         """Check all expected breakdown keys are present."""
         from app.modules.risk_scoring import score_watchlist_stubs
 
-        v = _make_vessel(db, "123456780",
-                         flag_risk_category=FlagRiskEnum.HIGH_RISK,
-                         deadweight=None, vessel_type=None, year_built=None)
+        v = _make_vessel(
+            db,
+            "123456780",
+            flag_risk_category=FlagRiskEnum.HIGH_RISK,
+            deadweight=None,
+            vessel_type=None,
+            year_built=None,
+        )
         _add_watchlist(db, v.vessel_id, source="OFAC_SDN")
         db.commit()
 
@@ -185,6 +198,7 @@ class TestBasicScoreCalculation:
 # Test 2: Verified owner removes unverified_ownership key
 # ---------------------------------------------------------------------------
 
+
 class TestVerifiedOwner:
     def test_verified_owner_removes_penalty(self, db):
         """Verified owner means unverified_ownership NOT in breakdown.
@@ -192,9 +206,14 @@ class TestVerifiedOwner:
         """
         from app.modules.risk_scoring import score_watchlist_stubs
 
-        v = _make_vessel(db, "111111111",
-                         flag_risk_category=FlagRiskEnum.HIGH_RISK,
-                         deadweight=None, vessel_type=None, year_built=None)
+        v = _make_vessel(
+            db,
+            "111111111",
+            flag_risk_category=FlagRiskEnum.HIGH_RISK,
+            deadweight=None,
+            vessel_type=None,
+            year_built=None,
+        )
         _add_watchlist(db, v.vessel_id, source="OFAC_SDN")
         _add_verified_owner(db, v.vessel_id)
         db.commit()
@@ -211,6 +230,7 @@ class TestVerifiedOwner:
 # Test 3: Enriched vessel (DWT + type set, vessel age 22 years)
 # ---------------------------------------------------------------------------
 
+
 class TestEnrichedVessel:
     def test_enriched_suezmax_vessel(self, db):
         """DWT=145000 (Suezmax), vessel_type set, year_built=2003 (22y old → age_20_25y=10).
@@ -220,11 +240,14 @@ class TestEnrichedVessel:
 
         current_year = datetime.utcnow().year
         year_built = current_year - 22
-        v = _make_vessel(db, "222222222",
-                         flag_risk_category=FlagRiskEnum.HIGH_RISK,
-                         deadweight=145_000,
-                         vessel_type="Crude Oil Tanker",
-                         year_built=year_built)
+        v = _make_vessel(
+            db,
+            "222222222",
+            flag_risk_category=FlagRiskEnum.HIGH_RISK,
+            deadweight=145_000,
+            vessel_type="Crude Oil Tanker",
+            year_built=year_built,
+        )
         _add_watchlist(db, v.vessel_id, source="OFAC_SDN")
         db.commit()
 
@@ -244,15 +267,19 @@ class TestEnrichedVessel:
 # Test 4: Stale score cleanup
 # ---------------------------------------------------------------------------
 
+
 class TestStaleScoreCleanup:
     def test_stale_score_cleared_when_ais_added(self, db):
         """Vessel with stub score + AIS point → score cleared."""
         from app.modules.risk_scoring import score_watchlist_stubs
 
-        v = _make_vessel(db, "333333333",
-                         flag_risk_category=FlagRiskEnum.HIGH_RISK,
-                         watchlist_stub_score=80,
-                         watchlist_stub_breakdown={"watchlist_OFAC_SDN": 50})
+        v = _make_vessel(
+            db,
+            "333333333",
+            flag_risk_category=FlagRiskEnum.HIGH_RISK,
+            watchlist_stub_score=80,
+            watchlist_stub_breakdown={"watchlist_OFAC_SDN": 50},
+        )
         _add_watchlist(db, v.vessel_id, source="OFAC_SDN")
         _add_ais_point(db, v.vessel_id)
         db.commit()
@@ -269,6 +296,7 @@ class TestStaleScoreCleanup:
 # ---------------------------------------------------------------------------
 # Test 5: AIS vessel excluded from stub scoring
 # ---------------------------------------------------------------------------
+
 
 class TestAISVesselExcluded:
     def test_vessel_with_ais_not_scored(self, db):
@@ -293,6 +321,7 @@ class TestAISVesselExcluded:
 # Test 6: Gap event vessel excluded from stub scoring
 # ---------------------------------------------------------------------------
 
+
 class TestGapEventVesselExcluded:
     def test_vessel_with_gap_not_scored(self, db):
         """Vessel with AIS gap events is NOT scored as a stub."""
@@ -314,6 +343,7 @@ class TestGapEventVesselExcluded:
 # ---------------------------------------------------------------------------
 # Test 7: Merged vessel excluded
 # ---------------------------------------------------------------------------
+
 
 class TestMergedVesselExcluded:
     def test_merged_vessel_not_scored(self, db):
@@ -338,6 +368,7 @@ class TestMergedVesselExcluded:
 # Test 8: Inactive watchlist → not scored
 # ---------------------------------------------------------------------------
 
+
 class TestInactiveWatchlist:
     def test_inactive_watchlist_not_scored(self, db):
         """Vessel with only inactive watchlist entry is NOT scored."""
@@ -358,9 +389,12 @@ class TestInactiveWatchlist:
         """Vessel with stub score whose watchlist is now inactive → score cleared."""
         from app.modules.risk_scoring import score_watchlist_stubs
 
-        v = _make_vessel(db, "777777778",
-                         watchlist_stub_score=60,
-                         watchlist_stub_breakdown={"watchlist_OFAC_SDN": 50})
+        v = _make_vessel(
+            db,
+            "777777778",
+            watchlist_stub_score=60,
+            watchlist_stub_breakdown={"watchlist_OFAC_SDN": 50},
+        )
         # No active watchlist entry
         _add_watchlist(db, v.vessel_id, source="OFAC_SDN", is_active=False)
         db.commit()
@@ -376,6 +410,7 @@ class TestInactiveWatchlist:
 # ---------------------------------------------------------------------------
 # Test 9: KSE watchlist source uses correct YAML key
 # ---------------------------------------------------------------------------
+
 
 class TestKSEWatchlistSource:
     def test_kse_shadow_uses_correct_yaml_value(self, db):
@@ -415,6 +450,7 @@ class TestKSEWatchlistSource:
 # Test 10: effective_score logic (last_risk_score=0 is valid — not overridden)
 # ---------------------------------------------------------------------------
 
+
 class TestEffectiveScoreAPI:
     def test_vessel_no_gap_score_returns_stub_as_effective(self, api_client, mock_db):
         """Vessel with no gap events: effective_score = watchlist_stub_score."""
@@ -429,6 +465,7 @@ class TestEffectiveScoreAPI:
         vessel.watchlist_stub_score = 78
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -472,6 +509,7 @@ class TestEffectiveScoreAPI:
         last_gap.risk_score = 0  # zero gap score — still valid!
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -501,6 +539,7 @@ class TestEffectiveScoreAPI:
 # Test 11: GET /vessels includes watchlist_stub_score and effective_score
 # ---------------------------------------------------------------------------
 
+
 class TestVesselSearchAPIFields:
     def test_search_response_includes_stub_fields(self, api_client, mock_db):
         """GET /vessels returns watchlist_stub_score and effective_score fields."""
@@ -515,6 +554,7 @@ class TestVesselSearchAPIFields:
         vessel.watchlist_stub_score = 55
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -544,6 +584,7 @@ class TestVesselSearchAPIFields:
 # Test 12: GET /vessels/{id} normal branch includes stub score and breakdown
 # ---------------------------------------------------------------------------
 
+
 class TestVesselDetailNormalBranch:
     def _make_vessel_detail_mock(self, mock_db):
         vessel = MagicMock()
@@ -570,6 +611,7 @@ class TestVesselDetailNormalBranch:
         vessel.watchlist_stub_breakdown = {"watchlist_OFAC_SDN": 50, "no_ais_history": 10}
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -585,7 +627,7 @@ class TestVesselDetailNormalBranch:
         return vessel
 
     def test_detail_normal_branch_includes_stub_score(self, api_client, mock_db):
-        vessel = self._make_vessel_detail_mock(mock_db)
+        self._make_vessel_detail_mock(mock_db)
         resp = api_client.get("/api/v1/vessels/10")
         assert resp.status_code == 200
         data = resp.json()
@@ -596,6 +638,7 @@ class TestVesselDetailNormalBranch:
 # ---------------------------------------------------------------------------
 # Test 13: GET /vessels/{id} absorbed branch returns stub score as None
 # ---------------------------------------------------------------------------
+
 
 class TestVesselDetailAbsorbedBranch:
     def test_absorbed_branch_returns_null_stub_fields(self, api_client, mock_db):
@@ -623,6 +666,7 @@ class TestVesselDetailAbsorbedBranch:
         vessel.watchlist_stub_breakdown = None
 
         call_count = [0]
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
@@ -649,6 +693,7 @@ class TestVesselDetailAbsorbedBranch:
 # Test 14: WATCHLIST_STUB_SCORING_ENABLED=False → scored=0, cleared=0
 # ---------------------------------------------------------------------------
 
+
 class TestFeatureFlag:
     def test_disabled_flag_returns_zero_counts(self, db):
         """When feature is disabled, no scoring occurs."""
@@ -670,6 +715,7 @@ class TestFeatureFlag:
 # Test 15: Pipeline step: discover_dark_vessels() result includes stub_scoring
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineStepIntegration:
     def test_discover_dark_vessels_includes_stub_scoring_step(self, api_client, mock_db):
         """POST /discover-dark-vessels result should include steps.stub_scoring."""
@@ -686,9 +732,7 @@ class TestPipelineStepIntegration:
 
         with patch("app.modules.dark_vessel_discovery.discover_dark_vessels") as mock_discover:
             mock_discover.return_value = {
-                "steps": {
-                    "stub_scoring": {"status": "ok", "detail": {"scored": 2, "cleared": 0}}
-                },
+                "steps": {"stub_scoring": {"status": "ok", "detail": {"scored": 2, "cleared": 0}}},
                 "alerts": [],
                 "summary": {},
             }
@@ -704,6 +748,7 @@ class TestPipelineStepIntegration:
 # ---------------------------------------------------------------------------
 # Test 16: rescore_all_alerts() result includes stub_scored + stub_cleared
 # ---------------------------------------------------------------------------
+
 
 class TestRescoreIncludesStubResults:
     def test_rescore_includes_stub_keys(self, db):
@@ -723,15 +768,19 @@ class TestRescoreIncludesStubResults:
 # Test 17: VLCC size multiplier applies 1.3x
 # ---------------------------------------------------------------------------
 
+
 class TestVLCCSizeMultiplier:
     def test_vlcc_gets_1_3x_multiplier(self, db):
         """VLCC (DWT >= 200000) gets 1.3x size multiplier."""
         from app.modules.risk_scoring import score_watchlist_stubs
 
-        v = _make_vessel(db, "700700700",
-                         deadweight=210_000,  # VLCC
-                         vessel_type="Crude Oil Tanker",
-                         year_built=None)
+        v = _make_vessel(
+            db,
+            "700700700",
+            deadweight=210_000,  # VLCC
+            vessel_type="Crude Oil Tanker",
+            year_built=None,
+        )
         _add_watchlist(db, v.vessel_id, source="OFAC_SDN")
         db.commit()
 
@@ -750,6 +799,7 @@ class TestVLCCSizeMultiplier:
 # ---------------------------------------------------------------------------
 # Test 18: Sub-Panamax (DWT < 60000) → 1.0x multiplier
 # ---------------------------------------------------------------------------
+
 
 class TestSubPanamaxMultiplier:
     def test_sub_panamax_gets_1_0x_multiplier(self, db):
@@ -773,6 +823,7 @@ class TestSubPanamaxMultiplier:
 # Test 19: Unknown DWT → 1.0x multiplier
 # ---------------------------------------------------------------------------
 
+
 class TestUnknownDWTMultiplier:
     def test_unknown_dwt_uses_1_0x_multiplier(self, db):
         """Vessel with no DWT uses 1.0x multiplier (aframax baseline)."""
@@ -795,6 +846,7 @@ class TestUnknownDWTMultiplier:
 # Test 20: Score capped at 200
 # ---------------------------------------------------------------------------
 
+
 class TestScoreCap:
     def test_score_capped_at_200(self, db):
         """Score cannot exceed 200 even with many signals."""
@@ -802,15 +854,23 @@ class TestScoreCap:
 
         # OFAC(50) + KSE(30) + EU(50) + high_risk_flag(15) + missing_dwt(8) +
         # missing_type(5) + no_ais(10) + unverified(8) = 176 × 1.3 = 228.8 → capped at 200
-        v = _make_vessel(db, "123123123",
-                         flag_risk_category=FlagRiskEnum.HIGH_RISK,
-                         deadweight=250_000,  # VLCC → 1.3x
-                         vessel_type=None, year_built=None)
+        v = _make_vessel(
+            db,
+            "123123123",
+            flag_risk_category=FlagRiskEnum.HIGH_RISK,
+            deadweight=250_000,  # VLCC → 1.3x
+            vessel_type=None,
+            year_built=None,
+        )
 
         # Add multiple watchlist sources
         db.add(VesselWatchlist(vessel_id=v.vessel_id, watchlist_source="OFAC_SDN", is_active=True))
-        db.add(VesselWatchlist(vessel_id=v.vessel_id, watchlist_source="EU_COUNCIL", is_active=True))
-        db.add(VesselWatchlist(vessel_id=v.vessel_id, watchlist_source="KSE_SHADOW", is_active=True))
+        db.add(
+            VesselWatchlist(vessel_id=v.vessel_id, watchlist_source="EU_COUNCIL", is_active=True)
+        )
+        db.add(
+            VesselWatchlist(vessel_id=v.vessel_id, watchlist_source="KSE_SHADOW", is_active=True)
+        )
         db.commit()
 
         with patch("app.config.settings.WATCHLIST_STUB_SCORING_ENABLED", True):
@@ -824,6 +884,7 @@ class TestScoreCap:
 # Test 21: Multiple watchlists (OFAC + KSE) → both contribute to breakdown
 # ---------------------------------------------------------------------------
 
+
 class TestMultipleWatchlists:
     def test_multiple_sources_contribute(self, db):
         """OFAC + KSE_SHADOW → both watchlist keys appear in breakdown."""
@@ -831,7 +892,9 @@ class TestMultipleWatchlists:
 
         v = _make_vessel(db, "321321321", deadweight=None, vessel_type=None)
         db.add(VesselWatchlist(vessel_id=v.vessel_id, watchlist_source="OFAC_SDN", is_active=True))
-        db.add(VesselWatchlist(vessel_id=v.vessel_id, watchlist_source="KSE_SHADOW", is_active=True))
+        db.add(
+            VesselWatchlist(vessel_id=v.vessel_id, watchlist_source="KSE_SHADOW", is_active=True)
+        )
         db.commit()
 
         with patch("app.config.settings.WATCHLIST_STUB_SCORING_ENABLED", True):
@@ -849,6 +912,7 @@ class TestMultipleWatchlists:
 # Test 22: GET /health/data-freshness includes watchlist_stubs_unscored
 # ---------------------------------------------------------------------------
 
+
 class TestDataFreshnessEndpoint:
     def test_data_freshness_includes_stubs_unscored(self, api_client, mock_db):
         """GET /health/data-freshness response includes watchlist_stubs_unscored."""
@@ -856,7 +920,9 @@ class TestDataFreshnessEndpoint:
         mock_db.query.return_value.filter.return_value.scalar.return_value = 0
         mock_db.query.return_value.filter.return_value.filter.return_value.scalar.return_value = 0
         mock_db.query.return_value.distinct.return_value = mock_db.query.return_value
-        mock_db.query.return_value.filter.return_value.distinct.return_value = mock_db.query.return_value
+        mock_db.query.return_value.filter.return_value.distinct.return_value = (
+            mock_db.query.return_value
+        )
 
         resp = api_client.get("/api/v1/health/data-freshness")
         assert resp.status_code == 200
@@ -867,6 +933,7 @@ class TestDataFreshnessEndpoint:
 # ---------------------------------------------------------------------------
 # Test 23: Empty stub list → scored=0, cleared=0, no error
 # ---------------------------------------------------------------------------
+
 
 class TestEmptyStubList:
     def test_empty_db_returns_zero_counts(self, db):
@@ -883,6 +950,7 @@ class TestEmptyStubList:
 # Test 24: _vessel_age_points() helper correct for each age band
 # ---------------------------------------------------------------------------
 
+
 class TestVesselAgePointsHelper:
     def _make_mock_vessel(self, year_built, flag_risk="unknown"):
         v = MagicMock()
@@ -892,6 +960,7 @@ class TestVesselAgePointsHelper:
 
     def test_age_under_10_negative(self):
         from app.modules.risk_scoring import _vessel_age_points
+
         current_year = datetime.utcnow().year
         v = self._make_mock_vessel(current_year - 5)
         result = _vessel_age_points(v, _MINIMAL_CONFIG, current_year)
@@ -901,6 +970,7 @@ class TestVesselAgePointsHelper:
 
     def test_age_15_to_20_positive(self):
         from app.modules.risk_scoring import _vessel_age_points
+
         current_year = datetime.utcnow().year
         v = self._make_mock_vessel(current_year - 17)
         result = _vessel_age_points(v, _MINIMAL_CONFIG, current_year)
@@ -908,6 +978,7 @@ class TestVesselAgePointsHelper:
 
     def test_age_25_plus_high_risk_flag(self):
         from app.modules.risk_scoring import _vessel_age_points
+
         current_year = datetime.utcnow().year
         v = MagicMock()
         v.year_built = current_year - 30
@@ -918,6 +989,7 @@ class TestVesselAgePointsHelper:
 
     def test_age_25_plus_no_high_risk(self):
         from app.modules.risk_scoring import _vessel_age_points
+
         current_year = datetime.utcnow().year
         v = self._make_mock_vessel(current_year - 30, flag_risk="low_risk")
         result = _vessel_age_points(v, _MINIMAL_CONFIG, current_year)
@@ -925,6 +997,7 @@ class TestVesselAgePointsHelper:
 
     def test_year_built_none_returns_none(self):
         from app.modules.risk_scoring import _vessel_age_points
+
         v = MagicMock()
         v.year_built = None
         result = _vessel_age_points(v, _MINIMAL_CONFIG, 2026)
@@ -935,10 +1008,12 @@ class TestVesselAgePointsHelper:
 # Test 25: score-stubs CLI command runs without error
 # ---------------------------------------------------------------------------
 
+
 class TestScoreStubsCLI:
     def test_score_stubs_cli_command_exists(self):
         """score-stubs CLI command should be importable and callable."""
         from app.cli import app as typer_app
+
         # Verify the command is registered
         command_names = [cmd.name for cmd in typer_app.registered_commands]
         assert "score-stubs" in command_names
@@ -946,6 +1021,7 @@ class TestScoreStubsCLI:
     def test_score_stubs_cli_runs_scoring(self, db):
         """score-stubs CLI command calls score_watchlist_stubs and prints result."""
         from typer.testing import CliRunner
+
         from app.cli import app as typer_app
 
         v = _make_vessel(db, "456456456")
@@ -953,9 +1029,11 @@ class TestScoreStubsCLI:
         db.commit()
 
         runner = CliRunner()
-        with patch("app.modules.risk_scoring.score_watchlist_stubs") as mock_fn, \
-             patch("app.database.SessionLocal", return_value=db), \
-             patch("app.config.settings.WATCHLIST_STUB_SCORING_ENABLED", True):
+        with (
+            patch("app.modules.risk_scoring.score_watchlist_stubs") as mock_fn,
+            patch("app.database.SessionLocal", return_value=db),
+            patch("app.config.settings.WATCHLIST_STUB_SCORING_ENABLED", True),
+        ):
             mock_fn.return_value = {"scored": 1, "cleared": 0}
             result = runner.invoke(typer_app, ["score-stubs"])
             # Should not crash

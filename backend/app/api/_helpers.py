@@ -1,11 +1,11 @@
 """Shared utilities for route sub-modules."""
+
 from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import yaml
 from fastapi import HTTPException, UploadFile
@@ -34,13 +34,44 @@ if _coverage_path.exists():
 
 _REGION_MATCH_ORDER: list[tuple[str, list[str]]] = [
     ("Nakhodka", ["nakhodka"]),
-    ("Baltic", ["baltic", "primorsk", "ust luga", "kaliningrad", "oresund", "great belt", "murmansk"]),
+    (
+        "Baltic",
+        ["baltic", "primorsk", "ust luga", "kaliningrad", "oresund", "great belt", "murmansk"],
+    ),
     ("Turkish Straits", ["turkish", "bosphorus", "dardanelles", "ceyhan", "iskenderun"]),
     ("Black Sea", ["black sea", "kavkaz", "novorossiysk", "crimea", "bulgaria"]),
     ("Persian Gulf", ["hormuz", "fujairah", "khor al zubair", "basra", "gulf of oman"]),
     ("Singapore", ["singapore", "tanjung pelepas", "malacca"]),
-    ("Mediterranean", ["mediterranean", "ceuta", "gibraltar", "laconian", "malta", "hurd", "ain sukhna", "nador", "cyprus", "syria", "ras lanuf"]),
-    ("Far East", ["kozmino", "east china", "de kastri", "sakhalin", "daesan", "onsan", "ulsan", "yeosu", "shandong"]),
+    (
+        "Mediterranean",
+        [
+            "mediterranean",
+            "ceuta",
+            "gibraltar",
+            "laconian",
+            "malta",
+            "hurd",
+            "ain sukhna",
+            "nador",
+            "cyprus",
+            "syria",
+            "ras lanuf",
+        ],
+    ),
+    (
+        "Far East",
+        [
+            "kozmino",
+            "east china",
+            "de kastri",
+            "sakhalin",
+            "daesan",
+            "onsan",
+            "ulsan",
+            "yeosu",
+            "shandong",
+        ],
+    ),
 ]
 
 
@@ -56,25 +87,25 @@ def _get_coverage_quality(corridor_name: str) -> str:
     return "UNKNOWN"
 
 
-def _compute_data_age_hours(vessel, now) -> Optional[float]:
+def _compute_data_age_hours(vessel, now) -> float | None:
     """Compute data age in hours from vessel.last_ais_received_utc."""
     try:
         last_utc = getattr(vessel, "last_ais_received_utc", None)
         if last_utc is None or not isinstance(last_utc, datetime):
             return None
-        tz_last = last_utc.replace(tzinfo=timezone.utc) if last_utc.tzinfo is None else last_utc
+        tz_last = last_utc.replace(tzinfo=UTC) if last_utc.tzinfo is None else last_utc
         return round((now - tz_last).total_seconds() / 3600, 1)
     except (TypeError, AttributeError):
         return None
 
 
-def _compute_freshness_warning(vessel, now) -> Optional[str]:
+def _compute_freshness_warning(vessel, now) -> str | None:
     """Return warning string if vessel AIS data is stale (>48h)."""
     try:
         last_utc = getattr(vessel, "last_ais_received_utc", None)
         if last_utc is None or not isinstance(last_utc, datetime):
             return None
-        tz_last = last_utc.replace(tzinfo=timezone.utc) if last_utc.tzinfo is None else last_utc
+        tz_last = last_utc.replace(tzinfo=UTC) if last_utc.tzinfo is None else last_utc
         if (now - tz_last).total_seconds() > 48 * 3600:
             return "AIS data is more than 48 hours old"
         return None
@@ -82,10 +113,18 @@ def _compute_freshness_warning(vessel, now) -> Optional[str]:
         return None
 
 
-def _audit_log(db: Session, action: str, entity_type: str, entity_id: int = None,
-               details: dict = None, request=None, analyst_id=None) -> None:
+def _audit_log(
+    db: Session,
+    action: str,
+    entity_type: str,
+    entity_id: int = None,
+    details: dict = None,
+    request=None,
+    analyst_id=None,
+) -> None:
     """Record an analyst action for audit trail (PRD NFR5)."""
     from app.models.audit_log import AuditLog
+
     log = AuditLog(
         action=action,
         entity_type=entity_type,

@@ -4,28 +4,29 @@ history sub-commands.
 
 Uses in-memory SQLite for model/module tests, real in-memory SQLite for API tests.
 """
+
 from __future__ import annotations
 
-import pytest
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.models import Base  # registers all models
 from app.models.ais_point import AISPoint
-from app.models.vessel import Vessel
-from app.models.corridor import Corridor
-from app.models.gap_event import AISGapEvent
-from app.models.spoofing_anomaly import SpoofingAnomaly
-from app.models.loitering_event import LoiteringEvent
-from app.models.sts_transfer import StsTransferEvent
-from app.models.port_call import PortCall
-from app.models.data_coverage_window import DataCoverageWindow
+from app.models.base import AlertStatusEnum, SpoofingTypeEnum, STSDetectionTypeEnum
 from app.models.collection_run import CollectionRun
-from app.models.base import SpoofingTypeEnum, AlertStatusEnum, STSDetectionTypeEnum
+from app.models.corridor import Corridor
+from app.models.data_coverage_window import DataCoverageWindow
+from app.models.gap_event import AISGapEvent
+from app.models.loitering_event import LoiteringEvent
+from app.models.port_call import PortCall
+from app.models.spoofing_anomaly import SpoofingAnomaly
+from app.models.sts_transfer import StsTransferEvent
+from app.models.vessel import Vessel
 
 # API prefix used by app.main
 API = "/api/v1"
@@ -34,6 +35,7 @@ API = "/api/v1"
 # ---------------------------------------------------------------------------
 # In-memory SQLite fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db():
@@ -56,6 +58,7 @@ def db():
 # ---------------------------------------------------------------------------
 # API fixtures (real in-memory SQLite)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def real_api_db():
@@ -87,8 +90,9 @@ def real_api_db():
 def real_api_client(real_api_db):
     """TestClient with a real in-memory SQLite for queries that need actual SQL."""
     from fastapi.testclient import TestClient
-    from app.main import app
+
     from app.database import get_db
+    from app.main import app
 
     def override():
         yield real_api_db
@@ -103,6 +107,7 @@ def real_api_client(real_api_db):
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _vessel(db, mmsi="123456789", name="TEST VESSEL", **kw):
     v = Vessel(mmsi=mmsi, name=name, **kw)
     db.add(v)
@@ -116,8 +121,10 @@ def _ais_point(db, vessel, ts, lat=60.0, lon=25.0, source=None, **kw):
     pt = AISPoint(
         vessel_id=vessel.vessel_id,
         timestamp_utc=naive_ts,
-        lat=lat, lon=lon,
-        sog=10.0, cog=180.0,
+        lat=lat,
+        lon=lon,
+        sog=10.0,
+        cog=180.0,
         source=source,
         **kw,
     )
@@ -156,7 +163,7 @@ def _coverage_window(db, source, d_from, d_to, status="completed", **kw):
         date_from=d_from,
         date_to=d_to,
         status=status,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         **kw,
     )
     db.add(w)
@@ -168,6 +175,7 @@ def _coverage_window(db, source, d_from, d_to, status="completed", **kw):
 # TestRetentionPolicies
 # ===========================================================================
 
+
 class TestRetentionPolicies:
     """Tests for CollectionScheduler._prune_old_points retention logic."""
 
@@ -176,7 +184,7 @@ class TestRetentionPolicies:
         from app.modules.collection_scheduler import CollectionScheduler
 
         v = _vessel(db, mmsi="111111111")
-        old_ts = datetime.now(timezone.utc) - timedelta(days=200)
+        old_ts = datetime.now(UTC) - timedelta(days=200)
         _ais_point(db, v, old_ts, source="noaa")
         _ais_point(db, v, old_ts, source="dma")
         _ais_point(db, v, old_ts, source="gfw")
@@ -194,8 +202,8 @@ class TestRetentionPolicies:
         from app.modules.collection_scheduler import CollectionScheduler
 
         v = _vessel(db, mmsi="222222222")
-        old_ts = datetime.now(timezone.utc) - timedelta(days=200)
-        recent_ts = datetime.now(timezone.utc) - timedelta(days=10)
+        old_ts = datetime.now(UTC) - timedelta(days=200)
+        recent_ts = datetime.now(UTC) - timedelta(days=10)
         _ais_point(db, v, old_ts, source="aisstream")
         _ais_point(db, v, recent_ts, source="aisstream")
         db.commit()
@@ -212,7 +220,7 @@ class TestRetentionPolicies:
         from app.modules.collection_scheduler import CollectionScheduler
 
         v = _vessel(db, mmsi="333333333")
-        old_ts = datetime.now(timezone.utc) - timedelta(days=200)
+        old_ts = datetime.now(UTC) - timedelta(days=200)
         _ais_point(db, v, old_ts, source=None)
         db.commit()
 
@@ -227,8 +235,8 @@ class TestRetentionPolicies:
 # TestDataCoverageWindow
 # ===========================================================================
 
-class TestDataCoverageWindow:
 
+class TestDataCoverageWindow:
     def test_model_creation(self, db):
         """DataCoverageWindow can be created and persisted."""
         w = _coverage_window(db, "noaa", date(2024, 1, 1), date(2024, 1, 31))
@@ -249,8 +257,13 @@ class TestDataCoverageWindow:
     def test_gfw_partial_with_vessels_queried(self, db):
         """GFW partial window stores vessels_queried and vessels_total correctly."""
         w = _coverage_window(
-            db, "gfw-gaps", date(2024, 6, 1), date(2024, 6, 30),
-            status="completed", vessels_queried=45, vessels_total=100,
+            db,
+            "gfw-gaps",
+            date(2024, 6, 1),
+            date(2024, 6, 30),
+            status="completed",
+            vessels_queried=45,
+            vessels_total=100,
         )
         db.commit()
         loaded = db.query(DataCoverageWindow).filter_by(window_id=w.window_id).one()
@@ -262,15 +275,17 @@ class TestDataCoverageWindow:
 # TestCoverageTracker
 # ===========================================================================
 
-class TestCoverageTracker:
 
+class TestCoverageTracker:
     def test_get_covered_dates_empty(self, db):
         from app.modules.coverage_tracker import get_covered_dates
+
         result = get_covered_dates(db, "noaa")
         assert result == set()
 
     def test_get_covered_dates_multi_window(self, db):
         from app.modules.coverage_tracker import get_covered_dates
+
         _coverage_window(db, "noaa", date(2024, 1, 1), date(2024, 1, 3))
         _coverage_window(db, "noaa", date(2024, 1, 10), date(2024, 1, 11))
         db.commit()
@@ -284,6 +299,7 @@ class TestCoverageTracker:
 
     def test_find_coverage_gaps_no_gaps(self, db):
         from app.modules.coverage_tracker import find_coverage_gaps
+
         _coverage_window(db, "noaa", date(2024, 1, 1), date(2024, 1, 31))
         db.commit()
         gaps = find_coverage_gaps(db, "noaa", date(2024, 1, 1), date(2024, 1, 31))
@@ -291,6 +307,7 @@ class TestCoverageTracker:
 
     def test_find_coverage_gaps_partial_range(self, db):
         from app.modules.coverage_tracker import find_coverage_gaps
+
         _coverage_window(db, "noaa", date(2024, 1, 1), date(2024, 1, 10))
         db.commit()
         gaps = find_coverage_gaps(db, "noaa", date(2024, 1, 1), date(2024, 1, 15))
@@ -300,6 +317,7 @@ class TestCoverageTracker:
     def test_find_coverage_gaps_multi_disjoint(self, db):
         """Two non-adjacent windows leave gaps in between and after."""
         from app.modules.coverage_tracker import find_coverage_gaps
+
         _coverage_window(db, "dma", date(2024, 1, 1), date(2024, 1, 5))
         _coverage_window(db, "dma", date(2024, 1, 10), date(2024, 1, 15))
         db.commit()
@@ -310,9 +328,14 @@ class TestCoverageTracker:
 
     def test_record_coverage_window_completed(self, db):
         from app.modules.coverage_tracker import record_coverage_window
+
         w = record_coverage_window(
-            db, "noaa", date(2024, 3, 1), date(2024, 3, 31),
-            status="completed", points_imported=5000,
+            db,
+            "noaa",
+            date(2024, 3, 1),
+            date(2024, 3, 31),
+            status="completed",
+            points_imported=5000,
         )
         db.commit()
         assert w.window_id is not None
@@ -321,9 +344,15 @@ class TestCoverageTracker:
 
     def test_record_coverage_window_failed(self, db):
         from app.modules.coverage_tracker import record_coverage_window
+
         w = record_coverage_window(
-            db, "dma", date(2024, 3, 1), date(2024, 3, 15),
-            status="failed", errors=3, notes="API timeout",
+            db,
+            "dma",
+            date(2024, 3, 1),
+            date(2024, 3, 15),
+            status="failed",
+            errors=3,
+            notes="API timeout",
         )
         db.commit()
         assert w.status == "failed"
@@ -332,20 +361,28 @@ class TestCoverageTracker:
 
     def test_record_coverage_window_upsert(self, db):
         """record_coverage_window is idempotent: second call updates, not inserts."""
-        from app.modules.coverage_tracker import record_coverage_window
         from app.models.data_coverage_window import DataCoverageWindow
+        from app.modules.coverage_tracker import record_coverage_window
 
         record_coverage_window(
-            db, "noaa", date(2024, 5, 1), date(2024, 5, 1),
-            status="completed", points_imported=100,
+            db,
+            "noaa",
+            date(2024, 5, 1),
+            date(2024, 5, 1),
+            status="completed",
+            points_imported=100,
         )
         db.commit()
         assert db.query(DataCoverageWindow).count() == 1
 
         # Second call with same key — should update, not insert
         record_coverage_window(
-            db, "noaa", date(2024, 5, 1), date(2024, 5, 1),
-            status="completed", points_imported=999,
+            db,
+            "noaa",
+            date(2024, 5, 1),
+            date(2024, 5, 1),
+            status="completed",
+            points_imported=999,
         )
         db.commit()
         assert db.query(DataCoverageWindow).count() == 1
@@ -354,6 +391,7 @@ class TestCoverageTracker:
 
     def test_coverage_summary_per_source(self, db):
         from app.modules.coverage_tracker import coverage_summary
+
         _coverage_window(db, "noaa", date(2024, 1, 1), date(2024, 1, 10), points_imported=1000)
         _coverage_window(db, "noaa", date(2024, 1, 15), date(2024, 1, 20), points_imported=500)
         _coverage_window(db, "dma", date(2024, 2, 1), date(2024, 2, 28), points_imported=2000)
@@ -369,31 +407,46 @@ class TestCoverageTracker:
 
     def test_is_gfw_coverage_complete(self, db):
         from app.modules.coverage_tracker import is_gfw_coverage_complete
+
         _coverage_window(
-            db, "gfw-gaps", date(2024, 6, 1), date(2024, 6, 30),
-            vessels_queried=100, vessels_total=100,
+            db,
+            "gfw-gaps",
+            date(2024, 6, 1),
+            date(2024, 6, 30),
+            vessels_queried=100,
+            vessels_total=100,
         )
         db.commit()
         assert is_gfw_coverage_complete(db, "gfw-gaps", date(2024, 6, 1), date(2024, 6, 30)) is True
 
         # Incomplete window
         _coverage_window(
-            db, "gfw-encounters", date(2024, 6, 1), date(2024, 6, 30),
-            vessels_queried=50, vessels_total=100,
+            db,
+            "gfw-encounters",
+            date(2024, 6, 1),
+            date(2024, 6, 30),
+            vessels_queried=50,
+            vessels_total=100,
         )
         db.commit()
-        assert is_gfw_coverage_complete(db, "gfw-encounters", date(2024, 6, 1), date(2024, 6, 30)) is False
+        assert (
+            is_gfw_coverage_complete(db, "gfw-encounters", date(2024, 6, 1), date(2024, 6, 30))
+            is False
+        )
 
         # No window at all
-        assert is_gfw_coverage_complete(db, "gfw-port-visits", date(2024, 6, 1), date(2024, 6, 30)) is False
+        assert (
+            is_gfw_coverage_complete(db, "gfw-port-visits", date(2024, 6, 1), date(2024, 6, 30))
+            is False
+        )
 
 
 # ===========================================================================
 # TestHistoryScheduler
 # ===========================================================================
 
-class TestHistoryScheduler:
 
+class TestHistoryScheduler:
     def test_dry_run_no_db_writes(self, db):
         """_get_enabled_sources + _find_gaps does not write to DB."""
         from app.modules.history_scheduler import HistoryScheduler
@@ -402,7 +455,7 @@ class TestHistoryScheduler:
         enabled = scheduler._get_enabled_sources()
         assert enabled == []
 
-        gaps = scheduler._find_gaps(db, "noaa", 30)
+        scheduler._find_gaps(db, "noaa", 30)
         assert db.query(DataCoverageWindow).count() == 0
 
     @patch("app.modules.history_scheduler.settings")
@@ -434,11 +487,17 @@ class TestHistoryScheduler:
         mock_settings.NOAA_BACKFILL_ENABLED = True
         scheduler = HistoryScheduler(db_factory=lambda: db)
 
-        with patch("app.modules.noaa_client.fetch_and_import_noaa", return_value={"points": 100}) as mock_noaa:
+        with patch(
+            "app.modules.noaa_client.fetch_and_import_noaa", return_value={"points": 100}
+        ) as mock_noaa:
             scheduler._call_source(db, "noaa", date(2024, 1, 1), date(2024, 1, 31))
-            mock_noaa.assert_called_once_with(db, start_date=date(2024, 1, 1), end_date=date(2024, 1, 31))
+            mock_noaa.assert_called_once_with(
+                db, start_date=date(2024, 1, 1), end_date=date(2024, 1, 31)
+            )
 
-        with patch("app.modules.dma_client.fetch_and_import_dma", return_value={"points": 200}) as mock_dma:
+        with patch(
+            "app.modules.dma_client.fetch_and_import_dma", return_value={"points": 200}
+        ) as mock_dma:
             scheduler._call_source(db, "dma", date(2024, 2, 1), date(2024, 2, 14))
             mock_dma.assert_called_once_with(db, date(2024, 2, 1), date(2024, 2, 14))
 
@@ -447,20 +506,28 @@ class TestHistoryScheduler:
 # TestCorridorActivity
 # ===========================================================================
 
-class TestCorridorActivity:
 
+class TestCorridorActivity:
     def test_activity_weekly_buckets(self, real_api_client, real_api_db):
         corr = _corridor(real_api_db, name="Activity Test Corridor")
         v = _vessel(real_api_db, mmsi="200000001")
-        _gap_event(real_api_db, v,
-                   datetime(2024, 6, 3, 10, 0), datetime(2024, 6, 3, 16, 0),
-                   corridor=corr)
-        _gap_event(real_api_db, v,
-                   datetime(2024, 6, 10, 10, 0), datetime(2024, 6, 10, 16, 0),
-                   corridor=corr)
-        _gap_event(real_api_db, v,
-                   datetime(2024, 6, 12, 10, 0), datetime(2024, 6, 12, 16, 0),
-                   corridor=corr)
+        _gap_event(
+            real_api_db, v, datetime(2024, 6, 3, 10, 0), datetime(2024, 6, 3, 16, 0), corridor=corr
+        )
+        _gap_event(
+            real_api_db,
+            v,
+            datetime(2024, 6, 10, 10, 0),
+            datetime(2024, 6, 10, 16, 0),
+            corridor=corr,
+        )
+        _gap_event(
+            real_api_db,
+            v,
+            datetime(2024, 6, 12, 10, 0),
+            datetime(2024, 6, 12, 16, 0),
+            corridor=corr,
+        )
         real_api_db.commit()
 
         resp = real_api_client.get(
@@ -476,12 +543,12 @@ class TestCorridorActivity:
     def test_activity_monthly_granularity(self, real_api_client, real_api_db):
         corr = _corridor(real_api_db, name="Monthly Corridor")
         v = _vessel(real_api_db, mmsi="200000002")
-        _gap_event(real_api_db, v,
-                   datetime(2024, 6, 15, 0, 0), datetime(2024, 6, 15, 6, 0),
-                   corridor=corr)
-        _gap_event(real_api_db, v,
-                   datetime(2024, 7, 15, 0, 0), datetime(2024, 7, 15, 6, 0),
-                   corridor=corr)
+        _gap_event(
+            real_api_db, v, datetime(2024, 6, 15, 0, 0), datetime(2024, 6, 15, 6, 0), corridor=corr
+        )
+        _gap_event(
+            real_api_db, v, datetime(2024, 7, 15, 0, 0), datetime(2024, 7, 15, 6, 0), corridor=corr
+        )
         real_api_db.commit()
 
         resp = real_api_client.get(
@@ -510,6 +577,7 @@ class TestCorridorActivity:
 # TestExistingEndpointDateFilters
 # ===========================================================================
 
+
 class TestExistingEndpointDateFilters:
     """Verify date_from/date_to query params filter results on existing endpoints."""
 
@@ -517,13 +585,15 @@ class TestExistingEndpointDateFilters:
         v1 = _vessel(real_api_db, mmsi="300000001")
         v2 = _vessel(real_api_db, mmsi="300000002")
         sts1 = StsTransferEvent(
-            vessel_1_id=v1.vessel_id, vessel_2_id=v2.vessel_id,
+            vessel_1_id=v1.vessel_id,
+            vessel_2_id=v2.vessel_id,
             start_time_utc=datetime(2024, 1, 15, 10, 0),
             end_time_utc=datetime(2024, 1, 15, 12, 0),
             detection_type=STSDetectionTypeEnum.VISIBLE_VISIBLE,
         )
         sts2 = StsTransferEvent(
-            vessel_1_id=v1.vessel_id, vessel_2_id=v2.vessel_id,
+            vessel_1_id=v1.vessel_id,
+            vessel_2_id=v2.vessel_id,
             start_time_utc=datetime(2024, 6, 15, 10, 0),
             end_time_utc=datetime(2024, 6, 15, 12, 0),
             detection_type=STSDetectionTypeEnum.VISIBLE_VISIBLE,
@@ -612,10 +682,8 @@ class TestExistingEndpointDateFilters:
 
     def test_timeline_date_filter(self, real_api_client, real_api_db):
         v = _vessel(real_api_db, mmsi="300000006")
-        _gap_event(real_api_db, v,
-                   datetime(2024, 1, 10, 0, 0), datetime(2024, 1, 10, 6, 0))
-        _gap_event(real_api_db, v,
-                   datetime(2024, 6, 10, 0, 0), datetime(2024, 6, 10, 6, 0))
+        _gap_event(real_api_db, v, datetime(2024, 1, 10, 0, 0), datetime(2024, 1, 10, 6, 0))
+        _gap_event(real_api_db, v, datetime(2024, 6, 10, 0, 0), datetime(2024, 6, 10, 6, 0))
         real_api_db.commit()
 
         resp = real_api_client.get(
@@ -632,14 +700,14 @@ class TestExistingEndpointDateFilters:
 # TestCollectionStatusBugFix
 # ===========================================================================
 
-class TestCollectionStatusBugFix:
 
+class TestCollectionStatusBugFix:
     def test_collection_status_returns_runs(self, real_api_client, real_api_db):
         """GET /health/collection-status returns collection_runs list (not error)."""
         run = CollectionRun(
             source="aisstream",
-            started_at=datetime.now(timezone.utc) - timedelta(hours=1),
-            finished_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC) - timedelta(hours=1),
+            finished_at=datetime.now(UTC),
             points_imported=500,
             vessels_seen=10,
             status="completed",
@@ -660,27 +728,31 @@ class TestCollectionStatusBugFix:
 # TestCLIHistory
 # ===========================================================================
 
-class TestCLIHistory:
 
+class TestCLIHistory:
     def test_history_status_output(self):
         """'history status' renders a table without error."""
         from typer.testing import CliRunner
+
         from app.cli import app as cli_app
 
         runner = CliRunner()
         with patch("app.database.SessionLocal") as mock_sl:
             mock_db = MagicMock()
             mock_sl.return_value = mock_db
-            with patch("app.modules.coverage_tracker.coverage_summary", return_value={
-                "noaa": {
-                    "earliest": "2024-01-01",
-                    "latest": "2024-06-30",
-                    "completed_windows": 5,
-                    "total_points": 10000,
-                    "gap_count": 2,
-                    "next_gap": "2024-02-15",
+            with patch(
+                "app.modules.coverage_tracker.coverage_summary",
+                return_value={
+                    "noaa": {
+                        "earliest": "2024-01-01",
+                        "latest": "2024-06-30",
+                        "completed_windows": 5,
+                        "total_points": 10000,
+                        "gap_count": 2,
+                        "next_gap": "2024-02-15",
+                    },
                 },
-            }):
+            ):
                 result = runner.invoke(cli_app, ["history", "status"])
                 assert result.exit_code == 0
                 assert "noaa" in result.output
@@ -688,16 +760,20 @@ class TestCLIHistory:
     def test_history_gaps_output(self):
         """'history gaps --source noaa' lists gap ranges."""
         from typer.testing import CliRunner
+
         from app.cli import app as cli_app
 
         runner = CliRunner()
         with patch("app.database.SessionLocal") as mock_sl:
             mock_db = MagicMock()
             mock_sl.return_value = mock_db
-            with patch("app.modules.coverage_tracker.find_coverage_gaps", return_value=[
-                (date(2024, 2, 15), date(2024, 2, 20)),
-                (date(2024, 3, 1), date(2024, 3, 5)),
-            ]):
+            with patch(
+                "app.modules.coverage_tracker.find_coverage_gaps",
+                return_value=[
+                    (date(2024, 2, 15), date(2024, 2, 20)),
+                    (date(2024, 3, 1), date(2024, 3, 5)),
+                ],
+            ):
                 result = runner.invoke(cli_app, ["history", "gaps", "--source", "noaa"])
                 assert result.exit_code == 0
                 assert "2024-02-15" in result.output
@@ -706,6 +782,7 @@ class TestCLIHistory:
     def test_history_backfill_records_coverage(self):
         """'history backfill' calls fetch_and_import_noaa for noaa source."""
         from typer.testing import CliRunner
+
         from app.cli import app as cli_app
 
         runner = CliRunner()
@@ -718,14 +795,22 @@ class TestCLIHistory:
         with patch("app.database.SessionLocal") as mock_sl:
             mock_db = MagicMock()
             mock_sl.return_value = mock_db
-            with patch("app.modules.noaa_client.fetch_and_import_noaa",
-                       return_value=mock_stats) as mock_call:
-                result = runner.invoke(cli_app, [
-                    "history", "backfill",
-                    "--source", "noaa",
-                    "--start", "2024-01-01",
-                    "--end", "2024-01-31",
-                ])
+            with patch(
+                "app.modules.noaa_client.fetch_and_import_noaa", return_value=mock_stats
+            ) as mock_call:
+                result = runner.invoke(
+                    cli_app,
+                    [
+                        "history",
+                        "backfill",
+                        "--source",
+                        "noaa",
+                        "--start",
+                        "2024-01-01",
+                        "--end",
+                        "2024-01-31",
+                    ],
+                )
                 assert result.exit_code == 0
                 mock_call.assert_called_once()
                 assert "100" in result.output or "imported" in result.output.lower()

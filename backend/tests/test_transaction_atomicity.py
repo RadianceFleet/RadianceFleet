@@ -8,22 +8,23 @@ E3: Verifies that:
 E4: Verifies that:
   - AISObservation has an index on received_utc
 """
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
+import pytest
 from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base  # noqa: F401 -- registers all models
 from app.models.ais_observation import AISObservation
-from app.models.vessel import Vessel
 from app.models.verification_log import VerificationLog
-
+from app.models.vessel import Vessel
 
 # ── Shared fixture: in-memory SQLite session ─────────────────────────────────
+
 
 @pytest.fixture
 def db():
@@ -72,19 +73,25 @@ class TestPurgeOldNoAutoCommit:
 
     def test_purge_old_delete_is_uncommitted(self, db):
         """After purge_old, the deletion is visible in-session but not committed."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old_time = now - timedelta(hours=100)
         recent_time = now - timedelta(hours=1)
 
         old_obs = AISObservation(
-            mmsi="111111111", source="aishub",
-            timestamp_utc=old_time, received_utc=old_time,
-            lat=55.0, lon=25.0,
+            mmsi="111111111",
+            source="aishub",
+            timestamp_utc=old_time,
+            received_utc=old_time,
+            lat=55.0,
+            lon=25.0,
         )
         recent_obs = AISObservation(
-            mmsi="222222222", source="aisstream",
-            timestamp_utc=recent_time, received_utc=recent_time,
-            lat=56.0, lon=26.0,
+            mmsi="222222222",
+            source="aisstream",
+            timestamp_utc=recent_time,
+            received_utc=recent_time,
+            lat=56.0,
+            lon=26.0,
         )
         db.add_all([old_obs, recent_obs])
         db.commit()
@@ -106,13 +113,16 @@ class TestPurgeOldNoAutoCommit:
 
     def test_purge_old_caller_commits(self, db):
         """Caller can commit after purge_old to persist the deletion."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old_time = now - timedelta(hours=100)
 
         old_obs = AISObservation(
-            mmsi="333333333", source="kystverket",
-            timestamp_utc=old_time, received_utc=old_time,
-            lat=60.0, lon=10.0,
+            mmsi="333333333",
+            source="kystverket",
+            timestamp_utc=old_time,
+            received_utc=old_time,
+            lat=60.0,
+            lon=10.0,
         )
         db.add(old_obs)
         db.commit()
@@ -146,11 +156,14 @@ class TestPaidVerificationAtomicity:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_vessel
 
         # Mock budget to be exceeded: spend=500 + estimated_cost=0.50 > budget=500
-        with patch("app.modules.paid_verification.get_monthly_spend", return_value=500.0), \
-             patch("app.modules.paid_verification.settings") as mock_settings:
+        with (
+            patch("app.modules.paid_verification.get_monthly_spend", return_value=500.0),
+            patch("app.modules.paid_verification.settings") as mock_settings,
+        ):
             mock_settings.VERIFICATION_MONTHLY_BUDGET_USD = 500.0
 
             from app.modules.paid_verification import verify_vessel
+
             result = verify_vessel(mock_db, vessel_id=1, provider_name="spire")
 
         assert result.success is False
@@ -167,13 +180,16 @@ class TestPaidVerificationAtomicity:
         mock_vessel.mmsi = "123456789"
         mock_db.query.return_value.filter.return_value.first.return_value = mock_vessel
 
-        with patch("app.modules.paid_verification.get_monthly_spend", return_value=0.0), \
-             patch("app.modules.paid_verification.settings") as mock_settings:
+        with (
+            patch("app.modules.paid_verification.get_monthly_spend", return_value=0.0),
+            patch("app.modules.paid_verification.settings") as mock_settings,
+        ):
             mock_settings.VERIFICATION_MONTHLY_BUDGET_USD = 500.0
             mock_settings.SKYLIGHT_API_KEY = None  # Stub will return error
 
             from app.modules.paid_verification import verify_vessel
-            result = verify_vessel(mock_db, vessel_id=1, provider_name="skylight")
+
+            verify_vessel(mock_db, vessel_id=1, provider_name="skylight")
 
         # The log entry is added and flushed
         mock_db.add.assert_called()
@@ -192,7 +208,7 @@ class TestPaidVerificationAtomicity:
             from app.modules.paid_verification import verify_vessel
 
             # First call: normal verification (within budget)
-            result1 = verify_vessel(db, vessel.vessel_id, provider_name="skylight")
+            verify_vessel(db, vessel.vessel_id, provider_name="skylight")
 
             # Check log was added but not committed
             logs = db.query(VerificationLog).all()

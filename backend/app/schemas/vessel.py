@@ -1,23 +1,23 @@
 """Pydantic schemas for Vessel entity — used by FastAPI for request/response typing."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
 
 class VesselBase(BaseModel):
     mmsi: str
-    imo: Optional[str] = None
-    name: Optional[str] = None
-    flag: Optional[str] = None
-    vessel_type: Optional[str] = None
-    deadweight: Optional[float] = None
-    year_built: Optional[int] = None
-    ais_class: Optional[str] = None
-    flag_risk_category: Optional[str] = None
-    pi_coverage_status: Optional[str] = None
+    imo: str | None = None
+    name: str | None = None
+    flag: str | None = None
+    vessel_type: str | None = None
+    deadweight: float | None = None
+    year_built: int | None = None
+    ais_class: str | None = None
+    flag_risk_category: str | None = None
+    pi_coverage_status: str | None = None
     psc_detained_last_12m: bool = False
     psc_major_deficiencies_last_12m: int = 0
 
@@ -35,6 +35,6 @@ class VesselCreate(VesselBase):
 
 class VesselRead(VesselBase):
     vessel_id: int
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}

@@ -5,15 +5,14 @@ as well as the mmsi_cloning_detector module directly.
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
+
+from datetime import datetime
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # MMSI Cloning Detector — module-level tests
 # ---------------------------------------------------------------------------
+
 
 class TestMMSICloningDetector:
     """Tests for app.modules.mmsi_cloning_detector.detect_mmsi_cloning."""
@@ -103,6 +102,7 @@ class TestMMSICloningDetector:
 # API Detection Endpoints via TestClient
 # ---------------------------------------------------------------------------
 
+
 class TestGapDetectionEndpoint:
     """POST /api/v1/gaps/detect returns detection results."""
 
@@ -124,13 +124,17 @@ class TestSpoofingDetectionEndpoint:
     """POST /api/v1/spoofing/detect returns detection results."""
 
     def test_detect_spoofing_returns_200(self, api_client, mock_db):
-        with patch("app.modules.gap_detector.run_spoofing_detection", return_value={"anomalies": 3}):
+        with patch(
+            "app.modules.gap_detector.run_spoofing_detection", return_value={"anomalies": 3}
+        ):
             resp = api_client.post("/api/v1/spoofing/detect")
             assert resp.status_code == 200
             assert resp.json()["anomalies"] == 3
 
     def test_detect_spoofing_empty_db_returns_zero(self, api_client, mock_db):
-        with patch("app.modules.gap_detector.run_spoofing_detection", return_value={"anomalies": 0}):
+        with patch(
+            "app.modules.gap_detector.run_spoofing_detection", return_value={"anomalies": 0}
+        ):
             resp = api_client.post("/api/v1/spoofing/detect")
             assert resp.status_code == 200
             data = resp.json()
@@ -150,14 +154,26 @@ class TestLoiteringDetectionEndpoint:
     """POST /api/v1/loitering/detect returns detection results."""
 
     def test_detect_loitering_returns_200(self, api_client, mock_db):
-        with patch("app.modules.loitering_detector.run_loitering_detection", return_value={"loitering_events": 2}):
-            with patch("app.modules.loitering_detector.detect_laid_up_vessels", return_value={"laid_up_updated": 1}):
+        with patch(
+            "app.modules.loitering_detector.run_loitering_detection",
+            return_value={"loitering_events": 2},
+        ):
+            with patch(
+                "app.modules.loitering_detector.detect_laid_up_vessels",
+                return_value={"laid_up_updated": 1},
+            ):
                 resp = api_client.post("/api/v1/loitering/detect")
                 assert resp.status_code == 200
 
     def test_detect_loitering_empty_db(self, api_client, mock_db):
-        with patch("app.modules.loitering_detector.run_loitering_detection", return_value={"loitering_events": 0}):
-            with patch("app.modules.loitering_detector.detect_laid_up_vessels", return_value={"laid_up_updated": 0}):
+        with patch(
+            "app.modules.loitering_detector.run_loitering_detection",
+            return_value={"loitering_events": 0},
+        ):
+            with patch(
+                "app.modules.loitering_detector.detect_laid_up_vessels",
+                return_value={"laid_up_updated": 0},
+            ):
                 resp = api_client.post("/api/v1/loitering/detect")
                 assert resp.status_code == 200
 
@@ -204,6 +220,7 @@ class TestScoringEndpoints:
 # Dark Vessels
 # ---------------------------------------------------------------------------
 
+
 class TestDarkVesselEndpoints:
     """Tests for dark vessel list and detail endpoints."""
 
@@ -232,6 +249,7 @@ class TestDarkVesselEndpoints:
 # ---------------------------------------------------------------------------
 # Helper: _find_impossible_jumps unit test
 # ---------------------------------------------------------------------------
+
 
 class TestFindImpossibleJumps:
     """Direct test of mmsi_cloning_detector._find_impossible_jumps."""
@@ -285,15 +303,18 @@ class TestScoringFunction:
 
     def test_score_cloning_high_speed(self):
         from app.modules.mmsi_cloning_detector import _score_cloning
+
         score = _score_cloning(150.0)
         assert score == 55
 
     def test_score_cloning_medium_speed(self):
         from app.modules.mmsi_cloning_detector import _score_cloning
+
         score = _score_cloning(60.0)
         assert score == 40
 
     def test_score_cloning_low_speed(self):
         from app.modules.mmsi_cloning_detector import _score_cloning
+
         score = _score_cloning(25.0)
         assert score == 25

@@ -14,27 +14,27 @@ Covers:
 
 Uses in-memory SQLite for tests requiring real SQL queries.
 """
-import json
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
 
+import json
+from unittest.mock import MagicMock, patch
+
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base  # noqa: F401 -- registers all models
+from app.models.verification_log import VerificationLog
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
 from app.models.vessel_owner import VesselOwner
-from app.models.verification_log import VerificationLog
 from app.modules.paid_verification import (
+    VerificationResult,
     _apply_verification_result,
     verify_vessel,
-    VerificationResult,
 )
 
-
 # -- Shared fixture: in-memory SQLite session --
+
 
 @pytest.fixture
 def db():
@@ -55,6 +55,7 @@ def db():
 
 
 # -- Helper factories --
+
 
 def _make_vessel(db, mmsi="211456789", name="TEST VESSEL", **kwargs):
     v = Vessel(mmsi=mmsi, name=name, **kwargs)
@@ -82,12 +83,14 @@ def _make_result(provider="seaweb", success=True, data=None, error=None, cost_us
 
 # -- Test 1: _apply_verification_result writes DWT, vessel_type, year_built to Vessel --
 
-class TestApplyVerificationResultVesselFields:
 
+class TestApplyVerificationResultVesselFields:
     def test_writes_dwt_vessel_type_year_built(self, db):
         """_apply_verification_result writes all three vessel fields from result.data."""
         vessel = _make_vessel(db, deadweight=None, vessel_type=None, year_built=None)
-        result = _make_result(data={"dwt": 50000, "vessel_type": "Product Tanker", "year_built": 2005})
+        result = _make_result(
+            data={"dwt": 50000, "vessel_type": "Product Tanker", "year_built": 2005}
+        )
 
         _apply_verification_result(vessel, result, db)
 
@@ -104,7 +107,7 @@ class TestApplyVerificationResultVesselFields:
 
         assert vessel.deadweight == 75000.0
         assert vessel.vessel_type == "Crude Oil Tanker"  # unchanged
-        assert vessel.year_built == 2000              # unchanged
+        assert vessel.year_built == 2000  # unchanged
 
     def test_dwt_cast_to_float(self, db):
         """DWT is cast to float regardless of input type."""
@@ -129,20 +132,20 @@ class TestApplyVerificationResultVesselFields:
 
 # -- Test 2: _apply_verification_result creates VesselHistory records --
 
-class TestApplyVerificationResultVesselHistory:
 
+class TestApplyVerificationResultVesselHistory:
     def test_creates_three_history_records(self, db):
         """One VesselHistory row is created for each changed vessel field."""
         vessel = _make_vessel(db, deadweight=None, vessel_type=None, year_built=None)
-        result = _make_result(data={"dwt": 50000, "vessel_type": "Product Tanker", "year_built": 2005})
+        result = _make_result(
+            data={"dwt": 50000, "vessel_type": "Product Tanker", "year_built": 2005}
+        )
 
         _apply_verification_result(vessel, result, db)
         db.flush()
 
         histories = (
-            db.query(VesselHistory)
-            .filter(VesselHistory.vessel_id == vessel.vessel_id)
-            .all()
+            db.query(VesselHistory).filter(VesselHistory.vessel_id == vessel.vessel_id).all()
         )
         assert len(histories) == 3
         fields_changed = {h.field_changed for h in histories}
@@ -157,9 +160,7 @@ class TestApplyVerificationResultVesselHistory:
         db.flush()
 
         history = (
-            db.query(VesselHistory)
-            .filter(VesselHistory.vessel_id == vessel.vessel_id)
-            .first()
+            db.query(VesselHistory).filter(VesselHistory.vessel_id == vessel.vessel_id).first()
         )
         assert history.source == "paid_verification:seaweb"
 
@@ -191,17 +192,15 @@ class TestApplyVerificationResultVesselHistory:
         db.flush()
 
         histories = (
-            db.query(VesselHistory)
-            .filter(VesselHistory.vessel_id == vessel.vessel_id)
-            .all()
+            db.query(VesselHistory).filter(VesselHistory.vessel_id == vessel.vessel_id).all()
         )
         assert len(histories) == 0
 
 
 # -- Test 3: db.flush() is used, not db.commit() --
 
-class TestFlushNotCommit:
 
+class TestFlushNotCommit:
     def test_changes_visible_in_session_after_flush(self, db):
         """After _apply_verification_result, changes are visible within the same session."""
         vessel = _make_vessel(db, deadweight=None)
@@ -227,8 +226,8 @@ class TestFlushNotCommit:
 
 # -- Test 4: ism_manager NOT written if no existing VesselOwner --
 
-class TestISMManagerNoOwner:
 
+class TestISMManagerNoOwner:
     def test_no_new_owner_created_when_no_existing_owner(self, db):
         """When vessel has no VesselOwner, ism_manager data does not create a new row."""
         vessel = _make_vessel(db)
@@ -252,8 +251,8 @@ class TestISMManagerNoOwner:
 
 # -- Test 5: ism_manager written to most recent VesselOwner --
 
-class TestISMManagerMostRecentOwner:
 
+class TestISMManagerMostRecentOwner:
     def test_ism_manager_written_to_most_recent_owner(self, db):
         """ism_manager is written to the VesselOwner with the highest owner_id."""
         vessel = _make_vessel(db)
@@ -273,8 +272,8 @@ class TestISMManagerMostRecentOwner:
 
 # -- Test 6: pi_club written to most recent VesselOwner --
 
-class TestPIClubMostRecentOwner:
 
+class TestPIClubMostRecentOwner:
     def test_pi_club_written_to_most_recent_owner(self, db):
         """pi_club_name is written to the VesselOwner with the highest owner_id."""
         vessel = _make_vessel(db)
@@ -294,8 +293,8 @@ class TestPIClubMostRecentOwner:
 
 # -- Test 7: No VesselHistory for ism_manager/pi_club --
 
-class TestNoHistoryForOwnerFields:
 
+class TestNoHistoryForOwnerFields:
     def test_no_vessel_history_for_ism_manager(self, db):
         """VesselHistory is not recorded for ism_manager changes."""
         vessel = _make_vessel(db)
@@ -318,8 +317,8 @@ class TestNoHistoryForOwnerFields:
 
 # -- Test 8: No update when value unchanged --
 
-class TestNoUpdateWhenUnchanged:
 
+class TestNoUpdateWhenUnchanged:
     def test_no_history_when_deadweight_unchanged(self, db):
         """No VesselHistory is created when DWT in result equals existing vessel.deadweight."""
         vessel = _make_vessel(db, deadweight=50000.0)
@@ -329,9 +328,7 @@ class TestNoUpdateWhenUnchanged:
         db.flush()
 
         histories = (
-            db.query(VesselHistory)
-            .filter(VesselHistory.vessel_id == vessel.vessel_id)
-            .all()
+            db.query(VesselHistory).filter(VesselHistory.vessel_id == vessel.vessel_id).all()
         )
         assert len(histories) == 0
         assert vessel.deadweight == 50000.0  # unchanged
@@ -339,8 +336,8 @@ class TestNoUpdateWhenUnchanged:
 
 # -- Test 9: verify_vessel() calls _apply_verification_result on success --
 
-class TestVerifyVesselCallsApply:
 
+class TestVerifyVesselCallsApply:
     def test_verify_vessel_writes_fields_on_success(self, db):
         """verify_vessel() applies field write-back when provider returns success=True."""
         vessel = _make_vessel(db, deadweight=None, vessel_type=None, year_built=None)
@@ -394,8 +391,8 @@ class TestVerifyVesselCallsApply:
 
 # -- Test 10: VerificationLog.result_json stored correctly --
 
-class TestVerificationLogResultJson:
 
+class TestVerificationLogResultJson:
     def test_result_json_contains_full_data(self, db):
         """VerificationLog.result_json equals json.dumps(result.data) from provider."""
         vessel = _make_vessel(db, deadweight=None)
@@ -418,7 +415,9 @@ class TestVerificationLogResultJson:
             with patch("app.modules.paid_verification.get_monthly_spend", return_value=0.0):
                 verify_vessel(db, vessel.vessel_id, "seaweb")
 
-        log = db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        log = (
+            db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        )
         assert log is not None
         assert log.result_json == json.dumps(data)
 
@@ -444,7 +443,9 @@ class TestVerificationLogResultJson:
             with patch("app.modules.paid_verification.get_monthly_spend", return_value=0.0):
                 verify_vessel(db, vessel.vessel_id, "seaweb")
 
-        log = db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        log = (
+            db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        )
         assert len(log.result_summary) <= 500
         assert len(log.result_json) > 500  # full payload preserved
 
@@ -470,15 +471,17 @@ class TestVerificationLogResultJson:
             with patch("app.modules.paid_verification.get_monthly_spend", return_value=0.0):
                 verify_vessel(db, vessel.vessel_id, "seaweb")
 
-        log = db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        log = (
+            db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        )
         assert log.result_json is not None
         assert log.result_summary is not None
 
 
 # -- Test 11: VerificationLog.result_json is None for failed verification --
 
-class TestResultJsonNoneOnFailure:
 
+class TestResultJsonNoneOnFailure:
     def test_result_json_none_on_provider_failure(self, db):
         """result_json is None when provider returns success=False."""
         vessel = _make_vessel(db)
@@ -500,14 +503,16 @@ class TestResultJsonNoneOnFailure:
             with patch("app.modules.paid_verification.get_monthly_spend", return_value=0.0):
                 verify_vessel(db, vessel.vessel_id, "seaweb")
 
-        log = db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        log = (
+            db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        )
         assert log.result_json is None
 
 
 # -- Test 12: Invalid cast gracefully skipped --
 
-class TestInvalidCastGracefulSkip:
 
+class TestInvalidCastGracefulSkip:
     def test_invalid_year_built_not_crash(self, db):
         """A non-numeric year_built value is skipped without crashing."""
         vessel = _make_vessel(db, year_built=None)
@@ -530,8 +535,8 @@ class TestInvalidCastGracefulSkip:
 
 # -- Test 13: _apply_verification_result is no-op if result.success=False --
 
-class TestNoOpOnFailure:
 
+class TestNoOpOnFailure:
     def test_noop_when_success_false(self, db):
         """_apply_verification_result does nothing when result.success is False."""
         vessel = _make_vessel(db, deadweight=None)
@@ -549,17 +554,15 @@ class TestNoOpOnFailure:
         _apply_verification_result(vessel, result, db)
 
         histories = (
-            db.query(VesselHistory)
-            .filter(VesselHistory.vessel_id == vessel.vessel_id)
-            .all()
+            db.query(VesselHistory).filter(VesselHistory.vessel_id == vessel.vessel_id).all()
         )
         assert len(histories) == 0
 
 
 # -- Test 14: Budget exceeded: result_json is None (no data) --
 
-class TestBudgetExceededResultJsonNone:
 
+class TestBudgetExceededResultJsonNone:
     def test_result_json_none_when_budget_exceeded(self, db):
         """When budget is exceeded, VerificationLog.result_json is None."""
         vessel = _make_vessel(db)
@@ -590,8 +593,8 @@ class TestBudgetExceededResultJsonNone:
 
 # -- Test 15: result_json stores full data without 500-char truncation --
 
-class TestResultJsonFullPayload:
 
+class TestResultJsonFullPayload:
     def test_result_json_not_truncated(self, db):
         """result_json contains the full payload even when it exceeds 500 characters."""
         vessel = _make_vessel(db)
@@ -615,9 +618,11 @@ class TestResultJsonFullPayload:
             with patch("app.modules.paid_verification.get_monthly_spend", return_value=0.0):
                 verify_vessel(db, vessel.vessel_id, "seaweb")
 
-        log = db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        log = (
+            db.query(VerificationLog).filter(VerificationLog.vessel_id == vessel.vessel_id).first()
+        )
 
         parsed = json.loads(log.result_json)
         assert parsed["description"] == long_description  # full description preserved
-        assert len(log.result_summary) <= 500             # summary truncated
-        assert len(log.result_json) > 500                 # json full
+        assert len(log.result_summary) <= 500  # summary truncated
+        assert len(log.result_json) > 500  # json full

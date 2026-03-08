@@ -5,15 +5,13 @@ Verifies that previously-silent except blocks now:
   2. Fall back to safe defaults (not wrong values)
   3. Don't block the main flow
 """
-import json
+
 import logging
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
-
-import pytest
-
+from datetime import datetime
+from unittest.mock import MagicMock
 
 # ── E1.1: AIS observation dual-write logs on failure ─────────────────────────
+
 
 class TestAISObservationDualWrite:
     """Dual-write to ais_observations must log failures, not silently pass."""
@@ -39,10 +37,10 @@ class TestAISObservationDualWrite:
         with caplog.at_level(logging.WARNING, logger="app.modules.ingest"):
             _write_ais_observation(mock_db, vessel, row, ts, 10.0, 180.0, 200.0)
 
-        assert any("Failed to write AIS observation" in msg for msg in caplog.messages), \
+        assert any("Failed to write AIS observation" in msg for msg in caplog.messages), (
             f"Expected warning about failed AIS observation write, got: {caplog.messages}"
-        assert any("211234567" in msg for msg in caplog.messages), \
-            "Warning should include MMSI"
+        )
+        assert any("211234567" in msg for msg in caplog.messages), "Warning should include MMSI"
 
     def test_dual_write_increments_error_counter(self):
         """Each failed dual-write should increment the error counter."""
@@ -88,7 +86,9 @@ class TestAISObservationDualWrite:
 
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = None
-        mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
+        mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            None
+        )
 
         # Make db.add raise for AISObservation objects only
         from app.models.ais_observation import AISObservation
@@ -114,6 +114,7 @@ class TestAISObservationDualWrite:
 
 # ── E1.2: MMSI position check falls back to False, not True (+45) ───────────
 
+
 class TestMMSIPositionCheckFallback:
     """When MMSI position check fails, should NOT default to same_position=True (+45).
 
@@ -135,8 +136,9 @@ class TestMMSIPositionCheckFallback:
             logger.warning("Dark zone evasion scoring failed for vessel %s: %s", 1, e)
             _mmsi_same_position = False  # Fall back to 0
 
-        assert _mmsi_same_position is False, \
+        assert _mmsi_same_position is False, (
             "Position check failure should set _mmsi_same_position = False"
+        )
 
     def test_position_check_logs_warning_on_exception(self, caplog):
         """The except block should log a warning mentioning the vessel ID."""
@@ -170,6 +172,7 @@ class TestMMSIPositionCheckFallback:
 
 # ── E1.3: Port call voyage window logs warning + adds fallback note ──────────
 
+
 class TestPortCallVoyageWindowFallback:
     """Port call query failure should log warning and note fallback in breakdown."""
 
@@ -198,8 +201,9 @@ class TestPortCallVoyageWindowFallback:
             breakdown["_voyage_window_fallback"] = "default_30d_used"
 
         assert _voyage_window_days == 30, "Should fall back to 30-day window"
-        assert breakdown.get("_voyage_window_fallback") == "default_30d_used", \
+        assert breakdown.get("_voyage_window_fallback") == "default_30d_used", (
             "Should add fallback note to breakdown"
+        )
 
     def test_voyage_window_fallback_in_compute_gap_score(self):
         """When db=None, the port call path is skipped (db is not None guard)."""
@@ -242,6 +246,7 @@ class TestPortCallVoyageWindowFallback:
 
 
 # ── E1.4: Geometry deserialization logs warning, returns null ─────────────────
+
 
 class TestGeometryDeserializationLogging:
     """Geometry deserialization failure should log warning and return null geometry."""

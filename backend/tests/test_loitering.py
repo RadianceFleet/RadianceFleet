@@ -8,13 +8,14 @@ Tests cover:
 
 All tests are unit-level and require no database.
 """
-import pytest
-import statistics
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
+import pytest
 
 # ── Loitering bucket analysis tests ──────────────────────────────────────────
+
 
 def test_loitering_4h_detected():
     """6 hourly rows at SOG=0.2 kn → all bucket medians below 0.5 kn threshold and run >= 4h."""
@@ -118,12 +119,20 @@ def test_loitering_risk_score_baseline_vs_sustained():
     # Short loitering (8h) with a corridor → baseline
     run_length_hours = 8
     matched_corridor = MagicMock()
-    score = _RISK_SUSTAINED if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor else _RISK_BASELINE
+    score = (
+        _RISK_SUSTAINED
+        if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor
+        else _RISK_BASELINE
+    )
     assert score == _RISK_BASELINE
 
     # Long loitering (13h) with a corridor → sustained
     run_length_hours = 13
-    score = _RISK_SUSTAINED if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor else _RISK_BASELINE
+    score = (
+        _RISK_SUSTAINED
+        if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor
+        else _RISK_BASELINE
+    )
     assert score == _RISK_SUSTAINED
 
 
@@ -135,7 +144,11 @@ def test_loitering_risk_score_sustained_without_corridor():
 
     run_length_hours = 15
     matched_corridor = None  # No corridor
-    score = _RISK_SUSTAINED if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor else _RISK_BASELINE
+    score = (
+        _RISK_SUSTAINED
+        if run_length_hours >= _SUSTAINED_LOITER_HOURS and matched_corridor
+        else _RISK_BASELINE
+    )
     assert score == _RISK_BASELINE
 
 
@@ -167,12 +180,13 @@ def test_loitering_mixed_sog_window():
 
 # ── Laid-up vessel positional stability tests ─────────────────────────────────
 
+
 def test_vessel_laid_up_30d_flag():
     """31 daily positions spanning 0.30° (outside 0.033° bbox) → NOT laid up.
     31 positions within 0.002° spread → qualifies as laid up."""
     # Dataset 1: positions drifting 0.01° per day — too spread for laid-up
     lats_drifting = [55.0 + 0.01 * i for i in range(31)]
-    lons_drifting = [24.0 + 0.01 * i for i in range(31)]
+    [24.0 + 0.01 * i for i in range(31)]
 
     lat_range = max(lats_drifting) - min(lats_drifting)
     assert lat_range == pytest.approx(0.30, abs=0.01), f"Expected ~0.30 range, got {lat_range}"
@@ -182,7 +196,9 @@ def test_vessel_laid_up_30d_flag():
     stable_lats = [55.000 + 0.001 * (i % 3) for i in range(31)]
     stable_lat_range = max(stable_lats) - min(stable_lats)
 
-    assert stable_lat_range < 0.033, f"Stable vessel lat spread {stable_lat_range} should be < 0.033°"
+    assert stable_lat_range < 0.033, (
+        f"Stable vessel lat spread {stable_lat_range} should be < 0.033°"
+    )
 
 
 def test_vessel_laid_up_bbox_threshold_exact():
@@ -250,11 +266,13 @@ def test_laid_up_polars_daily_aggregation():
     rows = []
     for day in range(5):
         for hour in [6, 12, 18]:
-            rows.append({
-                "timestamp_utc": base + timedelta(days=day, hours=hour - 6),
-                "lat": 55.0 + 0.001 * day,
-                "lon": 24.0 + 0.001 * day,
-            })
+            rows.append(
+                {
+                    "timestamp_utc": base + timedelta(days=day, hours=hour - 6),
+                    "lat": 55.0 + 0.001 * day,
+                    "lon": 24.0 + 0.001 * day,
+                }
+            )
 
     df = pl.DataFrame(rows).with_columns(pl.col("timestamp_utc").cast(pl.Datetime))
 

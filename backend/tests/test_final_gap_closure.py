@@ -10,26 +10,38 @@ Tests cover:
 - P3.2: Watchlist fuzzy match confidence storage
 - P4.1: Corridor count validation warning
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ── P1.2: Future timestamp rejection ─────────────────────────────────────────
+
 
 class TestFutureTimestampRejection:
     def test_future_timestamp_rejected(self):
         """Timestamps >5min in the future should be rejected."""
         from app.modules.aisstream_client import _map_position_report
 
-        future_ts = (datetime.now(timezone.utc) + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        future_ts = (datetime.now(UTC) + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
         msg = {
-            "MetaData": {"MMSI": 211000000, "latitude": 55.0, "longitude": 10.0, "time_utc": future_ts},
-            "Message": {"PositionReport": {"Latitude": 55.0, "Longitude": 10.0, "Sog": 5.0, "Cog": 90.0, "TrueHeading": 90}},
+            "MetaData": {
+                "MMSI": 211000000,
+                "latitude": 55.0,
+                "longitude": 10.0,
+                "time_utc": future_ts,
+            },
+            "Message": {
+                "PositionReport": {
+                    "Latitude": 55.0,
+                    "Longitude": 10.0,
+                    "Sog": 5.0,
+                    "Cog": 90.0,
+                    "TrueHeading": 90,
+                }
+            },
         }
         result = _map_position_report(msg)
         assert result is None
@@ -38,10 +50,23 @@ class TestFutureTimestampRejection:
         """Timestamps within 5-min tolerance should be accepted."""
         from app.modules.aisstream_client import _map_position_report
 
-        recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recent_ts = (datetime.now(UTC) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
         msg = {
-            "MetaData": {"MMSI": 211000000, "latitude": 55.0, "longitude": 10.0, "time_utc": recent_ts},
-            "Message": {"PositionReport": {"Latitude": 55.0, "Longitude": 10.0, "Sog": 5.0, "Cog": 90.0, "TrueHeading": 90}},
+            "MetaData": {
+                "MMSI": 211000000,
+                "latitude": 55.0,
+                "longitude": 10.0,
+                "time_utc": recent_ts,
+            },
+            "Message": {
+                "PositionReport": {
+                    "Latitude": 55.0,
+                    "Longitude": 10.0,
+                    "Sog": 5.0,
+                    "Cog": 90.0,
+                    "TrueHeading": 90,
+                }
+            },
         }
         result = _map_position_report(msg)
         assert result is not None
@@ -51,16 +76,30 @@ class TestFutureTimestampRejection:
         """Timestamps up to 4 minutes in the future should be accepted (clock skew tolerance)."""
         from app.modules.aisstream_client import _map_position_report
 
-        future_ts = (datetime.now(timezone.utc) + timedelta(minutes=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        future_ts = (datetime.now(UTC) + timedelta(minutes=4)).strftime("%Y-%m-%dT%H:%M:%SZ")
         msg = {
-            "MetaData": {"MMSI": 211000000, "latitude": 55.0, "longitude": 10.0, "time_utc": future_ts},
-            "Message": {"PositionReport": {"Latitude": 55.0, "Longitude": 10.0, "Sog": 5.0, "Cog": 90.0, "TrueHeading": 90}},
+            "MetaData": {
+                "MMSI": 211000000,
+                "latitude": 55.0,
+                "longitude": 10.0,
+                "time_utc": future_ts,
+            },
+            "Message": {
+                "PositionReport": {
+                    "Latitude": 55.0,
+                    "Longitude": 10.0,
+                    "Sog": 5.0,
+                    "Cog": 90.0,
+                    "TrueHeading": 90,
+                }
+            },
         }
         result = _map_position_report(msg)
         assert result is not None
 
 
 # ── P1.3: MMSI leading-zero padding ──────────────────────────────────────────
+
 
 class TestMMSIZeroPadding:
     def test_short_mmsi_padded_to_9_digits(self):
@@ -127,10 +166,12 @@ class TestMMSIZeroPadding:
 
 # ── P1.4: IntegrityError handling ─────────────────────────────────────────────
 
+
 class TestIntegrityErrorHandling:
     def test_ingest_integrity_error_recovers(self):
         """IntegrityError during vessel creation should recover via re-query."""
         from sqlalchemy.exc import IntegrityError
+
         from app.modules.ingest import _get_or_create_vessel
 
         db = MagicMock()
@@ -138,7 +179,9 @@ class TestIntegrityErrorHandling:
         existing_vessel.mmsi = "211000000"
 
         db.query.return_value.filter.return_value.first.side_effect = [None, existing_vessel]
-        db.flush.side_effect = IntegrityError("duplicate", params=None, orig=Exception("unique constraint"))
+        db.flush.side_effect = IntegrityError(
+            "duplicate", params=None, orig=Exception("unique constraint")
+        )
 
         row = {
             "mmsi": "211000000",
@@ -153,6 +196,7 @@ class TestIntegrityErrorHandling:
     def test_aishub_integrity_error_recovers(self):
         """IntegrityError during AISHub vessel creation should recover via SAVEPOINT."""
         from sqlalchemy.exc import IntegrityError
+
         from app.modules.aishub_client import ingest_aishub_positions
 
         db = MagicMock()
@@ -172,18 +216,20 @@ class TestIntegrityErrorHandling:
         db.begin_nested.return_value = nested_cm
         db.flush.side_effect = [IntegrityError("dup", params=None, orig=Exception()), None]
 
-        positions = [{
-            "mmsi": "211000000",
-            "vessel_name": "TEST",
-            "timestamp": "2026-01-15T12:00:00Z",
-            "lat": 55.0,
-            "lon": 10.0,
-            "sog": 5.0,
-            "cog": 90.0,
-            "heading": None,
-            "nav_status": None,
-            "source": "aishub",
-        }]
+        positions = [
+            {
+                "mmsi": "211000000",
+                "vessel_name": "TEST",
+                "timestamp": "2026-01-15T12:00:00Z",
+                "lat": 55.0,
+                "lon": 10.0,
+                "sog": 5.0,
+                "cog": 90.0,
+                "heading": None,
+                "nav_status": None,
+                "source": "aishub",
+            }
+        ]
         result = ingest_aishub_positions(positions, db)
         assert result["stored"] >= 0  # Shouldn't crash
         db.begin_nested.assert_called()  # SAVEPOINT used instead of bare rollback
@@ -191,10 +237,12 @@ class TestIntegrityErrorHandling:
 
 # ── P1.1: Batch error handling stats ──────────────────────────────────────────
 
+
 class TestBatchErrorStats:
     def test_stats_include_batch_errors_counter(self):
         """stream_ais function source should include batch_errors counter."""
         import inspect
+
         from app.modules.aisstream_client import stream_ais
 
         # Verify the stats dict initialization includes batch_errors
@@ -204,16 +252,18 @@ class TestBatchErrorStats:
     def test_batch_try_except_in_stream(self):
         """stream_ais should have try-except around _ingest_batch calls."""
         import inspect
+
         from app.modules.aisstream_client import stream_ais
 
         source = inspect.getsource(stream_ais)
         # Verify batch error handling is present (try-except around _ingest_batch)
         assert "batch_errors" in source
         assert "_ingest_batch" in source
-        assert 'stats["batch_errors"]' in source or "stats.get(\"batch_errors\"" in source
+        assert 'stats["batch_errors"]' in source or 'stats.get("batch_errors"' in source
 
 
 # ── P2.2: GFW exact MMSI match only ──────────────────────────────────────────
+
 
 class TestGFWExactMatch:
     @patch("app.modules.vessel_enrichment.time.sleep")
@@ -224,6 +274,7 @@ class TestGFWExactMatch:
 
         class FakeVessel:
             pass
+
         vessel = FakeVessel()
         vessel.mmsi = "211000000"
         vessel.imo = None
@@ -237,11 +288,13 @@ class TestGFWExactMatch:
         db = MagicMock()
         db.query.return_value.filter.return_value.limit.return_value.all.return_value = [vessel]
 
-        mock_search.return_value = [{
-            "mmsi": "999999999",  # Different MMSI
-            "imo": "1234567",
-            "tonnage_gt": 50000,
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "999999999",  # Different MMSI
+                "imo": "1234567",
+                "tonnage_gt": 50000,
+            }
+        ]
 
         result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
@@ -258,6 +311,7 @@ class TestGFWExactMatch:
 
         class FakeVessel:
             pass
+
         vessel = FakeVessel()
         vessel.mmsi = "211000000"
         vessel.imo = None
@@ -271,10 +325,12 @@ class TestGFWExactMatch:
         db = MagicMock()
         db.query.return_value.filter.return_value.limit.return_value.all.return_value = [vessel]
 
-        mock_search.return_value = [{
-            "mmsi": "211000000",
-            "tonnage_gt": 50000,
-        }]
+        mock_search.return_value = [
+            {
+                "mmsi": "211000000",
+                "tonnage_gt": 50000,
+            }
+        ]
 
         result = enrich_vessels_from_gfw(db, token="test-token", limit=10)
 
@@ -283,6 +339,7 @@ class TestGFWExactMatch:
 
 
 # ── P3.1: STS detection type scoring ─────────────────────────────────────────
+
 
 class TestSTSDetectionTypeScoring:
     @staticmethod
@@ -316,8 +373,8 @@ class TestSTSDetectionTypeScoring:
 
         def mock_query(model):
             q = MagicMock()
-            model_name = getattr(model, '__name__', '')
-            if 'StsTransferEvent' in model_name:
+            model_name = getattr(model, "__name__", "")
+            if "StsTransferEvent" in model_name:
                 q.filter.return_value.all.return_value = sts_events
             else:
                 q.filter.return_value.all.return_value = []
@@ -372,6 +429,7 @@ class TestSTSDetectionTypeScoring:
 
 # ── P3.2: Watchlist match confidence ──────────────────────────────────────────
 
+
 class TestWatchlistMatchConfidence:
     def test_exact_mmsi_match_returns_100_confidence(self):
         """MMSI exact match should return confidence=100, match_type=exact_mmsi."""
@@ -408,8 +466,9 @@ class TestWatchlistMatchConfidence:
 
     def test_name_only_threshold_raised_to_92(self):
         """Without flag pre-filter, threshold should be 92% (not 85%)."""
-        from app.modules.watchlist_loader import _fuzzy_match_vessel
         from rapidfuzz import fuzz
+
+        from app.modules.watchlist_loader import _fuzzy_match_vessel
 
         db = MagicMock()
         vessel = MagicMock()
@@ -432,6 +491,7 @@ class TestWatchlistMatchConfidence:
 
 
 # ── P4.1: Corridor count warning ─────────────────────────────────────────────
+
 
 class TestCorridorCountWarning:
     def test_warning_when_no_corridors(self, caplog):

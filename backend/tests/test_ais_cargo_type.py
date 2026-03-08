@@ -1,16 +1,14 @@
 """Tests for AIS cargo type parsing and mismatch scoring (5B)."""
+
 from __future__ import annotations
 
-import pytest
-
 from app.modules.cargo_inference import (
-    AIS_SHIP_TYPE_CARGO,
     parse_ais_cargo_type,
     score_cargo_type_mismatch,
 )
 
-
 # ---------- parse_ais_cargo_type ----------
+
 
 class TestParseAisCargoType:
     def test_tanker_general(self):
@@ -74,6 +72,7 @@ class TestParseAisCargoType:
 
 # ---------- score_cargo_type_mismatch ----------
 
+
 class TestScoreCargoTypeMismatch:
     def test_no_cargo_type(self):
         """No cargo type -> empty result (no mismatch possible)."""
@@ -119,9 +118,7 @@ class TestScoreCargoTypeMismatch:
 
     def test_tanker_at_oil_terminal_no_double_flag(self):
         """Tanker at oil terminal is normal, should not flag cargo_at_oil_terminal."""
-        result = score_cargo_type_mismatch(
-            "tanker_general", "laden", port_types=["oil_terminal"]
-        )
+        result = score_cargo_type_mismatch("tanker_general", "laden", port_types=["oil_terminal"])
         assert result == {}
 
     def test_unknown_cargo_type_string(self):
@@ -132,7 +129,6 @@ class TestScoreCargoTypeMismatch:
     def test_cargo_multiple_oil_visits(self):
         """Multiple oil terminal visits should be counted."""
         result = score_cargo_type_mismatch(
-            "cargo_dg_b", None,
-            port_types=["oil_terminal", "tanker_berth", "container"]
+            "cargo_dg_b", None, port_types=["oil_terminal", "tanker_berth", "container"]
         )
         assert result["oil_terminal_visits"] == 2

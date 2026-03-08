@@ -10,8 +10,8 @@ Tests the API endpoints and model structures for vessel identity merging:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
+
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone
 
 
 class TestConfirmMergeCandidate:
@@ -136,9 +136,7 @@ class TestManualMerge:
             "app.modules.identity_resolver.execute_merge",
             return_value={"success": False, "error": "Vessel not found"},
         ):
-            resp = api_client.post(
-                "/api/v1/vessels/merge?vessel_a_id=1&vessel_b_id=99999"
-            )
+            resp = api_client.post("/api/v1/vessels/merge?vessel_a_id=1&vessel_b_id=99999")
             assert resp.status_code == 400
 
 

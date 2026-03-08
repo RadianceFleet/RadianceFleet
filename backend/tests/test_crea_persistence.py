@@ -3,15 +3,14 @@
 Validates that import_crea_data persists CreaVoyage records and handles
 deduplication via savepoints.
 """
+
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, call
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 
-import pytest
 from sqlalchemy.exc import IntegrityError
-
 
 # ── _parse_date tests ────────────────────────────────────────────────────────
 
@@ -338,7 +337,10 @@ class TestImportCreaDataPersistence:
         mock_fetch.side_effect = fetch_side_effect
 
         db = MagicMock()
-        db.query.return_value.filter.return_value.limit.return_value.all.return_value = [vessel_a, vessel_b]
+        db.query.return_value.filter.return_value.limit.return_value.all.return_value = [
+            vessel_a,
+            vessel_b,
+        ]
         savepoint = MagicMock()
         db.begin_nested.return_value = savepoint
 
@@ -383,8 +385,5 @@ class TestCreaVoyageModel:
     def test_unique_constraint_exists(self):
         from app.models.crea_voyage import CreaVoyage
 
-        constraints = [
-            c.name for c in CreaVoyage.__table_args__
-            if hasattr(c, "name")
-        ]
+        constraints = [c.name for c in CreaVoyage.__table_args__ if hasattr(c, "name")]
         assert "uq_crea_voyage_dedup" in constraints

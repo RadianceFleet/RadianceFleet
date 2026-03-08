@@ -1,15 +1,16 @@
 """Tests for feed outage detection."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ── Helpers ──────────────────────────────────────────────────────────
 
-def _make_gap(vessel_id, gap_start, corridor_id=None, risk_score=0, is_feed_outage=False, source=None):
+
+def _make_gap(
+    vessel_id, gap_start, corridor_id=None, risk_score=0, is_feed_outage=False, source=None
+):
     g = MagicMock()
     g.vessel_id = vessel_id
     g.gap_start_utc = gap_start
@@ -23,6 +24,7 @@ def _make_gap(vessel_id, gap_start, corridor_id=None, risk_score=0, is_feed_outa
 
 
 # ── Tests: _cluster_gaps ────────────────────────────────────────────
+
 
 class TestClusterGaps:
     def test_groups_by_corridor_and_window(self):
@@ -56,14 +58,12 @@ class TestClusterGaps:
 
 # ── Tests: _detect_dominant_source ───────────────────────────────────
 
+
 class TestDetectDominantSource:
     def test_returns_dominant_source(self):
         from app.modules.feed_outage_detector import _detect_dominant_source
 
-        gaps = [
-            _make_gap(i, datetime(2026, 1, 15), source="kystverket")
-            for i in range(10)
-        ]
+        gaps = [_make_gap(i, datetime(2026, 1, 15), source="kystverket") for i in range(10)]
         assert _detect_dominant_source(gaps) == "kystverket"
 
     def test_returns_none_mixed_sources(self):
@@ -89,6 +89,7 @@ class TestDetectDominantSource:
 
 
 # ── Tests: _get_threshold ────────────────────────────────────────────
+
 
 class TestGetThreshold:
     def test_uses_p95_baseline_when_available(self):
@@ -127,6 +128,7 @@ class TestGetThreshold:
 
 # ── Tests: _has_evasion_signals ──────────────────────────────────────
 
+
 class TestHasEvasionSignals:
     def test_returns_true_with_spoofing(self):
         from app.modules.feed_outage_detector import _has_evasion_signals
@@ -150,6 +152,7 @@ class TestHasEvasionSignals:
 
 
 # ── Tests: detect_feed_outages ───────────────────────────────────────
+
 
 class TestDetectFeedOutages:
     def test_disabled_returns_zeros(self):
@@ -176,6 +179,7 @@ class TestDetectFeedOutages:
 
 
 # ── Tests: tag_coverage_quality ──────────────────────────────────────
+
 
 class TestTagCoverageQuality:
     def test_disabled_returns_zero(self):

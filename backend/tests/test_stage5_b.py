@@ -12,25 +12,31 @@ Covers:
   - ConvoyEvent model
   - Empty data handling
 """
+
 from __future__ import annotations
 
 import datetime
-from datetime import timedelta, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
-
-import pytest
-
+from datetime import timedelta
+from unittest.mock import MagicMock, patch
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _ts(hours_offset: float = 0) -> datetime.datetime:
     """Return a UTC datetime offset from a fixed base time."""
-    base = datetime.datetime(2025, 6, 15, 0, 0, 0, tzinfo=timezone.utc)
+    base = datetime.datetime(2025, 6, 15, 0, 0, 0, tzinfo=datetime.UTC)
     return base + timedelta(hours=hours_offset)
 
 
-def _make_ais_point(vessel_id: int, lat: float, lon: float, sog: float,
-                     cog: float, ts: datetime.datetime, heading=None):
+def _make_ais_point(
+    vessel_id: int,
+    lat: float,
+    lon: float,
+    sog: float,
+    cog: float,
+    ts: datetime.datetime,
+    heading=None,
+):
     """Create a mock AISPoint."""
     pt = MagicMock()
     pt.vessel_id = vessel_id
@@ -44,10 +50,17 @@ def _make_ais_point(vessel_id: int, lat: float, lon: float, sog: float,
     return pt
 
 
-def _make_convoy_points(vessel_a_id: int, vessel_b_id: int,
-                         lat: float, lon: float, sog: float, cog: float,
-                         num_windows: int, start_hours: float = 0,
-                         distance_offset: float = 0.01):
+def _make_convoy_points(
+    vessel_a_id: int,
+    vessel_b_id: int,
+    lat: float,
+    lon: float,
+    sog: float,
+    cog: float,
+    num_windows: int,
+    start_hours: float = 0,
+    distance_offset: float = 0.01,
+):
     """Create synchronized AIS points for two vessels over num_windows * 15min."""
     points = []
     for i in range(num_windows):
@@ -90,31 +103,43 @@ def _mock_db_with_points(points, corridors=None, convoy_events=None):
 
 # ── ConvoyEvent Model Tests ──────────────────────────────────────────────────
 
+
 class TestConvoyEventModel:
     """Tests for the ConvoyEvent SQLAlchemy model."""
 
     def test_model_import(self):
         from app.models.convoy_event import ConvoyEvent
+
         assert ConvoyEvent.__tablename__ == "convoy_events"
 
     def test_model_in_init(self):
         from app.models import ConvoyEvent
+
         assert ConvoyEvent is not None
 
     def test_model_columns(self):
         from app.models.convoy_event import ConvoyEvent
+
         cols = {c.name for c in ConvoyEvent.__table__.columns}
         expected = {
-            "convoy_id", "vessel_a_id", "vessel_b_id",
-            "start_time_utc", "end_time_utc", "duration_hours",
-            "mean_distance_nm", "mean_heading_delta",
-            "corridor_id", "risk_score_component",
-            "evidence_json", "created_at",
+            "convoy_id",
+            "vessel_a_id",
+            "vessel_b_id",
+            "start_time_utc",
+            "end_time_utc",
+            "duration_hours",
+            "mean_distance_nm",
+            "mean_heading_delta",
+            "corridor_id",
+            "risk_score_component",
+            "evidence_json",
+            "created_at",
         }
         assert expected.issubset(cols)
 
 
 # ── Convoy Detection Tests ───────────────────────────────────────────────────
+
 
 class TestConvoyDetection:
     """Tests for the detect_convoys() function."""
@@ -124,6 +149,7 @@ class TestConvoyDetection:
         """Feature flag off -> no detection."""
         mock_settings.CONVOY_DETECTION_ENABLED = False
         from app.modules.convoy_detector import detect_convoys
+
         db = MagicMock()
         result = detect_convoys(db)
         assert result["convoy_events_created"] == 0
@@ -135,6 +161,7 @@ class TestConvoyDetection:
         """No AIS points -> 0 events."""
         mock_settings.CONVOY_DETECTION_ENABLED = True
         from app.modules.convoy_detector import detect_convoys
+
         db = _mock_db_with_points([])
         result = detect_convoys(db)
         assert result["convoy_events_created"] == 0
@@ -148,15 +175,21 @@ class TestConvoyDetection:
 
         # 20 windows * 15 min = 5 hours (>= 4h threshold)
         points = _make_convoy_points(
-            vessel_a_id=1, vessel_b_id=2,
-            lat=40.0, lon=25.0, sog=8.0, cog=90.0,
-            num_windows=20, distance_offset=0.01  # ~0.6nm apart
+            vessel_a_id=1,
+            vessel_b_id=2,
+            lat=40.0,
+            lon=25.0,
+            sog=8.0,
+            cog=90.0,
+            num_windows=20,
+            distance_offset=0.01,  # ~0.6nm apart
         )
         db = _mock_db_with_points(points)
         result = detect_convoys(db)
         assert result["convoy_events_created"] == 1
         # Verify db.add was called with a ConvoyEvent
         from app.models.convoy_event import ConvoyEvent
+
         added = [c for c in db.add.call_args_list if isinstance(c[0][0], ConvoyEvent)]
         assert len(added) == 1
         event = added[0][0][0]
@@ -174,9 +207,14 @@ class TestConvoyDetection:
 
         # distance_offset=0.1 degrees ~ 6nm — too far
         points = _make_convoy_points(
-            vessel_a_id=1, vessel_b_id=2,
-            lat=40.0, lon=25.0, sog=8.0, cog=90.0,
-            num_windows=20, distance_offset=0.1
+            vessel_a_id=1,
+            vessel_b_id=2,
+            lat=40.0,
+            lon=25.0,
+            sog=8.0,
+            cog=90.0,
+            num_windows=20,
+            distance_offset=0.1,
         )
         db = _mock_db_with_points(points)
         result = detect_convoys(db)
@@ -191,9 +229,14 @@ class TestConvoyDetection:
 
         # Low SOG = anchored, not convoying
         points = _make_convoy_points(
-            vessel_a_id=1, vessel_b_id=2,
-            lat=40.0, lon=25.0, sog=1.0, cog=90.0,  # SOG=1 < 3kn threshold
-            num_windows=20, distance_offset=0.01
+            vessel_a_id=1,
+            vessel_b_id=2,
+            lat=40.0,
+            lon=25.0,
+            sog=1.0,
+            cog=90.0,  # SOG=1 < 3kn threshold
+            num_windows=20,
+            distance_offset=0.01,
         )
         db = _mock_db_with_points(points)
         result = detect_convoys(db)
@@ -210,7 +253,7 @@ class TestConvoyDetection:
         points = []
         for i in range(20):
             ts = _ts(i * 0.25)
-            pt_a = _make_ais_point(1, 40.0, 25.0, 8.0, 90.0, ts)   # heading 90
+            pt_a = _make_ais_point(1, 40.0, 25.0, 8.0, 90.0, ts)  # heading 90
             pt_b = _make_ais_point(2, 40.01, 25.0, 8.0, 180.0, ts)  # heading 180 (90 deg diff)
             points.extend([pt_a, pt_b])
 
@@ -227,9 +270,14 @@ class TestConvoyDetection:
 
         # 10 windows * 15 min = 2.5 hours < 4h
         points = _make_convoy_points(
-            vessel_a_id=1, vessel_b_id=2,
-            lat=40.0, lon=25.0, sog=8.0, cog=90.0,
-            num_windows=10, distance_offset=0.01
+            vessel_a_id=1,
+            vessel_b_id=2,
+            lat=40.0,
+            lon=25.0,
+            sog=8.0,
+            cog=90.0,
+            num_windows=10,
+            distance_offset=0.01,
         )
         db = _mock_db_with_points(points)
         result = detect_convoys(db)
@@ -238,39 +286,48 @@ class TestConvoyDetection:
 
 # ── Duration Scoring Tier Tests ──────────────────────────────────────────────
 
+
 class TestConvoyScoring:
     """Tests for convoy duration scoring tiers."""
 
     def test_score_4_to_8h(self):
         from app.modules.convoy_detector import _convoy_score
+
         assert _convoy_score(5.0) == 15
 
     def test_score_8_to_24h(self):
         from app.modules.convoy_detector import _convoy_score
+
         assert _convoy_score(12.0) == 25
 
     def test_score_24h_plus(self):
         from app.modules.convoy_detector import _convoy_score
+
         assert _convoy_score(30.0) == 35
 
     def test_score_below_4h(self):
         from app.modules.convoy_detector import _convoy_score
+
         assert _convoy_score(2.0) == 0
 
     def test_score_boundary_4h(self):
         from app.modules.convoy_detector import _convoy_score
+
         assert _convoy_score(4.0) == 15
 
     def test_score_boundary_8h(self):
         from app.modules.convoy_detector import _convoy_score
+
         assert _convoy_score(8.0) == 25
 
     def test_score_boundary_24h(self):
         from app.modules.convoy_detector import _convoy_score
+
         assert _convoy_score(24.0) == 35
 
     def test_score_with_config(self):
         from app.modules.convoy_detector import _convoy_score
+
         config = {"convoy": {"convoy_4_to_8h": 20, "convoy_8_to_24h": 30, "convoy_24h_plus": 40}}
         assert _convoy_score(5.0, config) == 20
         assert _convoy_score(12.0, config) == 30
@@ -281,14 +338,19 @@ class TestConvoyScoring:
     def test_8h_convoy_scored_25(self, mock_config, mock_settings):
         """A convoy lasting 9 hours should receive +25 score."""
         mock_settings.CONVOY_DETECTION_ENABLED = True
-        from app.modules.convoy_detector import detect_convoys
         from app.models.convoy_event import ConvoyEvent
+        from app.modules.convoy_detector import detect_convoys
 
         # 36 windows * 15min = 9 hours
         points = _make_convoy_points(
-            vessel_a_id=1, vessel_b_id=2,
-            lat=40.0, lon=25.0, sog=8.0, cog=90.0,
-            num_windows=36, distance_offset=0.01
+            vessel_a_id=1,
+            vessel_b_id=2,
+            lat=40.0,
+            lon=25.0,
+            sog=8.0,
+            cog=90.0,
+            num_windows=36,
+            distance_offset=0.01,
         )
         db = _mock_db_with_points(points)
         result = detect_convoys(db)
@@ -300,6 +362,7 @@ class TestConvoyScoring:
 
 # ── Floating Storage Tests ───────────────────────────────────────────────────
 
+
 class TestFloatingStorage:
     """Tests for floating storage intermediary detection."""
 
@@ -307,18 +370,21 @@ class TestFloatingStorage:
     def test_disabled_returns_zero(self, mock_settings):
         mock_settings.CONVOY_DETECTION_ENABLED = False
         from app.modules.convoy_detector import detect_floating_storage
+
         db = MagicMock()
         result = detect_floating_storage(db)
         assert result["floating_storage_detected"] == 0
 
     @patch("app.modules.convoy_detector.settings")
-    @patch("app.modules.convoy_detector.load_scoring_config",
-           return_value={"convoy": {"floating_storage_intermediary": 25}})
+    @patch(
+        "app.modules.convoy_detector.load_scoring_config",
+        return_value={"convoy": {"floating_storage_intermediary": 25}},
+    )
     def test_floating_storage_detected(self, mock_config, mock_settings):
         """Vessel loitering >30d with >=2 STS events -> floating storage."""
         mock_settings.CONVOY_DETECTION_ENABLED = True
-        from app.modules.convoy_detector import detect_floating_storage
         from app.models.convoy_event import ConvoyEvent
+        from app.modules.convoy_detector import detect_floating_storage
 
         # Mock loitering event with >720 hours
         loiter = MagicMock()
@@ -360,8 +426,10 @@ class TestFloatingStorage:
         assert event.evidence_json["type"] == "floating_storage"
 
     @patch("app.modules.convoy_detector.settings")
-    @patch("app.modules.convoy_detector.load_scoring_config",
-           return_value={"convoy": {"floating_storage_intermediary": 25}})
+    @patch(
+        "app.modules.convoy_detector.load_scoring_config",
+        return_value={"convoy": {"floating_storage_intermediary": 25}},
+    )
     def test_floating_storage_not_enough_sts(self, mock_config, mock_settings):
         """Vessel loitering >30d but only 1 STS event -> no floating storage."""
         mock_settings.CONVOY_DETECTION_ENABLED = True
@@ -395,6 +463,7 @@ class TestFloatingStorage:
 
 # ── Arctic No-Ice-Class Tests ────────────────────────────────────────────────
 
+
 class TestArcticNoIceClass:
     """Tests for Arctic corridor + no ice class detection."""
 
@@ -402,18 +471,21 @@ class TestArcticNoIceClass:
     def test_disabled_returns_zero(self, mock_settings):
         mock_settings.CONVOY_DETECTION_ENABLED = False
         from app.modules.convoy_detector import detect_arctic_no_ice_class
+
         db = MagicMock()
         result = detect_arctic_no_ice_class(db)
         assert result["arctic_flagged"] == 0
 
     @patch("app.modules.convoy_detector.settings")
-    @patch("app.modules.convoy_detector.load_scoring_config",
-           return_value={"convoy": {"arctic_no_ice_class": 25}})
+    @patch(
+        "app.modules.convoy_detector.load_scoring_config",
+        return_value={"convoy": {"arctic_no_ice_class": 25}},
+    )
     def test_tanker_in_arctic_no_ice_class(self, mock_config, mock_settings):
         """Tanker in Arctic without ice class -> flagged."""
         mock_settings.CONVOY_DETECTION_ENABLED = True
-        from app.modules.convoy_detector import detect_arctic_no_ice_class
         from app.models.convoy_event import ConvoyEvent
+        from app.modules.convoy_detector import detect_arctic_no_ice_class
 
         # Arctic corridor
         corridor = MagicMock()
@@ -462,8 +534,10 @@ class TestArcticNoIceClass:
         assert event.evidence_json["type"] == "arctic_no_ice_class"
 
     @patch("app.modules.convoy_detector.settings")
-    @patch("app.modules.convoy_detector.load_scoring_config",
-           return_value={"convoy": {"arctic_no_ice_class": 25}})
+    @patch(
+        "app.modules.convoy_detector.load_scoring_config",
+        return_value={"convoy": {"arctic_no_ice_class": 25}},
+    )
     def test_tanker_with_ice_class_not_flagged(self, mock_config, mock_settings):
         """Tanker in Arctic WITH ice class should not be flagged."""
         mock_settings.CONVOY_DETECTION_ENABLED = True
@@ -498,8 +572,10 @@ class TestArcticNoIceClass:
         assert result["arctic_flagged"] == 0
 
     @patch("app.modules.convoy_detector.settings")
-    @patch("app.modules.convoy_detector.load_scoring_config",
-           return_value={"convoy": {"arctic_no_ice_class": 25}})
+    @patch(
+        "app.modules.convoy_detector.load_scoring_config",
+        return_value={"convoy": {"arctic_no_ice_class": 25}},
+    )
     def test_non_tanker_in_arctic_not_flagged(self, mock_config, mock_settings):
         """Non-tanker vessel in Arctic -> not flagged."""
         mock_settings.CONVOY_DETECTION_ENABLED = True
@@ -536,12 +612,14 @@ class TestArcticNoIceClass:
 
 # ── Config Integration Tests ─────────────────────────────────────────────────
 
+
 class TestConfigIntegration:
     """Tests for config and feature flag integration."""
 
     def test_feature_flags_exist(self):
         """Convoy feature flags should be in Settings."""
         from app.config import Settings
+
         s = Settings()
         assert hasattr(s, "CONVOY_DETECTION_ENABLED")
         assert hasattr(s, "CONVOY_SCORING_ENABLED")
@@ -550,13 +628,16 @@ class TestConfigIntegration:
 
     def test_convoy_in_expected_sections(self):
         """convoy should be listed in _EXPECTED_SECTIONS."""
-        from app.modules.risk_scoring import _EXPECTED_SECTIONS
+        from app.modules.scoring_config import _EXPECTED_SECTIONS
+
         assert "convoy" in _EXPECTED_SECTIONS
 
     def test_risk_scoring_yaml_has_convoy(self):
         """risk_scoring.yaml should contain the convoy section."""
         from pathlib import Path
+
         import yaml
+
         config_path = Path(__file__).resolve().parent.parent.parent / "config" / "risk_scoring.yaml"
         with open(config_path) as f:
             config = yaml.safe_load(f)
@@ -571,7 +652,9 @@ class TestConfigIntegration:
     def test_corridors_yaml_has_nsr(self):
         """corridors.yaml should contain the NSR Arctic corridor."""
         from pathlib import Path
+
         import yaml
+
         config_path = Path(__file__).resolve().parent.parent.parent / "config" / "corridors.yaml"
         with open(config_path) as f:
             config = yaml.safe_load(f)
@@ -583,6 +666,7 @@ class TestConfigIntegration:
 
 
 # ── Pipeline Wiring Tests ────────────────────────────────────────────────────
+
 
 class TestPipelineWiring:
     """Tests for convoy integration in dark_vessel_discovery pipeline."""
@@ -599,7 +683,12 @@ class TestPipelineWiring:
         mock_settings.FLEET_ANALYSIS_ENABLED = False
 
         # Verify the import path is correct
-        from app.modules.convoy_detector import detect_convoys, detect_floating_storage, detect_arctic_no_ice_class
+        from app.modules.convoy_detector import (
+            detect_arctic_no_ice_class,
+            detect_convoys,
+            detect_floating_storage,
+        )
+
         assert callable(detect_convoys)
         assert callable(detect_floating_storage)
         assert callable(detect_arctic_no_ice_class)
@@ -607,38 +696,45 @@ class TestPipelineWiring:
     def test_pipeline_import_convoy(self):
         """Convoy detector can be imported from the pipeline module location."""
         from app.modules.convoy_detector import detect_convoys
+
         assert detect_convoys is not None
 
 
 # ── Helper Function Tests ────────────────────────────────────────────────────
+
 
 class TestHelpers:
     """Tests for internal helper functions."""
 
     def test_grid_cell(self):
         from app.modules.convoy_detector import _grid_cell
+
         assert _grid_cell(40.7, 25.3) == (40, 25)
         assert _grid_cell(-33.9, -58.4) == (-34, -59)
 
     def test_heading_diff(self):
         from app.modules.convoy_detector import _heading_diff
+
         assert _heading_diff(10.0, 20.0) == 10.0
         assert _heading_diff(350.0, 10.0) == 20.0
         assert _heading_diff(0.0, 180.0) == 180.0
 
     def test_heading_diff_same(self):
         from app.modules.convoy_detector import _heading_diff
+
         assert _heading_diff(90.0, 90.0) == 0.0
 
     def test_bucket_key(self):
         from app.modules.convoy_detector import _bucket_key
-        ts1 = datetime.datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        ts2 = datetime.datetime(2025, 1, 1, 0, 14, 59, tzinfo=timezone.utc)
+
+        ts1 = datetime.datetime(2025, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
+        ts2 = datetime.datetime(2025, 1, 1, 0, 14, 59, tzinfo=datetime.UTC)
         # Both should be in the same 15-min bucket
         assert _bucket_key(ts1) == _bucket_key(ts2)
 
     def test_in_bbox(self):
         from app.modules.convoy_detector import _in_bbox
+
         bbox = (20.0, 35.0, 30.0, 45.0)  # lon, lat, lon, lat
         assert _in_bbox(40.0, 25.0, bbox) is True
         assert _in_bbox(50.0, 25.0, bbox) is False
@@ -646,13 +742,17 @@ class TestHelpers:
 
 # ── Convoy Scoring in Risk Engine Tests ──────────────────────────────────────
 
+
 class TestConvoyScoringIntegration:
     """Tests for convoy scoring in the risk_scoring.py engine."""
 
     def test_scoring_block_exists_in_risk_scoring(self):
         """The convoy scoring block should exist in risk_scoring.py source."""
         from pathlib import Path
-        scoring_path = Path(__file__).resolve().parent.parent / "app" / "modules" / "risk_scoring.py"
+
+        scoring_path = (
+            Path(__file__).resolve().parent.parent / "app" / "modules" / "risk_scoring.py"
+        )
         content = scoring_path.read_text()
         assert "CONVOY_SCORING_ENABLED" in content
         assert "convoy_" in content

@@ -13,6 +13,7 @@ Tests the hunt target/mission/candidate lifecycle:
 Uses the shared conftest fixtures (mock_db, api_client).
 """
 
+
 class TestListHuntTargets:
     """GET /api/v1/hunt/targets — list all target profiles."""
 

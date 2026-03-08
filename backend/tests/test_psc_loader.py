@@ -1,11 +1,10 @@
 """Tests for PSC detention data loaders (FTM JSON + EMSA ban API)."""
+
 import json
 from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from app.modules.psc_loader import load_psc_ftm, load_emsa_bans
+from app.modules.psc_loader import load_emsa_bans, load_psc_ftm
 
 
 def _make_vessel(vessel_id=1, imo="1234567", name="TEST VESSEL", psc_detained=False):
@@ -30,7 +29,9 @@ def _make_db_for_imo_lookup(vessel, return_detentions=None):
     db.query.return_value.filter.return_value.first.return_value = vessel
     # For sync_vessel_psc_summary: db.query(PscDetention).filter(...).all()
     if return_detentions is not None:
-        db.query.return_value.filter.return_value.filter.return_value.all.return_value = return_detentions
+        db.query.return_value.filter.return_value.filter.return_value.all.return_value = (
+            return_detentions
+        )
     return db
 
 
@@ -40,15 +41,17 @@ class TestLoadPscFtm:
         vessel = _make_vessel(imo="9553359")
         db = _make_db_for_imo_lookup(vessel)
 
-        ftm_data = [{
-            "id": "test-001",
-            "schema": "Vessel",
-            "properties": {
-                "imoNumber": ["9553359"],
-                "name": ["CRUDE CARRIER"],
-                "date": [date.today().isoformat()],
-            },
-        }]
+        ftm_data = [
+            {
+                "id": "test-001",
+                "schema": "Vessel",
+                "properties": {
+                    "imoNumber": ["9553359"],
+                    "name": ["CRUDE CARRIER"],
+                    "date": [date.today().isoformat()],
+                },
+            }
+        ]
 
         ftm_path = tmp_path / "test_ftm.json"
         ftm_path.write_text(json.dumps(ftm_data))
@@ -67,15 +70,18 @@ class TestLoadPscFtm:
         # Make sync_vessel_psc_summary actually set the flag
         def _set_flag(db_arg, v):
             v.psc_detained_last_12m = True
+
         mock_sync.side_effect = _set_flag
 
-        ftm_data = [{
-            "schema": "Vessel",
-            "properties": {
-                "imoNumber": ["9553359"],
-                "date": [date.today().isoformat()],
-            },
-        }]
+        ftm_data = [
+            {
+                "schema": "Vessel",
+                "properties": {
+                    "imoNumber": ["9553359"],
+                    "date": [date.today().isoformat()],
+                },
+            }
+        ]
 
         ftm_path = tmp_path / "test_ftm.json"
         ftm_path.write_text(json.dumps(ftm_data))
@@ -91,13 +97,15 @@ class TestLoadPscFtm:
         db = _make_db_for_imo_lookup(vessel)
 
         old_date = (date.today() - timedelta(days=400)).isoformat()
-        ftm_data = [{
-            "schema": "Vessel",
-            "properties": {
-                "imoNumber": ["9553359"],
-                "date": [old_date],
-            },
-        }]
+        ftm_data = [
+            {
+                "schema": "Vessel",
+                "properties": {
+                    "imoNumber": ["9553359"],
+                    "date": [old_date],
+                },
+            }
+        ]
 
         ftm_path = tmp_path / "test_ftm.json"
         ftm_path.write_text(json.dumps(ftm_data))
@@ -113,8 +121,18 @@ class TestLoadPscFtm:
         db = _make_db_for_imo_lookup(vessel)
 
         lines = [
-            json.dumps({"schema": "Vessel", "properties": {"imoNumber": ["9553359"], "date": [date.today().isoformat()]}}),
-            json.dumps({"schema": "Vessel", "properties": {"imoNumber": ["9999999"], "date": [date.today().isoformat()]}}),
+            json.dumps(
+                {
+                    "schema": "Vessel",
+                    "properties": {"imoNumber": ["9553359"], "date": [date.today().isoformat()]},
+                }
+            ),
+            json.dumps(
+                {
+                    "schema": "Vessel",
+                    "properties": {"imoNumber": ["9999999"], "date": [date.today().isoformat()]},
+                }
+            ),
         ]
 
         ftm_path = tmp_path / "test_ftm.json"
@@ -135,15 +153,18 @@ class TestLoadEmsaBans:
 
         def _set_flag(db_arg, v):
             v.psc_detained_last_12m = True
+
         mock_sync.side_effect = _set_flag
 
-        ban_data = [{
-            "imoNumber": "9553359",
-            "shipName": "CRUDE CARRIER",
-            "banDate": date.today().isoformat(),
-            "banningAuthority": "Paris MOU",
-            "flag": "KM",
-        }]
+        ban_data = [
+            {
+                "imoNumber": "9553359",
+                "shipName": "CRUDE CARRIER",
+                "banDate": date.today().isoformat(),
+                "banningAuthority": "Paris MOU",
+                "flag": "KM",
+            }
+        ]
 
         ban_path = tmp_path / "test_bans.json"
         ban_path.write_text(json.dumps(ban_data))

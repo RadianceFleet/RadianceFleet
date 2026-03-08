@@ -4,6 +4,7 @@ Usage:
     DATABASE_URL=postgresql+psycopg2://... uv run python migrate_to_pg.py
     DATABASE_URL=postgresql+psycopg2://... uv run python migrate_to_pg.py --force
 """
+
 import argparse
 import io
 import os
@@ -11,7 +12,8 @@ import sys
 
 sys.stdout.reconfigure(line_buffering=True)
 
-from sqlalchemy import create_engine, text, inspect as sa_inspect
+from sqlalchemy import create_engine, text
+from sqlalchemy import inspect as sa_inspect
 
 SQLITE_PATH = os.path.join(os.path.dirname(__file__), "radiancefleet.db")
 PG_URL = os.environ.get("DATABASE_URL")
@@ -25,24 +27,56 @@ pg_engine = create_engine(PG_URL)
 
 # All tables to migrate
 TABLES = [
-    "vessels", "ports", "corridors",
-    "ais_points", "ais_observations", "ais_gap_events",
-    "fleet_alerts", "spoofing_anomalies", "sts_transfer_events",
-    "port_calls", "vessel_owners", "vessel_watchlist",
-    "dark_vessel_detections", "merge_candidates", "merge_chains",
-    "merge_operations", "evidence_cards", "tip_submissions",
-    "hunt_candidates", "ground_truth_vessels", "audit_logs",
-    "ingestion_status", "pipeline_runs", "satellite_checks",
-    "loitering_events", "draught_change_events", "convoy_events",
-    "verification_logs", "vessel_history", "collection_runs",
-    "corridor_gap_baselines", "data_coverage_windows",
-    "search_missions", "vessel_target_profiles", "vessel_fingerprints",
-    "alert_subscriptions", "owner_clusters", "owner_cluster_members",
-    "dark_zones", "movement_envelopes", "satellite_tasking_candidates",
-    "route_templates", "crea_voyages",
+    "vessels",
+    "ports",
+    "corridors",
+    "ais_points",
+    "ais_observations",
+    "ais_gap_events",
+    "fleet_alerts",
+    "spoofing_anomalies",
+    "sts_transfer_events",
+    "port_calls",
+    "vessel_owners",
+    "vessel_watchlist",
+    "dark_vessel_detections",
+    "merge_candidates",
+    "merge_chains",
+    "merge_operations",
+    "evidence_cards",
+    "tip_submissions",
+    "hunt_candidates",
+    "ground_truth_vessels",
+    "audit_logs",
+    "ingestion_status",
+    "pipeline_runs",
+    "satellite_checks",
+    "loitering_events",
+    "draught_change_events",
+    "convoy_events",
+    "verification_logs",
+    "vessel_history",
+    "collection_runs",
+    "corridor_gap_baselines",
+    "data_coverage_windows",
+    "search_missions",
+    "vessel_target_profiles",
+    "vessel_fingerprints",
+    "alert_subscriptions",
+    "owner_clusters",
+    "owner_cluster_members",
+    "dark_zones",
+    "movement_envelopes",
+    "satellite_tasking_candidates",
+    "route_templates",
+    "crea_voyages",
     # v3.3+ tables
-    "analysts", "alert_edit_locks", "satellite_orders",
-    "satellite_order_logs", "psc_detentions", "saved_filters",
+    "analysts",
+    "alert_edit_locks",
+    "satellite_orders",
+    "satellite_order_logs",
+    "psc_detentions",
+    "saved_filters",
 ]
 
 
@@ -90,14 +124,10 @@ def validate_row_counts(sqlite_eng, pg_eng, tables):
         dst_count = 0
         if table in sqlite_tables:
             with sqlite_eng.connect() as conn:
-                src_count = conn.execute(
-                    text(f"SELECT COUNT(*) FROM [{table}]")
-                ).scalar()
+                src_count = conn.execute(text(f"SELECT COUNT(*) FROM [{table}]")).scalar()
         if table in pg_tables:
             with pg_eng.connect() as conn:
-                dst_count = conn.execute(
-                    text(f"SELECT COUNT(*) FROM {table}")
-                ).scalar()
+                dst_count = conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
         status = "OK" if src_count == dst_count else "MISMATCH"
         if status == "MISMATCH":
             mismatches.append((table, src_count, dst_count))
@@ -128,11 +158,13 @@ def check_fk_integrity(pg_eng):
         if child_table not in pg_tables or parent_table not in pg_tables:
             continue
         with pg_eng.connect() as conn:
-            orphan_count = conn.execute(text(
-                f"SELECT COUNT(*) FROM {child_table} c "
-                f"LEFT JOIN {parent_table} p ON c.{child_col} = p.{parent_col} "
-                f"WHERE c.{child_col} IS NOT NULL AND p.{parent_col} IS NULL"
-            )).scalar()
+            orphan_count = conn.execute(
+                text(
+                    f"SELECT COUNT(*) FROM {child_table} c "
+                    f"LEFT JOIN {parent_table} p ON c.{child_col} = p.{parent_col} "
+                    f"WHERE c.{child_col} IS NOT NULL AND p.{parent_col} IS NULL"
+                )
+            ).scalar()
         status = "OK" if orphan_count == 0 else f"ORPHANS={orphan_count}"
         if orphan_count > 0:
             issues.append((child_table, child_col, parent_table, orphan_count))
@@ -144,7 +176,8 @@ def check_fk_integrity(pg_eng):
 def main():
     parser = argparse.ArgumentParser(description="Migrate SQLite to PostgreSQL")
     parser.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Truncate destination tables before copying (idempotent re-run)",
     )
     args = parser.parse_args()
@@ -154,10 +187,12 @@ def main():
     sys.path.insert(0, os.path.dirname(__file__))
 
     from app.models import Base
+
     Base.metadata.create_all(bind=pg_engine)
 
-    from app.database import _run_migrations
     import app.database as db_mod
+    from app.database import _run_migrations
+
     original_engine = db_mod.engine
     db_mod.engine = pg_engine
     try:
@@ -256,9 +291,7 @@ def main():
                 cursor.execute(f"SELECT COALESCE(MAX({pk_col}), 0) FROM {table_name}")
                 max_id = cursor.fetchone()[0]
                 if max_id and max_id > 0:
-                    cursor.execute(
-                        f"SELECT pg_get_serial_sequence('{table_name}', '{pk_col}')"
-                    )
+                    cursor.execute(f"SELECT pg_get_serial_sequence('{table_name}', '{pk_col}')")
                     seq = cursor.fetchone()[0]
                     if seq:
                         cursor.execute(f"SELECT setval('{seq}', {max_id})")

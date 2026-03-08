@@ -1,15 +1,12 @@
 """Server-Sent Events for real-time alert notifications."""
+
 from __future__ import annotations
 
 import logging
-import time
-from datetime import datetime, timezone
-from typing import Optional
 
 import anyio
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-from sqlalchemy.orm import Session
 
 from app.auth import require_auth
 from app.config import settings
@@ -28,20 +25,32 @@ def _query_new_alerts(last_id: int, min_score: int) -> list[dict]:
     db = SessionLocal()
     try:
         from app.models.gap_event import AISGapEvent
-        q = db.query(AISGapEvent).filter(
-            AISGapEvent.gap_event_id > last_id,
-            AISGapEvent.risk_score >= min_score,
-        ).order_by(AISGapEvent.gap_event_id.asc()).limit(50)
+
+        q = (
+            db.query(AISGapEvent)
+            .filter(
+                AISGapEvent.gap_event_id > last_id,
+                AISGapEvent.risk_score >= min_score,
+            )
+            .order_by(AISGapEvent.gap_event_id.asc())
+            .limit(50)
+        )
         results = []
         for alert in q.all():
-            results.append({
-                "gap_event_id": alert.gap_event_id,
-                "vessel_id": alert.vessel_id,
-                "risk_score": alert.risk_score,
-                "gap_start_utc": alert.gap_start_utc.isoformat() if alert.gap_start_utc else None,
-                "duration_minutes": alert.duration_minutes,
-                "status": str(alert.status.value) if hasattr(alert.status, "value") else str(alert.status),
-            })
+            results.append(
+                {
+                    "gap_event_id": alert.gap_event_id,
+                    "vessel_id": alert.vessel_id,
+                    "risk_score": alert.risk_score,
+                    "gap_start_utc": alert.gap_start_utc.isoformat()
+                    if alert.gap_start_utc
+                    else None,
+                    "duration_minutes": alert.duration_minutes,
+                    "status": str(alert.status.value)
+                    if hasattr(alert.status, "value")
+                    else str(alert.status),
+                }
+            )
         return results
     finally:
         db.close()
@@ -51,7 +60,7 @@ def _query_new_alerts(last_id: int, min_score: int) -> list[dict]:
 async def sse_alerts(
     request: Request,
     min_score: int = Query(51, ge=0, le=100, description="Minimum risk score to stream"),
-    last_event_id: Optional[str] = Query(None, alias="Last-Event-ID"),
+    last_event_id: str | None = Query(None, alias="Last-Event-ID"),
     auth: dict = Depends(require_auth),
 ):
     """Stream new alerts via SSE. Supports Last-Event-ID for reconnection resume."""
@@ -60,6 +69,7 @@ async def sse_alerts(
     max_connections = getattr(settings, "SSE_MAX_CONNECTIONS", 20)
     if _active_connections >= max_connections:
         from fastapi.responses import JSONResponse
+
         return JSONResponse(
             status_code=503,
             content={"detail": f"Max SSE connections ({max_connections}) reached"},
@@ -101,6 +111,7 @@ async def sse_alerts(
 
                 for alert in alerts:
                     import json
+
                     last_id = alert["gap_event_id"]
                     yield ServerSentEvent(
                         data=json.dumps(alert),

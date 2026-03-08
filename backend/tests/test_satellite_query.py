@@ -9,10 +9,9 @@ Tests the prepare_satellite_check() function and its helpers:
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timezone, timedelta
 
-import pytest
+from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 
 class TestComputeBoundingBox:
@@ -69,7 +68,7 @@ class TestBuildCopernicusUrl:
         assert "2026-01-02" in url
 
     def test_url_starts_with_copernicus_base(self):
-        from app.modules.satellite_query import build_copernicus_url, COPERNICUS_BROWSER_BASE
+        from app.modules.satellite_query import COPERNICUS_BROWSER_BASE, build_copernicus_url
 
         url = build_copernicus_url(55.0, 15.0, "2026-01-01", "2026-01-02")
         assert url.startswith(COPERNICUS_BROWSER_BASE)

@@ -1,8 +1,7 @@
 """Tests for enhanced PSC detention scoring in risk_scoring.py."""
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import MagicMock, patch
 
-import pytest
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 from tests.conftest import make_mock_vessel
 
@@ -84,6 +83,7 @@ def _mock_db_with_detentions(detentions):
                 filtered.first = MagicMock(return_value=detentions[0] if detentions else None)
                 filtered.count = MagicMock(return_value=len(detentions))
                 return filtered
+
             result.filter = filter_side_effect
             result.all = MagicMock(return_value=detentions)
         else:
@@ -96,6 +96,7 @@ def _mock_db_with_detentions(detentions):
                 f.count = MagicMock(return_value=0)
                 f.order_by = MagicMock(return_value=f)
                 return f
+
             result.filter = default_filter
             result.all = MagicMock(return_value=[])
             result.first = MagicMock(return_value=None)
@@ -151,7 +152,7 @@ class TestPscEnhancedScoring:
 
     def test_two_detentions_in_24m(self):
         """Two detentions in 24 months triggers multiple_detentions_2 signal."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         detentions = [
             _make_detention((now - timedelta(days=100)).date()),
             _make_detention((now - timedelta(days=200)).date()),
@@ -162,7 +163,7 @@ class TestPscEnhancedScoring:
 
     def test_three_plus_detentions_in_24m(self):
         """Three+ detentions in 24 months triggers multiple_detentions_3_plus signal."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         detentions = [
             _make_detention((now - timedelta(days=50)).date()),
             _make_detention((now - timedelta(days=150)).date()),
@@ -175,7 +176,7 @@ class TestPscEnhancedScoring:
 
     def test_recent_detention_30d(self):
         """Detention within 30 days adds recency signal."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         detentions = [
             _make_detention((now - timedelta(days=10)).date()),
         ]
@@ -186,7 +187,7 @@ class TestPscEnhancedScoring:
 
     def test_recent_detention_90d(self):
         """Detention within 90 days (but not 30) adds 90d recency signal."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         detentions = [
             _make_detention((now - timedelta(days=60)).date()),
         ]
@@ -197,7 +198,7 @@ class TestPscEnhancedScoring:
 
     def test_ban_type_adds_paris_mou_ban(self):
         """Detention with ban_type adds paris_mou_ban signal."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         detentions = [
             _make_detention((now - timedelta(days=100)).date(), ban_type="access_refusal"),
         ]
@@ -207,7 +208,7 @@ class TestPscEnhancedScoring:
 
     def test_high_deficiency_count(self):
         """Total deficiency count >= 10 adds deficiency_count_10_plus signal."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         detentions = [
             _make_detention((now - timedelta(days=100)).date(), deficiency_count=6),
             _make_detention((now - timedelta(days=200)).date(), deficiency_count=5),

@@ -3,6 +3,7 @@
 Generates Copernicus Browser query packages for analyst review.
 See PRD §7.6 for the satellite workflow specification.
 """
+
 from __future__ import annotations
 
 import logging
@@ -110,7 +111,12 @@ def prepare_satellite_check(alert_id: int, db: Session) -> dict[str, Any]:
     db.add(sat_check)
     db.commit()
 
-    logger.info("Satellite check prepared for alert %d (center: %.4f, %.4f)", alert_id, center_lat, center_lon)
+    logger.info(
+        "Satellite check prepared for alert %d (center: %.4f, %.4f)",
+        alert_id,
+        center_lat,
+        center_lon,
+    )
     return {
         "sat_check_id": sat_check.sat_check_id,
         "copernicus_url": copernicus_url,
@@ -128,8 +134,8 @@ def prepare_satellite_check(alert_id: int, db: Session) -> dict[str, Any]:
             "coverage_limitations": (
                 "AIS coverage varies by region. "
                 "Commercial AIS providers required for full Persian Gulf / Black Sea coverage."
-                if not is_baltic else
-                "Baltic Sea has good AIS coverage from Danish Maritime Authority."
+                if not is_baltic
+                else "Baltic Sea has good AIS coverage from Danish Maritime Authority."
             ),
             "disclaimer": (
                 "This is investigative triage, not a legal determination. "
@@ -163,9 +169,12 @@ def _get_gap_center(gap: AISGapEvent, db: Session) -> tuple[float, float]:
         return end_lat, end_lon
 
     # Try vessel's last known AIS position
-    last = db.query(AISPoint).filter(
-        AISPoint.vessel_id == gap.vessel_id
-    ).order_by(AISPoint.timestamp_utc.desc()).first()
+    last = (
+        db.query(AISPoint)
+        .filter(AISPoint.vessel_id == gap.vessel_id)
+        .order_by(AISPoint.timestamp_utc.desc())
+        .first()
+    )
     if last:
         return last.lat, last.lon
 

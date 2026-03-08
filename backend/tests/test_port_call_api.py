@@ -6,13 +6,14 @@ endpoint which includes port-related data.
 
 Uses the shared conftest fixtures (mock_db, api_client).
 """
-from unittest.mock import MagicMock
-from datetime import datetime, timezone
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 # ---------------------------------------------------------------------------
 # Port Call Model Tests
 # ---------------------------------------------------------------------------
+
 
 class TestPortCallModel:
     """Verify PortCall model structure and nullable fields."""
@@ -41,6 +42,7 @@ class TestPortCallModel:
 # Vessel Detail — Port-Adjacent Data
 # ---------------------------------------------------------------------------
 
+
 class TestVesselDetailPortData:
     """Vessel detail endpoint returns port-call-adjacent data (gap counts, etc.)."""
 
@@ -59,7 +61,7 @@ class TestVesselDetailPortData:
         vessel.flag_risk_category = MagicMock(value="high_risk")
         vessel.pi_coverage_status = MagicMock(value="unknown")
         vessel.psc_detained_last_12m = False
-        vessel.mmsi_first_seen_utc = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        vessel.mmsi_first_seen_utc = datetime(2020, 1, 1, tzinfo=UTC)
         vessel.vessel_laid_up_30d = False
         vessel.vessel_laid_up_60d = False
         vessel.vessel_laid_up_in_sts_zone = False

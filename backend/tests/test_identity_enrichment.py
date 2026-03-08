@@ -4,14 +4,14 @@ Covers OFAC SDN fixes, KSE key, aisstream destination/draught extraction,
 kystverket destination/draught, CLI watchlist wiring, busy_timeout PRAGMA,
 AISPoint unique constraint, and ingest preservation.
 """
+
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock, call
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # OFAC SDN loader tests
@@ -38,22 +38,45 @@ class TestOFACSdn:
 
         mock_resolve.return_value = (MagicMock(vessel_id=1), "exact_mmsi", 100)
 
-        import tempfile, csv, os
+        import csv
+        import os
+        import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-                                                     "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-                                                     "Vess_owner", "REMARKS"])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "ent_num",
+                    "SDN_NAME",
+                    "SDN_TYPE",
+                    "Program",
+                    "Title",
+                    "Call_Sign",
+                    "Vess_type",
+                    "Tonnage",
+                    "GRT",
+                    "Vess_flag",
+                    "Vess_owner",
+                    "REMARKS",
+                ],
+            )
             writer.writeheader()
-            writer.writerow({
-                "ent_num": "99999",
-                "SDN_NAME": "TEST VESSEL",
-                "SDN_TYPE": "vessel",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "PA",
-                "Vess_owner": "",
-                "REMARKS": "IMO 9187629; MMSI 572469210",
-            })
+            writer.writerow(
+                {
+                    "ent_num": "99999",
+                    "SDN_NAME": "TEST VESSEL",
+                    "SDN_TYPE": "vessel",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "PA",
+                    "Vess_owner": "",
+                    "REMARKS": "IMO 9187629; MMSI 572469210",
+                }
+            )
             path = f.name
 
         db = MagicMock()
@@ -72,22 +95,45 @@ class TestOFACSdn:
 
         mock_resolve.return_value = (MagicMock(vessel_id=1), "exact_imo", 100)
 
-        import tempfile, csv, os
+        import csv
+        import os
+        import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-                                                     "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-                                                     "Vess_owner", "REMARKS"])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "ent_num",
+                    "SDN_NAME",
+                    "SDN_TYPE",
+                    "Program",
+                    "Title",
+                    "Call_Sign",
+                    "Vess_type",
+                    "Tonnage",
+                    "GRT",
+                    "Vess_flag",
+                    "Vess_owner",
+                    "REMARKS",
+                ],
+            )
             writer.writeheader()
-            writer.writerow({
-                "ent_num": "99999",
-                "SDN_NAME": "TEST VESSEL",
-                "SDN_TYPE": "Vessel",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "",
-                "Vess_owner": "",
-                "REMARKS": "IMO 9187629; some other text",
-            })
+            writer.writerow(
+                {
+                    "ent_num": "99999",
+                    "SDN_NAME": "TEST VESSEL",
+                    "SDN_TYPE": "Vessel",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "IMO 9187629; some other text",
+                }
+            )
             path = f.name
 
         db = MagicMock()
@@ -107,22 +153,45 @@ class TestOFACSdn:
 
         mock_resolve.return_value = (MagicMock(vessel_id=1), "exact_mmsi", 100)
 
-        import tempfile, csv, os
+        import csv
+        import os
+        import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-                                                     "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-                                                     "Vess_owner", "REMARKS"])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "ent_num",
+                    "SDN_NAME",
+                    "SDN_TYPE",
+                    "Program",
+                    "Title",
+                    "Call_Sign",
+                    "Vess_type",
+                    "Tonnage",
+                    "GRT",
+                    "Vess_flag",
+                    "Vess_owner",
+                    "REMARKS",
+                ],
+            )
             writer.writeheader()
-            writer.writerow({
-                "ent_num": "99999",
-                "SDN_NAME": "TEST VESSEL",
-                "SDN_TYPE": "Vessel",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "",
-                "Vess_owner": "",
-                "REMARKS": "MMSI 572469210; some other text",
-            })
+            writer.writerow(
+                {
+                    "ent_num": "99999",
+                    "SDN_NAME": "TEST VESSEL",
+                    "SDN_TYPE": "Vessel",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "MMSI 572469210; some other text",
+                }
+            )
             path = f.name
 
         db = MagicMock()
@@ -142,26 +211,61 @@ class TestOFACSdn:
         vessel_mock = MagicMock(vessel_id=42)
         mock_resolve.return_value = (vessel_mock, "exact_mmsi", 100)
 
-        import tempfile, csv, os
+        import csv
+        import os
+        import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-                                                     "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-                                                     "Vess_owner", "REMARKS"])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "ent_num",
+                    "SDN_NAME",
+                    "SDN_TYPE",
+                    "Program",
+                    "Title",
+                    "Call_Sign",
+                    "Vess_type",
+                    "Tonnage",
+                    "GRT",
+                    "Vess_flag",
+                    "Vess_owner",
+                    "REMARKS",
+                ],
+            )
             writer.writeheader()
-            writer.writerow({
-                "ent_num": "1", "SDN_NAME": "V1", "SDN_TYPE": "Vessel",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "PA", "Vess_owner": "",
-                "REMARKS": "IMO 9187629; MMSI 572469210",
-            })
-            writer.writerow({
-                "ent_num": "2", "SDN_NAME": "V2", "SDN_TYPE": "Vessel",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "LR", "Vess_owner": "",
-                "REMARKS": "IMO 9234567; MMSI 636012345",
-            })
+            writer.writerow(
+                {
+                    "ent_num": "1",
+                    "SDN_NAME": "V1",
+                    "SDN_TYPE": "Vessel",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "PA",
+                    "Vess_owner": "",
+                    "REMARKS": "IMO 9187629; MMSI 572469210",
+                }
+            )
+            writer.writerow(
+                {
+                    "ent_num": "2",
+                    "SDN_NAME": "V2",
+                    "SDN_TYPE": "Vessel",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "LR",
+                    "Vess_owner": "",
+                    "REMARKS": "IMO 9234567; MMSI 636012345",
+                }
+            )
             path = f.name
 
         db = MagicMock()
@@ -180,19 +284,45 @@ class TestOFACSdn:
 
         mock_resolve.return_value = (MagicMock(vessel_id=1), "exact_mmsi", 100)
 
-        import tempfile, csv, os
+        import csv
+        import os
+        import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-                                                     "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-                                                     "Vess_owner", "REMARKS"])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "ent_num",
+                    "SDN_NAME",
+                    "SDN_TYPE",
+                    "Program",
+                    "Title",
+                    "Call_Sign",
+                    "Vess_type",
+                    "Tonnage",
+                    "GRT",
+                    "Vess_flag",
+                    "Vess_owner",
+                    "REMARKS",
+                ],
+            )
             writer.writeheader()
-            writer.writerow({
-                "ent_num": "1", "SDN_NAME": "V1", "SDN_TYPE": "Vessel",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "", "Vess_owner": "",
-                "REMARKS": "IMO 9187629",
-            })
+            writer.writerow(
+                {
+                    "ent_num": "1",
+                    "SDN_NAME": "V1",
+                    "SDN_TYPE": "Vessel",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "IMO 9187629",
+                }
+            )
             path = f.name
 
         db = MagicMock()
@@ -212,19 +342,45 @@ class TestOFACSdn:
 
         mock_resolve.return_value = None  # No match without identifiers
 
-        import tempfile, csv, os
+        import csv
+        import os
+        import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-                                                     "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-                                                     "Vess_owner", "REMARKS"])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "ent_num",
+                    "SDN_NAME",
+                    "SDN_TYPE",
+                    "Program",
+                    "Title",
+                    "Call_Sign",
+                    "Vess_type",
+                    "Tonnage",
+                    "GRT",
+                    "Vess_flag",
+                    "Vess_owner",
+                    "REMARKS",
+                ],
+            )
             writer.writeheader()
-            writer.writerow({
-                "ent_num": "1", "SDN_NAME": "UNKNOWN", "SDN_TYPE": "vessel",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "", "Vess_owner": "",
-                "REMARKS": "no identifiers here",
-            })
+            writer.writerow(
+                {
+                    "ent_num": "1",
+                    "SDN_NAME": "UNKNOWN",
+                    "SDN_TYPE": "vessel",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "no identifiers here",
+                }
+            )
             path = f.name
 
         db = MagicMock()
@@ -243,19 +399,45 @@ class TestOFACSdn:
 
         mock_resolve.return_value = (MagicMock(vessel_id=1), "fuzzy_name", 90)
 
-        import tempfile, csv, os
+        import csv
+        import os
+        import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-                                                     "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-                                                     "Vess_owner", "REMARKS"])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "ent_num",
+                    "SDN_NAME",
+                    "SDN_TYPE",
+                    "Program",
+                    "Title",
+                    "Call_Sign",
+                    "Vess_type",
+                    "Tonnage",
+                    "GRT",
+                    "Vess_flag",
+                    "Vess_owner",
+                    "REMARKS",
+                ],
+            )
             writer.writeheader()
-            writer.writerow({
-                "ent_num": "1", "SDN_NAME": "TEST VESSEL", "SDN_TYPE": "Vessel",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "PA", "Vess_owner": "",
-                "REMARKS": "",
-            })
+            writer.writerow(
+                {
+                    "ent_num": "1",
+                    "SDN_NAME": "TEST VESSEL",
+                    "SDN_TYPE": "Vessel",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "PA",
+                    "Vess_owner": "",
+                    "REMARKS": "",
+                }
+            )
             path = f.name
 
         db = MagicMock()
@@ -270,35 +452,79 @@ class TestOFACSdn:
     @patch("app.modules.watchlist_loader._upsert_watchlist")
     def test_ofac_non_vessel_rows_skipped(self, mock_upsert, mock_resolve):
         """Non-vessel SDN types (individuals, entities) should be skipped."""
+        import csv
+        import os
+        import tempfile
+
         from app.modules.watchlist_loader import load_ofac_sdn
 
-        import tempfile, csv, os
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["ent_num", "SDN_NAME", "SDN_TYPE", "Program", "Title",
-                                                     "Call_Sign", "Vess_type", "Tonnage", "GRT", "Vess_flag",
-                                                     "Vess_owner", "REMARKS"])
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "ent_num",
+                    "SDN_NAME",
+                    "SDN_TYPE",
+                    "Program",
+                    "Title",
+                    "Call_Sign",
+                    "Vess_type",
+                    "Tonnage",
+                    "GRT",
+                    "Vess_flag",
+                    "Vess_owner",
+                    "REMARKS",
+                ],
+            )
             writer.writeheader()
-            writer.writerow({
-                "ent_num": "1", "SDN_NAME": "JOHN DOE", "SDN_TYPE": "Individual",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "", "Vess_owner": "",
-                "REMARKS": "",
-            })
-            writer.writerow({
-                "ent_num": "2", "SDN_NAME": "EVIL CORP", "SDN_TYPE": "Entity",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "", "Vess_owner": "",
-                "REMARKS": "",
-            })
-            writer.writerow({
-                "ent_num": "3", "SDN_NAME": "", "SDN_TYPE": "-0-",
-                "Program": "", "Title": "", "Call_Sign": "",
-                "Vess_type": "", "Tonnage": "", "GRT": "",
-                "Vess_flag": "", "Vess_owner": "",
-                "REMARKS": "",
-            })
+            writer.writerow(
+                {
+                    "ent_num": "1",
+                    "SDN_NAME": "JOHN DOE",
+                    "SDN_TYPE": "Individual",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "",
+                }
+            )
+            writer.writerow(
+                {
+                    "ent_num": "2",
+                    "SDN_NAME": "EVIL CORP",
+                    "SDN_TYPE": "Entity",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "",
+                }
+            )
+            writer.writerow(
+                {
+                    "ent_num": "3",
+                    "SDN_NAME": "",
+                    "SDN_TYPE": "-0-",
+                    "Program": "",
+                    "Title": "",
+                    "Call_Sign": "",
+                    "Vess_type": "",
+                    "Tonnage": "",
+                    "GRT": "",
+                    "Vess_flag": "",
+                    "Vess_owner": "",
+                    "REMARKS": "",
+                }
+            )
             path = f.name
 
         db = MagicMock()
@@ -327,7 +553,10 @@ class TestKSEKey:
 
         mock_resolve.return_value = (MagicMock(vessel_id=1), "exact_imo", 100)
 
-        import tempfile, csv, os
+        import csv
+        import os
+        import tempfile
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as f:
             writer = csv.DictWriter(f, fieldnames=["vessel_name", "imo", "flag", "mmsi"])
             writer.writeheader()
@@ -463,14 +692,14 @@ class TestAISStreamEnrichment:
 
 
 class TestDatabasePragma:
-
     def test_busy_timeout_set(self):
         """PRAGMA busy_timeout=5000 should be in SQLite connection setup."""
-        import app.database
-        import importlib
 
         # Check the source code directly for the PRAGMA
         import inspect
+
+        import app.database
+
         source = inspect.getsource(app.database)
         assert "busy_timeout=5000" in source
 
@@ -481,7 +710,6 @@ class TestDatabasePragma:
 
 
 class TestAISPointConstraint:
-
     def test_ais_point_unique_constraint_defined(self):
         """AISPoint model should have unique constraint on (vessel_id, timestamp_utc, source)."""
         from app.models.ais_point import AISPoint
@@ -501,7 +729,6 @@ class TestAISPointConstraint:
 
 
 class TestIngestPreservation:
-
     def test_ingest_preserves_existing_imo(self):
         """When a vessel already has an IMO, CSV import should not overwrite it."""
         from app.modules.ingest import _get_or_create_vessel
@@ -567,7 +794,6 @@ class TestIngestPreservation:
 
 
 class TestCLIWatchlistWiring:
-
     @patch("app.modules.watchlist_loader.load_gur_list")
     @patch("app.modules.watchlist_loader.load_fleetleaks")
     @patch("app.modules.watchlist_loader.load_opensanctions")
@@ -578,7 +804,7 @@ class TestCLIWatchlistWiring:
         self, mock_find, mock_fetch, mock_ofac, mock_os, mock_fl, mock_gur
     ):
         """_update_fetch_watchlists should call load_fleetleaks when file exists."""
-        from app.cli import _update_fetch_watchlists
+        from app.cli_helpers import _update_fetch_watchlists
 
         # Return a path for fleetleaks, None for others
         def find_latest(data_dir, prefix):
@@ -601,7 +827,7 @@ class TestCLIWatchlistWiring:
         self, mock_find, mock_fetch, mock_ofac, mock_os, mock_fl, mock_gur
     ):
         """_update_fetch_watchlists should call load_gur_list when file exists."""
-        from app.cli import _update_fetch_watchlists
+        from app.cli_helpers import _update_fetch_watchlists
 
         def find_latest(data_dir, prefix):
             if prefix == "gur_shadow_":
@@ -620,7 +846,6 @@ class TestCLIWatchlistWiring:
 
 
 class TestAISPointDedup:
-
     def test_ais_point_dedup_savepoint_pattern(self):
         """Duplicate AIS point insertion should be handled gracefully via savepoints."""
         # This tests the pattern used in aisstream_client and kystverket_client
@@ -634,18 +859,20 @@ class TestAISPointDedup:
         # Simulate existing AIS point (dedup hit)
         db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
 
-        points = [{
-            "mmsi": "123456789",
-            "timestamp": "2025-01-01T00:00:00Z",
-            "lat": 55.0,
-            "lon": 20.0,
-            "sog": 10.0,
-            "cog": 180.0,
-            "heading": 179,
-            "nav_status": 0,
-            "ais_class": "A",
-            "source": "aisstream",
-        }]
+        points = [
+            {
+                "mmsi": "123456789",
+                "timestamp": "2025-01-01T00:00:00Z",
+                "lat": 55.0,
+                "lon": 20.0,
+                "sog": 10.0,
+                "cog": 180.0,
+                "heading": 179,
+                "nav_status": 0,
+                "ais_class": "A",
+                "source": "aisstream",
+            }
+        ]
         static = {}
 
         # Should not raise
@@ -655,7 +882,9 @@ class TestAISPointDedup:
     def test_ais_point_dedup_cleanup_migration(self):
         """Database migration should include AIS point dedup cleanup SQL."""
         import inspect
+
         import app.database
+
         source = inspect.getsource(app.database._run_migrations)
         assert "uq_ais_point_vessel_ts_source" in source
         assert "DELETE FROM ais_points" in source
@@ -667,7 +896,6 @@ class TestAISPointDedup:
 
 
 class TestKystverketEnrichment:
-
     def test_kystverket_ingest_point_passes_destination(self):
         """_ingest_point should store destination from point dict."""
         from app.modules.kystverket_client import _ingest_point
@@ -677,7 +905,7 @@ class TestKystverketEnrichment:
         vessel_mock.vessel_id = 1
         db.query.return_value.filter.return_value.first.side_effect = [
             vessel_mock,  # vessel lookup
-            None,         # dedup check
+            None,  # dedup check
         ]
 
         pt = {
@@ -687,7 +915,7 @@ class TestKystverketEnrichment:
             "sog": 10.0,
             "cog": 180.0,
             "heading": None,
-            "timestamp_utc": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "timestamp_utc": datetime(2025, 1, 1, tzinfo=UTC),
             "source": "kystverket",
             "destination": "MURMANSK",
             "draught": 12.5,
@@ -697,6 +925,7 @@ class TestKystverketEnrichment:
         # Check db.add was called with an AISPoint that has destination/draught
         # (first db.add call is the AISPoint, second is the AISObservation dual-write)
         from app.models.ais_point import AISPoint
+
         point_calls = [c for c in db.add.call_args_list if isinstance(c[0][0], AISPoint)]
         assert len(point_calls) >= 1
         point_obj = point_calls[0][0][0]
@@ -712,7 +941,7 @@ class TestKystverketEnrichment:
         vessel_mock.vessel_id = 1
         db.query.return_value.filter.return_value.first.side_effect = [
             vessel_mock,  # vessel lookup
-            None,         # dedup check
+            None,  # dedup check
         ]
 
         pt = {
@@ -722,7 +951,7 @@ class TestKystverketEnrichment:
             "sog": 10.0,
             "cog": 180.0,
             "heading": None,
-            "timestamp_utc": datetime(2025, 1, 1, tzinfo=timezone.utc),
+            "timestamp_utc": datetime(2025, 1, 1, tzinfo=UTC),
             "source": "kystverket",
             "destination": None,
             "draught": None,
@@ -730,6 +959,7 @@ class TestKystverketEnrichment:
 
         _ingest_point(db, pt)
         from app.models.ais_point import AISPoint
+
         point_calls = [c for c in db.add.call_args_list if isinstance(c[0][0], AISPoint)]
         assert len(point_calls) >= 1
         point_obj = point_calls[0][0][0]
@@ -743,30 +973,29 @@ class TestKystverketEnrichment:
 
 
 class TestOFACRemarks:
-
     def test_ofac_imo_regex_captures_7_digits(self):
         """IMO regex should capture exactly 7 digits."""
-        pattern = re.compile(r'IMO\s*(\d{7})')
+        pattern = re.compile(r"IMO\s*(\d{7})")
         assert pattern.search("IMO 9187629").group(1) == "9187629"
         assert pattern.search("IMO9187629").group(1) == "9187629"
         assert pattern.search("blah IMO 9187629 blah").group(1) == "9187629"
 
     def test_ofac_mmsi_regex_captures_9_digits(self):
         """MMSI regex should capture exactly 9 digits."""
-        pattern = re.compile(r'MMSI\s*(\d{9})')
+        pattern = re.compile(r"MMSI\s*(\d{9})")
         assert pattern.search("MMSI 572469210").group(1) == "572469210"
         assert pattern.search("MMSI572469210").group(1) == "572469210"
 
     def test_ofac_remarks_with_both_imo_mmsi(self):
         """REMARKS with both IMO and MMSI should parse both."""
         remarks = "IMO 9187629; MMSI 572469210; Flag: Panama"
-        imo_match = re.search(r'IMO\s*(\d{7})', remarks)
-        mmsi_match = re.search(r'MMSI\s*(\d{9})', remarks)
+        imo_match = re.search(r"IMO\s*(\d{7})", remarks)
+        mmsi_match = re.search(r"MMSI\s*(\d{9})", remarks)
         assert imo_match.group(1) == "9187629"
         assert mmsi_match.group(1) == "572469210"
 
     def test_ofac_remarks_no_match(self):
         """REMARKS without IMO/MMSI should return None."""
         remarks = "some general text about sanctions"
-        assert re.search(r'IMO\s*(\d{7})', remarks) is None
-        assert re.search(r'MMSI\s*(\d{9})', remarks) is None
+        assert re.search(r"IMO\s*(\d{7})", remarks) is None
+        assert re.search(r"MMSI\s*(\d{9})", remarks) is None

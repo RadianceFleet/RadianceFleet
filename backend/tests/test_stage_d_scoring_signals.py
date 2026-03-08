@@ -7,8 +7,8 @@ Tests:
   D4: YAML configs have expected entries
   D5: corridors.yaml has new corridor names
 """
-import os
-from datetime import datetime, timedelta
+
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -22,6 +22,7 @@ _CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 
 
 # ── D1: flag_less_than_2y_AND_high_risk scoring ─────────────────────────────
+
 
 def _make_gap_for_scoring(
     duration_minutes=360,
@@ -83,7 +84,9 @@ class TestD1FlagLessThan2yHighRisk:
 
         # Set up query chain for the flag_less_than_2y_AND_high_risk check
         # We need the db.query().filter().order_by().first() to return flag_change
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = flag_change
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            flag_change
+        )
         # Other query chains return empty/None to avoid side effects
         db.query.return_value.filter.return_value.first.return_value = None
         db.query.return_value.filter.return_value.all.return_value = []
@@ -92,9 +95,7 @@ class TestD1FlagLessThan2yHighRisk:
         db.query.return_value.filter.return_value.scalar.return_value = 0
 
         scoring_date = datetime(2026, 1, 15, 12, 0)
-        score, breakdown = compute_gap_score(
-            gap, config, db=db, scoring_date=scoring_date
-        )
+        score, breakdown = compute_gap_score(gap, config, db=db, scoring_date=scoring_date)
 
         assert "flag_less_than_2y_AND_high_risk" in breakdown
         assert breakdown["flag_less_than_2y_AND_high_risk"] == 20
@@ -115,9 +116,7 @@ class TestD1FlagLessThan2yHighRisk:
         db.query.return_value.filter.return_value.scalar.return_value = 0
 
         scoring_date = datetime(2026, 1, 15, 12, 0)
-        score, breakdown = compute_gap_score(
-            gap, config, db=db, scoring_date=scoring_date
-        )
+        score, breakdown = compute_gap_score(gap, config, db=db, scoring_date=scoring_date)
 
         assert "flag_less_than_2y_AND_high_risk" not in breakdown
 
@@ -134,7 +133,9 @@ class TestD1FlagLessThan2yHighRisk:
         old_flag_change.vessel_id = 42
         old_flag_change.field_changed = "flag"
 
-        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = old_flag_change
+        db.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            old_flag_change
+        )
         db.query.return_value.filter.return_value.first.return_value = None
         db.query.return_value.filter.return_value.all.return_value = []
         db.query.return_value.filter.return_value.filter.return_value.all.return_value = []
@@ -142,14 +143,13 @@ class TestD1FlagLessThan2yHighRisk:
         db.query.return_value.filter.return_value.scalar.return_value = 0
 
         scoring_date = datetime(2026, 1, 15, 12, 0)
-        score, breakdown = compute_gap_score(
-            gap, config, db=db, scoring_date=scoring_date
-        )
+        score, breakdown = compute_gap_score(gap, config, db=db, scoring_date=scoring_date)
 
         assert "flag_less_than_2y_AND_high_risk" not in breakdown
 
 
 # ── D2: weather_correlator Open-Meteo integration ───────────────────────────
+
 
 class TestD2WeatherCorrelator:
     """D2: weather_correlator has Open-Meteo API integration."""
@@ -157,13 +157,16 @@ class TestD2WeatherCorrelator:
     def test_open_meteo_url_present(self):
         """The module should reference Open-Meteo Archive API URL."""
         import app.modules.weather_correlator as wc
+
         assert hasattr(wc, "OPEN_METEO_ARCHIVE_URL")
         assert "archive-api.open-meteo.com" in wc.OPEN_METEO_ARCHIVE_URL
 
     def test_get_weather_function_exists(self):
         """get_weather() function exists and accepts lat/lon/timestamp."""
-        from app.modules.weather_correlator import get_weather
         import inspect
+
+        from app.modules.weather_correlator import get_weather
+
         sig = inspect.signature(get_weather)
         params = list(sig.parameters.keys())
         assert "lat" in params
@@ -173,12 +176,15 @@ class TestD2WeatherCorrelator:
     def test_fetch_open_meteo_cached(self):
         """_fetch_open_meteo should use LRU cache."""
         from app.modules.weather_correlator import _fetch_open_meteo
-        assert hasattr(_fetch_open_meteo, "cache_info"), \
+
+        assert hasattr(_fetch_open_meteo, "cache_info"), (
             "_fetch_open_meteo should be decorated with @lru_cache"
+        )
 
     def test_compute_weather_deduction_storm(self):
         """Wind > 40kn should yield -15 deduction."""
         from app.modules.weather_correlator import compute_weather_deduction
+
         deduction, reason = compute_weather_deduction({"wind_speed_kn": 45.0})
         assert deduction == -15
         assert reason == "storm_conditions"
@@ -186,6 +192,7 @@ class TestD2WeatherCorrelator:
     def test_compute_weather_deduction_high_wind(self):
         """Wind > 25kn but <= 40kn should yield -8 deduction."""
         from app.modules.weather_correlator import compute_weather_deduction
+
         deduction, reason = compute_weather_deduction({"wind_speed_kn": 30.0})
         assert deduction == -8
         assert reason == "high_wind"
@@ -193,13 +200,15 @@ class TestD2WeatherCorrelator:
     def test_compute_weather_deduction_no_data(self):
         """Empty dict should yield 0 deduction."""
         from app.modules.weather_correlator import compute_weather_deduction
+
         deduction, reason = compute_weather_deduction({})
         assert deduction == 0
         assert reason == ""
 
     def test_get_weather_graceful_on_network_error(self):
         """get_weather should return empty dict when network fails."""
-        from app.modules.weather_correlator import get_weather, _fetch_open_meteo
+        from app.modules.weather_correlator import _fetch_open_meteo, get_weather
+
         # Clear cache to ensure fresh call
         _fetch_open_meteo.cache_clear()
         with patch("app.modules.weather_correlator.urlopen", side_effect=OSError("network error")):
@@ -209,12 +218,14 @@ class TestD2WeatherCorrelator:
 
 # ── D3: flag_hopping_detector dark-period gap correlation ────────────────────
 
+
 class TestD3DarkPeriodFlagChange:
     """D3: flag_hopping_detector has gap correlation for dark-period flag changes."""
 
     def test_dark_period_flag_change_code_exists(self):
         """The flag_hopping_detector module should import AISGapEvent."""
         import app.modules.flag_hopping_detector as fhd
+
         source = Path(fhd.__file__).read_text()
         assert "AISGapEvent" in source
         assert "dark_period_flag_change" in source
@@ -222,11 +233,13 @@ class TestD3DarkPeriodFlagChange:
     def test_gap_correlation_window(self):
         """The detector should check for gaps within +/-6h of flag change."""
         import app.modules.flag_hopping_detector as fhd
+
         source = Path(fhd.__file__).read_text()
         assert "timedelta(hours=6)" in source or "hours=6" in source
 
 
 # ── D4: YAML configs populated with real data ────────────────────────────────
+
 
 class TestD4YamlConfigs:
     """D4: YAML config files have expected entries."""
@@ -296,6 +309,7 @@ class TestD4YamlConfigs:
 
 # ── D5: corridors.yaml new corridors ─────────────────────────────────────────
 
+
 class TestD5NewCorridors:
     """D5: corridors.yaml should include Batam/Bintan, Zhoushan/Ningbo, and Mundra."""
 
@@ -304,12 +318,11 @@ class TestD5NewCorridors:
         with open(_CONFIG_DIR / "corridors.yaml") as f:
             data = yaml.safe_load(f)
         names = {c["name"] for c in data.get("corridors", [])}
-        assert any("Batam" in n or "Bintan" in n for n in names), \
-            "Batam/Bintan corridor missing"
-        assert any("Zhoushan" in n or "Ningbo" in n for n in names), \
+        assert any("Batam" in n or "Bintan" in n for n in names), "Batam/Bintan corridor missing"
+        assert any("Zhoushan" in n or "Ningbo" in n for n in names), (
             "Zhoushan/Ningbo corridor missing"
-        assert any("Mundra" in n for n in names), \
-            "Mundra corridor missing"
+        )
+        assert any("Mundra" in n for n in names), "Mundra corridor missing"
 
     def test_batam_corridor_geometry(self):
         """Batam/Bintan should be near lat ~1.0, lon ~104.5."""
@@ -329,8 +342,9 @@ class TestD5NewCorridors:
             data = yaml.safe_load(f)
         for c in data.get("corridors", []):
             if "Zhoushan" in c.get("name", "") or "Ningbo" in c.get("name", ""):
-                assert c["corridor_type"] == "anchorage_holding", \
+                assert c["corridor_type"] == "anchorage_holding", (
                     f"Expected anchorage_holding, got {c['corridor_type']}"
+                )
                 break
         else:
             pytest.fail("Zhoushan/Ningbo corridor not found")

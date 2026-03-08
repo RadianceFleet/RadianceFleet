@@ -1,8 +1,9 @@
 """Pydantic schemas for spoofing anomaly responses."""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -10,13 +11,13 @@ from pydantic import BaseModel
 class SpoofingAnomalyRead(BaseModel):
     anomaly_id: int
     vessel_id: int
-    gap_event_id: Optional[int] = None
+    gap_event_id: int | None = None
     anomaly_type: str
     start_time_utc: datetime
-    end_time_utc: Optional[datetime] = None
-    evidence_json: Optional[dict[str, Any]] = None
-    implied_speed_kn: Optional[float] = None
-    plausibility_score: Optional[float] = None
+    end_time_utc: datetime | None = None
+    evidence_json: dict[str, Any] | None = None
+    implied_speed_kn: float | None = None
+    plausibility_score: float | None = None
     risk_score_component: int
 
     model_config = {"from_attributes": True}

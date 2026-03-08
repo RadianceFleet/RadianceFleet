@@ -4,28 +4,27 @@ Tests owner deduplication (fuzzy matching, Cyrillic transliteration, union-find
 clustering) and fleet-level behavioural analysis (STS concentration, dark
 coordination, flag diversity, high risk average, shared manager, shared P&I).
 """
+
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
-import pytest
-
-from app.modules.owner_dedup import run_owner_dedup, _normalize_owner_name, _UnionFind
 from app.modules.fleet_analyzer import (
-    run_fleet_analysis,
-    _check_sts_concentration,
+    MAX_CLUSTERS_PER_RUN,
+    _alert_exists,
     _check_dark_coordination,
     _check_flag_diversity,
     _check_high_risk_average,
     _check_shared_manager_different_owners,
     _check_shared_pi_club,
-    _alert_exists,
-    MAX_CLUSTERS_PER_RUN,
+    _check_sts_concentration,
+    run_fleet_analysis,
 )
-
+from app.modules.owner_dedup import _normalize_owner_name, _UnionFind, run_owner_dedup
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_owner(owner_id, vessel_id, owner_name, country=None, is_sanctioned=False):
     o = MagicMock()
@@ -56,7 +55,9 @@ def _make_cluster(cluster_id, canonical_name="Test Cluster", is_sanctioned=False
     return c
 
 
-def _make_gap(vessel_id, gap_start, risk_score=0, corridor_id=1, gap_off_lat=60.0, gap_off_lon=25.0):
+def _make_gap(
+    vessel_id, gap_start, risk_score=0, corridor_id=1, gap_off_lat=60.0, gap_off_lon=25.0
+):
     g = MagicMock()
     g.vessel_id = vessel_id
     g.gap_start_utc = gap_start
@@ -79,6 +80,7 @@ def _make_sts(vessel_1_id, vessel_2_id, corridor_id, start_time):
 # ===========================================================================
 # Owner Dedup — Name Normalization
 # ===========================================================================
+
 
 class TestNormalizeOwnerName:
     def test_strip_llc(self):
@@ -125,6 +127,7 @@ class TestNormalizeOwnerName:
 # Owner Dedup — Union-Find
 # ===========================================================================
 
+
 class TestUnionFind:
     def test_basic_union(self):
         uf = _UnionFind()
@@ -153,6 +156,7 @@ class TestUnionFind:
 # ===========================================================================
 # Owner Dedup — run_owner_dedup
 # ===========================================================================
+
 
 class TestRunOwnerDedup:
     @patch("app.modules.owner_dedup.settings")
@@ -251,10 +255,11 @@ class TestRunOwnerDedup:
         db.flush.side_effect = lambda: None
         # We need to actually inspect the OwnerCluster object
         # Since we mock db.add, let's check what was added
-        result = run_owner_dedup(db)
+        run_owner_dedup(db)
 
         # Find the OwnerCluster among added objects
         from app.models.owner_cluster import OwnerCluster
+
         clusters = [o for o in added_objects if isinstance(o, OwnerCluster)]
         assert len(clusters) == 1
         assert clusters[0].is_sanctioned is True
@@ -280,6 +285,7 @@ class TestRunOwnerDedup:
 # ===========================================================================
 # Fleet Analyzer — STS Concentration
 # ===========================================================================
+
 
 class TestFleetSTSConcentration:
     def test_three_vessels_same_zone_triggers(self):
@@ -332,6 +338,7 @@ class TestFleetSTSConcentration:
 # Fleet Analyzer — Dark Coordination
 # ===========================================================================
 
+
 class TestFleetDarkCoordination:
     def test_three_vessels_within_48h_triggers(self):
         """3 vessels going dark within 48h -> alert."""
@@ -383,6 +390,7 @@ class TestFleetDarkCoordination:
 # Fleet Analyzer — Flag Diversity
 # ===========================================================================
 
+
 class TestFleetFlagDiversity:
     def test_four_flags_triggers(self):
         """4 different flags in one cluster -> alert."""
@@ -429,6 +437,7 @@ class TestFleetFlagDiversity:
 # ===========================================================================
 # Fleet Analyzer — High Risk Average
 # ===========================================================================
+
 
 class TestFleetHighRiskAverage:
     def test_avg_above_50_triggers(self):
@@ -478,6 +487,7 @@ class TestFleetHighRiskAverage:
 # Fleet Analyzer — Shared Manager Different Owners
 # ===========================================================================
 
+
 class TestSharedManagerDifferentOwners:
     def test_shared_manager_triggers(self):
         """Same vessel.owner_name but different VesselOwner names -> alert."""
@@ -512,6 +522,7 @@ class TestSharedManagerDifferentOwners:
 # ===========================================================================
 # Fleet Analyzer — Shared P&I Club
 # ===========================================================================
+
 
 class TestSharedPIClub:
     def test_shared_pi_sanctioned_cluster_triggers(self):
@@ -556,6 +567,7 @@ class TestSharedPIClub:
 # ===========================================================================
 # Fleet Analyzer — run_fleet_analysis
 # ===========================================================================
+
 
 class TestRunFleetAnalysis:
     @patch("app.modules.fleet_analyzer.settings")
@@ -603,8 +615,16 @@ class TestRunFleetAnalysis:
     @patch("app.modules.fleet_analyzer._check_shared_pi_club", return_value=None)
     @patch("app.modules.fleet_analyzer.settings")
     def test_dedup_no_duplicate_alerts(
-        self, mock_settings, mock_pi, mock_mgr, mock_risk, mock_dark,
-        mock_sts, mock_flag, mock_get_vessels, mock_exists
+        self,
+        mock_settings,
+        mock_pi,
+        mock_mgr,
+        mock_risk,
+        mock_dark,
+        mock_sts,
+        mock_flag,
+        mock_get_vessels,
+        mock_exists,
     ):
         """No duplicate alerts for same cluster+type (dedup via _alert_exists)."""
         mock_settings.FLEET_ANALYSIS_ENABLED = True

@@ -1,15 +1,14 @@
 """Tests for loitering detection engine."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from tests.conftest import make_mock_vessel
 
-
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _make_ais_point(vessel_id, ts, lat, lon, sog=0.1):
     p = MagicMock()
@@ -23,8 +22,10 @@ def _make_ais_point(vessel_id, ts, lat, lon, sog=0.1):
 
 def _make_vessel(vessel_id=1, mmsi="123456789"):
     return make_mock_vessel(
-        vessel_id=vessel_id, mmsi=mmsi,
-        vessel_laid_up_30d=False, vessel_laid_up_60d=False,
+        vessel_id=vessel_id,
+        mmsi=mmsi,
+        vessel_laid_up_30d=False,
+        vessel_laid_up_60d=False,
         vessel_laid_up_in_sts_zone=False,
     )
 
@@ -62,6 +63,7 @@ def _generate_moving_track(vessel_id, hours=6, sog=12.0):
 
 
 # ── Tests ────────────────────────────────────────────────────────────
+
 
 class TestDetectLoiteringForVessel:
     """Tests for detect_loitering_for_vessel()."""
@@ -175,7 +177,9 @@ class TestRunLoiteringDetection:
         assert result["loitering_events_created"] == 6
         assert mock_detect.call_count == 3
 
-    @patch("app.modules.loitering_detector.detect_loitering_for_vessel", side_effect=Exception("boom"))
+    @patch(
+        "app.modules.loitering_detector.detect_loitering_for_vessel", side_effect=Exception("boom")
+    )
     def test_handles_per_vessel_errors(self, mock_detect):
         from app.modules.loitering_detector import run_loitering_detection
 
@@ -204,14 +208,20 @@ class TestPointInCorridor:
 
         corridor = _make_corridor()
         # bbox: (24, 26, 54, 56) = (min_lat, max_lat, min_lon, max_lon)
-        with patch("app.modules.loitering_detector._parse_corridor_bbox", return_value=(24.0, 26.0, 54.0, 56.0)):
+        with patch(
+            "app.modules.loitering_detector._parse_corridor_bbox",
+            return_value=(24.0, 26.0, 54.0, 56.0),
+        ):
             assert _point_in_corridor(25.0, 55.0, corridor) is True
 
     def test_point_outside_corridor(self):
         from app.modules.loitering_detector import _point_in_corridor
 
         corridor = _make_corridor()
-        with patch("app.modules.loitering_detector._parse_corridor_bbox", return_value=(24.0, 26.0, 54.0, 56.0)):
+        with patch(
+            "app.modules.loitering_detector._parse_corridor_bbox",
+            return_value=(24.0, 26.0, 54.0, 56.0),
+        ):
             assert _point_in_corridor(30.0, 60.0, corridor) is False
 
 
@@ -264,6 +274,7 @@ class TestDetectLaidUpVessels:
 
         # First .all() returns vessels, corridors
         call_count = [0]
+
         def side_effect_all():
             call_count[0] += 1
             if call_count[0] <= 2:

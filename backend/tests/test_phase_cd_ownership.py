@@ -1,17 +1,18 @@
 """Tests for Phase C15-D19: ownership verification, paid provider stubs."""
+
 from __future__ import annotations
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, PropertyMock
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
-from app.main import app
 from app.database import get_db
-
+from app.main import app
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def mock_db():
@@ -28,6 +29,7 @@ def mock_db():
 @pytest.fixture
 def api_client(mock_db):
     """TestClient with DB dependency overridden."""
+
     def override_get_db():
         yield mock_db
 
@@ -39,6 +41,7 @@ def api_client(mock_db):
 
 # ── VesselOwner Model Tests ──────────────────────────────────────────────────
 
+
 def test_vessel_owner_new_fields():
     """VesselOwner model accepts verification fields (Phase C15-16)."""
     from app.models.vessel_owner import VesselOwner
@@ -47,14 +50,14 @@ def test_vessel_owner_new_fields():
         vessel_id=1,
         owner_name="Test Shipping Co",
         verified_by="analyst@example.com",
-        verified_at=datetime(2026, 2, 27, 12, 0, 0, tzinfo=timezone.utc),
+        verified_at=datetime(2026, 2, 27, 12, 0, 0, tzinfo=UTC),
         source_url="https://equasis.org/search?imo=1234567",
         verification_notes="Ownership confirmed via Equasis public records.",
     )
 
     assert owner.owner_name == "Test Shipping Co"
     assert owner.verified_by == "analyst@example.com"
-    assert owner.verified_at == datetime(2026, 2, 27, 12, 0, 0, tzinfo=timezone.utc)
+    assert owner.verified_at == datetime(2026, 2, 27, 12, 0, 0, tzinfo=UTC)
     assert owner.source_url == "https://equasis.org/search?imo=1234567"
     assert owner.verification_notes == "Ownership confirmed via Equasis public records."
 
@@ -80,6 +83,7 @@ def test_vessel_owner_backwards_compatible():
 
 # ── VerificationLog Model Tests ──────────────────────────────────────────────
 
+
 def test_verification_log_model():
     """VerificationLog model creation with all fields."""
     from app.models.verification_log import VerificationLog
@@ -100,6 +104,7 @@ def test_verification_log_model():
 
 
 # ── API: PATCH vessel owner ──────────────────────────────────────────────────
+
 
 def test_patch_vessel_owner(api_client, mock_db):
     """PATCH /vessels/{id}/owner updates an existing owner record."""
@@ -130,6 +135,7 @@ def test_patch_vessel_owner(api_client, mock_db):
         else:
             q.filter.return_value.first.return_value = None
         return q
+
     mock_db.query.side_effect = side_effect_query
 
     response = api_client.patch(
@@ -174,6 +180,7 @@ def test_patch_vessel_owner_creates_new(api_client, mock_db):
         else:
             q.filter.return_value.first.return_value = None
         return q
+
     mock_db.query.side_effect = side_effect_query
 
     response = api_client.patch(
@@ -200,6 +207,7 @@ def test_patch_vessel_owner_not_found(api_client, mock_db):
 
 
 # ── API: POST verify vessel ──────────────────────────────────────────────────
+
 
 def test_verify_vessel_no_api_key(api_client, mock_db):
     """POST /vessels/{id}/verify returns graceful error when provider not configured."""
@@ -248,6 +256,7 @@ def test_verify_vessel_not_found(api_client, mock_db):
 
 # ── API: GET verification budget ─────────────────────────────────────────────
 
+
 def test_verification_budget(api_client, mock_db):
     """GET /verification/budget returns expected structure."""
     # Mock the scalar query for monthly spend (single .filter() with two conditions)
@@ -271,9 +280,10 @@ def test_verification_budget(api_client, mock_db):
 
 # ── Paid verification unit tests ─────────────────────────────────────────────
 
+
 def test_budget_check():
     """Verify budget_exceeded response when budget is low."""
-    from app.modules.paid_verification import verify_vessel, VerificationResult
+    from app.modules.paid_verification import verify_vessel
 
     db = MagicMock()
     # Vessel exists
@@ -332,12 +342,13 @@ def test_verification_log_created():
     with patch("app.modules.paid_verification.settings") as mock_settings:
         mock_settings.VERIFICATION_MONTHLY_BUDGET_USD = 500.0
         mock_settings.SKYLIGHT_API_KEY = ""
-        result = verify_vessel(db, 1, provider_name="skylight")
+        verify_vessel(db, 1, provider_name="skylight")
 
     # Log should have been added
     db.add.assert_called()
     added_obj = db.add.call_args[0][0]
     from app.models.verification_log import VerificationLog
+
     assert isinstance(added_obj, VerificationLog)
     assert added_obj.vessel_id == 1
     assert added_obj.provider == "skylight"
@@ -365,6 +376,7 @@ def test_unknown_provider():
 
 # ── Settings tests ────────────────────────────────────────────────────────────
 
+
 def test_settings_has_verification_keys():
     """Settings class includes paid verification config fields."""
     from app.config import Settings
@@ -381,6 +393,7 @@ def test_settings_has_verification_keys():
 
 
 # ── VerificationResult dataclass tests ────────────────────────────────────────
+
 
 def test_verification_result_defaults():
     """VerificationResult has sensible defaults."""
@@ -407,6 +420,7 @@ def test_verification_result_with_data():
 
 
 # ── get_budget_status tests ──────────────────────────────────────────────────
+
 
 def test_get_budget_status_no_spend():
     """get_budget_status returns full remaining when no spend."""
@@ -441,9 +455,10 @@ def test_get_budget_status_partial_spend():
 
 # ── Provider instance tests ──────────────────────────────────────────────────
 
+
 def test_provider_names():
     """Each provider returns the correct name."""
-    from app.modules.paid_verification import SkylightProvider, SpireProvider, SeaWebProvider
+    from app.modules.paid_verification import SeaWebProvider, SkylightProvider, SpireProvider
 
     assert SkylightProvider().name() == "skylight"
     assert SpireProvider().name() == "spire"
@@ -452,7 +467,7 @@ def test_provider_names():
 
 def test_provider_costs():
     """Each provider returns the expected estimated cost."""
-    from app.modules.paid_verification import SkylightProvider, SpireProvider, SeaWebProvider
+    from app.modules.paid_verification import SeaWebProvider, SkylightProvider, SpireProvider
 
     assert SkylightProvider().estimated_cost() == 0.0  # Free for NGOs
     assert SpireProvider().estimated_cost() == 0.50

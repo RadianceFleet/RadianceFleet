@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestSentryConfig:
     """Test Sentry configuration settings."""
@@ -54,15 +52,15 @@ class TestSentryInit:
 
     def test_warning_when_sdk_not_installed(self, monkeypatch, caplog):
         """Should log warning when DSN is set but sdk not installed."""
-        import importlib
-        import logging
 
         import app.main
 
         monkeypatch.setattr("app.config.settings.SENTRY_DSN", "https://key@sentry.io/123")
 
         # Simulate ImportError for sentry_sdk
-        original_import = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+        original_import = (
+            __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+        )
 
         def mock_import(name, *args, **kwargs):
             if name == "sentry_sdk":
