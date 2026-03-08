@@ -8,6 +8,7 @@ import {
   useValidationSignals,
   useValidationSweep,
   useAnalystMetrics,
+  useDetectorCorrelation,
 } from '../hooks/useValidation'
 import type { SignalEffectiveness } from '../hooks/useValidation'
 
@@ -42,6 +43,7 @@ export function AccuracyDashboardPage() {
   const signals = useValidationSignals()
   const sweep = useValidationSweep()
   const analyst = useAnalystMetrics()
+  const correlation = useDetectorCorrelation()
 
   const handleSignalSort = (key: SortKey) => {
     setSignalSort(prev =>
@@ -62,7 +64,7 @@ export function AccuracyDashboardPage() {
       : String(bNum).localeCompare(String(aNum))
   })
 
-  const correlationData = validation.data?.per_source
+  const correlationData = correlation.data
 
   return (
     <div style={{ maxWidth: 1100 }}>
@@ -235,30 +237,32 @@ export function AccuracyDashboardPage() {
         )}
       </Card>
 
-      {/* Detector Correlation — using per_source as a proxy table for now */}
-      {correlationData && Object.keys(correlationData).length > 0 && (
+      {/* Detector Correlation — co-occurrence FP rates for signal pairs */}
+      {correlationData && correlationData.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <h3 style={{ margin: '0 0 12px', fontSize: 14, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
-            Results by Source
+            Detector Correlation
           </h3>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--bg-base)' }}>
-                <th style={headStyle}>Source</th>
-                <th style={headStyle}>TP</th>
-                <th style={headStyle}>FP</th>
-                <th style={headStyle}>FN</th>
-                <th style={headStyle}>TN</th>
+                <th style={headStyle}>Signal A</th>
+                <th style={headStyle}>Signal B</th>
+                <th style={headStyle}>Co-occurrences</th>
+                <th style={headStyle}>FP Count</th>
+                <th style={headStyle}>FP Rate</th>
               </tr>
             </thead>
             <tbody>
-              {Object.entries(correlationData).map(([src, counts]) => (
-                <tr key={src} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={cellStyle}>{src}</td>
-                  <td style={cellStyle}>{counts.tp}</td>
-                  <td style={cellStyle}>{counts.fp}</td>
-                  <td style={cellStyle}>{counts.fn}</td>
-                  <td style={cellStyle}>{counts.tn}</td>
+              {correlationData.slice(0, 20).map((row) => (
+                <tr key={`${row.category_a}-${row.category_b}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={cellStyle}>{row.category_a}</td>
+                  <td style={cellStyle}>{row.category_b}</td>
+                  <td style={cellStyle}>{row.co_occurrence_count}</td>
+                  <td style={cellStyle}>{row.fp_count}</td>
+                  <td style={{ ...cellStyle, color: row.fp_rate > 0.3 ? 'var(--danger)' : 'var(--text)' }}>
+                    {(row.fp_rate * 100).toFixed(1)}%
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -75,3 +75,19 @@ export function useAnalystMetrics() {
     retry: false,
   })
 }
+
+export interface DetectorCorrelation {
+  category_a: string
+  category_b: string
+  co_occurrence_count: number
+  fp_count: number
+  fp_rate: number
+}
+
+export function useDetectorCorrelation() {
+  return useQuery({
+    queryKey: ['detector-correlation'],
+    queryFn: () => apiFetch<DetectorCorrelation[]>('/admin/validate/detector-correlation'),
+    retry: false,
+  })
+}

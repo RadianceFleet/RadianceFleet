@@ -582,9 +582,10 @@ def validate(
     db = SessionLocal()
     try:
         result = run_validation(db, threshold_band=threshold)
+        cm = result['confusion_matrix']
         console.print(f"\n[bold]Validation Results[/bold] (threshold: {threshold})")
-        console.print(f"  TP: {result['tp']}  FP: {result['fp']}")
-        console.print(f"  FN: {result['fn']}  TN: {result['tn']}")
+        console.print(f"  TP: {cm['tp']}  FP: {cm['fp']}")
+        console.print(f"  FN: {cm['fn']}  TN: {cm['tn']}")
         console.print(f"  Precision: {result['precision']:.3f}")
         console.print(f"  Recall:    {result['recall']:.3f}")
         console.print(f"  F2:        {result['f2_score']:.3f}")

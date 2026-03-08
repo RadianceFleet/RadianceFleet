@@ -258,6 +258,18 @@ def admin_analyst_metrics(
     return analyst_feedback_metrics(db)
 
 
+@router.get("/admin/validate/detector-correlation", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def admin_detector_correlation(
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """Detector correlation report — co-occurrence FP rates for signal pairs."""
+    from app.modules.validation_harness import detector_correlation_report
+    return detector_correlation_report(db)
+
+
 @router.post("/admin/purge-observations", tags=["admin"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def admin_purge_observations(
