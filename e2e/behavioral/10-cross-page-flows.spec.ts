@@ -20,7 +20,7 @@ test.describe('Cross-Page Flows', () => {
     await base.waitForContentLoad();
 
     // Find a link leading to /alerts
-    const alertsLink = page.locator('a[href*="/alerts"]').first();
+    const alertsLink = page.locator('main a[href*="/alerts"]').first();
     await expect(alertsLink).toBeVisible({ timeout: 10_000 });
 
     const alertsP = waitForAlerts(page);
@@ -28,7 +28,7 @@ test.describe('Cross-Page Flows', () => {
     await alertsP;
 
     // On /alerts: click first alert link
-    const firstAlertLink = page.locator('a[href*="/alerts/"]').first();
+    const firstAlertLink = page.locator('table a[href*="/alerts/"]').first();
     await expect(firstAlertLink).toBeVisible();
     await firstAlertLink.click();
     await page.waitForLoadState('domcontentloaded');
@@ -36,7 +36,7 @@ test.describe('Cross-Page Flows', () => {
     expect(page.url()).toMatch(/\/alerts\/\d+/);
 
     // On alert detail: find vessel link and click
-    const vesselLink = page.locator('a[href*="/vessels/"]').first();
+    const vesselLink = page.locator('main a[href*="/vessels/"]').first();
     const vesselLinkVisible = await vesselLink.isVisible().catch(() => false);
 
     if (vesselLinkVisible) {
@@ -58,11 +58,11 @@ test.describe('Cross-Page Flows', () => {
     const markerCount = await markers.count();
     skipIfEmpty(test, markerCount, 'map markers');
 
-    await markers.first().click();
+    await markers.first().dispatchEvent('click');
     const popup = page.locator('.leaflet-popup').first();
     await expect(popup).toBeVisible({ timeout: 5_000 });
 
-    const detailLink = popup.locator('a[href*="/alerts/"]').first();
+    const detailLink = popup.locator('a').first();
     const linkVisible = await detailLink.isVisible().catch(() => false);
     skipIfEmpty(test, linkVisible ? 1 : 0, 'popup detail links');
 
@@ -87,7 +87,7 @@ test.describe('Cross-Page Flows', () => {
     await searchInput.fill('a');
     await searchP;
 
-    const firstVesselLink = page.locator('a[href*="/vessels/"]').first();
+    const firstVesselLink = page.locator('main a[href*="/vessels/"]').first();
     await expect(firstVesselLink).toBeVisible();
     await firstVesselLink.click();
     await page.waitForLoadState('domcontentloaded');
@@ -118,7 +118,7 @@ test.describe('Cross-Page Flows', () => {
     const base = new BasePage(page);
     await base.waitForContentLoad();
 
-    const firstCorridorLink = page.locator('a[href*="/corridors/"]').first();
+    const firstCorridorLink = page.locator('main a[href*="/corridors/"]').first();
     await expect(firstCorridorLink).toBeVisible();
     await firstCorridorLink.click();
     await page.waitForLoadState('domcontentloaded');
@@ -158,11 +158,11 @@ test.describe('Cross-Page Flows', () => {
     await vesselsNav.click();
     await page.waitForLoadState('domcontentloaded');
 
-    // Navigate back to alerts via sidebar
+    // Navigate back to alerts via sidebar — React Query may serve from cache (no new API call)
     const alertsNav = page.locator('nav').locator('a[href*="/alerts"]').first();
-    const alertsReturnP = waitForAlerts(page);
     await alertsNav.click();
-    await alertsReturnP;
+    await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByPlaceholder('Min score')).toBeVisible();
 
     // Check if filter persisted
     const currentValue = await minScore.inputValue();

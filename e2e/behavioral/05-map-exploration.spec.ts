@@ -78,7 +78,8 @@ test.describe('Map Exploration', () => {
     const count = await map.markers.count();
     skipIfEmpty(test, count, 'map markers');
 
-    await map.markers.first().click();
+    // Markers may be outside viewport — use JS dispatch to trigger Leaflet's click handler
+    await map.markers.first().dispatchEvent('click');
     await expect(map.popup).toBeVisible({ timeout: 5_000 });
 
     const popupText = await map.popup.textContent();
@@ -96,10 +97,10 @@ test.describe('Map Exploration', () => {
     const count = await map.markers.count();
     skipIfEmpty(test, count, 'map markers');
 
-    await map.markers.first().click();
+    await map.markers.first().dispatchEvent('click');
     await expect(map.popup).toBeVisible({ timeout: 5_000 });
 
-    const link = map.popup.locator('a[href*="/alerts/"]').first();
+    const link = map.popup.locator('a').first();
     const linkVisible = await link.isVisible().catch(() => false);
 
     if (!linkVisible) {

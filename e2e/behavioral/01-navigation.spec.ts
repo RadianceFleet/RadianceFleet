@@ -114,7 +114,7 @@ test.describe('Navigation', () => {
     await page.goto('/alerts', { waitUntil: 'domcontentloaded' });
     await alertsP;
 
-    const firstLink = page.locator('a[href*="/alerts/"]').first();
+    const firstLink = page.locator('table a[href*="/alerts/"]').first();
     await expect(firstLink).toBeVisible();
     await firstLink.click();
     await page.waitForLoadState('domcontentloaded');
@@ -130,7 +130,7 @@ test.describe('Navigation', () => {
     const base = new BasePage(page);
     await base.waitForContentLoad();
 
-    const vesselLink = page.locator('a[href*="/vessels/"]').first();
+    const vesselLink = page.locator('main a[href*="/vessels/"]').first();
     await expect(vesselLink).toBeVisible();
     await vesselLink.click();
     await page.waitForLoadState('domcontentloaded');
@@ -146,7 +146,7 @@ test.describe('Navigation', () => {
     const base = new BasePage(page);
     await base.waitForContentLoad();
 
-    const breadcrumb = page.locator('a').filter({ hasText: /all alerts|back to alerts|alerts/i }).first();
+    const breadcrumb = page.locator('main a').filter({ hasText: /all alerts|back to alerts|alerts/i }).first();
     const isVisible = await breadcrumb.isVisible().catch(() => false);
 
     if (!isVisible) {
@@ -169,7 +169,7 @@ test.describe('Navigation', () => {
     await page.goto('/alerts', { waitUntil: 'domcontentloaded' });
     await alertsP;
 
-    const firstLink = page.locator('a[href*="/alerts/"]').first();
+    const firstLink = page.locator('table a[href*="/alerts/"]').first();
     await expect(firstLink).toBeVisible();
     await firstLink.click();
     await page.waitForLoadState('domcontentloaded');

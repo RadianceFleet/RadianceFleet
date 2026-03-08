@@ -50,10 +50,10 @@ export function VoyagePredictionPage() {
 
   const loading = predLoading
   const unavailable = predError && !predLoading
-  const hasPrediction = prediction && (prediction.predicted_route.length > 0 || prediction.actual_route.length > 0)
+  const hasPrediction = prediction && ((prediction.predicted_route?.length ?? 0) > 0 || (prediction.actual_route?.length ?? 0) > 0)
 
-  const predictedPositions: LatLngExpression[] = prediction?.predicted_route.map(p => [p.lat, p.lon] as LatLngExpression) ?? []
-  const actualPositions: LatLngExpression[] = prediction?.actual_route.map(p => [p.lat, p.lon] as LatLngExpression) ?? []
+  const predictedPositions: LatLngExpression[] = prediction?.predicted_route?.map(p => [p.lat, p.lon] as LatLngExpression) ?? []
+  const actualPositions: LatLngExpression[] = prediction?.actual_route?.map(p => [p.lat, p.lon] as LatLngExpression) ?? []
   const allPositions = [...predictedPositions, ...actualPositions]
   const bounds: LatLngBoundsExpression | undefined = allPositions.length >= 2 ? allPositions as LatLngBoundsExpression : undefined
 
@@ -172,11 +172,11 @@ export function VoyagePredictionPage() {
               </tr>
               <tr>
                 <td style={labelCell}>Actual Track Points</td>
-                <td style={valueCell}>{prediction!.actual_route.length}</td>
+                <td style={valueCell}>{prediction!.actual_route?.length ?? 0}</td>
               </tr>
               <tr>
                 <td style={labelCell}>Predicted Route Points</td>
-                <td style={valueCell}>{prediction!.predicted_route.length}</td>
+                <td style={valueCell}>{prediction!.predicted_route?.length ?? 0}</td>
               </tr>
             </tbody></table>
           </Card>

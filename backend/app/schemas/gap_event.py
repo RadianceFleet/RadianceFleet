@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class AISPointSummary(BaseModel):
@@ -96,6 +97,13 @@ class GapEventRead(BaseModel):
     is_false_positive: bool | None = None
     reviewed_by: str | None = None
     review_date: datetime | None = None
+
+    @field_validator("risk_breakdown_json", mode="before")
+    @classmethod
+    def _parse_json_string(cls, v: Any) -> dict[str, Any] | None:
+        if isinstance(v, str):
+            return json.loads(v)
+        return v
 
     model_config = {"from_attributes": True}
 

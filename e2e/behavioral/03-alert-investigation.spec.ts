@@ -176,13 +176,14 @@ test.describe('Alert Investigation', () => {
     const base = new BasePage(page);
     await base.waitForContentLoad();
 
-    const mapOrLeaflet = page.locator('.leaflet-container, [class*="map"]').first();
+    const main = page.locator('main');
+    const mapOrLeaflet = main.locator('.leaflet-container, [class*="map"]').first();
     await expect(mapOrLeaflet).toBeVisible({ timeout: 10_000 });
 
-    const scoreText = page.getByText(/Risk Score|Score/i).first();
+    const scoreText = main.getByText(/Risk Score|Score/i).first();
     await expect(scoreText).toBeVisible();
 
-    const gapText = page.getByText(/Gap Details|gap/i).first();
+    const gapText = main.getByText(/Gap Details|gap/i).first();
     await expect(gapText).toBeVisible();
   });
 });

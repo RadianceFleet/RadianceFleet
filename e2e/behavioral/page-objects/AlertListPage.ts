@@ -23,8 +23,8 @@ export class AlertListPage extends BasePage {
     this.patternsToggle = page.getByText('Patterns only');
     this.prevButton = page.getByRole('button', { name: 'Prev' });
     this.nextButton = page.getByRole('button', { name: 'Next' });
-    this.alertLinks = page.locator('a[href*="/alerts/"]');
-    this.vesselLinks = page.locator('a[href*="/vessels/"]');
+    this.alertLinks = page.locator('table a[href*="/alerts/"]');
+    this.vesselLinks = page.locator('table a[href*="/vessels/"]');
   }
 
   sortHeader(label: string): Locator {

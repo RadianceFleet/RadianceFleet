@@ -17,19 +17,12 @@ test.describe('Data Tables', () => {
     const initialText = await scoreHeader.textContent();
     expect(initialText).toContain('▼');
 
-    const sortedP = waitForAlerts(page);
     await scoreHeader.click();
-    await sortedP;
+    // Sort may be client-side (React Query cache) — wait for header text to update
+    await expect(scoreHeader).toContainText('▲', { timeout: 5_000 });
 
-    const ascText = await scoreHeader.textContent();
-    expect(ascText).toContain('▲');
-
-    const resortP = waitForAlerts(page);
     await scoreHeader.click();
-    await resortP;
-
-    const revertedText = await scoreHeader.textContent();
-    expect(revertedText).toContain('▼');
+    await expect(scoreHeader).toContainText('▼', { timeout: 5_000 });
   });
 
   test('alert table row structure', async ({ page }, testInfo) => {

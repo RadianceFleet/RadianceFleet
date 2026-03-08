@@ -28,6 +28,6 @@ export class MapOverviewPage extends BasePage {
   }
 
   layerCheckbox(label: string): Locator {
-    return this.page.getByText(label);
+    return this.page.getByRole('main').getByText(label);
   }
 }
