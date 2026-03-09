@@ -215,10 +215,6 @@ radiancefleet update --stream-time 30m
 | Cloudflare Pages | Free |
 | **Total** | **~$12–25/month** |
 
-For sustained funding, see the `/donate` page in the app or apply to:
-- **IJ4EU** — EU cross-border journalism fund, up to €50K
-- **NED** — National Endowment for Democracy media freedom grants
-
 ---
 
 ## Local Development (SQLite, no Docker)
