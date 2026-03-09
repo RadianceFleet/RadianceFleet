@@ -6,6 +6,7 @@ import { Spinner } from './ui/Spinner'
 import { ScoreBadge } from './ui/ScoreBadge'
 import { AlertStatusPanel } from './AlertStatusPanel'
 import { AlertExportPanel } from './AlertExportPanel'
+import { useAuth } from '../hooks/useAuth'
 import { sectionHead, labelCell as _labelCell, valueCell, card, btnStyle, tableStyle, theadRow, tbodyRow } from '../styles/tables'
 
 const labelCell: React.CSSProperties = { ..._labelCell, width: 180 }
@@ -14,6 +15,7 @@ export function AlertDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
 
+  const { isAuthenticated } = useAuth()
   const { data: alert, isLoading, error } = useAlert(id)
   const statusMutation = useUpdateAlertStatus(id ?? '')
   const notesMutation = useUpdateAlertNotes(id ?? '')
@@ -231,6 +233,7 @@ export function AlertDetail() {
         reviewed_by={alert.reviewed_by}
         review_date={alert.review_date}
         verdictMutation={verdictMutation}
+        readOnly={!isAuthenticated}
       />
 
       {/* Extracted: export + satellite check actions */}

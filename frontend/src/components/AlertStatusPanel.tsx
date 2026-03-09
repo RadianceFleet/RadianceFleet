@@ -18,13 +18,14 @@ export interface AlertStatusPanelProps {
   reviewed_by?: string | null
   review_date?: string | null
   verdictMutation: UseMutationResult<unknown, Error, { verdict: string; reason?: string; reviewed_by?: string }, unknown>
+  readOnly?: boolean
 }
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export function AlertStatusPanel({ currentStatus, analystNotes, statusMutation, notesMutation, is_false_positive, reviewed_by, review_date, verdictMutation }: AlertStatusPanelProps) {
+export function AlertStatusPanel({ currentStatus, analystNotes, statusMutation, notesMutation, is_false_positive, reviewed_by, review_date, verdictMutation, readOnly }: AlertStatusPanelProps) {
   const [notes, setNotes] = useState('')
   const [saved, setSaved] = useState(false)
   const [verdictReason, setVerdictReason] = useState('')
@@ -61,11 +62,11 @@ export function AlertStatusPanel({ currentStatus, analystNotes, statusMutation, 
         <select
           value={currentStatus}
           onChange={e => statusMutation.mutate({ status: e.target.value })}
-          disabled={statusMutation.isPending}
+          disabled={readOnly || statusMutation.isPending}
           style={{
             background: 'var(--bg-base)', color: 'var(--text-bright)', border: '1px solid var(--border)',
             padding: '6px 10px', borderRadius: 'var(--radius)', marginTop: 4, fontSize: 13,
-            opacity: statusMutation.isPending ? 0.6 : 1,
+            opacity: readOnly || statusMutation.isPending ? 0.6 : 1,
           }}
         >
           {STATUSES.map(s => (
@@ -79,6 +80,7 @@ export function AlertStatusPanel({ currentStatus, analystNotes, statusMutation, 
         <textarea
           value={notes}
           onChange={e => { setNotes(e.target.value); setSaved(false) }}
+          disabled={readOnly}
           rows={4}
           style={{
             width: '100%', background: 'var(--bg-base)', color: 'var(--text-bright)',
@@ -88,7 +90,7 @@ export function AlertStatusPanel({ currentStatus, analystNotes, statusMutation, 
         />
         <button
           onClick={() => notesMutation.mutate(notes)}
-          disabled={notesMutation.isPending}
+          disabled={readOnly || notesMutation.isPending}
           style={{
             ...btnStyle,
             background: 'var(--accent-primary)',
@@ -123,6 +125,7 @@ export function AlertStatusPanel({ currentStatus, analystNotes, statusMutation, 
             placeholder="Reason (optional)"
             value={verdictReason}
             onChange={e => setVerdictReason(e.target.value)}
+            disabled={readOnly}
             style={{
               flex: 1, background: 'var(--bg-base)', color: 'var(--text-bright)',
               border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '6px 10px', fontSize: 13,
@@ -130,14 +133,14 @@ export function AlertStatusPanel({ currentStatus, analystNotes, statusMutation, 
           />
           <button
             onClick={() => verdictMutation.mutate({ verdict: 'confirmed_tp', reason: verdictReason || undefined })}
-            disabled={verdictMutation.isPending}
+            disabled={readOnly || verdictMutation.isPending}
             style={{ ...btnStyle, background: '#2e7d32', color: '#fff', border: 'none', opacity: verdictMutation.isPending ? 0.6 : 1 }}
           >
             Confirm TP
           </button>
           <button
             onClick={() => verdictMutation.mutate({ verdict: 'confirmed_fp', reason: verdictReason || undefined })}
-            disabled={verdictMutation.isPending}
+            disabled={readOnly || verdictMutation.isPending}
             style={{ ...btnStyle, background: '#c62828', color: '#fff', border: 'none', opacity: verdictMutation.isPending ? 0.6 : 1 }}
           >
             Mark FP

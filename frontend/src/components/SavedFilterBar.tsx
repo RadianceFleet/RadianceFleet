@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api'
+import { useAuth } from '../hooks/useAuth'
 
 interface SavedFilter {
   filter_id: number
@@ -16,13 +17,14 @@ interface Props {
 
 export function SavedFilterBar({ currentFilters, onApplyFilter }: Props) {
   const queryClient = useQueryClient()
+  const { isAuthenticated } = useAuth()
   const [saveName, setSaveName] = useState('')
   const [showSave, setShowSave] = useState(false)
 
   const { data } = useQuery({
     queryKey: ['saved-filters'],
     queryFn: () => apiFetch<{ items: SavedFilter[] }>('/alerts/saved-filters'),
-    enabled: !!localStorage.getItem('rf_admin_token'),
+    enabled: isAuthenticated,
   })
 
   const saveMutation = useMutation({
@@ -49,7 +51,7 @@ export function SavedFilterBar({ currentFilters, onApplyFilter }: Props) {
     if (defaultFilter) onApplyFilter(defaultFilter.filter_json)
   }, [filters.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!localStorage.getItem('rf_admin_token')) return null
+  if (!isAuthenticated) return null
 
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', fontSize: 13 }}>

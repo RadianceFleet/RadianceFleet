@@ -25,6 +25,7 @@ vi.mock('../hooks/useAlerts', () => ({
 vi.mock('../hooks/useVessels', () => ({
   useVesselSearch: () => ({ data: { items: [] }, isLoading: false, error: null }),
   useMergeCandidates: () => ({ data: [], isLoading: false, error: null }),
+  useMergeChains: () => ({ data: null, isLoading: false, error: null }),
 }))
 
 vi.mock('../hooks/useCorridors', () => ({
@@ -51,6 +52,8 @@ vi.mock('../hooks/useValidation', () => ({
   useValidationSignals: () => ({ data: null, isLoading: false, error: null }),
   useValidationSweep: () => ({ data: null, isLoading: false, error: null }),
   useAnalystMetrics: () => ({ data: null, isLoading: false, error: null }),
+  useDetectorCorrelation: () => ({ data: null, isLoading: false, error: null }),
+  useLiveSignalEffectiveness: () => ({ data: null, isLoading: false, error: null }),
 }))
 
 vi.mock('../hooks/useGlobalDetections', () => ({
@@ -121,6 +124,8 @@ vi.mock('leaflet', () => ({
   latLngBounds: () => ({}),
 }))
 
+vi.mock('leaflet.heat', () => ({}))
+
 import { DashboardPage } from '../pages/DashboardPage'
 import { VesselSearchPage } from '../pages/VesselSearchPage'
 import { CorridorsPage } from '../pages/CorridorsPage'
@@ -157,10 +162,16 @@ describe('Page smoke tests', () => {
     expect(screen.getByPlaceholderText(/Search MMSI/)).toBeInTheDocument()
   })
 
-  it('CorridorsPage renders heading and create button', () => {
-    renderWithProviders(<CorridorsPage />)
+  it('CorridorsPage renders heading and create button when authenticated', () => {
+    renderWithProviders(<CorridorsPage />, { auth: { role: 'admin' } })
     expect(screen.getByText(/Corridors/)).toBeInTheDocument()
     expect(screen.getByText('Create Corridor')).toBeInTheDocument()
+  })
+
+  it('CorridorsPage hides create button when unauthenticated', () => {
+    renderWithProviders(<CorridorsPage />)
+    expect(screen.getByText(/Corridors/)).toBeInTheDocument()
+    expect(screen.queryByText('Create Corridor')).not.toBeInTheDocument()
   })
 
   it('WatchlistPage renders', () => {

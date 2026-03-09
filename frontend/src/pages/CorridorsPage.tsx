@@ -7,6 +7,7 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { Pagination } from '../components/ui/Pagination'
 import { CreateCorridorModal } from '../components/CreateCorridorModal'
+import { useAuth } from '../hooks/useAuth'
 
 const PAGE_SIZE = 20
 
@@ -26,6 +27,7 @@ function formatType(raw: string): string {
 export function CorridorsPage() {
   const [page, setPage] = useState(0)
   const [showCreate, setShowCreate] = useState(false)
+  const { isAuthenticated } = useAuth()
   const { data, isLoading, error, refetch } = useCorridors({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const corridors = data?.items
   const total = data?.total ?? 0
@@ -37,21 +39,23 @@ export function CorridorsPage() {
         <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-muted)' }}>
           Corridors &amp; Zones
         </h2>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            padding: '0.375rem 0.75rem',
-            fontSize: '0.8125rem',
-            fontWeight: 600,
-            borderRadius: 'var(--radius)',
-            cursor: 'pointer',
-            border: 'none',
-            background: 'var(--accent-primary)',
-            color: '#fff',
-          }}
-        >
-          Create Corridor
-        </button>
+        {isAuthenticated && (
+          <button
+            onClick={() => setShowCreate(true)}
+            style={{
+              padding: '0.375rem 0.75rem',
+              fontSize: '0.8125rem',
+              fontWeight: 600,
+              borderRadius: 'var(--radius)',
+              cursor: 'pointer',
+              border: 'none',
+              background: 'var(--accent-primary)',
+              color: '#fff',
+            }}
+          >
+            Create Corridor
+          </button>
+        )}
       </div>
 
       {showCreate && <CreateCorridorModal onClose={() => setShowCreate(false)} />}

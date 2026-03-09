@@ -3,6 +3,7 @@ import { AlertListPage } from './components/AlertList'
 import { AlertDetail } from './components/AlertDetail'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AppLayout } from './components/layout/AppLayout'
+import { RequireAuth } from './components/RequireAuth'
 import { DashboardPage } from './pages/DashboardPage'
 import { VesselSearchPage } from './pages/VesselSearchPage'
 import { VesselDetailPage } from './pages/VesselDetailPage'
@@ -29,9 +30,11 @@ import { GlobalDetectionsPage } from './pages/GlobalDetectionsPage'
 import { EmbedVesselPage } from './pages/EmbedVesselPage'
 import { useAlertStream } from './hooks/useAlertStream'
 import { AlertToast } from './components/AlertToast'
+import { useAuth } from './hooks/useAuth'
 
 export default function App() {
-  const { lastAlert } = useAlertStream({ enabled: !!localStorage.getItem('rf_admin_token') })
+  const { isAuthenticated } = useAuth()
+  const { lastAlert } = useAlertStream({ enabled: isAuthenticated })
 
   return (
     <BrowserRouter>
@@ -55,7 +58,7 @@ export default function App() {
             <Route path="watchlist" element={<WatchlistPage />} />
             <Route path="fleet" element={<FleetAnalysisPage />} />
             <Route path="ownership" element={<OwnershipGraphPage />} />
-            <Route path="ingest" element={<IngestionPage />} />
+            <Route path="ingest" element={<RequireAuth><IngestionPage /></RequireAuth>} />
             <Route path="detections" element={<GlobalDetectionsPage />} />
             <Route path="dark-vessels" element={<DarkVesselsPage />} />
             <Route path="merge-candidates" element={<MergeCandidatesPage />} />
@@ -63,7 +66,7 @@ export default function App() {
             <Route path="detect" element={<DetectionPanel />} />
             <Route path="accuracy" element={<AccuracyDashboardPage />} />
             <Route path="data-health" element={<DataHealthPage />} />
-            <Route path="admin/tips" element={<TipsAdminPage />} />
+            <Route path="admin/tips" element={<RequireAuth><TipsAdminPage /></RequireAuth>} />
             <Route path="donate" element={<DonatePage />} />
           </Route>
         </Routes>

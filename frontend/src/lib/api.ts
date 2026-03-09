@@ -1,3 +1,5 @@
+import { getStorage } from '../hooks/useAuth'
+
 const API_BASE = (import.meta.env.VITE_API_URL ?? '') + '/api/v1'
 
 export class ApiError extends Error {
@@ -12,7 +14,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (!(init?.body instanceof FormData)) {
     headers['Content-Type'] = headers['Content-Type'] ?? 'application/json'
   }
-  const token = localStorage.getItem('rf_admin_token')
+  const token = getStorage().getItem('rf_admin_token')
   if (token) {
     headers['Authorization'] = `Bearer ${token}`
   }

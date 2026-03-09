@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import type { ExportResponse, AnalystInfo } from '../types/api'
+import type { ExportResponse } from '../types/api'
 import { apiFetch } from '../lib/api'
 import { btnStyle } from '../styles/tables'
+import { useAuth } from '../hooks/useAuth'
 
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
@@ -16,17 +17,6 @@ export interface AlertExportPanelProps {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-const ANALYST_KEY = 'rf_analyst_info'
-
-function getAnalyst(): AnalystInfo | null {
-  try {
-    const raw = localStorage.getItem(ANALYST_KEY)
-    return raw ? (JSON.parse(raw) as AnalystInfo) : null
-  } catch {
-    return null
-  }
-}
 
 const approvalBadgeColors: Record<string, string> = {
   approved: '#22c55e',
@@ -56,8 +46,7 @@ export function AlertExportPanel({ alertId, approvalStatus, onApprovalChange }: 
   const [csvColumnsOpen, setCsvColumnsOpen] = useState(false)
   const [selectedColumns, setSelectedColumns] = useState<Set<CsvColumn>>(new Set(CSV_COLUMNS))
 
-  const analyst = getAnalyst()
-  const canApprove = analyst?.role === 'senior_analyst' || analyst?.role === 'admin'
+  const { isAuthenticated, isSeniorOrAdmin: canApprove } = useAuth()
 
   const handleExport = async (fmt: 'md' | 'json') => {
     setExportError(null)
@@ -151,12 +140,16 @@ export function AlertExportPanel({ alertId, approvalStatus, onApprovalChange }: 
   return (
     <>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button onClick={() => handleExport('md')} style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--accent)' }}>
-          Export Markdown
-        </button>
-        <button onClick={() => handleExport('json')} style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--accent)' }}>
-          Export JSON
-        </button>
+        {isAuthenticated && (
+          <>
+            <button onClick={() => handleExport('md')} style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--accent)' }}>
+              Export Markdown
+            </button>
+            <button onClick={() => handleExport('json')} style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--accent)' }}>
+              Export JSON
+            </button>
+          </>
+        )}
         <button
           onClick={() => setCsvColumnsOpen(prev => !prev)}
           style={{ ...btnStyle, background: 'var(--bg-base)', color: 'var(--accent)' }}

@@ -8,6 +8,7 @@ import { Spinner } from './ui/Spinner'
 import { EmptyState } from './ui/EmptyState'
 import { AlertFilterBar } from './AlertFilterBar'
 import { AlertBulkActions } from './AlertBulkActions'
+import { useAuth } from '../hooks/useAuth'
 import { thSortable as thStyle, tdStyle, btnStyle, tableStyle, theadRow, tbodyRow } from '../styles/tables'
 
 const PAGE_SIZE = 50
@@ -28,6 +29,7 @@ export function AlertListPage() {
   const [bulkStatus, setBulkStatus] = useState('under_review')
   const bulkUpdate = useBulkUpdateAlertStatus()
   const { addToast } = useToast()
+  const { isAuthenticated } = useAuth()
 
   const filters: AlertFilters = {
     min_score: minScore || undefined,
@@ -99,31 +101,35 @@ export function AlertListPage() {
       {displayAlerts.length > 0 && (
         <>
           {/* Extracted: bulk action bar */}
-          <AlertBulkActions
-            selected={selected}
-            onClearSelection={() => setSelected(new Set())}
-            bulkStatus={bulkStatus}
-            onBulkStatusChange={setBulkStatus}
-            bulkUpdate={bulkUpdate}
-            addToast={addToast}
-          />
+          {isAuthenticated && (
+            <AlertBulkActions
+              selected={selected}
+              onClearSelection={() => setSelected(new Set())}
+              bulkStatus={bulkStatus}
+              onBulkStatusChange={setBulkStatus}
+              bulkUpdate={bulkUpdate}
+              addToast={addToast}
+            />
+          )}
 
           <table style={{ ...tableStyle, fontSize: '0.875rem' }}>
             <thead>
               <tr style={theadRow}>
-                <th style={{ ...thStyle, width: 36 }}>
-                  <input
-                    type="checkbox"
-                    checked={displayAlerts.length > 0 && selected.size === displayAlerts.length}
-                    onChange={e => {
-                      if (e.target.checked) {
-                        setSelected(new Set(displayAlerts.map(a => a.gap_event_id)))
-                      } else {
-                        setSelected(new Set())
-                      }
-                    }}
-                  />
-                </th>
+                {isAuthenticated && (
+                  <th style={{ ...thStyle, width: 36 }}>
+                    <input
+                      type="checkbox"
+                      checked={displayAlerts.length > 0 && selected.size === displayAlerts.length}
+                      onChange={e => {
+                        if (e.target.checked) {
+                          setSelected(new Set(displayAlerts.map(a => a.gap_event_id)))
+                        } else {
+                          setSelected(new Set())
+                        }
+                      }}
+                    />
+                  </th>
+                )}
                 <th style={thStyle}>ID</th>
                 <th style={thStyle} onClick={() => toggleSort('risk_score')}>
                   Score{sortIndicator('risk_score')}
@@ -142,18 +148,20 @@ export function AlertListPage() {
             <tbody>
               {displayAlerts.map(a => (
                 <tr key={a.gap_event_id} style={tbodyRow}>
-                  <td style={tdStyle}>
-                    <input
-                      type="checkbox"
-                      checked={selected.has(a.gap_event_id)}
-                      onChange={e => {
-                        const next = new Set(selected)
-                        if (e.target.checked) next.add(a.gap_event_id)
-                        else next.delete(a.gap_event_id)
-                        setSelected(next)
-                      }}
-                    />
-                  </td>
+                  {isAuthenticated && (
+                    <td style={tdStyle}>
+                      <input
+                        type="checkbox"
+                        checked={selected.has(a.gap_event_id)}
+                        onChange={e => {
+                          const next = new Set(selected)
+                          if (e.target.checked) next.add(a.gap_event_id)
+                          else next.delete(a.gap_event_id)
+                          setSelected(next)
+                        }}
+                      />
+                    </td>
+                  )}
                   <td style={tdStyle}>
                     <Link to={`/alerts/${a.gap_event_id}`}>#{a.gap_event_id}</Link>
                   </td>

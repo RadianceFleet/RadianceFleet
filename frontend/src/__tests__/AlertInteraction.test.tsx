@@ -62,7 +62,7 @@ describe('AlertList interaction', () => {
 
   it('allows selecting alerts with checkboxes', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<AlertListPage />)
+    renderWithProviders(<AlertListPage />, { auth: { role: 'analyst' } })
 
     // There should be individual checkboxes plus header checkbox
     const checkboxes = screen.getAllByRole('checkbox')
@@ -75,7 +75,7 @@ describe('AlertList interaction', () => {
 
   it('select-all checkbox selects all rows', async () => {
     const user = userEvent.setup()
-    renderWithProviders(<AlertListPage />)
+    renderWithProviders(<AlertListPage />, { auth: { role: 'analyst' } })
 
     const checkboxes = screen.getAllByRole('checkbox')
     // Click header checkbox (first one)
