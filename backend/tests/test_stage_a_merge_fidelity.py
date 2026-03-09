@@ -8,17 +8,15 @@ Covers:
   A5: Confidence classifier multi-gap aggregation
   A6: Owner dedup sorted-token bucketing
 """
-import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime, timedelta
-from collections import defaultdict
 
 # ── A1: Fingerprint merge bonus ──────────────────────────────────────────────
 
 def test_fingerprint_bonus_wired_in_score_candidate():
     """_score_candidate calls fingerprint_merge_bonus when FINGERPRINT_ENABLED."""
-    from app.modules import identity_resolver
     import inspect
+
+    from app.modules import identity_resolver
     src = inspect.getsource(identity_resolver._score_candidate)
     assert "fingerprint_merge_bonus" in src, \
         "fingerprint_merge_bonus should be called in _score_candidate"
@@ -30,8 +28,9 @@ def test_fingerprint_bonus_wired_in_score_candidate():
 
 def test_fuzzy_name_matching_in_score_candidate():
     """_score_candidate has fuzzy name matching code."""
-    from app.modules import identity_resolver
     import inspect
+
+    from app.modules import identity_resolver
     src = inspect.getsource(identity_resolver._score_candidate)
     assert "token_sort_ratio" in src, "Should use rapidfuzz token_sort_ratio"
     assert "similar_name" in src, "Should produce similar_name reason key"
@@ -39,8 +38,9 @@ def test_fuzzy_name_matching_in_score_candidate():
 
 def test_callsign_matching_in_score_candidate():
     """_score_candidate has callsign matching code."""
-    from app.modules import identity_resolver
     import inspect
+
+    from app.modules import identity_resolver
     src = inspect.getsource(identity_resolver._score_candidate)
     assert "same_callsign" in src, "Should produce same_callsign reason key"
 
@@ -65,8 +65,9 @@ def test_extended_pass_requires_identity_anchor(mock_settings, mock_detect):
 
 def test_detect_merge_candidates_accepts_anchor_param():
     """detect_merge_candidates accepts require_identity_anchor param."""
-    from app.modules.identity_resolver import detect_merge_candidates
     import inspect
+
+    from app.modules.identity_resolver import detect_merge_candidates
     sig = inspect.signature(detect_merge_candidates)
     assert "require_identity_anchor" in sig.parameters
 
@@ -87,8 +88,9 @@ def test_sar_candidate_threshold_is_25():
 
 def test_sar_heading_no_data_partial_credit():
     """SAR heading code defaults to 0, gives +5 for no heading data (not +10)."""
-    from app.modules import sar_correlator
     import inspect
+
+    from app.modules import sar_correlator
     src = inspect.getsource(sar_correlator._score_vessel_match)
     # Verify heading defaults to 0 (not HEADING_WEIGHT)
     assert "heading_score = 0" in src or "heading_score = 0.0" in src, \
@@ -102,8 +104,9 @@ def test_sar_heading_no_data_partial_credit():
 
 def test_classifier_aggregates_all_gaps():
     """classify_all_vessels should aggregate breakdowns across all scored gaps."""
-    from app.modules import confidence_classifier
     import inspect
+
+    from app.modules import confidence_classifier
     src = inspect.getsource(confidence_classifier.classify_all_vessels)
     assert "merged_breakdown" in src or "merge" in src.lower(), \
         "Should merge breakdowns across gaps"
@@ -116,7 +119,7 @@ def test_categorize_key_multi_gap_bonus():
     from app.modules.confidence_classifier import _categorize_key
     # Internal keys starting with _ are skipped in classify_vessel_confidence
     # This tests that the key doesn't cause errors
-    cat = _categorize_key("_multi_gap_frequency_bonus")
+    _categorize_key("_multi_gap_frequency_bonus")
     # Internal keys should fall through to default AIS_GAP, but they're skipped
     # by the isinstance/value check in the classifier anyway
 
@@ -125,8 +128,9 @@ def test_categorize_key_multi_gap_bonus():
 
 def test_owner_dedup_sorted_token_bucketing():
     """owner_dedup uses sorted-first-token bucketing, not first-letter."""
-    from app.modules import owner_dedup
     import inspect
+
+    from app.modules import owner_dedup
     src = inspect.getsource(owner_dedup.run_owner_dedup)
     assert "sorted" in src, "Should use sorted tokens for bucket key"
     assert "tokens" in src or "sorted(norm.split())" in src, \
@@ -135,8 +139,9 @@ def test_owner_dedup_sorted_token_bucketing():
 
 def test_owner_dedup_cleanup():
     """owner_dedup cleans up old clusters before re-running."""
-    from app.modules import owner_dedup
     import inspect
+
+    from app.modules import owner_dedup
     src = inspect.getsource(owner_dedup.run_owner_dedup)
     assert "delete" in src.lower(), "Should delete old clusters before creating new ones"
 

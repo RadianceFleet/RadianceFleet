@@ -9,25 +9,24 @@ Covers:
   - Feature flag gating (HISTORY_CROSS_REFERENCE_ENABLED)
   - Backward compatibility (no caches passed -> 0 new points)
 """
-import pytest
 from datetime import datetime, timedelta
 
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Base  # noqa: F401 -- registers all models
+from app.models.base import STSDetectionTypeEnum
+from app.models.sts_transfer import StsTransferEvent
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
-from app.models.sts_transfer import StsTransferEvent
-from app.models.base import STSDetectionTypeEnum
 from app.modules.identity_resolver import (
-    _score_candidate,
-    _build_history_cache,
     _build_encounter_cache,
+    _build_history_cache,
     _get_historical_values,
     _get_recent_change_count,
+    _score_candidate,
 )
-
 
 # -- Shared fixture: in-memory SQLite session --
 

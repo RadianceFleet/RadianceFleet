@@ -6,23 +6,21 @@ Covers:
   0-C: IMO fraud cross-check in merge scoring + recheck_merges_for_imo_fraud
   0-D: original_vessel_id forward provenance in gap creation, merge, and scoring
 """
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
+from app.models.base import MergeCandidateStatusEnum
+from app.models.gap_event import AISGapEvent
 from app.modules.identity_resolver import (
-    _score_candidate,
     _has_overlapping_ais,
-    recheck_merges_for_imo_fraud,
+    _score_candidate,
     execute_merge,
+    recheck_merges_for_imo_fraud,
 )
 from app.modules.risk_scoring import (
-    _gap_frequency_filter,
     _count_gaps_in_window,
+    _gap_frequency_filter,
 )
-from app.models.gap_event import AISGapEvent
-from app.models.base import SpoofingTypeEnum, MergeCandidateStatusEnum
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -284,7 +282,7 @@ class TestNegativeMergeSignals:
 
         # Port call queries return different ports
         call_count = [0]
-        original_filter = db.query.return_value.filter
+        _original_filter = db.query.return_value.filter  # noqa: F841
 
         def _track_filter(*args, **kwargs):
             call_count[0] += 1
@@ -514,7 +512,7 @@ class TestOriginalVesselId:
         alert.gap_start_utc = datetime.utcnow()
         alert.gap_event_id = 1
 
-        result = _count_gaps_in_window(db, alert, 7)
+        _count_gaps_in_window(db, alert, 7)
         assert db.query.called
 
     @patch("app.modules.gap_detector.AISGapEvent")
@@ -522,7 +520,6 @@ class TestOriginalVesselId:
         """New gap events have original_vessel_id = vessel_id."""
         # This tests the gap_detector code path indirectly
         # by checking the model constructor is called with original_vessel_id
-        from app.modules.gap_detector import detect_gaps_for_vessel
 
         db = MagicMock()
         vessel = MagicMock()
@@ -641,14 +638,6 @@ class TestStage0Integration:
 
     def test_imports_compile(self):
         """All new functions are importable."""
-        from app.modules.identity_resolver import (
-            _has_overlapping_ais,
-            recheck_merges_for_imo_fraud,
-        )
-        from app.modules.risk_scoring import (
-            _gap_frequency_filter,
-            _count_gaps_in_window,
-        )
         from app.models.gap_event import AISGapEvent
         assert hasattr(AISGapEvent, "original_vessel_id")
 

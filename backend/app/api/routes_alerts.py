@@ -433,7 +433,6 @@ def get_alert_trends(
 @router.get("/alerts/{alert_id}", tags=["alerts"])
 def get_alert(alert_id: int, db: Session = Depends(get_db)):
     from app.models.ais_point import AISPoint
-    from app.models.corridor import Corridor
     from app.models.gap_event import AISGapEvent
     from app.models.loitering_event import LoiteringEvent
     from app.models.movement_envelope import MovementEnvelope

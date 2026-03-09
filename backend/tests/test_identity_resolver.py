@@ -15,25 +15,26 @@ Covers:
 
 All tests are unit-level: no real database.
 """
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock, call
+from unittest.mock import MagicMock, patch
 
-from app.utils.vessel_identity import validate_imo_checksum
+import pytest
+
 from app.modules.identity_resolver import (
-    resolve_canonical,
-    execute_merge,
-    reverse_merge,
-    detect_zombie_imos,
-    get_vessel_timeline,
-    get_vessel_aliases,
     _score_candidate,
+    detect_zombie_imos,
+    execute_merge,
+    get_vessel_timeline,
+    resolve_canonical,
+    reverse_merge,
 )
 from app.modules.mmsi_cloning_detector import (
     _find_impossible_jumps as find_cloning_jumps,
+)
+from app.modules.mmsi_cloning_detector import (
     _score_cloning,
 )
-
+from app.utils.vessel_identity import validate_imo_checksum
 
 # ── IMO checksum validation ──────────────────────────────────────────────────
 
@@ -730,10 +731,10 @@ class TestTimeline:
         spoof.anomaly_id = 1
 
         # Empty for remaining tables
-        loiter_mock = []
-        sts_mock = []
-        port_mock = []
-        merge_mock = []
+        _loiter_mock = []  # noqa: F841
+        _sts_mock = []  # noqa: F841
+        _port_mock = []  # noqa: F841
+        _merge_mock = []  # noqa: F841
 
         # Set up query chain to return correct results per model
         def mock_query(model):

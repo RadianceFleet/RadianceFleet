@@ -10,9 +10,6 @@ Covers:
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _make_owner(owner_id, vessel_id, owner_name, ism_manager=None, pi_club_name=None):
@@ -203,7 +200,7 @@ class TestISMMergeBonus:
         #   db.query(func.count(...)).filter(...).scalar() -> 0  (dark_vessel_silent)
         #   db.query(VesselOwner).filter(...).first() -> owner_dark, then owner_new
         call_count = {"n": 0}
-        original_first = db.query.return_value.filter.return_value.first
+        _original_first = db.query.return_value.filter.return_value.first  # noqa: F841
 
         def side_effect_first():
             call_count["n"] += 1
@@ -365,6 +362,7 @@ class TestRenameVelocity:
     def test_rename_velocity_block_exists_in_compute_gap_score(self):
         """Verify the rename velocity code path exists in compute_gap_score."""
         import inspect
+
         from app.modules.risk_scoring import compute_gap_score
         source = inspect.getsource(compute_gap_score)
         assert "rename_velocity" in source
@@ -512,6 +510,7 @@ class TestIntegration:
     def test_yaml_has_ism_continuity_section(self):
         """risk_scoring.yaml contains ism_continuity section."""
         from pathlib import Path
+
         import yaml
         config_path = Path(__file__).parent.parent.parent / "config" / "risk_scoring.yaml"
         with open(config_path) as f:
@@ -524,6 +523,7 @@ class TestIntegration:
     def test_yaml_has_rename_velocity_section(self):
         """risk_scoring.yaml contains rename_velocity section."""
         from pathlib import Path
+
         import yaml
         config_path = Path(__file__).parent.parent.parent / "config" / "risk_scoring.yaml"
         with open(config_path) as f:

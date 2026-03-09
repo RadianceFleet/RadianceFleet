@@ -17,11 +17,10 @@ Covers:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock, AsyncMock, patch, PropertyMock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -91,6 +90,7 @@ class TestP1DoubleScoringFix:
     def test_step_11z_imports_score_not_rescore(self):
         """The pipeline module should import score_all_alerts, not rescore."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
         source = inspect.getsource(discover_dark_vessels)
         # Step 11z should use score_all_alerts
@@ -101,6 +101,7 @@ class TestP1DoubleScoringFix:
     def test_score_all_alerts_filters_zero_only(self):
         """score_all_alerts should query only risk_score == 0 gaps."""
         import inspect
+
         from app.modules.risk_scoring import score_all_alerts
         source = inspect.getsource(score_all_alerts)
         # Must filter by risk_score == 0 (not reset all to 0)
@@ -249,7 +250,7 @@ class TestP4aKystverketType5:
             "mmsi": "123456789",
             "lat": 60.0, "lon": 25.0,
             "sog": 10.0, "cog": 180.0, "heading": 180.0,
-            "timestamp_utc": datetime.now(timezone.utc),
+            "timestamp_utc": datetime.now(UTC),
             "source": "kystverket",
             "destination": "MURMANSK",
             "draught": 12.5,
@@ -348,6 +349,7 @@ class TestP8StepLabelCollision:
 
     def test_feed_outage_step_relabeled(self):
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
         source = inspect.getsource(discover_dark_vessels)
         # STS chain should still be Step 6b
@@ -369,6 +371,7 @@ class TestPipelineStepOrdering:
     def test_enrichment_before_detection(self):
         """vessel_enrichment step should appear before gap_detection."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
         source = inspect.getsource(discover_dark_vessels)
         enrichment_pos = source.find("vessel_enrichment")
@@ -379,6 +382,7 @@ class TestPipelineStepOrdering:
     def test_baselines_before_feed_outage(self):
         """gap_rate_baselines step should appear before feed_outage_detection."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
         source = inspect.getsource(discover_dark_vessels)
         baselines_pos = source.find("gap_rate_baselines")
@@ -389,6 +393,7 @@ class TestPipelineStepOrdering:
     def test_baselines_after_gap_detection(self):
         """gap_rate_baselines step should appear after gap_detection (needs gap data)."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
         source = inspect.getsource(discover_dark_vessels)
         gap_detection_pos = source.find('"gap_detection"')
@@ -408,6 +413,7 @@ class TestP9ImoMismatchBlock:
     def test_imo_mismatch_returns_zero(self):
         """Two vessels with different IMOs score 0 (blocked)."""
         import inspect
+
         from app.modules.identity_resolver import _score_candidate
 
         source = inspect.getsource(_score_candidate)
@@ -418,6 +424,7 @@ class TestP9ImoMismatchBlock:
     def test_imo_mismatch_early_return(self):
         """IMO mismatch triggers early return before other scoring."""
         import inspect
+
         from app.modules.identity_resolver import _score_candidate
 
         source = inspect.getsource(_score_candidate)
@@ -430,6 +437,7 @@ class TestP9ImoMismatchBlock:
     def test_same_imo_still_scores_25(self):
         """Matching valid IMO still gives +25 points."""
         import inspect
+
         from app.modules.identity_resolver import _score_candidate
 
         source = inspect.getsource(_score_candidate)
@@ -444,6 +452,7 @@ class TestP9ImoMismatchBlock:
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
+
 from app.models.base import Base
 
 
@@ -504,10 +513,10 @@ class TestFix1FeedOutageReset:
     @patch("app.modules.gap_detector.run_gap_detection", return_value={"gaps": 0})
     def test_reset_clears_unscored_flags(self, mock_gap, mock_score, db):
         """discover_dark_vessels resets is_feed_outage=True/risk_score=0 when baselines exist."""
-        from app.models.gap_event import AISGapEvent
-        from app.models.vessel import Vessel
         from app.models.corridor import Corridor
         from app.models.corridor_gap_baseline import CorridorGapBaseline
+        from app.models.gap_event import AISGapEvent
+        from app.models.vessel import Vessel
         from app.modules.dark_vessel_discovery import discover_dark_vessels
 
         corridor = Corridor(name="test-corridor-r1", risk_weight=1.0)
@@ -547,10 +556,10 @@ class TestFix1FeedOutageReset:
     @patch("app.modules.gap_detector.run_gap_detection", return_value={"gaps": 0})
     def test_reset_preserves_scored_flags(self, mock_gap, mock_score, db):
         """Gaps with is_feed_outage=True and risk_score>0 are NOT reset."""
-        from app.models.gap_event import AISGapEvent
-        from app.models.vessel import Vessel
         from app.models.corridor import Corridor
         from app.models.corridor_gap_baseline import CorridorGapBaseline
+        from app.models.gap_event import AISGapEvent
+        from app.models.vessel import Vessel
         from app.modules.dark_vessel_discovery import discover_dark_vessels
 
         corridor = Corridor(name="test-corridor-r2", risk_weight=1.0)
@@ -590,10 +599,10 @@ class TestFix1FeedOutageReset:
     @patch("app.modules.gap_detector.run_gap_detection", return_value={"gaps": 0})
     def test_flags_restored_on_detection_failure(self, mock_gap, mock_score, db):
         """discover_dark_vessels restores flags + clears new marks when detection fails."""
-        from app.models.gap_event import AISGapEvent
-        from app.models.vessel import Vessel
         from app.models.corridor import Corridor
         from app.models.corridor_gap_baseline import CorridorGapBaseline
+        from app.models.gap_event import AISGapEvent
+        from app.models.vessel import Vessel
         from app.modules.dark_vessel_discovery import discover_dark_vessels
 
         corridor = Corridor(name="test-corridor-r3", risk_weight=1.0)
@@ -631,9 +640,9 @@ class TestFix1FeedOutageReset:
 
     def test_null_corridor_threshold_proportional(self, db):
         """_get_threshold with NULL corridor returns proportional threshold."""
-        from app.modules.feed_outage_detector import _get_threshold
         from app.models.gap_event import AISGapEvent
         from app.models.vessel import Vessel
+        from app.modules.feed_outage_detector import _get_threshold
 
         now = datetime.utcnow()
         for i in range(200):
@@ -719,10 +728,10 @@ class TestFix2MergeScoring:
 
     def test_safety_guard_75_84_no_identity_is_pending(self, db):
         """Candidates at 75-84 without strong identity are PENDING; execute_merge not called."""
-        from app.models.vessel import Vessel
-        from app.models.gap_event import AISGapEvent
         from app.models.ais_point import AISPoint
+        from app.models.gap_event import AISGapEvent
         from app.models.merge_candidate import MergeCandidate, MergeCandidateStatusEnum
+        from app.models.vessel import Vessel
         from app.modules.identity_resolver import detect_merge_candidates
 
         now = datetime.utcnow()
@@ -781,6 +790,7 @@ class TestFix2MergeScoring:
     def test_fingerprint_before_identity_resolution(self):
         """Fingerprint computation precedes identity resolution in pipeline source."""
         import inspect
+
         from app.modules.dark_vessel_discovery import discover_dark_vessels
         source = inspect.getsource(discover_dark_vessels)
         fp_pos = source.find("fingerprint_computation")
