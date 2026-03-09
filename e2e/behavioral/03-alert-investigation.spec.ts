@@ -158,6 +158,7 @@ test.describe('Alert Investigation', () => {
     await alertsP;
 
     const alp = new AlertListPage(page);
+    await alp.alertLinks.first().waitFor({ state: 'visible', timeout: 10_000 }).catch(() => {});
     const linkCount = await alp.alertLinks.count();
     skipIfEmpty(test, linkCount, 'alert list links');
 

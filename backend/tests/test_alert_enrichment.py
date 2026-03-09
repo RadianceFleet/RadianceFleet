@@ -36,46 +36,46 @@ class TestAlertEnrichment:
         vessel.flag = "PA"
         vessel.deadweight = 50000.0
 
+        # Set relationship attributes on alert (loaded via joinedload)
+        alert.vessel = vessel
+        alert.corridor = None
+        alert.assigned_analyst = None
+
         call_count = [0]
 
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.options.return_value = result  # support .options() chaining
             result.filter.return_value.first.return_value = None
             result.filter.return_value.all.return_value = []
             result.filter.return_value.scalar.return_value = prior_count
             if call_count[0] == 1:
-                # AISGapEvent query
+                # AISGapEvent query (with joinedload options)
                 result.filter.return_value.first.return_value = alert
             elif call_count[0] == 2:
-                # Vessel query
-                result.filter.return_value.first.return_value = vessel
-            elif call_count[0] == 3:
-                # Corridor - None
-                pass
-            elif call_count[0] == 4:
                 # MovementEnvelope - None
                 pass
-            elif call_count[0] == 5:
+            elif call_count[0] == 3:
                 # SatelliteCheck - None
                 pass
-            elif call_count[0] == 6:
+            elif call_count[0] == 4:
                 # SpoofingAnomaly query
                 result.filter.return_value.filter.return_value.filter.return_value.all.return_value = (
                     spoofing or []
                 )
                 result.filter.return_value.all.return_value = spoofing or []
-            elif call_count[0] == 7:
+            elif call_count[0] == 5:
                 # LoiteringEvent query
                 result.filter.return_value.filter.return_value.filter.return_value.all.return_value = (
                     loitering or []
                 )
                 result.filter.return_value.all.return_value = loitering or []
-            elif call_count[0] == 8:
+            elif call_count[0] == 6:
                 # StsTransferEvent query
                 result.filter.return_value.filter.return_value.all.return_value = sts or []
                 result.filter.return_value.all.return_value = sts or []
-            elif call_count[0] == 9:
+            elif call_count[0] == 7:
                 # prior_similar_count
                 result.filter.return_value.filter.return_value.filter.return_value.filter.return_value.filter.return_value.scalar.return_value = prior_count
                 result.filter.return_value.scalar.return_value = prior_count
@@ -192,19 +192,23 @@ class TestAlertEnrichment:
         vessel.flag = "PA"
         vessel.deadweight = 50000.0
 
+        # Set relationship attributes on alert (loaded via joinedload)
+        alert.vessel = vessel
+        alert.corridor = None
+        alert.assigned_analyst = None
+
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.options.return_value = result  # support .options() chaining
             result.filter.return_value.first.return_value = None
             result.filter.return_value.all.return_value = []
             result.filter.return_value.scalar.return_value = 0
             if call_count[0] == 1:
                 result.filter.return_value.first.return_value = alert
-            elif call_count[0] == 2:
-                result.filter.return_value.first.return_value = vessel
-            elif call_count[0] == 8:
+            elif call_count[0] == 6:
                 result.filter.return_value.all.return_value = [sts]
-            elif call_count[0] == 9:
+            elif call_count[0] == 7:
                 # Partner vessel lookup
                 result.filter.return_value.first.return_value = partner
             return result

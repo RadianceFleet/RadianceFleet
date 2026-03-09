@@ -866,7 +866,7 @@ def confirm_merge_candidate(
 
     if result.get("success"):
         c.status = MergeCandidateStatusEnum.ANALYST_MERGED
-        c.resolved_at = datetime.utcnow()
+        c.resolved_at = datetime.now(UTC)
         c.resolved_by = "analyst"
         _audit_log(
             db, "merge_candidate_confirmed", "merge_candidate", candidate_id, request=request
@@ -896,7 +896,7 @@ def reject_merge_candidate(
         raise HTTPException(status_code=400, detail=f"Candidate is {c.status}, not pending")
 
     c.status = MergeCandidateStatusEnum.REJECTED
-    c.resolved_at = datetime.utcnow()
+    c.resolved_at = datetime.now(UTC)
     c.resolved_by = "analyst"
     _audit_log(db, "merge_candidate_rejected", "merge_candidate", candidate_id, request=request)
     db.commit()

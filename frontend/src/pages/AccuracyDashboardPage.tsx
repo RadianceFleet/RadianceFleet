@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
+import { EmptyState } from '../components/ui/EmptyState'
 import { PRCurveChart } from '../components/charts/PRCurveChart'
 import { FPRateByBandChart } from '../components/charts/FPRateByBandChart'
 import {
@@ -40,12 +42,12 @@ export function AccuracyDashboardPage() {
   const [threshold, setThreshold] = useState('high')
   const [signalSort, setSignalSort] = useState<{ key: SortKey; dir: SortDir }>({ key: 'lift', dir: 'desc' })
 
-  const validation = useValidation(threshold)
-  const signals = useValidationSignals()
-  const sweep = useValidationSweep()
-  const analyst = useAnalystMetrics()
+  const { refetch: refetchValidation, ...validation } = useValidation(threshold)
+  const { refetch: refetchSignals, ...signals } = useValidationSignals()
+  const { refetch: refetchSweep, ...sweep } = useValidationSweep()
+  const { refetch: refetchAnalyst, ...analyst } = useAnalystMetrics()
   const correlation = useDetectorCorrelation()
-  const liveSignals = useLiveSignalEffectiveness()
+  const { refetch: refetchLiveSignals, ...liveSignals } = useLiveSignalEffectiveness()
 
   const handleSignalSort = (key: SortKey) => {
     setSignalSort(prev =>
@@ -100,7 +102,7 @@ export function AccuracyDashboardPage() {
         </div>
 
         {validation.isLoading && <Spinner text="Running validation..." />}
-        {validation.error && <p style={{ color: 'var(--score-critical)', fontSize: 13 }}>Failed to load validation data.</p>}
+        {validation.error && <ErrorMessage error={validation.error} subject="validation data" onRetry={refetchValidation} />}
         {validation.data && !validation.data.error && (
           <>
             <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -153,7 +155,10 @@ export function AccuracyDashboardPage() {
           Precision-Recall Curve
         </h3>
         {sweep.isLoading && <Spinner text="Loading sweep data..." />}
-        {sweep.error && <p style={{ color: 'var(--score-critical)', fontSize: 13 }}>Failed to load sweep data.</p>}
+        {sweep.error && <ErrorMessage error={sweep.error} subject="sweep data" onRetry={refetchSweep} />}
+        {!sweep.error && sweep.data && sweep.data.length === 0 && (
+          <EmptyState title="No sweep data" description="Requires ground truth labels to generate sweep analysis." />
+        )}
         {sweep.data && <PRCurveChart data={sweep.data} />}
       </Card>
 
@@ -163,7 +168,7 @@ export function AccuracyDashboardPage() {
           Signal Effectiveness
         </h3>
         {signals.isLoading && <Spinner text="Loading signals..." />}
-        {signals.error && <p style={{ color: 'var(--score-critical)', fontSize: 13 }}>Failed to load signal data.</p>}
+        {signals.error && <ErrorMessage error={signals.error} subject="signals" onRetry={refetchSignals} />}
         {signals.data && signals.data.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -211,7 +216,7 @@ export function AccuracyDashboardPage() {
           Live Signal Effectiveness (from verdicts)
         </h3>
         {liveSignals.isLoading && <Spinner text="Loading live signals..." />}
-        {liveSignals.error && <p style={{ color: 'var(--score-critical)', fontSize: 13 }}>Failed to load live signal data.</p>}
+        {liveSignals.error && <ErrorMessage error={liveSignals.error} subject="live signals" onRetry={refetchLiveSignals} />}
         {liveSignals.data && liveSignals.data.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -263,7 +268,7 @@ export function AccuracyDashboardPage() {
           Analyst FP Rate by Score Band
         </h3>
         {analyst.isLoading && <Spinner text="Loading analyst metrics..." />}
-        {analyst.error && <p style={{ color: 'var(--score-critical)', fontSize: 13 }}>Failed to load analyst data.</p>}
+        {analyst.error && <ErrorMessage error={analyst.error} subject="analyst metrics" onRetry={refetchAnalyst} />}
         {analyst.data && (
           <>
             <div style={{ display: 'flex', gap: 16, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -322,6 +327,9 @@ export function AccuracyDashboardPage() {
             </tbody>
           </table>
         </Card>
+      )}
+      {!correlation.error && correlationData && correlationData.length === 0 && (
+        <EmptyState title="No correlation data" description="Requires analyst-reviewed alerts with multiple signals." />
       )}
     </div>
   )

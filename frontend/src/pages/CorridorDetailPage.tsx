@@ -6,6 +6,7 @@ import { useAlerts } from '../hooks/useAlerts'
 import type { CorridorUpdatePayload, AlertSummary } from '../types/api'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { CorridorActivityChart } from '../components/charts/CorridorActivityChart'
 
 const inputStyle: React.CSSProperties = {
@@ -52,7 +53,7 @@ function formatType(raw: string): string {
 export function CorridorDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { data: corridor, isLoading, error } = useCorridorDetail(id)
+  const { data: corridor, isLoading, error, refetch } = useCorridorDetail(id)
   const mutation = useUpdateCorridor(id ?? '')
   const deleteMutation = useDeleteCorridor()
 
@@ -129,9 +130,7 @@ export function CorridorDetailPage() {
 
       {error && (
         <Card>
-          <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem', margin: 0 }}>
-            Failed to load corridor details.
-          </p>
+          <ErrorMessage error={error} subject="corridor details" onRetry={refetch} />
         </Card>
       )}
 
@@ -383,7 +382,7 @@ const alertHeadStyle: React.CSSProperties = {
 }
 
 function CorridorAlerts({ corridorId }: { corridorId: string }) {
-  const { data, isLoading, error } = useAlerts({ corridor_id: corridorId, limit: 20 })
+  const { data, isLoading, error, refetch } = useAlerts({ corridor_id: corridorId, limit: 20 })
   const alerts: AlertSummary[] = data?.items ?? []
 
   return (
@@ -393,7 +392,7 @@ function CorridorAlerts({ corridorId }: { corridorId: string }) {
       </h3>
 
       {isLoading && <Spinner text="Loading alerts..." />}
-      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.8125rem', margin: 0 }}>Failed to load alerts.</p>}
+      {error && <ErrorMessage error={error} subject="alerts" onRetry={refetch} />}
 
       {alerts.length === 0 && !isLoading && !error && (
         <p style={{ color: 'var(--text-dim)', fontSize: '0.8125rem', margin: 0 }}>No alerts for this corridor.</p>

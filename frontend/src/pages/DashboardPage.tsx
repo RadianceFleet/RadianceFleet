@@ -2,14 +2,17 @@ import { Link } from 'react-router-dom'
 import { useStats } from '../hooks/useStats'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
+import { EmptyState } from '../components/ui/EmptyState'
 import { ScoreDistributionChart } from '../components/charts/ScoreDistributionChart'
 import { AlertTrendChart } from '../components/charts/AlertTrendChart'
 
 export function DashboardPage() {
-  const { data: stats, isLoading, error } = useStats()
+  const { data: stats, isLoading, error, refetch } = useStats()
 
   if (isLoading) return <Spinner text="Loading dashboard…" />
-  if (error || !stats) return <p style={{ color: 'var(--score-critical)' }}>Failed to load stats.</p>
+  if (error) return <ErrorMessage error={error} subject="stats" onRetry={refetch} />
+  if (!stats) return <EmptyState title="No data" description="No stats available yet." />
 
   const { alert_counts: counts, by_status, vessels_with_multiple_gaps_7d } = stats
 

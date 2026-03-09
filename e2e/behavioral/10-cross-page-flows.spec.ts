@@ -108,7 +108,7 @@ test.describe('Cross-Page Flows', () => {
   });
 
   test('corridors → detail → back to list', async ({ page, request }) => {
-    const corridorId = await fetchFirstId(request, 'corridors');
+    const corridorId = await fetchFirstId(request, 'corridors', 'corridor_id');
     skipIfNoData(test, corridorId, 'corridors');
 
     const corridorsP = waitForCorridors(page);

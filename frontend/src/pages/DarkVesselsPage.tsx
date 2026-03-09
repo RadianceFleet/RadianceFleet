@@ -4,6 +4,7 @@ import { useDarkVessels } from '../hooks/useDarkVessels'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { Pagination } from '../components/ui/Pagination'
 
 const PAGE_SIZE = 20
@@ -34,7 +35,7 @@ function formatConfidence(val: number | null | undefined): string {
 
 export function DarkVesselsPage() {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useDarkVessels({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useDarkVessels({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const detections = data?.items
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -47,11 +48,7 @@ export function DarkVesselsPage() {
 
       <Card>
         {isLoading && <Spinner text="Loading dark vessel detections..." />}
-        {error && (
-          <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>
-            Failed to load dark vessel detections
-          </p>
-        )}
+        {error && <ErrorMessage error={error} subject="dark vessel detections" onRetry={refetch} />}
 
         {detections && detections.length === 0 && (
           <EmptyState

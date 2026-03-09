@@ -3,6 +3,7 @@ import { useWatchlist, useImportWatchlist, useRemoveWatchlistEntry } from '../ho
 import { Spinner } from '../components/ui/Spinner'
 import { Card } from '../components/ui/Card'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { Pagination } from '../components/ui/Pagination'
 
 const PAGE_SIZE = 20
@@ -19,7 +20,7 @@ const headStyle: React.CSSProperties = {
 
 export function WatchlistPage() {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useWatchlist({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useWatchlist({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const entries = data?.items
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -118,7 +119,7 @@ export function WatchlistPage() {
       <Card>
         <h3 style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Watchlist Entries</h3>
         {isLoading && <Spinner text="Loading watchlist..." />}
-        {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load watchlist</p>}
+        {error && <ErrorMessage error={error} subject="watchlist" onRetry={refetch} />}
 
         {entries && entries.length === 0 && (
           <EmptyState title="No watchlist entries" description="Import a watchlist file to get started" />

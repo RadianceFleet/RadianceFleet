@@ -11,6 +11,7 @@ import { VesselTrackOverlay } from '../components/map/VesselTrackOverlay'
 import { AlertHeatmapOverlay } from '../components/map/AlertHeatmapOverlay'
 import { Link } from 'react-router-dom'
 import { DataFreshnessBanner } from '../components/DataFreshnessBanner'
+import { useDarkVessels } from '../hooks/useDarkVessels'
 import L from 'leaflet'
 import { Spinner } from '../components/ui/Spinner'
 
@@ -36,6 +37,9 @@ export function MapOverviewPage() {
   const [showHeatmap, setShowHeatmap] = useState(false)
   const [selectedVesselId, setSelectedVesselId] = useState<number | null>(null)
   const [selectedVesselName, setSelectedVesselName] = useState<string | undefined>(undefined)
+
+  const { data: darkVesselData } = useDarkVessels({ limit: 1 })
+  const darkVesselCount = darkVesselData?.total ?? 0
 
   const alerts = (data?.points ?? []).filter(a => a.last_lat != null && a.last_lon != null)
 
@@ -74,7 +78,7 @@ export function MapOverviewPage() {
             onChange={e => setShowDarkVessels(e.target.checked)}
             style={{ marginRight: 6 }}
           />
-          Dark Vessels
+          Dark Vessels ({darkVesselCount})
         </label>
         <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
           <input

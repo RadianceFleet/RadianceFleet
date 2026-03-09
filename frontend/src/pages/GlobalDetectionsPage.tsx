@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { Pagination } from '../components/ui/Pagination'
 import { useGlobalSpoofing } from '../hooks/useGlobalDetections'
 import { useGlobalLoitering } from '../hooks/useLoitering'
@@ -60,7 +61,7 @@ export function GlobalDetectionsPage() {
 
 function SpoofingTab() {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useGlobalSpoofing({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useGlobalSpoofing({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const items = data?.items ?? []
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -68,7 +69,7 @@ function SpoofingTab() {
   return (
     <Card>
       {isLoading && <Spinner text="Loading spoofing events..." />}
-      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load spoofing events</p>}
+      {error && <ErrorMessage error={error} subject="spoofing events" onRetry={refetch} />}
 
       {items.length === 0 && !isLoading && !error && (
         <EmptyState title="No spoofing events" description="No spoofing anomalies detected yet" />
@@ -115,7 +116,7 @@ function SpoofingTab() {
 
 function LoiteringTab() {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useGlobalLoitering({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useGlobalLoitering({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const items = data?.items ?? []
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -123,7 +124,7 @@ function LoiteringTab() {
   return (
     <Card>
       {isLoading && <Spinner text="Loading loitering events..." />}
-      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load loitering events</p>}
+      {error && <ErrorMessage error={error} subject="loitering events" onRetry={refetch} />}
 
       {items.length === 0 && !isLoading && !error && (
         <EmptyState title="No loitering events" description="No loitering events detected yet" />
@@ -176,7 +177,7 @@ function LoiteringTab() {
 
 function StsTab() {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useStsChains({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useStsChains({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const items = data?.items ?? []
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -184,7 +185,7 @@ function StsTab() {
   return (
     <Card>
       {isLoading && <Spinner text="Loading STS chains..." />}
-      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load STS chains</p>}
+      {error && <ErrorMessage error={error} subject="STS chains" onRetry={refetch} />}
 
       {items.length === 0 && !isLoading && !error && (
         <EmptyState title="No STS chains" description="No STS relay chains detected yet" />

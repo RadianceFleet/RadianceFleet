@@ -4,6 +4,7 @@ import { useCorridors } from '../hooks/useCorridors'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { Pagination } from '../components/ui/Pagination'
 import { CreateCorridorModal } from '../components/CreateCorridorModal'
 
@@ -25,7 +26,7 @@ function formatType(raw: string): string {
 export function CorridorsPage() {
   const [page, setPage] = useState(0)
   const [showCreate, setShowCreate] = useState(false)
-  const { data, isLoading, error } = useCorridors({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useCorridors({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const corridors = data?.items
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -57,11 +58,7 @@ export function CorridorsPage() {
 
       <Card>
         {isLoading && <Spinner text="Loading corridors..." />}
-        {error && (
-          <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>
-            Failed to load corridors
-          </p>
-        )}
+        {error && <ErrorMessage error={error} subject="corridors" onRetry={refetch} />}
 
         {corridors && corridors.length === 0 && (
           <EmptyState

@@ -7,6 +7,7 @@ import { StsChainDiagram } from '../components/charts/StsChainDiagram'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { Pagination } from '../components/ui/Pagination'
 
 const PAGE_SIZE = 20
@@ -59,7 +60,7 @@ export function StsEventsPage() {
 
 function ChainsTab() {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useStsChains({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useStsChains({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const chains = data?.items ?? []
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -67,7 +68,7 @@ function ChainsTab() {
   return (
     <Card>
       {isLoading && <Spinner text="Loading STS chains..." />}
-      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load STS chains</p>}
+      {error && <ErrorMessage error={error} subject="STS chains" onRetry={refetch} />}
       {chains.length === 0 && !isLoading && !error && (
         <EmptyState title="No STS relay chains" description="Relay chain alerts will appear here once detected" />
       )}
@@ -85,7 +86,7 @@ function ChainsTab() {
 
 function EventsTab() {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useStsEvents({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useStsEvents({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const validation = useStsValidation()
   const events = data?.items
   const total = data?.total ?? 0
@@ -94,11 +95,7 @@ function EventsTab() {
   return (
     <Card>
         {isLoading && <Spinner text="Loading STS events..." />}
-        {error && (
-          <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>
-            Failed to load STS events
-          </p>
-        )}
+        {error && <ErrorMessage error={error} subject="STS events" onRetry={refetch} />}
 
         {events && events.length === 0 && (
           <EmptyState

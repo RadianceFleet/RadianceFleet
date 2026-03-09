@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiFetch } from '../../lib/api'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { Spinner } from '../ui/Spinner'
+import { ErrorMessage } from '../ui/ErrorMessage'
 
 interface TrendBucket {
   date: string
@@ -20,13 +21,14 @@ interface TrendResponse {
 }
 
 export function AlertTrendChart({ period = '7d' }: { period?: string }) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['alert-trends', period],
     queryFn: () => apiFetch<TrendResponse>(`/alerts/trends?period=${period}`),
   })
 
   if (isLoading) return <Spinner text="Loading trends..." />
-  if (error || !data) return <p style={{ fontSize: 13, color: 'var(--score-critical)' }}>Failed to load trends.</p>
+  if (error) return <ErrorMessage error={error} subject="trends" onRetry={refetch} />
+  if (!data) return null
 
   return (
     <div>

@@ -65,48 +65,46 @@ class TestAlertDetailContract:
         first_pt.sog = 7.2
         first_pt.cog = 270.0
 
+        # Set relationship attributes on alert (loaded via joinedload)
+        alert.vessel = vessel
+        alert.corridor = corridor
+        alert.assigned_analyst = None
+
         # Configure mock_db.query to return the right objects.
-        # The route handler queries in this order:
-        # 1. AISGapEvent.first()          -> alert
-        # 2. Vessel.first()               -> vessel
-        # 3. Corridor.first()             -> corridor  (only if corridor_id)
-        # 4. MovementEnvelope.first()     -> None
-        # 5. SatelliteCheck.first()       -> None
-        # 6. AISPoint.first() (start_pt)  -> last_pt   (only if start_point_id)
-        # 7. AISPoint.first() (end_pt)    -> first_pt  (only if end_point_id)
-        # 8. SpoofingAnomaly.all()        -> []
-        # 9. LoiteringEvent.all()         -> []
-        # 10. StsTransferEvent.all()      -> []
-        # 11. func.count().scalar()       -> 0 (prior_similar_count)
+        # The route handler queries in this order (vessel/corridor now via joinedload):
+        # 1. AISGapEvent.options(...).first() -> alert
+        # 2. MovementEnvelope.first()         -> None
+        # 3. SatelliteCheck.first()           -> None
+        # 4. AISPoint.first() (start_pt)      -> last_pt   (only if start_point_id)
+        # 5. AISPoint.first() (end_pt)        -> first_pt  (only if end_point_id)
+        # 6. SpoofingAnomaly.all()            -> []
+        # 7. LoiteringEvent.all()             -> []
+        # 8. StsTransferEvent.all()           -> []
+        # 9. func.count().scalar()            -> 0 (prior_similar_count)
         call_count = [0]
 
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.options.return_value = result  # support .options() chaining
             # Sensible defaults for all chain endings
             result.filter.return_value.first.return_value = None
             result.filter.return_value.all.return_value = []
             result.filter.return_value.scalar.return_value = 0
 
             if call_count[0] == 1:
-                # AISGapEvent query
+                # AISGapEvent query (with joinedload options)
                 result.filter.return_value.first.return_value = alert
             elif call_count[0] == 2:
-                # Vessel query
-                result.filter.return_value.first.return_value = vessel
-            elif call_count[0] == 3:
-                # Corridor query
-                result.filter.return_value.first.return_value = corridor
-            elif call_count[0] == 4:
                 # MovementEnvelope query
                 result.filter.return_value.first.return_value = None
-            elif call_count[0] == 5:
+            elif call_count[0] == 3:
                 # SatelliteCheck query
                 result.filter.return_value.first.return_value = None
-            elif call_count[0] == 6:
+            elif call_count[0] == 4:
                 # Start AISPoint query
                 result.filter.return_value.first.return_value = last_pt
-            elif call_count[0] == 7:
+            elif call_count[0] == 5:
                 # End AISPoint query
                 result.filter.return_value.first.return_value = first_pt
             return result
@@ -200,11 +198,13 @@ class TestAlertDetail404:
     """GET /api/v1/alerts/{id} returns 404 for unknown alerts."""
 
     def test_alert_not_found(self, api_client, mock_db):
+        mock_db.query.return_value.options.return_value = mock_db.query.return_value
         mock_db.query.return_value.filter.return_value.first.return_value = None
         resp = api_client.get("/api/v1/alerts/99999")
         assert resp.status_code == 404
 
     def test_alert_not_found_response_body(self, api_client, mock_db):
+        mock_db.query.return_value.options.return_value = mock_db.query.return_value
         mock_db.query.return_value.filter.return_value.first.return_value = None
         resp = api_client.get("/api/v1/alerts/99999")
         data = resp.json()
@@ -238,16 +238,22 @@ class TestAlertDetailNullFields:
         alert.reviewed_by = None
         alert.review_date = None
 
+        # Set relationship attributes (loaded via joinedload)
+        alert.vessel = None
+        alert.corridor = None
+        alert.assigned_analyst = None
+
         # corridor_id is None, start_point_id is None, end_point_id is None
-        # so the route skips corridor, AISPoint queries.
-        # Query order: 1=alert, 2=vessel, 3=envelope, 4=sat_check,
-        # then .all() for spoofing/loitering/STS (vessel_id=10),
+        # so the route skips AISPoint queries.
+        # Query order: 1=alert (with joinedload), 2=envelope, 3=sat_check,
+        # then .all() for spoofing/loitering/STS,
         # then .scalar() for prior_count.
         call_count = [0]
 
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.options.return_value = result  # support .options() chaining
             result.filter.return_value.first.return_value = None
             result.filter.return_value.all.return_value = []
             result.filter.return_value.scalar.return_value = 0
@@ -296,11 +302,17 @@ class TestAlertDetailPerformance:
         alert.reviewed_by = None
         alert.review_date = None
 
+        # Set relationship attributes (loaded via joinedload)
+        alert.vessel = None
+        alert.corridor = None
+        alert.assigned_analyst = None
+
         call_count = [0]
 
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.options.return_value = result  # support .options() chaining
             result.filter.return_value.first.return_value = None
             result.filter.return_value.all.return_value = []
             result.filter.return_value.scalar.return_value = 0

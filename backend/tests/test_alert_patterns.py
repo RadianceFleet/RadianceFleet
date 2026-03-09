@@ -36,22 +36,23 @@ class TestAlertPatterns:
         vessel.flag = "PA"
         vessel.deadweight = 50000.0
 
-        # Default: return alert for first query, vessel for second, None for rest
-        query_results = [alert, vessel, None, None, None, None]
-        iter(query_results)
+        # Set relationship attributes on alert (loaded via joinedload)
+        alert.vessel = vessel
+        alert.corridor = None
+        alert.assigned_analyst = None
 
         call_count = [0]
 
         def query_side_effect(*args, **kwargs):
             call_count[0] += 1
             result = MagicMock()
+            result.options.return_value = result  # support .options() chaining
             result.filter.return_value.first.return_value = None
             result.filter.return_value.all.return_value = []
             result.filter.return_value.scalar.return_value = prior_count
             if call_count[0] == 1:
+                # AISGapEvent query (with joinedload options)
                 result.filter.return_value.first.return_value = alert
-            elif call_count[0] == 2:
-                result.filter.return_value.first.return_value = vessel
             return result
 
         mock_db.query.side_effect = query_side_effect

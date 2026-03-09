@@ -16,20 +16,30 @@ export function VesselCard({ vesselId, apiUrl }: { vesselId: number; apiUrl: str
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`${apiUrl}/api/v1/vessels/${vesselId}`, {
-      headers: { 'X-API-Key': new URLSearchParams(window.location.search).get('key') || '' }
-    })
-      .then(r => { if (!r.ok) throw new Error('Failed'); return r.json() })
-      .then(d => setData({
-        vessel_id: d.vessel_id,
-        name: d.name || 'Unknown',
-        mmsi: d.mmsi || '',
-        flag: d.flag || '',
-        risk_score: d.last_risk_score ?? 0,
-        risk_band: d.last_risk_score >= 76 ? 'CRITICAL' : d.last_risk_score >= 51 ? 'HIGH' : d.last_risk_score >= 21 ? 'MEDIUM' : 'LOW',
-        last_seen: d.last_ais_time || '',
-      }))
-      .catch(e => setError(e.message))
+    const load = async () => {
+      try {
+        const r = await fetch(`${apiUrl}/api/v1/vessels/${vesselId}`, {
+          headers: { 'X-API-Key': new URLSearchParams(window.location.search).get('key') || '' }
+        })
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({ detail: r.statusText }))
+          throw new Error(body.detail ?? `HTTP ${r.status}`)
+        }
+        const d = await r.json()
+        setData({
+          vessel_id: d.vessel_id,
+          name: d.name || 'Unknown',
+          mmsi: d.mmsi || '',
+          flag: d.flag || '',
+          risk_score: d.last_risk_score ?? 0,
+          risk_band: d.last_risk_score >= 76 ? 'CRITICAL' : d.last_risk_score >= 51 ? 'HIGH' : d.last_risk_score >= 21 ? 'MEDIUM' : 'LOW',
+          last_seen: d.last_ais_time || '',
+        })
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load vessel')
+      }
+    }
+    load()
   }, [vesselId, apiUrl])
 
   if (error) return <div style={cardStyle}><p>Error loading vessel data</p></div>

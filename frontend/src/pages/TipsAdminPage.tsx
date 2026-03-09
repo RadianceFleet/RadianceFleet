@@ -4,6 +4,7 @@ import type { Tip } from '../hooks/useTips'
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { Pagination } from '../components/ui/Pagination'
 
 const PAGE_SIZE = 20
@@ -113,7 +114,7 @@ function NoteCell({ tip, onSave }: { tip: Tip; onSave: (note: string) => void })
 export function TipsAdminPage() {
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useTips({
+  const { data, isLoading, error, refetch } = useTips({
     status: statusFilter === 'ALL' ? undefined : statusFilter,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
@@ -147,11 +148,7 @@ export function TipsAdminPage() {
 
       <Card>
         {isLoading && <Spinner text="Loading tips..." />}
-        {error && (
-          <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>
-            Failed to load tips
-          </p>
-        )}
+        {error && <ErrorMessage error={error} subject="tips" onRetry={refetch} />}
 
         {!isLoading && tips.length === 0 && (
           <EmptyState title="No tips found" description="No tip submissions match the current filter." />

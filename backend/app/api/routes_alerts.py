@@ -158,7 +158,10 @@ def export_alerts_csv(
 
     _validate_date_range(date_from, date_to)
 
-    q = db.query(AISGapEvent)
+    q = db.query(AISGapEvent).options(
+        joinedload(AISGapEvent.vessel),
+        joinedload(AISGapEvent.corridor),
+    )
     if ids:
         id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
         if id_list:
@@ -213,7 +216,7 @@ def export_alerts_csv(
             else "",
             "corridor_name": corridor.name if corridor else "",
             "risk_score": alert.risk_score,
-            "status": alert.status,
+            "status": str(alert.status.value) if hasattr(alert.status, 'value') else str(alert.status),
             "analyst_notes": alert.analyst_notes or "",
         }
 
@@ -448,16 +451,21 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
         StsSummary,
     )
 
-    alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
+    alert = (
+        db.query(AISGapEvent)
+        .options(
+            joinedload(AISGapEvent.vessel),
+            joinedload(AISGapEvent.corridor),
+            joinedload(AISGapEvent.assigned_analyst),
+        )
+        .filter(AISGapEvent.gap_event_id == alert_id)
+        .first()
+    )
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
-    vessel = db.query(Vessel).filter(Vessel.vessel_id == alert.vessel_id).first()
-    corridor = (
-        db.query(Corridor).filter(Corridor.corridor_id == alert.corridor_id).first()
-        if alert.corridor_id
-        else None
-    )
+    vessel = alert.vessel
+    corridor = alert.corridor
     envelope = db.query(MovementEnvelope).filter(MovementEnvelope.gap_event_id == alert_id).first()
     sat_check = db.query(SatelliteCheck).filter(SatelliteCheck.gap_event_id == alert_id).first()
     last_pt = (

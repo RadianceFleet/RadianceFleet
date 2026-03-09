@@ -3,6 +3,7 @@ import { useHuntTargets, useHuntMissions, useHuntCandidates, useAnalyzeHuntMissi
 import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { Pagination } from '../components/ui/Pagination'
 import { CreateTargetModal } from '../components/hunt/CreateTargetModal'
 import { CreateMissionModal } from '../components/hunt/CreateMissionModal'
@@ -96,14 +97,14 @@ export function HuntPage() {
 
 function TargetsTab() {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useHuntTargets({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useHuntTargets({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const targets = data ?? []
   const totalPages = Math.max(1, Math.ceil(targets.length / PAGE_SIZE))
 
   return (
     <Card>
       {isLoading && <Spinner text="Loading targets..." />}
-      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load targets</p>}
+      {error && <ErrorMessage error={error} subject="targets" onRetry={refetch} />}
 
       {targets.length === 0 && !isLoading && !error && (
         <EmptyState title="No hunt targets" description="Create a vessel target profile to begin hunting" />
@@ -150,14 +151,14 @@ function TargetsTab() {
 
 function MissionsTab({ onSelectMission }: { onSelectMission: (id: number) => void }) {
   const [page, setPage] = useState(0)
-  const { data, isLoading, error } = useHuntMissions({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data, isLoading, error, refetch } = useHuntMissions({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const missions = data ?? []
   const totalPages = Math.max(1, Math.ceil(missions.length / PAGE_SIZE))
 
   return (
     <Card>
       {isLoading && <Spinner text="Loading missions..." />}
-      {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load missions</p>}
+      {error && <ErrorMessage error={error} subject="missions" onRetry={refetch} />}
 
       {missions.length === 0 && !isLoading && !error && (
         <EmptyState title="No search missions" description="Create a search mission to find vessels" />
@@ -207,7 +208,7 @@ function MissionsTab({ onSelectMission }: { onSelectMission: (id: number) => voi
 function MissionDetail({ missionId, onBack }: { missionId: number; onBack: () => void }) {
   const [page, setPage] = useState(0)
   const [selectedCandidateId, setSelectedCandidateId] = useState<number | null>(null)
-  const { data: candidates, isLoading, error } = useHuntCandidates(missionId, { skip: page * PAGE_SIZE, limit: PAGE_SIZE })
+  const { data: candidates, isLoading, error, refetch } = useHuntCandidates(missionId, { skip: page * PAGE_SIZE, limit: PAGE_SIZE })
   const analyzeMutation = useAnalyzeHuntMission()
   const finalizeMutation = useFinalizeHuntMission()
   const items = candidates?.items ?? []
@@ -281,7 +282,7 @@ function MissionDetail({ missionId, onBack }: { missionId: number; onBack: () =>
 
       <Card>
         {isLoading && <Spinner text="Loading candidates..." />}
-        {error && <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem' }}>Failed to load candidates</p>}
+        {error && <ErrorMessage error={error} subject="candidates" onRetry={refetch} />}
 
         {items.length === 0 && !isLoading && !error && (
           <EmptyState title="No candidates" description="Run analysis on this mission to generate candidates" />

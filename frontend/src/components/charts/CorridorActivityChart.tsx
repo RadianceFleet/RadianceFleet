@@ -1,16 +1,17 @@
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts'
 import { useCorridorActivity } from '../../hooks/useCorridorActivity'
 import { Spinner } from '../ui/Spinner'
+import { ErrorMessage } from '../ui/ErrorMessage'
 
 interface Props {
   corridorId: string | undefined
 }
 
 export function CorridorActivityChart({ corridorId }: Props) {
-  const { data, isLoading, error } = useCorridorActivity(corridorId)
+  const { data, isLoading, error, refetch } = useCorridorActivity(corridorId)
 
   if (isLoading) return <Spinner text="Loading activity…" />
-  if (error) return <p style={{ color: 'var(--score-critical)', fontSize: '0.8rem' }}>Failed to load activity data.</p>
+  if (error) return <ErrorMessage error={error} subject="activity data" onRetry={refetch} />
   if (!data || data.length === 0) return <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No activity data available.</p>
 
   return (

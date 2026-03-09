@@ -20,6 +20,8 @@ def mock_db():
     session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
     session.query.return_value.filter.return_value.all.return_value = []
     session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+    # Support .options() chaining (e.g. joinedload)
+    session.query.return_value.options.return_value = session.query.return_value
     return session
 
 

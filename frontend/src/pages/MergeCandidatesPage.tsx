@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card'
 import { Spinner } from '../components/ui/Spinner'
 import { ScoreBadge } from '../components/ui/ScoreBadge'
 import { EmptyState } from '../components/ui/EmptyState'
+import { ErrorMessage } from '../components/ui/ErrorMessage'
 import { MergeChainGraph } from '../components/MergeChainGraph'
 
 const thStyle: React.CSSProperties = {
@@ -115,7 +116,7 @@ export function MergeCandidatesPage() {
       {viewMode === 'table' && (
         <Card>
           {isLoading && <Spinner text="Loading merge candidates..." />}
-          {error && <p style={{ color: 'var(--score-critical)' }}>Failed to load candidates</p>}
+          {error && <ErrorMessage error={error} subject="candidates" onRetry={refetch} />}
           {actionError && <p style={{ color: 'var(--score-critical)', fontSize: 13, padding: '0 12px' }}>{actionError}</p>}
 
           {!isLoading && candidates.length === 0 && (
@@ -228,7 +229,7 @@ export function MergeCandidatesPage() {
       {viewMode === 'graph' && (
         <Card>
           {chainsQuery.isLoading && <Spinner text="Loading merge chains..." />}
-          {chainsQuery.error && <p style={{ color: 'var(--score-critical)' }}>Failed to load merge chains</p>}
+          {chainsQuery.error && <ErrorMessage error={chainsQuery.error} subject="merge chains" onRetry={chainsQuery.refetch} />}
 
           {!chainsQuery.isLoading && (chainsQuery.data?.items ?? []).length === 0 && (
             <EmptyState

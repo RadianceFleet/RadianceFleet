@@ -2,6 +2,7 @@ import { useRouteLaundering } from '../hooks/useRouteLaundering'
 import { Card } from './ui/Card'
 import { Spinner } from './ui/Spinner'
 import { EmptyState } from './ui/EmptyState'
+import { ErrorMessage } from './ui/ErrorMessage'
 import { ScoreBadge } from './ui/ScoreBadge'
 import { sectionHead, thStyle, tdStyle, tableStyle, theadRow, tbodyRow } from '../styles/tables'
 
@@ -11,16 +12,14 @@ function formatTimestamp(ts: string | null | undefined): string {
 }
 
 export function RouteLaunderingSection({ vesselId }: { vesselId: string | number }) {
-  const { data, isLoading, error } = useRouteLaundering(vesselId)
+  const { data, isLoading, error, refetch } = useRouteLaundering(vesselId)
 
   if (isLoading) return <Spinner text="Loading route laundering data..." />
   if (error) {
     return (
       <Card style={{ marginBottom: 16 }}>
         <h3 style={sectionHead}>Route Laundering Detections</h3>
-        <p style={{ color: 'var(--score-critical)', fontSize: 13 }}>
-          Failed to load route laundering data.
-        </p>
+        <ErrorMessage error={error} subject="route laundering data" onRetry={refetch} />
       </Card>
     )
   }

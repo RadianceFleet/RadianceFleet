@@ -57,8 +57,8 @@ export function useAlertStream(options: UseAlertStreamOptions = {}) {
             queryClient.invalidateQueries({ queryKey: ['alerts'] })
             queryClient.invalidateQueries({ queryKey: ['alerts-map'] })
             queryClient.invalidateQueries({ queryKey: ['stats'] })
-          } catch {
-            // ignore parse errors
+          } catch (e) {
+            console.warn('SSE parse error:', e, event.data)
           }
         }
       },
