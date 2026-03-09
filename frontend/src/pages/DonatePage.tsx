@@ -52,14 +52,11 @@ export function DonatePage() {
           monthly infrastructure costs. Even $5/month from a few supporters keeps the platform running.
         </p>
 
-        <h3 style={{ margin: '0 0 6px', fontSize: 15, color: 'var(--text-muted)' }}>Grants (Primary Path)</h3>
+        <h3 style={{ margin: '0 0 6px', fontSize: 15, color: 'var(--text-muted)' }}>Institutional Support</h3>
         <p style={{ margin: '0 0 8px', fontSize: 14, lineHeight: 1.6 }}>
-          Institutional grant funding is the primary sustainability path:
+          Institutional grant funding is the primary sustainability path. We welcome partnerships
+          with press freedom, investigative journalism, and accountability organizations.
         </p>
-        <ul style={{ fontSize: 14, lineHeight: 1.9, paddingLeft: 20, margin: '0 0 8px' }}>
-          <li><strong>IJ4EU</strong> -- EU cross-border investigative journalism fund, up to 50K EUR. Open for applications.</li>
-          <li><strong>NED</strong> -- National Endowment for Democracy, supports media freedom and investigative tools.</li>
-        </ul>
         <p style={{ margin: 0, fontSize: 13, color: 'var(--text-dim)' }}>
           If you represent a journalism or human rights organization interested in partnering,
           reach out via GitHub Issues.
