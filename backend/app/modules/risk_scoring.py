@@ -919,7 +919,7 @@ def compute_gap_score(
             elif age <= 15:
                 breakdown["vessel_age_10_15y"] = vessel_age_cfg.get("age_10_to_15y", 0)
             elif age <= 20:
-                breakdown["vessel_age_15_20y"] = vessel_age_cfg.get("age_15_to_20y", 5)
+                breakdown["vessel_age_15_20y"] = vessel_age_cfg.get("age_15_to_20y", 12)
             elif age <= 25:
                 breakdown["vessel_age_20_25y"] = vessel_age_cfg.get("age_20_to_25y", 10)
             else:

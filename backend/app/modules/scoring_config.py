@@ -121,6 +121,9 @@ def load_scoring_config() -> dict[str, Any]:
     global _SCORING_CONFIG
     if _SCORING_CONFIG is None:
         config_path = Path(settings.RISK_SCORING_CONFIG)
+        if not config_path.exists() and not config_path.is_absolute():
+            # Resolve relative to project root (parent of backend/)
+            config_path = Path(__file__).resolve().parent.parent.parent.parent / config_path
         if not config_path.exists():
             logger.warning("risk_scoring.yaml not found at %s — using empty config", config_path)
             _SCORING_CONFIG = {}
