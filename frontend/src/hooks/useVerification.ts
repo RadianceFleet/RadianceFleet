@@ -3,11 +3,12 @@ import { apiFetch } from '../lib/api'
 
 // Types defined inline — NOT in types/api.ts (owned by Agent 4)
 interface VerificationBudget {
-  provider: string
+  provider?: string
   spent_usd: number
-  budget_usd: number
+  budget_usd?: number
+  monthly_budget_usd?: number
   remaining_usd: number
-  calls_this_month: number
+  calls_this_month?: number
 }
 
 interface VerificationResult {

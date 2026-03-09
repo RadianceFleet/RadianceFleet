@@ -80,9 +80,9 @@ export function VerificationPanel({ vesselId, currentOwner }: VerificationPanelP
         <div style={{ marginBottom: 16, padding: '8px 12px', background: 'var(--bg-base)', borderRadius: 'var(--radius)', fontSize: 13 }}>
           <span style={{ color: 'var(--text-muted)' }}>Budget: </span>
           <span style={{ color: budget.remaining_usd > 0 ? 'var(--score-low)' : 'var(--score-critical)', fontWeight: 600 }}>
-            ${budget.remaining_usd.toFixed(2)} remaining
+            ${(budget.remaining_usd ?? 0).toFixed(2)} remaining
           </span>
-          <span style={{ color: 'var(--text-dim)' }}> of ${budget.budget_usd.toFixed(2)} ({budget.calls_this_month} calls this month)</span>
+          <span style={{ color: 'var(--text-dim)' }}> of ${((budget.budget_usd ?? budget.monthly_budget_usd) ?? 0).toFixed(2)} ({budget.calls_this_month ?? 0} calls this month)</span>
         </div>
       ) : null}
 

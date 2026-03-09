@@ -12,6 +12,7 @@ export class AlertListPage extends BasePage {
   readonly nextButton: Locator;
   readonly alertLinks: Locator;
   readonly vesselLinks: Locator;
+  readonly exportCsvLink: Locator;
 
   constructor(page: Page) {
     super(page);
@@ -25,6 +26,7 @@ export class AlertListPage extends BasePage {
     this.nextButton = page.getByRole('button', { name: 'Next' });
     this.alertLinks = page.locator('table a[href*="/alerts/"]');
     this.vesselLinks = page.locator('table a[href*="/vessels/"]');
+    this.exportCsvLink = page.locator('a[href*="/api/v1/alerts/export"]');
   }
 
   sortHeader(label: string): Locator {

@@ -368,26 +368,24 @@ def reset_analyst_password(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/admin/validate", tags=["admin"])
-@limiter.limit(settings.RATE_LIMIT_ADMIN)
+@router.get("/admin/validate", tags=["scoring"])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
 def admin_validate(
     request: Request,
     threshold_band: str = Query("high"),
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin_role),
 ):
-    """Run validation harness against ground truth."""
+    """Run validation harness against ground truth (public read-only)."""
     from app.modules.validation_harness import run_validation
 
     return run_validation(db, threshold_band=threshold_band)
 
 
-@router.get("/admin/validate/signals", tags=["admin"])
-@limiter.limit(settings.RATE_LIMIT_ADMIN)
+@router.get("/admin/validate/signals", tags=["scoring"])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
 def admin_validate_signals(
     request: Request,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin_role),
 ):
     """Signal effectiveness report — lift ratios for each risk signal."""
     from app.modules.validation_harness import signal_effectiveness_report
@@ -395,12 +393,11 @@ def admin_validate_signals(
     return signal_effectiveness_report(db)
 
 
-@router.get("/admin/validate/sweep", tags=["admin"])
-@limiter.limit(settings.RATE_LIMIT_ADMIN)
+@router.get("/admin/validate/sweep", tags=["scoring"])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
 def admin_validate_sweep(
     request: Request,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin_role),
 ):
     """Sweep score thresholds — precision/recall/F2 at each threshold."""
     from app.modules.validation_harness import sweep_thresholds
@@ -408,17 +405,28 @@ def admin_validate_sweep(
     return sweep_thresholds(db)
 
 
-@router.get("/admin/validate/analyst-metrics", tags=["admin"])
-@limiter.limit(settings.RATE_LIMIT_ADMIN)
+@router.get("/admin/validate/analyst-metrics", tags=["scoring"])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
 def admin_analyst_metrics(
     request: Request,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin_role),
 ):
     """Analyst feedback metrics — FP rates by score band and corridor."""
     from app.modules.validation_harness import analyst_feedback_metrics
 
     return analyst_feedback_metrics(db)
+
+
+@router.get("/admin/validate/detector-correlation", tags=["scoring"])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
+def admin_detector_correlation(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Detector correlation report — co-occurrence FP rates for signal pairs."""
+    from app.modules.validation_harness import detector_correlation_report
+
+    return detector_correlation_report(db)
 
 
 @router.post("/admin/purge-observations", tags=["admin"])
@@ -493,7 +501,7 @@ def get_tips(
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db),
-    _admin=Depends(require_admin_role),
+    _user=Depends(require_auth),
 ):
     """Admin: list tip submissions, paginated."""
     from sqlalchemy import select

@@ -19,3 +19,11 @@ export const waitForMergeChains = (page: Page) => waitForApi(page, '/api/v1/merg
 export const waitForAlertTrends = (page: Page) => waitForApi(page, '/api/v1/alerts/trends?');
 export const waitForHealthFreshness = (page: Page) => waitForApi(page, '/api/v1/health/data-freshness');
 export const waitForCollectionStatus = (page: Page) => waitForApi(page, '/api/v1/health/collection-status');
+export const waitForVesselDetail = (page: Page, vesselId: string) =>
+  waitForApi(page, `/api/v1/vessels/${vesselId}`);
+export const waitForAlertDetail = (page: Page, alertId: string) =>
+  waitForApi(page, `/api/v1/alerts/${alertId}`);
+export const waitForDarkVessels = (page: Page) => waitForApi(page, '/api/v1/dark-vessels');
+export const waitForStsEvents = (page: Page) => waitForApi(page, '/api/v1/sts-events');
+export const waitForHuntTargets = (page: Page) => waitForApi(page, '/api/v1/hunt/targets');
+export const waitForSatelliteProviders = (page: Page) => waitForApi(page, '/api/v1/satellite/providers');
