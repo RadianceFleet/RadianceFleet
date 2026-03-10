@@ -81,6 +81,25 @@ KSE Institute does not have a stable direct download URL. Download manually from
   - Coverage is global and near-real-time but dependent on terrestrial receiver network density.
   - Satellite AIS coverage gaps are common in open ocean — do not confuse satellite dead zones with deliberate AIS disabling.
 
+### BarentsWatch — Norwegian Coastal AIS
+
+- **URL**: https://www.barentswatch.no/
+- **Access**: OAuth2 authentication; register at the BarentsWatch developer portal. Requires a Norwegian organization number or research affiliation.
+- **Coverage**: Norwegian EEZ including Svalbard, Barents Sea, and Norwegian Sea. Terrestrial and satellite AIS.
+- **Format**: GeoJSON FeatureCollections via REST API.
+- **History limit**: **14 days only.** The BarentsWatch AIS API returns a maximum of 14 days of historical positions per vessel. Older data is not available through the API.
+
+- **Workarounds for the 14-day limit**:
+  1. **Daily polling** (recommended): Schedule a daily cron job to fetch the previous day's data and accumulate it locally. Use `radiancefleet data fetch --source barentswatch` once automated ingestion is implemented.
+  2. **DMA CSV archive**: The Danish Maritime Authority publishes free Baltic AIS data from 2006–2016 (see above). This overlaps with some Norwegian waters.
+  3. **Commercial AIS providers**: For gap-free historical coverage beyond 14 days, consider commercial providers such as MarineTraffic, VesselFinder, or Spire Maritime, which offer historical AIS APIs with multi-year archives.
+
+- **Data quality notes**:
+  - OAuth2 tokens expire after 1 hour. The client must handle token refresh.
+  - Coverage density is highest along the Norwegian coast and decreases in open Barents Sea.
+  - Satellite AIS supplements terrestrial receivers in the Svalbard zone, but update intervals may be 1–6 hours vs. seconds for coastal stations.
+  - BarentsWatch data is provided under Norwegian government open data terms. Check the current license at the developer portal.
+
 ---
 
 ## Satellite Vessel Detections

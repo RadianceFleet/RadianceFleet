@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **E2E journey tests**: export verification, journalist triage, OSINT bulk triage, resilience patterns
+
 ## [3.4.0] - 2026-03-08
 
 ### Added
