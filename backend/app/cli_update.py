@@ -117,14 +117,30 @@ def update(
     ),
 ):
     """Refresh data and re-run analysis (daily)."""
+    import time as _time
+
     from app.config import settings
-    from app.database import SessionLocal
+    from app.database import SessionLocal, init_db
+    from app.models.worker_heartbeat import upsert_heartbeat
+
+    # Ensure tables exist (cron service may start before web on Railway)
+    for attempt in range(1, 6):
+        try:
+            init_db()
+            break
+        except Exception as exc:
+            if attempt == 5:
+                raise
+            console.print(f"[yellow]DB init attempt {attempt}/5 failed ({exc}), retrying...[/yellow]")
+            _time.sleep(attempt * 2)
 
     end = date.today()
     start_date = end - timedelta(days=days)
 
     db = SessionLocal()
     try:
+        upsert_heartbeat(db, "cron-updater", status="running")
+        db.commit()
         # Phase 1: Fetch & import watchlists
         if not offline:
             with console.status("[bold]Downloading latest data..."):
@@ -248,9 +264,19 @@ def update(
             except Exception as e:
                 console.print(f"[yellow]Email notifications: {e}[/yellow]")
 
+        upsert_heartbeat(db, "cron-updater", status="idle")
+        db.commit()
+
         console.print("[green]Update complete![/green]")
         _h._print_summary(console)
         _h._print_next_steps(console, after="update")
+    except Exception as e:
+        try:
+            upsert_heartbeat(db, "cron-updater", status="error", error=str(e))
+            db.commit()
+        except Exception:
+            pass
+        raise
     finally:
         db.close()
 
@@ -263,12 +289,25 @@ def stream(
 ):
     """Run aisstream.io WebSocket consumer continuously (dedicated worker)."""
     import asyncio
+    import signal
     import time as _time
 
     from app.config import settings
-    from app.database import SessionLocal
+    from app.database import SessionLocal, init_db
     from app.models.ingestion_status import update_ingestion_status
+    from app.models.worker_heartbeat import upsert_heartbeat
     from app.modules.aisstream_client import get_corridor_bounding_boxes, stream_ais
+
+    # Ensure tables exist (worker may start before web service on Railway)
+    for attempt in range(1, 6):
+        try:
+            init_db()
+            break
+        except Exception as exc:
+            if attempt == 5:
+                raise
+            console.print(f"[yellow]DB init attempt {attempt}/5 failed ({exc}), retrying...[/yellow]")
+            _time.sleep(attempt * 2)
 
     api_key = settings.AISSTREAM_API_KEY
     if not api_key:
@@ -281,7 +320,11 @@ def stream(
     finally:
         db.close()
 
+    cumulative_records = 0
+
     def on_batch(stats: dict):
+        nonlocal cumulative_records
+        cumulative_records += stats.get("points_stored", 0)
         batch_db = SessionLocal()
         try:
             update_ingestion_status(
@@ -290,14 +333,48 @@ def stream(
                 records=stats.get("points_stored", 0),
                 status="running",
             )
+            upsert_heartbeat(
+                batch_db,
+                "ws-worker",
+                status="running",
+                records=cumulative_records,
+                metadata=stats,
+            )
             batch_db.commit()
         except Exception:
             batch_db.rollback()
         finally:
             batch_db.close()
 
+    def _write_stopped_heartbeat():
+        stop_db = SessionLocal()
+        try:
+            upsert_heartbeat(stop_db, "ws-worker", status="stopped")
+            stop_db.commit()
+        except Exception:
+            stop_db.rollback()
+        finally:
+            stop_db.close()
+
+    def _sigterm_handler(signum, frame):
+        console.print("\n[yellow]SIGTERM received, shutting down...[/yellow]")
+        _write_stopped_heartbeat()
+        raise SystemExit(0)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
     console.print("[bold]Continuous aisstream.io WebSocket consumer[/bold]")
     console.print(f"  Bounding boxes: {len(boxes)}, Batch interval: {batch_interval}s")
+
+    # Write starting heartbeat
+    start_db = SessionLocal()
+    try:
+        upsert_heartbeat(start_db, "ws-worker", status="starting")
+        start_db.commit()
+    except Exception:
+        start_db.rollback()
+    finally:
+        start_db.close()
 
     try:
         while True:  # Outer loop: survive circuit breaker trips
@@ -313,8 +390,32 @@ def stream(
             )
             if result.get("error") == "circuit breaker open":
                 console.print("[yellow]Circuit breaker open, waiting 60s...[/yellow]")
+                wait_db = SessionLocal()
+                try:
+                    upsert_heartbeat(
+                        wait_db, "ws-worker",
+                        status="waiting",
+                        records=cumulative_records,
+                        error="circuit breaker open",
+                    )
+                    wait_db.commit()
+                except Exception:
+                    wait_db.rollback()
+                finally:
+                    wait_db.close()
                 _time.sleep(60)
                 continue
             break  # Normal exit (shouldn't happen with duration=0)
     except KeyboardInterrupt:
         console.print("\n[yellow]Stopped by user[/yellow]")
+        _write_stopped_heartbeat()
+    except Exception as e:
+        err_db = SessionLocal()
+        try:
+            upsert_heartbeat(err_db, "ws-worker", status="error", error=str(e))
+            err_db.commit()
+        except Exception:
+            err_db.rollback()
+        finally:
+            err_db.close()
+        raise

@@ -107,6 +107,84 @@ def get_data_freshness(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/health/workers", tags=["health"])
+@limiter.exempt
+def get_worker_health(db: Session = Depends(get_db)):
+    """Worker heartbeat status — verifies Railway-hosted workers are alive."""
+    from app.models.vessel import Vessel
+    from app.models.worker_heartbeat import WorkerHeartbeat
+
+    now = datetime.now(UTC)
+
+    # Staleness thresholds per worker type (seconds)
+    stale_thresholds = {
+        "ws-worker": 120,       # batches every 30s, stale after 2min
+        "cron-updater": 7200,   # runs hourly, stale after 2h
+    }
+    default_threshold = 300
+
+    rows = db.query(WorkerHeartbeat).all()
+
+    workers = {}
+    all_healthy = True
+    for row in rows:
+        threshold = stale_thresholds.get(row.worker_id, default_threshold)
+        if row.last_heartbeat_utc is None:
+            age = float("inf")
+            stale = True
+        else:
+            age = (now - row.last_heartbeat_utc.replace(tzinfo=UTC)).total_seconds()
+            stale = age > threshold
+        if stale or row.status == "error":
+            all_healthy = False
+        workers[row.worker_id] = {
+            "status": row.status,
+            "last_heartbeat_utc": row.last_heartbeat_utc.isoformat() if row.last_heartbeat_utc else None,
+            "started_at_utc": row.started_at_utc.isoformat() if row.started_at_utc else None,
+            "heartbeat_age_seconds": int(age),
+            "stale": stale,
+            "records_processed": row.records_processed or 0,
+            "error_message": row.error_message,
+        }
+
+    # Determine expected workers from env var hints
+    expected_workers = []
+    if getattr(settings, "AISSTREAM_WORKER_ENABLED", False) or getattr(settings, "AISSTREAM_API_KEY", None):
+        expected_workers.append("ws-worker")
+
+    missing_workers = [w for w in expected_workers if w not in workers]
+
+    # Cross-check: is AIS data actually flowing?
+    latest_ais = db.query(func.max(Vessel.last_ais_received_utc)).scalar()
+    data_flowing = False
+    if latest_ais:
+        data_age = (now - latest_ais.replace(tzinfo=UTC)).total_seconds()
+        data_flowing = data_age < 300  # within 5 min
+
+    worker_count = len(rows)
+    if worker_count == 0:
+        state = "unconfigured"
+        all_healthy = False
+    elif missing_workers:
+        state = "degraded"
+        all_healthy = False
+    elif all_healthy:
+        state = "healthy"
+    else:
+        state = "degraded"
+
+    return {
+        "workers": workers,
+        "worker_count": worker_count,
+        "expected_workers": expected_workers,
+        "missing_workers": missing_workers,
+        "state": state,
+        "data_flowing": data_flowing,
+        "latest_ais_utc": latest_ais.isoformat() if latest_ais else None,
+        "all_healthy": all_healthy,
+    }
+
+
 @router.get("/health/collection-status", tags=["health"])
 @limiter.exempt
 def get_collection_status(

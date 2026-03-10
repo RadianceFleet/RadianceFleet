@@ -49,6 +49,7 @@ from app.models.vessel_history import VesselHistory
 from app.models.vessel_owner import VesselOwner
 from app.models.vessel_watchlist import VesselWatchlist
 from app.models.webhook import Webhook
+from app.models.worker_heartbeat import WorkerHeartbeat
 
 __all__ = [
     "Base",
@@ -103,4 +104,5 @@ __all__ = [
     "SavedFilter",
     "ApiKey",
     "Webhook",
+    "WorkerHeartbeat",
 ]
