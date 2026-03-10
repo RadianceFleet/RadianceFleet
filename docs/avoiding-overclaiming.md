@@ -83,7 +83,7 @@ RadianceFleet marks corridors with `is_jamming_zone: true` and reduces gap score
 
 ## Why Analyst Review Is Mandatory
 
-RadianceFleet enforces an analyst review gate (PRD requirement NFR7):
+RadianceFleet enforces an analyst review gate:
 
 - Alerts start in `new` status
 - Evidence cards cannot be exported until an analyst changes the status to `under_review`, `confirmed`, or `dismissed`

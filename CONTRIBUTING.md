@@ -196,7 +196,7 @@ Examples: `feat/imo-cross-check`, `fix/dark-zone-scoring`, `docs/corridor-yaml`
    failures.
 3. Run `ruff check backend/` and fix any violations.
 4. If your change adds or modifies a CLI command or API endpoint, update the
-   relevant section of `PRD.md` or the inline docstring. New CLI commands must
+   relevant documentation file (see Documentation Checklist below). New CLI commands must
    appear in the `radiancefleet --help` output.
 5. Open the PR against `main`. Fill in the template:
    - **What**: one-sentence summary of the change.
@@ -437,7 +437,7 @@ backend/
   pyproject.toml     Dependencies, ruff config, mypy config
 config/
   corridors.yaml     11 seed corridors (export routes, STS zones, dark zones)
-  risk_scoring.yaml  Scoring weights per PRD §7.5
+  risk_scoring.yaml  Scoring weights (see docs/CUSTOMIZATION.md)
 frontend/
   src/               React 18 + TypeScript + TanStack Query + React-Leaflet
 docker-compose.yml   PostgreSQL + PostGIS service definition
@@ -450,3 +450,17 @@ docker-compose.yml   PostgreSQL + PostGIS service definition
 Open a GitHub Discussion or file an issue with the `question` label. For
 security-sensitive findings (e.g. data exposure, auth bypass), please email
 `conduct@radiancefleet.com` rather than filing a public issue.
+
+---
+
+## Documentation Checklist
+
+When adding or modifying features, ensure the following documentation is kept in sync:
+
+- [ ] CLI commands appear in `radiancefleet --help` output
+- [ ] New API endpoints are documented in `docs/API.md`
+- [ ] Detection signals are described in `docs/METHODOLOGY.md`
+- [ ] Configuration changes are documented in the relevant `config/` README or `docs/CUSTOMIZATION.md`
+- [ ] User-facing workflows are covered in `docs/GETTING_STARTED.md`
+- [ ] Geographic coverage changes are noted in `docs/DATA_SOURCES.md`
+- [ ] The "How to avoid overclaiming" guidance in `docs/avoiding-overclaiming.md` still holds

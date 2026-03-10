@@ -214,7 +214,7 @@ Vessel hunt endpoints implement FR9: given a gap event, compute a drift ellipse 
 | `GET` | `/admin/analysts` | List all analysts (admin only) |
 | `PATCH` | `/admin/analysts/{analyst_id}` | Update analyst role, display name, or active status (admin only) |
 | `POST` | `/admin/analysts/{analyst_id}/reset-password` | Reset an analyst's password (admin only) |
-| `GET` | `/audit-log` | View the analyst action audit trail (PRD NFR5); filterable by `action` and `entity_type`; paginated |
+| `GET` | `/audit-log` | View the analyst action audit trail (see docs/METHODOLOGY.md for audit requirements); filterable by `action` and `entity_type`; paginated |
 
 ### System
 

@@ -2,6 +2,8 @@
 
 This document describes the detection methods, scoring logic, validation framework, and known limitations of RadianceFleet. It is intended for journalists, OSINT researchers, NGO analysts, and other external stakeholders who need to understand how the tool works before interpreting its output.
 
+RadianceFleet was built to address three challenges facing investigators tracking Russian oil flows: too much ocean for manual monitoring, AIS data that is incomplete or deliberately manipulated, and evidence fragmented across multiple tools and formats. It combines AIS anomaly detection, route-based prioritization, satellite imagery checks, and exportable evidence cards into a single open-source workflow.
+
 ---
 
 ## 1. Purpose & Scope

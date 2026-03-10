@@ -24,7 +24,7 @@ The HTML report is written to `backend/htmlcov/index.html`.
 
 ## Test Structure
 
-The test suite contains **2,673+ tests** across 20+ test files. Each file is dedicated
+The test suite contains **2,818 tests** across 20+ test files. Each file is dedicated
 to a single module or functional boundary. The original 9 core test files are listed
 below, followed by additional test files added in v2.0–v3.2.
 
@@ -77,7 +77,7 @@ Covers `loitering_detector.py` including both detection modes:
 
 Covers `corridor_correlator.py`:
 
-- `find_corridor_for_gap` using ST_Intersects trajectory intersection
+- `find_corridor_for_gap` using Shapely bounding-box intersection
 - Bounding-box fallback path when spatial extension is unavailable
 - Gap trajectory passing through a corridor (not ending inside it) is correctly matched
 - `find_dark_zone_for_gap` returns the lowest zone_id when multiple zones match
@@ -117,7 +117,7 @@ Covers `evidence_export.py`:
 
 - Export returns error when alert status is `"new"` (NFR7 gate)
 - Export succeeds when status is `"reviewed"` or `"confirmed"`
-- JSON format output contains all mandatory fields from PRD §7.7
+- JSON format output contains all mandatory fields (vessel, gap, risk score, movement envelope, AIS boundary points)
 - Markdown format output contains vessel, gap, risk score, movement envelope, and
   AIS boundary point sections
 - `DISCLAIMER` string is included in every export
@@ -369,7 +369,7 @@ cd backend && uv run python ../scripts/generate_sample_data.py
 
 ## Coverage Targets
 
-The suite currently contains **2,673+ tests** (as of v3.2). The following targets apply
+The suite currently contains **2,818 tests** (as of v3.4). The following targets apply
 when contributing new signals, detectors, or API endpoints:
 
 - Every new scoring signal requires at minimum:

@@ -63,4 +63,4 @@ radiancefleet search-mission create --name "Hunt LUCKY STAR" --mmsi 273338710
 
 ## Additional Context
 
-<!-- Screenshots, links to relevant PRD sections (PRD.md §xx), related issues, etc. -->
+<!-- Screenshots, links to relevant documentation sections, related issues, etc. -->

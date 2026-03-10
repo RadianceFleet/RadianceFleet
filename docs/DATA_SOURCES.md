@@ -240,6 +240,20 @@ Unmatched rows emit a warning and are skipped — they do not abort the batch. R
 
 ---
 
+## AIS Validation Rules
+
+During ingestion, RadianceFleet rejects and logs (not silently drops) records that fail these checks:
+
+- **MMSI**: Must be 9 digits, numeric only
+- **IMO**: 7 digits if present, optionally prefixed "IMO "
+- **Coordinates**: lat in [-90, 90], lon in [-180, 180]
+- **SOG**: Reject if > 35 knots (any vessel); flag if > 18 knots for VLCC, > 19 kn Suezmax
+- **Timestamps**: Reject future timestamps and timestamps before 2010
+- **Duplicate handling**: Keep highest-quality record per (MMSI, timestamp_utc); prefer satellite AIS over terrestrial if source field present
+- **MMSI identity consistency**: Flag if same MMSI reports different vessel names within a 24h window (first step toward MMSI spoofing detection)
+
+---
+
 ## Adding a New Data Source
 
 To add a new watchlist or AIS data source, see the issue template at `.github/ISSUE_TEMPLATE/data_source_adapter.md`. The minimum requirements for a new loader are:

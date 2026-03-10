@@ -210,3 +210,23 @@ deployments:
 ```bash
 RISK_SCORING_CONFIG=/path/to/my_custom_scoring.yaml radiancefleet rescore-all-alerts
 ```
+
+---
+
+## Tanker Filtering Heuristics
+
+RadianceFleet focuses on oil tankers by default. The filtering uses AIS vessel type codes and configurable include/exclude lists.
+
+### Vessel type filter
+The system processes only vessels matching tanker AIS vessel type codes (80-89). This can be broadened in the scoring configuration to include other vessel types.
+
+### Manual include/exclude lists
+Operators can maintain IMO, MMSI, or vessel name lists to:
+- **Include** specific vessels regardless of type code (useful for shadow fleet vessels that misreport type)
+- **Exclude** known-legitimate vessels to reduce noise (e.g., NATO tankers, research vessels)
+
+These lists are managed via the admin API or CLI:
+```bash
+radiancefleet vessel include --imo 1234567
+radiancefleet vessel exclude --mmsi 123456789
+```
