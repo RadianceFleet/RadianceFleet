@@ -1,12 +1,11 @@
 """Tests for worker heartbeat model, upsert helper, and /health/workers endpoint."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from app.models.worker_heartbeat import WorkerHeartbeat, upsert_heartbeat
-
 
 # ── Unit tests for upsert_heartbeat ─────────────────────────────────────────
 
