@@ -118,13 +118,18 @@ def _load_sample_data(db) -> None:
 
 
 def _enrich_vessels(db) -> None:
-    """Enrich vessel metadata via GFW and infer AIS class."""
+    """Enrich vessel metadata via GFW, Datalastic, and infer AIS class."""
     from app.config import settings
 
     if settings.GFW_API_TOKEN:
         from app.modules.vessel_enrichment import enrich_vessels_from_gfw
 
         enrich_vessels_from_gfw(db, limit=50)
+
+    if settings.DATALASTIC_API_KEY:
+        from app.modules.vessel_enrichment import enrich_vessels_from_datalastic
+
+        enrich_vessels_from_datalastic(db, limit=50)
 
     from app.modules.vessel_enrichment import infer_ais_class_batch
 

@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     SEAWEB_API_KEY: str = ""
     VERIFICATION_MONTHLY_BUDGET_USD: float = 500.0
 
+    # ── Vessel Registry APIs ────────────────────────────────────────────
+    DATALASTIC_API_KEY: str | None = None
+
     # ── Satellite Imagery Ordering ───────────────────────────────────────
     PLANET_API_KEY: str | None = None
     CAPELLA_API_KEY: str | None = None

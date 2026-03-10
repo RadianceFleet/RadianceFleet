@@ -66,6 +66,9 @@ breakers = {
     "umbra": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="umbra", listeners=[_listener]
     ),
+    "datalastic": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="datalastic", listeners=[_listener]
+    ),
 }
 
 

@@ -429,6 +429,163 @@ def infer_pi_coverage(db: Session) -> dict[str, int]:
     return {"lapsed": 0, "unchanged": 0}
 
 
+def enrich_vessels_from_datalastic(
+    db: Session,
+    limit: int = 200,
+) -> dict:
+    """Batch-enrich vessels with authoritative metadata from Datalastic API.
+
+    Selects vessels where DWT is NULL or is_heuristic_dwt=True, and MMSI or
+    IMO is known. Datalastic provides authoritative DWT (not heuristic),
+    vessel type, year built, callsign, and gross tonnage.
+
+    Args:
+        db: SQLAlchemy session.
+        limit: Max vessels to enrich per run.
+
+    Returns:
+        {"enriched": int, "failed": int, "skipped": int}
+    """
+    from app.models.vessel import Vessel
+    from app.modules.datalastic_client import fetch_vessel_info
+    from app.utils.vessel_identity import flag_to_risk_category
+
+    if not settings.DATALASTIC_API_KEY:
+        return {"enriched": 0, "failed": 0, "skipped": 0, "disabled": True}
+
+    vessels = (
+        db.query(Vessel)
+        .filter(
+            or_(
+                Vessel.deadweight == None,  # noqa: E711
+                Vessel.is_heuristic_dwt == True,  # noqa: E712
+            ),
+            Vessel.mmsi != None,  # noqa: E711
+        )
+        .limit(limit)
+        .all()
+    )
+
+    stats: dict = {"enriched": 0, "failed": 0, "skipped": 0}
+    _SOURCE = "datalastic_enrichment_fill"
+
+    for vessel in vessels:
+        # Try MMSI first, fall back to IMO
+        data = fetch_vessel_info(mmsi=vessel.mmsi)
+        if data is None and vessel.imo:
+            data = fetch_vessel_info(imo=vessel.imo)
+        if data is None:
+            stats["skipped"] += 1
+            continue
+
+        changed = False
+
+        # DWT — authoritative (not heuristic)
+        if "deadweight" in data:
+            try:
+                new_dwt = float(data["deadweight"])
+                old_dwt = vessel.deadweight
+                if old_dwt != new_dwt:
+                    vessel.deadweight = new_dwt
+                    vessel.is_heuristic_dwt = False
+                    db.add(
+                        VesselHistory(
+                            vessel_id=vessel.vessel_id,
+                            field_changed="deadweight",
+                            old_value=str(old_dwt) if old_dwt is not None else "",
+                            new_value=str(new_dwt),
+                            observed_at=datetime.utcnow(),
+                            source=_SOURCE,
+                        )
+                    )
+                    changed = True
+            except (ValueError, TypeError):
+                pass
+
+        # vessel_type
+        if "vessel_type" in data and data["vessel_type"] and not vessel.vessel_type:
+            vessel.vessel_type = data["vessel_type"]
+            db.add(
+                VesselHistory(
+                    vessel_id=vessel.vessel_id,
+                    field_changed="vessel_type",
+                    old_value="",
+                    new_value=data["vessel_type"],
+                    observed_at=datetime.utcnow(),
+                    source=_SOURCE,
+                )
+            )
+            changed = True
+
+        # year_built
+        if "year_built" in data and data["year_built"] and vessel.year_built is None:
+            try:
+                vessel.year_built = int(data["year_built"])
+                db.add(
+                    VesselHistory(
+                        vessel_id=vessel.vessel_id,
+                        field_changed="year_built",
+                        old_value="",
+                        new_value=str(data["year_built"]),
+                        observed_at=datetime.utcnow(),
+                        source=_SOURCE,
+                    )
+                )
+                changed = True
+            except (ValueError, TypeError):
+                pass
+
+        # callsign
+        if "callsign" in data and data["callsign"] and not vessel.callsign:
+            vessel.callsign = data["callsign"]
+            db.add(
+                VesselHistory(
+                    vessel_id=vessel.vessel_id,
+                    field_changed="callsign",
+                    old_value="",
+                    new_value=data["callsign"],
+                    observed_at=datetime.utcnow(),
+                    source=_SOURCE,
+                )
+            )
+            changed = True
+
+        # flag — only update if missing
+        if "flag" in data and data["flag"] and not vessel.flag:
+            vessel.flag = data["flag"]
+            vessel.flag_risk_category = flag_to_risk_category(data["flag"])
+            changed = True
+
+        # gross_tonnage — store if we don't have DWT yet (informational)
+        if (
+            "gross_tonnage" in data
+            and data["gross_tonnage"]
+            and hasattr(vessel, "gross_tonnage")
+            and not getattr(vessel, "gross_tonnage", None)
+        ):
+            try:
+                vessel.gross_tonnage = float(data["gross_tonnage"])
+                changed = True
+            except (ValueError, TypeError):
+                pass
+
+        if changed:
+            stats["enriched"] += 1
+        else:
+            stats["skipped"] += 1
+
+    if stats["enriched"] > 0:
+        db.commit()
+
+    logger.info(
+        "Datalastic enrichment complete: enriched=%d failed=%d skipped=%d",
+        stats["enriched"],
+        stats["failed"],
+        stats["skipped"],
+    )
+    return stats
+
+
 def enrich_vessels_from_equasis(
     db: Session,
     limit: int = 100,
