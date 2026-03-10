@@ -240,6 +240,55 @@ Unmatched rows emit a warning and are skipped — they do not abort the batch. R
 
 ---
 
+## Vessel Registry APIs
+
+### Datalastic — Commercial Vessel Metadata
+
+- **URL**: https://datalastic.com/
+- **Access**: API key required; commercial service (€99-199/month). Sign up at the website.
+- **Coverage**: Global vessel registry. Returns authoritative DWT, vessel type, year built, callsign, flag, and gross tonnage.
+- **API**: REST API at `https://api.datalastic.com/api/v0/vessel_info`. Auth via `api-key` query parameter.
+- **Rate limit**: 600 requests/minute (RadianceFleet uses conservative 1 req/s).
+- **Integration**: Automatic enrichment when `DATALASTIC_API_KEY` is set. Runs during `radiancefleet start` and `radiancefleet update`.
+
+- **Field mapping**:
+
+  | Datalastic field | RadianceFleet field | Notes |
+  |-----------------|-------------------|-------|
+  | `deadweight` | `deadweight` | Authoritative — sets `is_heuristic_dwt=False` |
+  | `type_specific` | `vessel_type` | Only fills if vessel has no type yet |
+  | `year_built` | `year_built` | Integer year |
+  | `callsign` | `callsign` | Only fills if missing |
+  | `country_iso` | `flag` | ISO country code |
+  | `gross_tonnage` | `gross_tonnage` | Informational |
+
+- **Data quality notes**:
+  - Datalastic is the recommended ToS-compliant alternative to Equasis scraping.
+  - DWT values are authoritative (from classification society data), not heuristic. They override GFW's GT-derived estimates.
+  - Error response format is undocumented; the client handles unknown status codes defensively.
+  - Lookup priority: MMSI first, IMO fallback.
+
+### PSC MOU Data Coverage
+
+RadianceFleet integrates PSC detention data from the following sources:
+
+| MOU | Method | Status |
+|-----|--------|--------|
+| Tokyo MOU | OpenSanctions FTM | Active |
+| Black Sea MOU | OpenSanctions FTM | Active |
+| Abuja MOU | OpenSanctions FTM | Active |
+| Paris MOU (bans) | EMSA JSON feed (~136 vessels/year) | Active |
+| Paris MOU (full detentions) | Data Exchange API (restricted) | Requires formal account approval |
+
+**Paris MOU full detentions (~1,200/year)**: The Paris MOU Data Exchange Service API is not publicly accessible. Access requires a formal account request through the Paris MOU secretariat. To request access:
+1. Visit https://www.parismou.org/ and navigate to the Data Exchange section
+2. Submit a formal access request describing your organization and intended use
+3. Account approval is at the discretion of the Paris MOU secretariat
+
+The remaining regional MOUs (Mediterranean/THETIS-Med, Indian Ocean, Riyadh, Viña del Mar, Caribbean) do not offer programmatic access. Their data is available only via web forms, PDFs, or under terms of service that prohibit bulk download.
+
+---
+
 ## AIS Validation Rules
 
 During ingestion, RadianceFleet rejects and logs (not silently drops) records that fail these checks:

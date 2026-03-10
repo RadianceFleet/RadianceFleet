@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **Datalastic vessel enrichment**: API client for authoritative DWT, vessel type, year built, callsign, and gross tonnage via Datalastic REST API. Circuit breaker protected. Auto-runs during `radiancefleet start` and `radiancefleet update` when `DATALASTIC_API_KEY` is configured.
+- **PSC MOU coverage documentation**: Documented Paris MOU account request process and regional MOU access limitations in DATA_SOURCES.md.
 - **E2E journey tests**: export verification, journalist triage, OSINT bulk triage, resilience patterns
 
 ## [3.4.0] - 2026-03-08

@@ -42,10 +42,13 @@ This document catalogues the cost structure of commercial services that suppleme
 
 ---
 
-## Equasis Vessel Registry
+## Vessel Registry APIs
 
-- Free after registration; no API -- screen-scraping or manual lookup only.
-- Machine-readable commercial alternative: **IHS Markit / S&P Global** (enterprise pricing).
+| Provider | Product | Approx. Cost | Notes |
+|---|---|---|---|
+| **Datalastic** | REST API (vessel_info) | €99-199/month | Authoritative DWT, vessel type, year built, callsign, gross tonnage. 600 req/min. Recommended for production enrichment. |
+| **Equasis** | Manual lookup / scraping | Free (registration) | ToS prohibits automated access. Use Datalastic instead for production. |
+| **IHS Markit / S&P Global** | Full vessel intelligence | $5,000-$20,000+/yr | Enterprise pricing. Comprehensive ownership + history. |
 
 ---
 
