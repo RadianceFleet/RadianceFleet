@@ -236,3 +236,72 @@ def test_point_in_bbox_tolerance_expands_boundary():
     assert not _point_in_bbox(55.0, 27.05, bbox, tolerance=0.0)
     # But within tolerance=0.1
     assert _point_in_bbox(55.0, 27.05, bbox, tolerance=0.1)
+
+
+# ── Shapely-based spatial accuracy tests ────────────────────────────────────
+
+
+def test_point_inside_bbox_but_outside_polygon():
+    """A point in the bounding box of a diamond polygon but outside the polygon itself.
+
+    Diamond vertices: (25, 56), (26, 55), (25, 54), (24, 55) — a rotated square.
+    Bounding box: lon [24, 26], lat [54, 56].
+    Point (24.1, 54.1) falls in the SW corner of the bbox but is outside the diamond.
+
+    With Shapely geometry, find_corridor_for_point should NOT match this point.
+    """
+    from unittest.mock import MagicMock
+    from app.modules.corridor_correlator import find_corridor_for_point
+
+    # Diamond polygon WKT: vertices at (lon, lat) = (25,56), (26,55), (25,54), (24,55)
+    diamond_wkt = "POLYGON ((25 56, 26 55, 25 54, 24 55, 25 56))"
+
+    corridor = MagicMock()
+    corridor.geometry = diamond_wkt
+    corridor.risk_weight = 1.0
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [corridor]
+
+    # Point at (lat=54.1, lon=24.1) — inside bbox but outside diamond
+    result = find_corridor_for_point(db, lat=54.1, lon=24.1)
+    assert result is None, (
+        "Point in bbox corner but outside diamond polygon should NOT match"
+    )
+
+
+def test_transit_trajectory_through_corridor():
+    """A trajectory where neither endpoint is inside the corridor, but the line passes through.
+
+    Corridor: rectangle from (24, 54.5) to (26, 55.5).
+    Trajectory: (lat=53, lon=25) to (lat=57, lon=25) — a north-south line
+    that passes through the corridor at lon=25, lat in [54.5, 55.5].
+    Neither endpoint is inside the corridor.
+
+    With Shapely intersection, _intersecting_rows SHOULD match this trajectory.
+    """
+    from unittest.mock import MagicMock
+    from app.modules.corridor_correlator import _intersecting_rows
+
+    rect_wkt = "POLYGON ((24 54.5, 26 54.5, 26 55.5, 24 55.5, 24 54.5))"
+
+    row = MagicMock()
+    row.geometry = rect_wkt
+
+    model = MagicMock()
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [row]
+
+    # Trajectory from (lat=53, lon=25) to (lat=57, lon=25) — passes through corridor
+    matches = _intersecting_rows(
+        db,
+        start_lat=53.0,
+        start_lon=25.0,
+        end_lat=57.0,
+        end_lon=25.0,
+        model=model,
+    )
+    assert len(matches) == 1, (
+        "Transit trajectory through corridor should be detected via Shapely intersection"
+    )
+    assert matches[0] is row

@@ -68,16 +68,12 @@ def _is_near_port(db: Session, lat: float, lon: float, radius_nm: float = 5.0) -
 def _is_in_anchorage_corridor(
     db: Session, lat: float, lon: float, tolerance: float | None = None
 ) -> bool:
-    """Check if a position falls within any anchorage_holding corridor.
-
-    Designated waiting anchorages (e.g. Laconian Gulf STS anchorage) are modeled
-    as CorridorTypeEnum.ANCHORAGE_HOLDING corridors, not as Port records.  A vessel
-    with nav_status=1 for 72h in such a corridor should NOT fire ANCHOR_SPOOF.
-    """
+    """Check if a position falls within any anchorage_holding corridor."""
+    from shapely.geometry import Point
     from app.models.base import CorridorTypeEnum
     from app.models.corridor import Corridor
     from app.modules.corridor_correlator import _geometry_wkt
-    from app.utils.geo import parse_wkt_bbox as _parse_wkt_bbox
+    from app.utils.geo import load_geometry
 
     if tolerance is None:
         tolerance = settings.ANCHORAGE_TOLERANCE_DEG
@@ -90,13 +86,16 @@ def _is_in_anchorage_corridor(
         )
         .all()
     )
+    pt = Point(lon, lat)
     for c in corridors:
         wkt = _geometry_wkt(c.geometry)
-        bbox = _parse_wkt_bbox(wkt) if wkt else None
-        if bbox and (
-            bbox[0] - tolerance <= lon <= bbox[2] + tolerance
-            and bbox[1] - tolerance <= lat <= bbox[3] + tolerance
-        ):
+        if wkt is None:
+            continue
+        try:
+            shape = load_geometry(wkt)
+        except Exception:
+            continue
+        if shape and shape.buffer(tolerance).contains(pt):
             return True
     return False
 

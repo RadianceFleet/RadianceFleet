@@ -5,9 +5,11 @@ the gap's start and end AIS points and tests that line against every corridor (a
 dark zone) polygon stored in the database.
 
 Spatial query strategy:
-  Bounding-box check: parses the corridor geometry WKT and checks whether either
-  endpoint falls within the derived min/max bounds.  A small tolerance
-  (BBOX_TOLERANCE_DEG) is added to avoid edge-case misses.
+  Shapely intersection: loads WKT geometry into Shapely objects, buffers by
+  BBOX_TOLERANCE_DEG (~0.1° ≈ 6-11 km), and tests whether the gap trajectory
+  LineString intersects (or is contained by) the buffered polygon.  This correctly
+  detects transit trajectories that pass through a corridor without either endpoint
+  being inside it.
 """
 
 from __future__ import annotations
@@ -75,17 +77,22 @@ def _intersecting_rows(
     end_lon: float,
     model: type,
 ) -> list:
-    """Return model rows whose geometry bbox contains either gap endpoint."""
+    """Return model rows whose geometry intersects the gap trajectory line."""
+    from shapely.geometry import LineString
+    from app.utils.geo import load_geometry
+
     candidates = db.query(model).filter(model.geometry.isnot(None)).all()
+    trajectory = LineString([(start_lon, start_lat), (end_lon, end_lat)])
     matches: list = []
     for row in candidates:
         wkt = _geometry_wkt(row.geometry)
         if wkt is None:
             continue
-        bbox = parse_wkt_bbox(wkt)
-        if bbox is None:
+        try:
+            shape = load_geometry(wkt)
+        except Exception:
             continue
-        if _point_in_bbox(start_lat, start_lon, bbox) or _point_in_bbox(end_lat, end_lon, bbox):
+        if shape and shape.buffer(BBOX_TOLERANCE_DEG).intersects(trajectory):
             matches.append(row)
     return matches
 
@@ -179,14 +186,21 @@ def find_corridor_for_point(db: Session, lat: float, lon: float) -> Corridor | N
     Used for GFW gap events where we only have off-position coordinates
     (no start/end AIS point pair).
     """
+    from shapely.geometry import Point
+    from app.utils.geo import load_geometry
+
     corridors = db.query(Corridor).filter(Corridor.geometry.isnot(None)).all()
+    pt = Point(lon, lat)
     matches = []
     for c in corridors:
         wkt = _geometry_wkt(c.geometry)
         if wkt is None:
             continue
-        bbox = parse_wkt_bbox(wkt)
-        if bbox and _point_in_bbox(lat, lon, bbox):
+        try:
+            shape = load_geometry(wkt)
+        except Exception:
+            continue
+        if shape and shape.buffer(BBOX_TOLERANCE_DEG).contains(pt):
             matches.append(c)
     if not matches:
         return None
