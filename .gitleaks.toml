@@ -1,0 +1,7 @@
+[allowlist]
+paths = [
+    '''backend/tests/.*''',
+    '''frontend/src/__tests__/.*''',
+    '''e2e/.*''',
+    '''.*\.md$''',
+]

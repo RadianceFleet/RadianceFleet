@@ -55,6 +55,21 @@ jobs:
       - name: Build
         run: npm run build
 
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz | tar xz
+          sudo mv gitleaks /usr/local/bin/
+      - name: Run gitleaks
+        run: gitleaks detect --source . --verbose --redact
+      - name: Run journalist-safety checks
+        run: bash scripts/opsec-check.sh
+
   # -----------------------------------------------------------------
   # Docker publish job
   # Required secrets:

@@ -71,3 +71,10 @@ backend/radiancefleet.db
 backend/radiancefleet.db*
 radiancefleet.db
 .playwright-mcp/
+
+# Screenshots and internal docs (opsec)
+railway-web-check.png
+*.screenshot.png
+meeting*/
+notes/
+internal/
