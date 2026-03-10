@@ -804,12 +804,75 @@ class TestFix2MergeScoring:
 
 
 class TestFix3AISStreamDiagnostics:
-    @pytest.mark.skip(reason="_update_stream_ais was removed from cli.py; AIS streaming handled differently now")
-    def test_cli_warns_zero_messages(self):
-        """Prints 'check API key' when 0 messages received."""
-        pass
+    def test_aisstream_warns_zero_messages(self):
+        """_map_position_report returns None when message has no usable data."""
+        from app.modules.aisstream_client import _map_position_report
 
-    @pytest.mark.skip(reason="_update_stream_ais was removed from cli.py; AIS streaming handled differently now")
-    def test_cli_warns_all_filtered(self):
-        """Prints 'all filtered out' when msgs > 0 but pts == 0."""
-        pass
+        # Empty message — no MetaData, no Message content
+        empty_msg: dict = {"MetaData": {}, "Message": {"PositionReport": {}}}
+        result = _map_position_report(empty_msg)
+        assert result is None, "Empty position report should be filtered out"
+
+        # Message with MMSI "0" (sentinel for missing MMSI)
+        zero_mmsi_msg: dict = {
+            "MetaData": {"MMSI": 0, "latitude": 60.0, "longitude": 25.0, "time_utc": "2026-03-01T12:00:00Z"},
+            "Message": {"PositionReport": {"Sog": 10.0, "Cog": 180.0}},
+        }
+        result = _map_position_report(zero_mmsi_msg)
+        assert result is None, "MMSI '0' should be filtered out"
+
+    def test_aisstream_warns_all_filtered(self):
+        """Non-vessel MMSIs (coast stations, AtoN) are filtered by _map_position_report."""
+        from app.modules.aisstream_client import _map_position_report
+
+        # Use MMSIs that remain 9 digits when converted via str(int(...)):
+        # 970xxxxxx = SAR aircraft, 992xxxxxx = AtoN
+        non_vessel_mmsis = ("970123456", "992320001", "979000001")
+        base_station_msgs = [
+            {
+                "MetaData": {
+                    "MMSI": int(mmsi),
+                    "latitude": 60.0,
+                    "longitude": 25.0,
+                    "time_utc": "2026-03-01T12:00:00Z",
+                    "ShipName": "STATION",
+                },
+                "Message": {"PositionReport": {"Sog": 0.0, "Cog": 0.0}},
+            }
+            for mmsi in non_vessel_mmsis
+        ]
+
+        results = [_map_position_report(msg) for msg in base_station_msgs]
+        assert all(r is None for r in results), (
+            "All non-vessel MMSIs should be filtered: got %s" % results
+        )
+
+    def test_barentswatch_empty_response(self):
+        """BarentsWatch returns empty FeatureCollection — handled gracefully."""
+        from unittest.mock import MagicMock, patch
+
+        from sqlalchemy.orm import Session
+
+        db = MagicMock(spec=Session)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"type": "FeatureCollection", "features": []}
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("app.modules.barentswatch_client.settings") as mock_settings:
+            mock_settings.BARENTSWATCH_ENABLED = True
+            mock_settings.BARENTSWATCH_API_URL = "https://test.api/api"
+
+            with patch("app.modules.barentswatch_client.httpx.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.__enter__ = MagicMock(return_value=mock_client)
+                mock_client.__exit__ = MagicMock(return_value=False)
+                mock_client.get.return_value = mock_response
+                mock_client_cls.return_value = mock_client
+
+                from app.modules.barentswatch_client import fetch_barentswatch_tracks
+
+                result = fetch_barentswatch_tracks(db, token="test-token")
+                assert result["points_imported"] == 0
+                assert result["vessels_seen"] == 0
+                assert result["errors"] == 0
