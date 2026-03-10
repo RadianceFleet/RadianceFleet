@@ -1,11 +1,6 @@
-# Railway deployment configuration (single service — cron configured via dashboard)
+# Railway deployment configuration (multi-service — start commands set per service)
 # See: https://docs.railway.com/reference/config-as-code
 
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-
-[deploy]
-startCommand = "bash -c 'uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers'"
-healthcheckPath = "/health"
-healthcheckTimeout = 30
