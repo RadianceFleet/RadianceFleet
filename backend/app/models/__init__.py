@@ -21,6 +21,7 @@ from app.models.fleet_alert import FleetAlert
 from app.models.gap_event import AISGapEvent
 from app.models.ground_truth import GroundTruthVessel
 from app.models.ingestion_status import IngestionStatus
+from app.models.isolation_forest_anomaly import IsolationForestAnomaly
 from app.models.loitering_event import LoiteringEvent
 from app.models.merge_candidate import MergeCandidate
 from app.models.merge_chain import MergeChain
@@ -42,6 +43,8 @@ from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.sts_transfer import StsTransferEvent
 from app.models.stubs import DarkVesselDetection, HuntCandidate, SearchMission, VesselTargetProfile
 from app.models.tip_submission import TipSubmission
+from app.models.trajectory_cluster import TrajectoryCluster
+from app.models.trajectory_cluster_member import TrajectoryClusterMember
 from app.models.verification_log import VerificationLog
 from app.models.vessel import Vessel
 from app.models.vessel_fingerprint import VesselFingerprint
@@ -104,5 +107,8 @@ __all__ = [
     "SavedFilter",
     "ApiKey",
     "Webhook",
+    "TrajectoryCluster",
+    "TrajectoryClusterMember",
     "WorkerHeartbeat",
+    "IsolationForestAnomaly",
 ]

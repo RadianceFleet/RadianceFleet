@@ -68,6 +68,10 @@ _EXPECTED_SECTIONS = [
     "watchlist_stub_scoring",
     "viirs",
     "gap_sar_validation",
+    "isolation_forest",
+    "trajectory_clustering",
+    "ais_reporting_anomaly",
+    "ownership_transparency",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)

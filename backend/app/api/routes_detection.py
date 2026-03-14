@@ -1415,6 +1415,125 @@ def screen_vessel(
     return {"vessel_id": vessel_id, "screening": result}
 
 
+@router.post("/cluster-trajectories", tags=["detection"])
+def cluster_trajectories(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+):
+    """Run DBSCAN trajectory clustering on AIS data.
+
+    Groups vessel trajectory segments into clusters using a weighted
+    haversine distance metric. Identifies anomalous patterns and noise.
+    Requires DBSCAN_CLUSTERING_ENABLED=true.
+    """
+    from app.modules.dbscan_trajectory_detector import run_trajectory_clustering
+
+    dt_from = datetime.combine(date_from, datetime.min.time()) if date_from else None
+    dt_to = datetime.combine(date_to, datetime.max.time()) if date_to else None
+    return run_trajectory_clustering(db, date_from=dt_from, date_to=dt_to)
+
+
+@router.get("/clusters", tags=["detection"])
+def list_clusters(
+    include_noise: bool = Query(False, description="Include noise pseudo-cluster"),
+    db: Session = Depends(get_db),
+):
+    """List all trajectory clusters."""
+    from app.modules.dbscan_trajectory_detector import get_clusters
+
+    return get_clusters(db, include_noise=include_noise)
+
+
+@router.get("/clusters/{vessel_id}", tags=["detection"])
+def get_vessel_clusters(
+    vessel_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get trajectory cluster memberships for a vessel."""
+    from app.modules.dbscan_trajectory_detector import get_vessel_cluster_memberships
+
+    return get_vessel_cluster_memberships(db, vessel_id)
+
+
+# ---------------------------------------------------------------------------
+# AIS Reporting Anomaly Detection
+# ---------------------------------------------------------------------------
+
+
+@router.post("/detect/reporting-anomaly", tags=["detection"])
+def detect_reporting_anomaly(
+    db: Session = Depends(get_db),
+):
+    """Run AIS reporting rate anomaly detection across all vessels."""
+    from app.modules.ais_reporting_anomaly_detector import run_reporting_anomaly_detection
+
+    return run_reporting_anomaly_detection(db)
+
+
+@router.get("/detect/reporting-anomaly/{vessel_id}", tags=["detection"])
+def get_reporting_anomaly(
+    vessel_id: int,
+    db: Session = Depends(get_db),
+):
+    """Analyse AIS reporting patterns for a single vessel."""
+    from app.models.vessel import Vessel
+    from app.modules.ais_reporting_anomaly_detector import analyse_vessel_reporting
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    return analyse_vessel_reporting(db, vessel_id)
+
+
+# ---------------------------------------------------------------------------
+# Ownership Transparency
+# ---------------------------------------------------------------------------
+
+
+@router.post("/detect/ownership-transparency/{vessel_id}", tags=["detection"])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
+def analyze_ownership_transparency(
+    vessel_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Analyze beneficial ownership transparency for a vessel.
+
+    Enriches ownership records via OpenCorporates, detects SPV structures
+    and jurisdiction hopping.  Requires authentication.
+    Returns 503 if OpenCorporates is disabled, 404 if vessel not found.
+    """
+    if not settings.OPENCORPORATES_ENABLED:
+        raise HTTPException(
+            status_code=503, detail="OpenCorporates ownership transparency is disabled"
+        )
+
+    from app.models.vessel import Vessel
+    from app.modules.ownership_transparency import (
+        detect_jurisdiction_hopping,
+        enrich_vessel_ownership,
+        score_ownership_transparency,
+    )
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    enrichment = enrich_vessel_ownership(db, vessel_id)
+    jur_hopping = detect_jurisdiction_hopping(db, vessel_id)
+    scoring = score_ownership_transparency(db, vessel_id)
+
+    return {
+        "vessel_id": vessel_id,
+        "enrichment": enrichment,
+        "jurisdiction_hopping": jur_hopping,
+        "scoring": scoring,
+    }
+
+
 @router.post("/validate-gaps-sar", tags=["detection"])
 def validate_gaps_sar(
     date_from: date | None = None,
@@ -1427,3 +1546,32 @@ def validate_gaps_sar(
     dt_from = datetime.combine(date_from, datetime.min.time()) if date_from else None
     dt_to = datetime.combine(date_to, datetime.max.time()) if date_to else None
     return validate_gaps_with_sar(db, date_from=dt_from, date_to=dt_to)
+
+
+# ---------------------------------------------------------------------------
+# Isolation Forest Anomaly Detection
+# ---------------------------------------------------------------------------
+
+
+@router.post("/detect/isolation-forest", tags=["detection"])
+def detect_isolation_forest(
+    db: Session = Depends(get_db),
+):
+    """Run Isolation Forest multi-feature anomaly detection across all vessels."""
+    from app.modules.isolation_forest_detector import run_isolation_forest_detection
+
+    return run_isolation_forest_detection(db)
+
+
+@router.get("/detect/isolation-forest/{vessel_id}", tags=["detection"])
+def get_isolation_forest_anomaly(
+    vessel_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get Isolation Forest anomaly result for a specific vessel."""
+    from app.modules.isolation_forest_detector import get_vessel_anomaly
+
+    result = get_vessel_anomaly(db, vessel_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No anomaly record for this vessel")
+    return result

@@ -208,6 +208,9 @@ class Settings(BaseSettings):
     SPARSE_TRANSMISSION_SCORING_ENABLED: bool = True
     TYPE_CONSISTENCY_DETECTION_ENABLED: bool = True
     TYPE_CONSISTENCY_SCORING_ENABLED: bool = True
+    # AIS reporting anomaly detection
+    AIS_REPORTING_ANOMALY_ENABLED: bool = False
+    AIS_REPORTING_ANOMALY_SCORING_ENABLED: bool = False
     # Watchlist stub scoring
     WATCHLIST_STUB_SCORING_ENABLED: bool = True
 
@@ -267,9 +270,29 @@ class Settings(BaseSettings):
     # ── OFAC SDN Sync ────────────────────────────────────────────────────
     OFAC_SDN_WEBHOOK_ON_NEW: bool = True
 
+    # ── Isolation Forest Anomaly Detection ────────────────────────────────
+    ISOLATION_FOREST_ENABLED: bool = False
+    ISOLATION_FOREST_SCORING_ENABLED: bool = False
+
+    # ── DBSCAN Trajectory Clustering ─────────────────────────────────────
+    DBSCAN_CLUSTERING_ENABLED: bool = False
+    DBSCAN_CLUSTERING_SCORING_ENABLED: bool = False
+    DBSCAN_EPS_NM: float = 15.0
+    DBSCAN_MIN_SAMPLES: int = 3
+
     # ── GFW SAR Enhancement ──────────────────────────────────────────────
     GFW_SAR_SWEEP_INTERVAL_HOURS: int = 24
     GFW_SAR_MIN_CONFIDENCE: float = 0.5
+
+    # ── OpenCorporates (Beneficial Ownership) ───────────────────────────
+    OPENCORPORATES_API_KEY: str = ""
+    OPENCORPORATES_ENABLED: bool = False
+    OPENCORPORATES_API_URL: str = "https://api.opencorporates.com/v0.4"
+    OPENCORPORATES_RATE_LIMIT_S: float = 2.0
+    OPENCORPORATES_MONTHLY_QUOTA: int = 500
+
+    # ── Ownership Transparency Scoring ────────────────────────────────
+    OWNERSHIP_TRANSPARENCY_SCORING_ENABLED: bool = True
 
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False

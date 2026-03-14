@@ -495,3 +495,15 @@ export interface SatelliteBudget {
   spent_usd: number;
   remaining_usd: number;
 }
+
+// ---------------------------------------------------------------------------
+// Narrative types
+// ---------------------------------------------------------------------------
+
+export interface NarrativeResponse {
+  narrative: string;
+  format: string;
+  strength: number;
+  warnings: string[];
+  generated_at: string;
+}

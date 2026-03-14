@@ -1161,6 +1161,8 @@ def compute_gap_score(
             _shadow_excluded_types.add("sparse_transmission")
         if not _scoring_settings.TYPE_CONSISTENCY_SCORING_ENABLED:
             _shadow_excluded_types.add("type_dwt_mismatch")
+        if not _scoring_settings.AIS_REPORTING_ANOMALY_SCORING_ENABLED:
+            _shadow_excluded_types.add("reporting_rate_anomaly")
 
         def _type_val(s):
             return str(s.anomaly_type.value if hasattr(s.anomaly_type, "value") else s.anomaly_type)
@@ -2672,6 +2674,24 @@ def compute_gap_score(
         except Exception as e:
             logger.debug("Ownership graph scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
+    # ── Ownership transparency scoring ──────────────────────────────────
+    if (
+        _scoring_settings.OWNERSHIP_TRANSPARENCY_SCORING_ENABLED
+        and db is not None
+        and vessel is not None
+    ):
+        try:
+            from app.modules.ownership_transparency import score_ownership_transparency
+
+            ot_breakdown = score_ownership_transparency(db, vessel.vessel_id, config)
+            breakdown.update(ot_breakdown)
+        except Exception as e:
+            logger.debug(
+                "Ownership transparency scoring failed for vessel %s: %s",
+                vessel.vessel_id,
+                e,
+            )
+
     # ── Stage 5-C: Voyage prediction + cargo inference + weather scoring ────
     if _scoring_settings.VOYAGE_SCORING_ENABLED and db is not None and vessel is not None:
         voyage_cfg = config.get("voyage", {})
@@ -2818,6 +2838,40 @@ def compute_gap_score(
             else:
                 pts = vtc_cfg.get("type_dwt_mismatch", 25)
             breakdown["vessel_type_consistency"] = pts
+
+    # ── AIS reporting anomaly scoring ─────────────────────────────────────
+    if (
+        _scoring_settings.AIS_REPORTING_ANOMALY_SCORING_ENABLED
+        and db is not None
+        and vessel is not None
+    ):
+        ra_cfg = config.get("ais_reporting_anomaly", {})
+        ra_anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.REPORTING_RATE_ANOMALY,
+            )
+            .all()
+        )
+        if ra_anomalies:
+            best = max(ra_anomalies, key=lambda a: a.risk_score_component)
+            ev = best.evidence_json or {}
+            signals = ev.get("signals", {})
+            pts = 0
+            if "interval_cv" in signals:
+                cv_score = signals["interval_cv"].get("score", 0)
+                cv_val = signals["interval_cv"].get("cv", 0)
+                if cv_val > 2.0:
+                    pts = max(pts, ra_cfg.get("interval_cv_high", 25))
+                elif cv_val > 1.5:
+                    pts = max(pts, ra_cfg.get("interval_cv_medium", 15))
+            if "pre_gap_decay" in signals:
+                pts = max(pts, ra_cfg.get("pre_gap_rate_decay", 20))
+            if "corridor_rate_drop" in signals:
+                pts = max(pts, ra_cfg.get("corridor_rate_drop", 20))
+            if pts > 0:
+                breakdown["ais_reporting_anomaly"] = pts
 
     # ── Phase 4a: Per-vessel behavioral baseline (Windward "Patterns of Life") ─
     # Compare current gap to vessel's own 30-day historical baseline.

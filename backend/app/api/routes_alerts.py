@@ -1298,3 +1298,28 @@ def get_stats(
         "vessels_with_multiple_gaps_7d": multi_gap_vessels,
         "distinct_vessels": distinct_vessels,
     }
+
+
+# ---------------------------------------------------------------------------
+# Narrative
+# ---------------------------------------------------------------------------
+
+
+@router.get("/alerts/{alert_id}/narrative", tags=["alerts"])
+def get_alert_narrative(
+    alert_id: int,
+    format: str = Query("md", description="Output format: text, md, or html"),
+    db: Session = Depends(get_db),
+):
+    """Generate an investigation narrative for the given alert.
+
+    Returns a structured narrative with executive summary, timeline,
+    evidence pillars, vessel background, confidence assessment,
+    recommended actions, and caveats.
+    """
+    from app.modules.narrative_generator import generate_narrative
+
+    result = generate_narrative(alert_id, db, output_format=format)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result

@@ -11,6 +11,7 @@ import { Spinner } from "./ui/Spinner";
 import { ScoreBadge } from "./ui/ScoreBadge";
 import { AlertStatusPanel } from "./AlertStatusPanel";
 import { AlertExportPanel } from "./AlertExportPanel";
+import { NarrativePanel } from "./NarrativePanel";
 import { useAuth } from "../hooks/useAuth";
 import {
   sectionHead,
@@ -273,6 +274,9 @@ export function AlertDetail() {
         verdictMutation={verdictMutation}
         readOnly={!isAuthenticated}
       />
+
+      {/* Investigation Narrative */}
+      <NarrativePanel alertId={id!} />
 
       {/* Extracted: export + satellite check actions */}
       <section style={card}>

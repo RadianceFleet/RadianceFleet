@@ -83,6 +83,7 @@ class SpoofingTypeEnum(enum.StrEnum):
     PI_CYCLING = "pi_cycling"
     SPARSE_TRANSMISSION = "sparse_transmission"
     TYPE_DWT_MISMATCH = "type_dwt_mismatch"
+    REPORTING_RATE_ANOMALY = "reporting_rate_anomaly"
     # Sub-types (extended_restricted_maneuverability, nav_status_15) are stored
     # in evidence_json["subtype"] on an ERRATIC_NAV_STATUS anomaly record.
 

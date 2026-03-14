@@ -211,11 +211,37 @@ viirs:
   unmatched_viirs_outside_corridor: 15
   viirs_ais_gap_temporal_match: 20
 
+# AIS REPORTING ANOMALY — transponder manipulation detection via reporting patterns
+ais_reporting_anomaly:
+  interval_cv_high: 25
+  interval_cv_medium: 15
+  pre_gap_rate_decay: 20
+  corridor_rate_drop: 20
+  min_points_for_analysis: 50
+
+# OWNERSHIP TRANSPARENCY (v4.1) — beneficial ownership SPV and jurisdiction hopping
+ownership_transparency:
+  spv: 15
+  secrecy_jurisdiction: 10
+  recent_incorporation: 10
+  jurisdiction_hopping: 20
+  nominee_director: 15
+  spv_shell_compound: 25
+
 # GAP-SAR VALIDATION (v4.0) — cross-correlate AIS gaps with SAR detections
 gap_sar_validation:
   confirmed_dark_transit: 40
   possible_outage: -10
   sar_detection_count_bonus: 5
+
+# ISOLATION FOREST (v4.1) — multi-feature anomaly detection
+isolation_forest:
+  high: 35
+  medium: 20
+  low: 10
+  contamination: 0.05
+  n_trees: 100
+  sample_size: 256
 
 # IDENTITY MERGE SIGNALS
 identity_merge:
@@ -526,3 +552,11 @@ corroboration:
   families_2_bonus: 10
   families_3_bonus: 20
   families_4_bonus: 30
+
+# TRAJECTORY CLUSTERING (Task 2) — DBSCAN trajectory anomaly scoring
+trajectory_clustering:
+  noise_point_in_corridor: 25
+  noise_point_outside: 10
+  anomalous_cluster: 20
+  high_deviation: 30
+  moderate_deviation: 15

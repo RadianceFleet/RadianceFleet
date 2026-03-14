@@ -90,6 +90,10 @@ breakers = {
     "yente": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="yente", listeners=[_listener]
     ),
+    # -- Beneficial ownership transparency --
+    "opencorporates": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="opencorporates", listeners=[_listener]
+    ),
 }
 
 
