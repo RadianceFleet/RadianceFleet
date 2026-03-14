@@ -560,3 +560,18 @@ trajectory_clustering:
   anomalous_cluster: 20
   high_deviation: 30
   moderate_deviation: 15
+
+trajectory_pca:
+  high: 30
+  medium: 18
+  low: 8
+
+behavioral_baseline:
+  high: 25
+  medium: 15
+  low: 7
+
+sts_hotspot:
+  high: 28
+  medium: 16
+  low: 8

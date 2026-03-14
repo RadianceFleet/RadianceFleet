@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AlertListPage } from "./components/AlertList";
 import { AlertDetail } from "./components/AlertDetail";
@@ -32,6 +33,11 @@ import { useAlertStream } from "./hooks/useAlertStream";
 import { AlertToast } from "./components/AlertToast";
 import { useAuth } from "./hooks/useAuth";
 
+const OwnershipNetworkPage = lazy(() => import('./pages/OwnershipNetworkPage'));
+const FPTuningPage = lazy(() => import('./pages/FPTuningPage'));
+const PublicDashboardPage = lazy(() => import('./pages/PublicDashboardPage'));
+const EmbedGeneratorPage = lazy(() => import('./pages/EmbedGeneratorPage'));
+
 export default function App() {
   const { isAuthenticated } = useAuth();
   const { lastAlert } = useAlertStream({ enabled: isAuthenticated });
@@ -42,6 +48,7 @@ export default function App() {
         <AlertToast alert={lastAlert} />
         <Routes>
           <Route path="/embed/vessel/:vesselId" element={<EmbedVesselPage />} />
+          <Route path="public" element={<Suspense fallback={<div>Loading...</div>}><PublicDashboardPage /></Suspense>} />
           <Route element={<AppLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path="alerts" element={<AlertListPage />} />
@@ -82,6 +89,23 @@ export default function App() {
               }
             />
             <Route path="donate" element={<DonatePage />} />
+            <Route path="ownership-network" element={<Suspense fallback={<div>Loading...</div>}><OwnershipNetworkPage /></Suspense>} />
+            <Route
+              path="fp-tuning"
+              element={
+                <RequireAuth>
+                  <Suspense fallback={<div>Loading...</div>}><FPTuningPage /></Suspense>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="embed-generator"
+              element={
+                <RequireAuth>
+                  <Suspense fallback={<div>Loading...</div>}><EmbedGeneratorPage /></Suspense>
+                </RequireAuth>
+              }
+            />
           </Route>
         </Routes>
       </ErrorBoundary>

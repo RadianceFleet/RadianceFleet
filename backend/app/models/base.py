@@ -120,6 +120,12 @@ class AnalystRoleEnum(enum.StrEnum):
     ADMIN = "admin"
 
 
+class JammingZoneStatusEnum(enum.StrEnum):
+    ACTIVE = "active"
+    DECAYING = "decaying"
+    EXPIRED = "expired"
+
+
 class MergeCandidateStatusEnum(enum.StrEnum):
     PENDING = "pending"
     AUTO_MERGED = "auto_merged"

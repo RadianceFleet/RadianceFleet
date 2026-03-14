@@ -39,7 +39,7 @@ const TYPE_COLORS: Record<string, string> = {
 // Component
 // ---------------------------------------------------------------------------
 
-export function PublicDashboardPage() {
+export default function PublicDashboardPage() {
   const { data, isLoading, error, refetch } = usePublicDashboard();
   const { data: trends } = usePublicTrends();
 

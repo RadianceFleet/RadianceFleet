@@ -72,6 +72,9 @@ _EXPECTED_SECTIONS = [
     "trajectory_clustering",
     "ais_reporting_anomaly",
     "ownership_transparency",
+    "trajectory_pca",
+    "behavioral_baseline",
+    "sts_hotspot",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)

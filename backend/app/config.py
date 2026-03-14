@@ -294,6 +294,31 @@ class Settings(BaseSettings):
     # ── Ownership Transparency Scoring ────────────────────────────────
     OWNERSHIP_TRANSPARENCY_SCORING_ENABLED: bool = True
 
+    # --- v4.2: Trajectory PCA ---
+    TRAJECTORY_PCA_ENABLED: bool = False
+    TRAJECTORY_PCA_SCORING_ENABLED: bool = False
+    TRAJECTORY_PCA_N_COMPONENTS: int = 4
+
+    # --- v4.2: Behavioral Baseline ---
+    BEHAVIORAL_BASELINE_ENABLED: bool = False
+    BEHAVIORAL_BASELINE_SCORING_ENABLED: bool = False
+
+    # --- v4.2: STS Hotspot Detection ---
+    STS_HOTSPOT_ENABLED: bool = False
+    STS_HOTSPOT_SCORING_ENABLED: bool = False
+
+    # --- v4.2: GPS Jamming Zone Detection ---
+    JAMMING_DETECTION_ENABLED: bool = False
+    JAMMING_DETECTION_SPATIAL_EPS_DEG: float = 0.5
+    JAMMING_DETECTION_TEMPORAL_EPS_HOURS: float = 2.0
+    JAMMING_DETECTION_MIN_VESSELS: int = 3
+
+    # --- v4.2: FP Tuning ---
+    FP_TUNING_ENABLED: bool = False
+
+    # --- v4.2: Embed Widget ---
+    EMBED_CORS_ORIGINS: str = ""
+
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
 

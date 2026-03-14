@@ -53,6 +53,12 @@ from app.models.vessel_owner import VesselOwner
 from app.models.vessel_watchlist import VesselWatchlist
 from app.models.webhook import Webhook
 from app.models.worker_heartbeat import WorkerHeartbeat
+from app.models.trajectory_pca_anomaly import TrajectoryPcaAnomaly
+from app.models.vessel_behavioral_profile import VesselBehavioralProfile
+from app.models.sts_hotspot import StsHotspot
+from app.models.jamming_zone import JammingZone, JammingZoneGap
+from app.models.handoff_note import HandoffNote
+from app.models.corridor_scoring_override import CorridorScoringOverride
 
 __all__ = [
     "Base",
@@ -111,4 +117,11 @@ __all__ = [
     "TrajectoryClusterMember",
     "WorkerHeartbeat",
     "IsolationForestAnomaly",
+    "TrajectoryPcaAnomaly",
+    "VesselBehavioralProfile",
+    "StsHotspot",
+    "JammingZone",
+    "JammingZoneGap",
+    "HandoffNote",
+    "CorridorScoringOverride",
 ]
