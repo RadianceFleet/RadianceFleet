@@ -98,7 +98,7 @@ def fetch_digitraffic_ais(
                                 str(ts).replace("Z", "+00:00")
                             ).replace(tzinfo=None)
                     except Exception:
-                        pass
+                        logger.debug("Timestamp parsing failed for value %s", ts, exc_info=True)
 
                 vessels.add(mmsi)
 

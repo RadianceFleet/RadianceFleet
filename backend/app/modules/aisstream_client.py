@@ -470,7 +470,7 @@ def _ingest_batch(db: Session, points: list[dict], static_updates: dict[str, dic
             )
             db.add(obs)
         except Exception:
-            pass  # Non-blocking — observation write is best-effort
+            logger.debug("AIS observation write failed", exc_info=True)
 
     db.commit()
     return {"points_stored": stored, "vessels_updated": vessels_updated}

@@ -367,7 +367,7 @@ def discover_dark_vessels(
                 end_date=end_date,
             )
         except Exception:
-            pass  # Soft fail — already recorded
+            logger.warning("GFW gap events import failed", exc_info=True)
     else:
         result["steps"]["gfw_gap_events"] = {"status": "skipped", "detail": "--skip-fetch"}
 
@@ -384,7 +384,7 @@ def discover_dark_vessels(
                 end_date=end_date,
             )
         except Exception:
-            pass
+            logger.warning("SAR corridor sweep failed", exc_info=True)
     else:
         result["steps"]["sar_corridor_sweep"] = {"status": "skipped", "detail": "--skip-fetch"}
 
@@ -953,7 +953,7 @@ def discover_dark_vessels(
 
         _run_step("scoring_second_pass", _score_incremental, db)
     except Exception:
-        pass  # Non-fatal — first pass scores are still valid
+        logger.warning("Risk scoring second pass failed, first pass scores remain valid", exc_info=True)
     try:
         from app.modules.confidence_classifier import classify_all_vessels as _classify_second
 
@@ -1042,7 +1042,7 @@ def _finalize_pipeline_run(
             atype_str = atype.value if hasattr(atype, "value") else str(atype)
             anomaly_counts[atype_str] = count
     except Exception:
-        pass
+        logger.warning("Failed to count anomaly types", exc_info=True)
 
     anomaly_counts["gap_events"] = db.query(AISGapEvent).count()
 

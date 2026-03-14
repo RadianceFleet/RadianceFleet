@@ -325,7 +325,7 @@ def fetch_and_import_noaa(
                 )
                 db.commit()
             except Exception:
-                pass
+                logger.debug("Failed to write ingestion status for NOAA fetch", exc_info=True)
 
         current += timedelta(days=1)
 

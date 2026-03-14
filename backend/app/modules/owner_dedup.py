@@ -82,7 +82,7 @@ def run_owner_dedup(db) -> dict:
             synchronize_session="fetch"
         )
     except Exception:
-        pass  # FleetAlert may not have owner_cluster_id FK in all schemas
+        logger.debug("FleetAlert owner_cluster_id cleanup skipped, FK may not exist in schema", exc_info=True)
     db.query(OwnerClusterMember).delete(synchronize_session="fetch")
     db.query(OwnerCluster).delete(synchronize_session="fetch")
     db.flush()

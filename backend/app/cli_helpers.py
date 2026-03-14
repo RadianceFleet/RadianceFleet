@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import sys
+
+logger = logging.getLogger(__name__)
 from pathlib import Path
 
 from rich.console import Console
@@ -151,7 +154,7 @@ def _print_summary(con: Console) -> None:
         finally:
             db.close()
     except Exception:
-        pass
+        logger.debug("Failed to display CLI stats summary", exc_info=True)
 
 
 def _print_next_steps(con: Console, after: str = "start") -> None:

@@ -288,7 +288,7 @@ def _ingest_point(db: Session, pt: dict) -> None:
         )
         db.add(obs)
     except Exception:
-        pass  # Non-blocking
+        logger.debug("AIS observation write failed", exc_info=True)
 
 
 def _ais_ship_type_to_string(ship_type: int) -> str | None:

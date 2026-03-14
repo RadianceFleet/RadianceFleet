@@ -73,7 +73,7 @@ def backup(
             typer.echo(f"Backup created: {out_path} ({size_mb:.1f} MB)")
         except Exception as e:
             typer.echo(f"ERROR: Backup failed: {e}", err=True)
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
     else:
         typer.echo("ERROR: Unsupported database type in DATABASE_URL", err=True)
         raise typer.Exit(1)

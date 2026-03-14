@@ -176,7 +176,7 @@ def history_backfill(
             end_date = date.fromisoformat(end)
         except ValueError as e:
             console.print(f"[red]Invalid date format: {e}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
     else:
         console.print("[red]Provide --start/--end or --days[/red]")
         raise typer.Exit(1)
@@ -309,7 +309,7 @@ def history_backfill(
         raise
     except Exception as e:
         console.print(f"[red]Backfill failed: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     finally:
         db.close()
 

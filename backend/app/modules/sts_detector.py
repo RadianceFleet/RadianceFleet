@@ -554,7 +554,7 @@ def _phase_a(
                             run_start = idx
                             continue
                     except Exception:
-                        pass  # If port check fails, proceed with STS detection
+                        logger.warning("Port containment check failed, proceeding with STS detection", exc_info=True)
 
                     # Bunkering vessel exclusion: skip if either vessel is a known bunkering vessel
                     if _is_bunkering_vessel(db, vid1) or _is_bunkering_vessel(db, vid2):

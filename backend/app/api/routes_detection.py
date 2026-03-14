@@ -1218,7 +1218,7 @@ def coverage_geojson():
                 shape = shapely_wkt.loads(wkt)
                 geometry = shapely.geometry.mapping(shape)
             except Exception:
-                pass
+                logger.debug("WKT geometry parsing failed for coverage region", exc_info=True)
 
         features.append(
             {

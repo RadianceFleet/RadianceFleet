@@ -134,12 +134,12 @@ class CollectionScheduler:
                     if run:
                         self._fail_collection_run(db, run, str(e))
                 except Exception:
-                    pass
+                    logger.debug("Failed to mark collection run as failed for %s", source_name, exc_info=True)
                 # Persist error status
                 try:
                     self._update_ingestion_status(db, source_name, error=str(e))
                 except Exception:
-                    pass
+                    logger.debug("Failed to update ingestion status for %s", source_name, exc_info=True)
             finally:
                 try:
                     db.close()
@@ -197,7 +197,7 @@ class CollectionScheduler:
             run.details_json = json.dumps({"error": error_msg})
             db.commit()
         except Exception:
-            pass
+            logger.debug("Failed to write collection run status", exc_info=True)
 
     def _update_ingestion_status(
         self, db: Session, source_name: str, result: dict | None = None, error: str | None = None

@@ -46,7 +46,7 @@ def satellite_search(
         typer.echo(f"Order {result['order_id']} created with {result['scenes_found']} scenes")
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     finally:
         db.close()
 
@@ -67,7 +67,7 @@ def satellite_submit(
         typer.echo(f"Order {result['order_id']} submitted: {result['external_order_id']}")
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     finally:
         db.close()
 

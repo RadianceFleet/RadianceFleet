@@ -88,7 +88,7 @@ class WatchlistUpdateLog:
                     ts = ts.replace(tzinfo=UTC)
                 return ts
         except Exception:
-            pass
+            logger.debug("Failed to parse last-updated timestamp for watchlist", exc_info=True)
         return None
 
     @staticmethod
@@ -127,8 +127,7 @@ class WatchlistUpdateLog:
             )
             db.commit()
         except Exception:
-            # Table may not exist yet; that's fine, in-memory tracking still works
-            pass
+            logger.debug("Failed to write watchlist update log", exc_info=True)
 
 
 def _ensure_log_table(db: Session) -> None:

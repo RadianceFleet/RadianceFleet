@@ -387,7 +387,7 @@ def fetch_and_import_dma(
                 )
                 db.commit()
             except Exception:
-                pass
+                logger.debug("Failed to write ingestion status for DMA fetch", exc_info=True)
 
         current += timedelta(days=1)
 

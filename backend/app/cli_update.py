@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, timedelta
 
 import typer
+
+logger = logging.getLogger(__name__)
 
 import app.cli_helpers as _h
 from app.cli_app import app, console
@@ -102,7 +105,7 @@ def start(
         raise
     except Exception as e:
         console.print(f"[red]Setup failed: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 @app.command("update")
@@ -275,7 +278,7 @@ def update(
             upsert_heartbeat(db, "cron-updater", status="error", error=str(e))
             db.commit()
         except Exception:
-            pass
+            logger.debug("Failed to write heartbeat during error handling", exc_info=True)
         raise
     finally:
         db.close()

@@ -481,7 +481,7 @@ def _score_candidate(
                     score += 10
                     reasons["shared_pi_club"] = {"points": 10, "pi_club": _dark_pi}
         except Exception:
-            pass  # Graceful skip if VesselOwner query fails
+            logger.warning("PI club comparison skipped due to VesselOwner query failure", exc_info=True)
 
     # Fingerprint similarity bonus: behavioral fingerprint matching
     if settings.FINGERPRINT_ENABLED:
@@ -493,7 +493,7 @@ def _score_candidate(
                 score = max(0, score + fp_bonus)
                 reasons["fingerprint_match"] = {"points": fp_bonus}
         except Exception:
-            pass  # Graceful skip — fingerprint data may not exist yet
+            logger.warning("Fingerprint similarity check skipped", exc_info=True)
 
     # --- Negative signals (anti-merge evidence) ---
 
