@@ -349,13 +349,13 @@ def _segment_into_windows(points: list[Any], window_hours: int = _WINDOW_HOURS) 
         return []
 
     # Sort by timestamp
-    sorted_pts = sorted(points, key=lambda p: getattr(p, "timestamp_utc"))
+    sorted_pts = sorted(points, key=lambda p: p.timestamp_utc)
     windows: list[list[Any]] = []
     current_window: list[Any] = []
-    window_start = getattr(sorted_pts[0], "timestamp_utc")
+    window_start = sorted_pts[0].timestamp_utc
 
     for p in sorted_pts:
-        ts = getattr(p, "timestamp_utc")
+        ts = p.timestamp_utc
         if (ts - window_start).total_seconds() >= window_hours * 3600:
             if current_window:
                 windows.append(current_window)

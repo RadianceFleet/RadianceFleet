@@ -85,7 +85,7 @@ def _normalize_row(header: list[str], values: list[str]) -> dict | None:
     """Map a raw DMA CSV row to canonical field names. Returns None if row invalid."""
     if len(values) != len(header):
         return None
-    raw = dict(zip(header, values))
+    raw = dict(zip(header, values, strict=False))
     row: dict = {}
     for dma_col, canonical in _DMA_COLUMN_MAP.items():
         if dma_col in raw:
@@ -173,7 +173,7 @@ def fetch_and_import_dma(
             if url.endswith(".gz"):
                 import gzip as gz_mod
 
-                lines = gz_mod.open(io.BytesIO(resp.content), "rt", encoding="utf-8")
+                lines = gz_mod.open(io.BytesIO(resp.content), "rt", encoding="utf-8")  # noqa: SIM115
             else:
                 lines = resp.text.splitlines()
 
@@ -202,9 +202,7 @@ def fetch_and_import_dma(
 
                 # Skip "Unknown" or empty IMO values
                 imo = row.get("imo", "").strip()
-                if imo.lower() in ("unknown", ""):
-                    imo = None
-                elif not imo.isdigit() or len(imo) != 7:
+                if imo.lower() in ("unknown", "") or not imo.isdigit() or len(imo) != 7:
                     imo = None
 
                 ts = _parse_dma_timestamp(row.get("timestamp", ""))
@@ -387,7 +385,7 @@ def fetch_and_import_dma(
                 )
                 db.commit()
             except Exception:
-                logger.debug("Failed to write ingestion status for DMA fetch", exc_info=True)
+                logger.debug("Failed to record collection run error", exc_info=True)
 
         current += timedelta(days=1)
 

@@ -86,10 +86,7 @@ def run_sparse_transmission_detection(db: Session) -> dict:
 
         severity, avg_density, window_start, window_end, underway_hours = sparse_result
 
-        if severity == "severe":
-            score = 25
-        else:
-            score = 15
+        score = 25 if severity == "severe" else 15
 
         anomaly = SpoofingAnomaly(
             vessel_id=vessel.vessel_id,
@@ -171,10 +168,7 @@ def _find_sparse_windows(
 
         # Check if this is the sparsest window so far
         if density < best_density and density <= _MODERATE_THRESHOLD_PTS_PER_HOUR:
-            if density < _SEVERE_THRESHOLD_PTS_PER_HOUR:
-                severity = "severe"
-            else:
-                severity = "moderate"
+            severity = "severe" if density < _SEVERE_THRESHOLD_PTS_PER_HOUR else "moderate"
 
             best_density = density
             best_result = (severity, density, underway_start, underway_end, underway_hours)

@@ -69,7 +69,7 @@ def detect_handshakes(
     proximity_pairs: list[tuple[int, int, datetime]] = []  # (vessel_id_a, vessel_id_b, time)
     seen_pairs: set[tuple[int, int]] = set()
 
-    for cell_key, cell_points in grid.items():
+    for _cell_key, cell_points in grid.items():
         if len(cell_points) < 2:
             continue
         for i in range(len(cell_points)):

@@ -280,7 +280,7 @@ def _get_high_risk_vessel_ids(db: Session) -> set[int]:
         rows = db.query(AISGapEvent.vessel_id).filter(AISGapEvent.risk_score > 50).distinct().all()
         high_risk = {r[0] for r in rows}
     except Exception:
-        logger.warning("Failed to query high-risk vessels for feed outage detection", exc_info=True)
+        logger.warning("Failed to query high-risk vessel IDs", exc_info=True)
     return high_risk
 
 

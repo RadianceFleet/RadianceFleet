@@ -1,70 +1,81 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Card } from '../components/ui/Card'
-import { Spinner } from '../components/ui/Spinner'
-import { EmptyState } from '../components/ui/EmptyState'
-import { ErrorMessage } from '../components/ui/ErrorMessage'
-import { Pagination } from '../components/ui/Pagination'
-import { useGlobalSpoofing } from '../hooks/useGlobalDetections'
-import { useGlobalLoitering } from '../hooks/useLoitering'
-import { useStsChains } from '../hooks/useStsChains'
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { Card } from "../components/ui/Card";
+import { Spinner } from "../components/ui/Spinner";
+import { EmptyState } from "../components/ui/EmptyState";
+import { ErrorMessage } from "../components/ui/ErrorMessage";
+import { Pagination } from "../components/ui/Pagination";
+import { useGlobalSpoofing } from "../hooks/useGlobalDetections";
+import { useGlobalLoitering } from "../hooks/useLoitering";
+import { useStsChains } from "../hooks/useStsChains";
 
-const PAGE_SIZE = 50
+const PAGE_SIZE = 50;
 
-const cellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.8125rem' }
+const cellStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", fontSize: "0.8125rem" };
 const headStyle: React.CSSProperties = {
   ...cellStyle,
   fontWeight: 600,
-  color: 'var(--text-muted)',
-  textAlign: 'left' as const,
-  borderBottom: '1px solid var(--border)',
-}
+  color: "var(--text-muted)",
+  textAlign: "left" as const,
+  borderBottom: "1px solid var(--border)",
+};
 const tabStyle = (active: boolean): React.CSSProperties => ({
-  padding: '0.5rem 1rem',
-  cursor: 'pointer',
-  borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
-  color: active ? 'var(--accent)' : 'var(--text-muted)',
-  background: 'none',
-  border: 'none',
-  fontSize: '0.875rem',
+  padding: "0.5rem 1rem",
+  cursor: "pointer",
+  borderBottom: active ? "2px solid var(--accent)" : "2px solid transparent",
+  color: active ? "var(--accent)" : "var(--text-muted)",
+  background: "none",
+  border: "none",
+  fontSize: "0.875rem",
   fontWeight: active ? 600 : 400,
-})
+});
 
 function formatTimestamp(ts: string | null | undefined): string {
-  if (!ts) return '-'
-  return ts.slice(0, 16).replace('T', ' ')
+  if (!ts) return "-";
+  return ts.slice(0, 16).replace("T", " ");
 }
 
-type Tab = 'spoofing' | 'loitering' | 'sts'
+type Tab = "spoofing" | "loitering" | "sts";
 
 export function GlobalDetectionsPage() {
-  const [tab, setTab] = useState<Tab>('spoofing')
+  const [tab, setTab] = useState<Tab>("spoofing");
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', color: 'var(--text-muted)' }}>
+      <h2 style={{ margin: "0 0 1rem", fontSize: "1rem", color: "var(--text-muted)" }}>
         Global Detections
       </h2>
 
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '1rem' }}>
-        <button style={tabStyle(tab === 'spoofing')} onClick={() => setTab('spoofing')}>Spoofing</button>
-        <button style={tabStyle(tab === 'loitering')} onClick={() => setTab('loitering')}>Loitering</button>
-        <button style={tabStyle(tab === 'sts')} onClick={() => setTab('sts')}>STS Chains</button>
+      <div
+        style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "1rem" }}
+      >
+        <button style={tabStyle(tab === "spoofing")} onClick={() => setTab("spoofing")}>
+          Spoofing
+        </button>
+        <button style={tabStyle(tab === "loitering")} onClick={() => setTab("loitering")}>
+          Loitering
+        </button>
+        <button style={tabStyle(tab === "sts")} onClick={() => setTab("sts")}>
+          STS Chains
+        </button>
       </div>
 
-      {tab === 'spoofing' && <SpoofingTab />}
-      {tab === 'loitering' && <LoiteringTab />}
-      {tab === 'sts' && <StsTab />}
+      {tab === "spoofing" && <SpoofingTab />}
+      {tab === "loitering" && <LoiteringTab />}
+      {tab === "sts" && <StsTab />}
     </div>
-  )
+  );
 }
 
 function SpoofingTab() {
-  const [page, setPage] = useState(0)
-  const { data, isLoading, error, refetch } = useGlobalSpoofing({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
-  const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const [page, setPage] = useState(0);
+  const { data, isLoading, error, refetch } = useGlobalSpoofing({
+    skip: page * PAGE_SIZE,
+    limit: PAGE_SIZE,
+  });
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <Card>
@@ -77,10 +88,10 @@ function SpoofingTab() {
 
       {items.length > 0 && (
         <>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ background: 'var(--bg-base)' }}>
+                <tr style={{ background: "var(--bg-base)" }}>
                   <th style={headStyle}>Anomaly ID</th>
                   <th style={headStyle}>Vessel ID</th>
                   <th style={headStyle}>Type</th>
@@ -90,10 +101,13 @@ function SpoofingTab() {
               </thead>
               <tbody>
                 {items.map((e) => (
-                  <tr key={e.anomaly_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace' }}>{e.anomaly_id}</td>
+                  <tr key={e.anomaly_id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ ...cellStyle, fontFamily: "monospace" }}>{e.anomaly_id}</td>
                     <td style={cellStyle}>
-                      <Link to={`/vessels/${e.vessel_id}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+                      <Link
+                        to={`/vessels/${e.vessel_id}`}
+                        style={{ color: "var(--accent)", textDecoration: "none" }}
+                      >
                         {e.vessel_id}
                       </Link>
                     </td>
@@ -106,20 +120,29 @@ function SpoofingTab() {
             </table>
           </div>
           {totalPages > 1 && (
-            <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} label="spoofing events" />
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+              label="spoofing events"
+            />
           )}
         </>
       )}
     </Card>
-  )
+  );
 }
 
 function LoiteringTab() {
-  const [page, setPage] = useState(0)
-  const { data, isLoading, error, refetch } = useGlobalLoitering({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
-  const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const [page, setPage] = useState(0);
+  const { data, isLoading, error, refetch } = useGlobalLoitering({
+    skip: page * PAGE_SIZE,
+    limit: PAGE_SIZE,
+  });
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <Card>
@@ -132,10 +155,10 @@ function LoiteringTab() {
 
       {items.length > 0 && (
         <>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ background: 'var(--bg-base)' }}>
+                <tr style={{ background: "var(--bg-base)" }}>
                   <th style={headStyle}>Loiter ID</th>
                   <th style={headStyle}>Vessel ID</th>
                   <th style={headStyle}>Duration (hours)</th>
@@ -146,20 +169,23 @@ function LoiteringTab() {
               </thead>
               <tbody>
                 {items.map((e) => (
-                  <tr key={e.loiter_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace' }}>{e.loiter_id}</td>
+                  <tr key={e.loiter_id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ ...cellStyle, fontFamily: "monospace" }}>{e.loiter_id}</td>
                     <td style={cellStyle}>
-                      <Link to={`/vessels/${e.vessel_id}`} style={{ color: 'var(--accent)', textDecoration: 'none' }}>
+                      <Link
+                        to={`/vessels/${e.vessel_id}`}
+                        style={{ color: "var(--accent)", textDecoration: "none" }}
+                      >
                         {e.vessel_id}
                       </Link>
                     </td>
-                    <td style={cellStyle}>{e.duration_hours?.toFixed(1) ?? '-'}</td>
+                    <td style={cellStyle}>{e.duration_hours?.toFixed(1) ?? "-"}</td>
                     <td style={cellStyle}>
                       {e.mean_lat != null && e.mean_lon != null
                         ? `${e.mean_lat.toFixed(4)}, ${e.mean_lon.toFixed(4)}`
-                        : '-'}
+                        : "-"}
                     </td>
-                    <td style={cellStyle}>{e.corridor_id ?? '-'}</td>
+                    <td style={cellStyle}>{e.corridor_id ?? "-"}</td>
                     <td style={cellStyle}>{formatTimestamp(e.start_time_utc)}</td>
                   </tr>
                 ))}
@@ -167,20 +193,29 @@ function LoiteringTab() {
             </table>
           </div>
           {totalPages > 1 && (
-            <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} label="loitering events" />
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+              label="loitering events"
+            />
           )}
         </>
       )}
     </Card>
-  )
+  );
 }
 
 function StsTab() {
-  const [page, setPage] = useState(0)
-  const { data, isLoading, error, refetch } = useStsChains({ skip: page * PAGE_SIZE, limit: PAGE_SIZE })
-  const items = data?.items ?? []
-  const total = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const [page, setPage] = useState(0);
+  const { data, isLoading, error, refetch } = useStsChains({
+    skip: page * PAGE_SIZE,
+    limit: PAGE_SIZE,
+  });
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <Card>
@@ -193,10 +228,10 @@ function StsTab() {
 
       {items.length > 0 && (
         <>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ background: 'var(--bg-base)' }}>
+                <tr style={{ background: "var(--bg-base)" }}>
                   <th style={headStyle}>Alert ID</th>
                   <th style={headStyle}>Chain Length</th>
                   <th style={headStyle}>Hops</th>
@@ -206,8 +241,8 @@ function StsTab() {
               </thead>
               <tbody>
                 {items.map((e) => (
-                  <tr key={e.alert_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace' }}>{e.alert_id}</td>
+                  <tr key={e.alert_id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ ...cellStyle, fontFamily: "monospace" }}>{e.alert_id}</td>
                     <td style={cellStyle}>{e.chain_length}</td>
                     <td style={cellStyle}>{e.hops?.length ?? 0}</td>
                     <td style={cellStyle}>{e.risk_score_component}</td>
@@ -218,12 +253,18 @@ function StsTab() {
             </table>
           </div>
           {totalPages > 1 && (
-            <Pagination page={page} totalPages={totalPages} total={total} onPageChange={setPage} label="STS chains" />
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPageChange={setPage}
+              label="STS chains"
+            />
           )}
         </>
       )}
     </Card>
-  )
+  );
 }
 
-export default GlobalDetectionsPage
+export default GlobalDetectionsPage;

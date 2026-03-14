@@ -4,11 +4,11 @@
 
 ```bash
 git clone https://github.com/your-org/RadianceFleet.git && cd RadianceFleet
-docker compose up -d                              # Start PostgreSQL + PostGIS
 cd backend && uv sync && source .venv/bin/activate
-radiancefleet init-db
-radiancefleet corridors import config/corridors.yaml
+radiancefleet setup --with-sample-data            # SQLite, no Docker needed
 ```
+
+For PostgreSQL (production): see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Daily workflow
 

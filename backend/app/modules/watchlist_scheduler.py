@@ -88,7 +88,7 @@ class WatchlistUpdateLog:
                     ts = ts.replace(tzinfo=UTC)
                 return ts
         except Exception:
-            logger.debug("Failed to parse last-updated timestamp for watchlist", exc_info=True)
+            logger.debug("Failed to query last update timestamp", exc_info=True)
         return None
 
     @staticmethod
@@ -127,7 +127,7 @@ class WatchlistUpdateLog:
             )
             db.commit()
         except Exception:
-            logger.debug("Failed to write watchlist update log", exc_info=True)
+            logger.debug("Failed to record watchlist update log", exc_info=True)
 
 
 def _ensure_log_table(db: Session) -> None:

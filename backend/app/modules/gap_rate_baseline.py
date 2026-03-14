@@ -73,11 +73,11 @@ def compute_gap_rate_baseline(db: Session) -> dict:
                 corridor_gaps.append(gap)
                 continue
             # Position-based match from gap start/end coordinates
-            if gap.gap_off_lat is not None and gap.gap_off_lon is not None:
+            if gap.gap_off_lat is not None and gap.gap_off_lon is not None:  # noqa: SIM102
                 if _in_bbox(gap.gap_off_lat, gap.gap_off_lon, bbox):
                     corridor_gaps.append(gap)
                     continue
-            if gap.gap_on_lat is not None and gap.gap_on_lon is not None:
+            if gap.gap_on_lat is not None and gap.gap_on_lon is not None:  # noqa: SIM102
                 if _in_bbox(gap.gap_on_lat, gap.gap_on_lon, bbox):
                     corridor_gaps.append(gap)
                     continue

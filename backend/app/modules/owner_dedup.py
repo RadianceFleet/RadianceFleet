@@ -82,7 +82,7 @@ def run_owner_dedup(db) -> dict:
             synchronize_session="fetch"
         )
     except Exception:
-        logger.debug("FleetAlert owner_cluster_id cleanup skipped, FK may not exist in schema", exc_info=True)
+        logger.debug("FleetAlert owner_cluster_id cleanup skipped", exc_info=True)
     db.query(OwnerClusterMember).delete(synchronize_session="fetch")
     db.query(OwnerCluster).delete(synchronize_session="fetch")
     db.flush()
@@ -107,7 +107,7 @@ def run_owner_dedup(db) -> dict:
     uf = _UnionFind()
     similarity_scores: dict[tuple, float] = {}
 
-    for letter, ids in buckets.items():
+    for _letter, ids in buckets.items():
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
                 a_id, b_id = ids[i], ids[j]

@@ -83,16 +83,15 @@ class TestAISImportAuditLogging:
                 "errors_truncated": False,
                 "total_errors": 0,
             },
-        ):
-            with patch("app.api.routes_admin._audit_log") as mock_audit:
-                from io import BytesIO
+        ), patch("app.api.routes_admin._audit_log") as mock_audit:
+            from io import BytesIO
 
-                resp = api_client.post(
-                    "/api/v1/ais/import",
-                    files={"file": ("test.csv", BytesIO(b"mmsi,timestamp,lat,lon\n"), "text/csv")},
-                )
-                assert resp.status_code == 200
-                mock_audit.assert_called_once()
-                args = mock_audit.call_args
-                assert args[0][1] == "ais_import"
-                assert args[0][2] == "ingestion"
+            resp = api_client.post(
+                "/api/v1/ais/import",
+                files={"file": ("test.csv", BytesIO(b"mmsi,timestamp,lat,lon\n"), "text/csv")},
+            )
+            assert resp.status_code == 200
+            mock_audit.assert_called_once()
+            args = mock_audit.call_args
+            assert args[0][1] == "ais_import"
+            assert args[0][2] == "ingestion"

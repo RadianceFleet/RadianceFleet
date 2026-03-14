@@ -953,7 +953,7 @@ def discover_dark_vessels(
 
         _run_step("scoring_second_pass", _score_incremental, db)
     except Exception:
-        logger.warning("Risk scoring second pass failed, first pass scores remain valid", exc_info=True)
+        logger.warning("Risk scoring second pass failed", exc_info=True)
     try:
         from app.modules.confidence_classifier import classify_all_vessels as _classify_second
 
@@ -1042,7 +1042,7 @@ def _finalize_pipeline_run(
             atype_str = atype.value if hasattr(atype, "value") else str(atype)
             anomaly_counts[atype_str] = count
     except Exception:
-        logger.warning("Failed to count anomaly types", exc_info=True)
+        logger.warning("Anomaly type counting failed", exc_info=True)
 
     anomaly_counts["gap_events"] = db.query(AISGapEvent).count()
 

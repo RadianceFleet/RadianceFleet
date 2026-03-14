@@ -79,6 +79,7 @@ def _intersecting_rows(
 ) -> list:
     """Return model rows whose geometry intersects the gap trajectory line."""
     from shapely.geometry import LineString
+
     from app.utils.geo import load_geometry
 
     candidates = db.query(model).filter(model.geometry.isnot(None)).all()
@@ -90,7 +91,7 @@ def _intersecting_rows(
             continue
         try:
             shape = load_geometry(wkt)
-        except Exception:
+        except Exception:  # noqa: S112
             continue
         if shape and shape.buffer(BBOX_TOLERANCE_DEG).intersects(trajectory):
             matches.append(row)
@@ -187,6 +188,7 @@ def find_corridor_for_point(db: Session, lat: float, lon: float) -> Corridor | N
     (no start/end AIS point pair).
     """
     from shapely.geometry import Point
+
     from app.utils.geo import load_geometry
 
     corridors = db.query(Corridor).filter(Corridor.geometry.isnot(None)).all()
@@ -198,7 +200,7 @@ def find_corridor_for_point(db: Session, lat: float, lon: float) -> Corridor | N
             continue
         try:
             shape = load_geometry(wkt)
-        except Exception:
+        except Exception:  # noqa: S112
             continue
         if shape and shape.buffer(BBOX_TOLERANCE_DEG).contains(pt):
             matches.append(c)

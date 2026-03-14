@@ -95,11 +95,7 @@ def ingest_ais_csv(file: IOBase, db: Session) -> dict[str, Any]:
     from app.modules.normalize import normalize_ais_dataframe, validate_ais_row
 
     # 1.4: Handle UTF-8 BOM — read raw bytes first, strip BOM if present
-    raw: Any
-    if hasattr(file, "read"):
-        raw = file.read()
-    else:
-        raw = file
+    raw: Any = file.read() if hasattr(file, "read") else file
 
     if isinstance(raw, bytes) and raw[:3] == b"\xef\xbb\xbf":
         raw = raw[3:]

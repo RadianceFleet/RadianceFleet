@@ -1,54 +1,56 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { apiFetch } from '../lib/api'
-import { buildQueryParams } from '../utils/queryParams'
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "../lib/api";
+import { buildQueryParams } from "../utils/queryParams";
 
 export interface WatchlistEntry {
-  id: number
-  vessel_name: string | null
-  mmsi: string | null
-  imo: string | null
-  source: string
-  reason: string | null
-  listed_date: string | null
-  is_active: boolean
+  id: number;
+  vessel_name: string | null;
+  mmsi: string | null;
+  imo: string | null;
+  source: string;
+  reason: string | null;
+  listed_date: string | null;
+  is_active: boolean;
 }
 
 export function useWatchlist(filters?: { skip?: number; limit?: number }) {
   const params = buildQueryParams({
     skip: filters?.skip,
     limit: filters?.limit,
-  })
+  });
   return useQuery({
-    queryKey: ['watchlist', filters],
+    queryKey: ["watchlist", filters],
     queryFn: async () => {
-      const resp = await apiFetch<{ items: WatchlistEntry[]; total: number }>(`/watchlist?${params}`)
-      return resp
+      const resp = await apiFetch<{ items: WatchlistEntry[]; total: number }>(
+        `/watchlist?${params}`
+      );
+      return resp;
     },
-  })
+  });
 }
 
 export function useImportWatchlist() {
-  const qc = useQueryClient()
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ file, source }: { file: File; source: string }) => {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('source', source)
-      const res = await fetch('/api/v1/watchlist/import', { method: 'POST', body: formData })
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("source", source);
+      const res = await fetch("/api/v1/watchlist/import", { method: "POST", body: formData });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({ detail: res.statusText }))
-        throw new Error(body.detail ?? res.statusText)
+        const body = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(body.detail ?? res.statusText);
       }
-      return res.json() as Promise<{ imported: number }>
+      return res.json() as Promise<{ imported: number }>;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['watchlist'] }),
-  })
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist"] }),
+  });
 }
 
 export function useRemoveWatchlistEntry() {
-  const qc = useQueryClient()
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => apiFetch(`/watchlist/${id}`, { method: 'DELETE' }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['watchlist'] }),
-  })
+    mutationFn: (id: number) => apiFetch(`/watchlist/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist"] }),
+  });
 }

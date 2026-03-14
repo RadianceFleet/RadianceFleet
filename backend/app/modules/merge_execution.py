@@ -270,7 +270,7 @@ def _reassign_ais_points(db: Session, canonical_id: int, absorbed_id: int) -> di
 
 def _update_canonical_metadata(db: Session, canonical: Vessel, absorbed: Vessel) -> None:
     """Backfill missing metadata from absorbed vessel into canonical."""
-    if absorbed.mmsi_first_seen_utc:
+    if absorbed.mmsi_first_seen_utc:  # noqa: SIM102
         if (
             canonical.mmsi_first_seen_utc is None
             or absorbed.mmsi_first_seen_utc < canonical.mmsi_first_seen_utc
@@ -556,7 +556,7 @@ def reverse_merge(db: Session, merge_op_id: int) -> dict:
         ("search_missions", SearchMission, SearchMission.vessel_id),
     ]
 
-    for name, model, col in simple_tables:
+    for name, _model, _col in simple_tables:
         info = affected.get(name, {})
         count = info.get("reassigned", 0)
         if count > 0:

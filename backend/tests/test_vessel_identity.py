@@ -146,7 +146,7 @@ class TestRussianOriginFlags:
             "BB",
             "GN",
         }
-        assert RUSSIAN_ORIGIN_FLAGS == expected
+        assert expected == RUSSIAN_ORIGIN_FLAGS
 
     @pytest.mark.parametrize("flag", ["ST", "GM", "CK", "GQ"])
     def test_new_shadow_fleet_flags_are_high_risk(self, flag: str):

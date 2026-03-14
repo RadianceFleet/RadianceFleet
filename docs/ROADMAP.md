@@ -12,14 +12,14 @@ All core feature requirements (FR1–FR8) are implemented and tested.
 | FR2 — Spoofing Detection | Five typologies: impossible speed, anchor-in-ocean, circle spoof, impossible reappearance, stationary MMSI broadcast. |
 | FR3 — Loitering Detection | SOG-based loitering using 1-hour windows. Laid-up vessel flags (30-day, 60-day). Loiter-gap-loiter linking for STS zone context. |
 | FR4 — STS Detection | Two-phase ship-to-ship transfer detection: Phase A proximity (200m, 8+ windows), Phase B approaching vector and heading filter. |
-| FR5 — Corridor Correlation | ST_Intersects trajectory-based corridor matching. Dark zone detection with adjusted scoring. |
+| FR5 — Corridor Correlation | Shapely bounding-box trajectory corridor matching. Dark zone detection with adjusted scoring. |
 | FR6 — Risk Scoring | 12 signal categories with configurable weights in `config/risk_scoring.yaml`. Scoring date parameter for reproducibility (NFR3). Config hash tracked per rescore run. |
 | FR7 — Satellite Check Preparation | Computes movement envelope bounding box. Generates Copernicus Open Access Hub query URL. Data source coverage metadata. |
 | FR8 — Evidence Export | Markdown and JSON evidence cards. Blocked on `new` status as analyst review gate (NFR7). GFW dark vessel import and correlation. |
 
 ### v1.0 Scope Summary
 
-- 14 SQLAlchemy models + PostGIS spatial types
+- 14 SQLAlchemy models + WKT geometry via Shapely
 - 20+ REST API endpoints (FastAPI)
 - 18 CLI commands (Typer)
 - Watchlist loaders for OFAC SDN, KSE Institute, OpenSanctions (rapidfuzz 85% match threshold)
@@ -240,7 +240,7 @@ Phase 1 ("Usable by a journalist today") from the strategic product analysis —
 
 ## Known Limitations
 
-- **SQLite geometry**: SpatiaLite is used for local development. ST_Intersects corridor correlation requires PostgreSQL + PostGIS in production.
-- **Satellite order providers**: Planet Labs and Capella Space clients are implemented but require valid API keys. Orders stay in draft until analyst confirms (budget safety). Maxar and Umbra provider stubs accept API keys but are not yet implemented.
+- **SQLite geometry**: Corridor correlation uses Shapely bounding-box checks on WKT text columns (works on both SQLite and PostgreSQL). For complex polygons or large corridor sets, migrating to native PostGIS ST_Intersects with GiST indexes would improve accuracy and performance.
+- **Satellite order providers**: All four providers (Planet Labs, Capella Space, Maxar, Umbra) are fully implemented but require valid API keys. Orders stay in draft until analyst confirms (budget safety).
 - **Equasis ToS**: `equasis_client.py` is disabled by default (`EQUASIS_SCRAPING_ENABLED=false`). Automated Equasis access violates their Terms of Service. Use Datalastic API for production enrichment.
 - **BarentsWatch 14-day limit**: Historical data older than 14 days is purged by BarentsWatch; only recent Norwegian EEZ data is available.

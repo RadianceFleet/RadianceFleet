@@ -267,7 +267,7 @@ def _ingest_barentswatch_feature(
                         tzinfo=None
                     )
             except Exception:
-                logger.debug("Timestamp parsing failed for value %s", ts_raw, exc_info=True)
+                logger.debug("Timestamp parsing failed", exc_info=True)
 
         vessels_seen.add(mmsi)
 

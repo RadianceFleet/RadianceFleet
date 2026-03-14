@@ -141,7 +141,7 @@ def _imo_differs_by_one(imo_a: str, imo_b: str) -> bool:
     """Check if two IMO strings differ by exactly one digit."""
     if len(imo_a) != len(imo_b):
         return False
-    diffs = sum(1 for a, b in zip(imo_a, imo_b) if a != b)
+    diffs = sum(1 for a, b in zip(imo_a, imo_b, strict=False) if a != b)
     return diffs == 1
 
 

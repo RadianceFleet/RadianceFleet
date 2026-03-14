@@ -52,5 +52,5 @@ def validate_source_url(url: str | None) -> str | None:
         return url
     except ValueError:
         raise
-    except Exception:
-        raise ValueError("Invalid source URL")
+    except Exception as exc:
+        raise ValueError("Invalid source URL") from exc

@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 _CATALOG_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
 _TOKEN_URL = (
-    "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"  # noqa: S105
 )
 _TIMEOUT = 30.0
 
@@ -45,7 +45,7 @@ def _get_access_token(
     """
     import time as _time
 
-    if not force_refresh and _token_cache.get("token"):
+    if not force_refresh and _token_cache.get("token"):  # noqa: SIM102
         if _time.monotonic() < _token_cache.get("expires_at", 0):
             return _token_cache["token"]
 

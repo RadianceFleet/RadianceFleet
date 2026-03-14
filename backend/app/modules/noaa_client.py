@@ -89,7 +89,7 @@ def download_noaa_file(target_date: date, output_dir: Path | None = None) -> Pat
 
     logger.info("Downloading NOAA AIS data: %s", url)
 
-    with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:
+    with httpx.Client(timeout=_TIMEOUT, follow_redirects=True) as client:  # noqa: SIM117
         with breakers["noaa"].call(client.stream, "GET", url) as resp:
             resp.raise_for_status()
             with open(tmp_path, "wb") as f:
@@ -103,9 +103,9 @@ def download_noaa_file(target_date: date, output_dir: Path | None = None) -> Pat
                 if zf.testzip() is not None:
                     tmp_path.unlink(missing_ok=True)
                     raise ValueError(f"Corrupt ZIP archive: {filename}")
-        except zipfile.BadZipFile:
+        except zipfile.BadZipFile as exc:
             tmp_path.unlink(missing_ok=True)
-            raise ValueError(f"Invalid ZIP file: {filename}")
+            raise ValueError(f"Invalid ZIP file: {filename}") from exc
     elif filename.endswith(".csv.zst"):
         try:
             import zstandard as zstd
@@ -120,7 +120,7 @@ def download_noaa_file(target_date: date, output_dir: Path | None = None) -> Pat
                     raise ValueError(f"Empty Zstandard file: {filename}")
         except Exception as exc:
             tmp_path.unlink(missing_ok=True)
-            raise ValueError(f"Invalid Zstandard file {filename}: {exc}")
+            raise ValueError(f"Invalid Zstandard file {filename}: {exc}") from exc
 
     tmp_path.rename(output_path)
     logger.info("Downloaded NOAA file: %s (%.1f MB)", output_path, output_path.stat().st_size / 1e6)
@@ -325,7 +325,7 @@ def fetch_and_import_noaa(
                 )
                 db.commit()
             except Exception:
-                logger.debug("Failed to write ingestion status for NOAA fetch", exc_info=True)
+                logger.debug("Failed to record collection run error", exc_info=True)
 
         current += timedelta(days=1)
 

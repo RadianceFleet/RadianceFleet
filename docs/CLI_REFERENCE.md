@@ -280,7 +280,7 @@ radiancefleet corridors import <filepath>
 
 - Upserts by corridor name — existing corridors are updated, new ones are inserted.
 - Accepts optional GeoJSON-style `geometry` block for spatial queries.
-- 11 seed corridors are shipped in `config/corridors.yaml` (4 export routes, 5 STS zones, 2 dark zones).
+- 52 corridors are shipped in `config/corridors.yaml` (export routes, STS zones, dark zones, and regional coverage areas).
 
 **Example**:
 
@@ -390,7 +390,7 @@ radiancefleet detect-sts --from 2026-01-01
 
 ### `correlate-corridors`
 
-Re-run ST_Intersects corridor correlation on all gap events not yet correlated with a corridor. Uses trajectory-based intersection (not endpoint-only).
+Re-run corridor correlation on all gap events not yet correlated with a corridor. Uses Shapely bounding-box intersection (not endpoint-only).
 
 ```
 radiancefleet correlate-corridors

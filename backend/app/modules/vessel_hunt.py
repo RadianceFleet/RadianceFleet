@@ -201,7 +201,7 @@ def _compute_hunt_score(
 
     # Drift probability: inverse of distance / max_radius
     drift_score = 0.0
-    if (
+    if (  # noqa: SIM102
         mission.center_lat is not None
         and mission.center_lon is not None
         and mission.max_radius_nm

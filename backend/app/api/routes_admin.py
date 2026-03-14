@@ -48,7 +48,7 @@ def _validate_csv_upload(file: UploadFile) -> None:
     try:
         first_text = first_bytes.decode("utf-8")
     except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File is not valid UTF-8 text")
+        raise HTTPException(status_code=400, detail="File is not valid UTF-8 text") from None
     # Check that first line has comma or tab delimiters (i.e., is tabular)
     first_line = first_text.split("\n", 1)[0]
     if "," not in first_line and "\t" not in first_line:
@@ -62,7 +62,7 @@ def _validate_csv_upload(file: UploadFile) -> None:
         if len(header) < 2:
             raise HTTPException(status_code=400, detail="CSV header must have at least 2 columns")
     except csv.Error:
-        raise HTTPException(status_code=400, detail="File is not valid CSV")
+        raise HTTPException(status_code=400, detail="File is not valid CSV") from None
 
 
 # ---------------------------------------------------------------------------
@@ -477,7 +477,7 @@ def submit_tip(request: Request, body: TipRequest, db: Session = Depends(get_db)
     try:
         url = validate_source_url(body.source_url)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     tip = TipSubmission(
         mmsi=body.mmsi,
         imo=body.imo,
@@ -752,7 +752,7 @@ def trigger_backfill(
     except ImportError:
         return {"status": "coverage_tracker not available"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Backfill failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Backfill failed: {str(e)}") from e
 
 
 # ---------------------------------------------------------------------------

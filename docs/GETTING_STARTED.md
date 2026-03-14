@@ -89,52 +89,11 @@ You want to query RadianceFleet programmatically — from Python scripts, notebo
 
 Follow these steps in order. Each step tells you what you are about to do before asking you to do it.
 
----
-
-### Step 1: Install Docker Desktop
-
-Docker is software that runs a database on your computer without a complex installation. You do not need to understand how it works — you just need it running in the background.
-
-**macOS** (using Homebrew — if you have it):
-
-```bash
-brew install --cask docker
-```
-
-Then open Docker Desktop from your Applications folder and wait for the whale icon in your menu bar to stop animating.
-
-**macOS** (without Homebrew): Download the installer from https://www.docker.com/products/docker-desktop/ and run it.
-
-**Windows**: Download Docker Desktop from https://www.docker.com/products/docker-desktop/ and run the installer. When prompted, choose the WSL 2 backend. After installation, restart your computer.
-
-**Linux (Ubuntu/Debian)**:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-plugin
-sudo systemctl start docker
-sudo usermod -aG docker $USER
-```
-
-After running the last command, log out and log back in so the group membership takes effect.
-
-**Verify Docker is working** — open a terminal and run this command:
-
-```bash
-docker --version
-```
-
-You should see output like:
-
-```
-Docker version 26.1.4, build 5650f9b
-```
-
-Any recent version number is fine. If you see "command not found", Docker is not installed correctly — refer to the Docker documentation at https://docs.docker.com/desktop/.
+RadianceFleet uses **SQLite by default** — no Docker, no PostgreSQL, no external database software. Everything runs locally on your computer. If you later need PostgreSQL for a multi-user team setup, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
-### Step 2: Clone the Repository
+### Step 1: Clone the Repository
 
 "Cloning" downloads the RadianceFleet code to your computer. Open a terminal and run:
 
@@ -158,43 +117,7 @@ The output should end with `/radiancefleet`.
 
 ---
 
-### Step 3: Start the Database
-
-RadianceFleet uses PostgreSQL with PostGIS (geographic data extensions) as its database. Docker will download and start it for you automatically.
-
-Run this command from the `radiancefleet` folder:
-
-```bash
-docker compose up -d
-```
-
-The first time you run this, Docker downloads the database image — this takes 1-2 minutes depending on your internet speed. You will see output like:
-
-```
-[+] Pulling postgres (postgis/postgis:16-3.4)...
-[+] Running 2/2
- ✔ Network radiancefleet_default  Created
- ✔ Container radiancefleet_db     Started
-```
-
-Now verify that the database is healthy and ready to accept connections:
-
-```bash
-docker compose ps
-```
-
-You should see:
-
-```
-NAME                SERVICE    STATUS          PORTS
-radiancefleet_db    postgres   running (healthy)   0.0.0.0:5432->5432/tcp
-```
-
-Wait until the STATUS column shows `running (healthy)`. If it shows `starting`, wait 30 seconds and run the command again. If it shows `unhealthy`, see [Troubleshooting](#common-questions-and-troubleshooting) at the bottom of this guide.
-
----
-
-### Step 4: Install Python 3.12+ and uv
+### Step 2: Install Python 3.12+ and uv
 
 RadianceFleet is a Python application. You need Python 3.12 or newer and a tool called `uv` that manages its dependencies.
 
@@ -231,7 +154,7 @@ uv 0.5.21 (some-hash)
 
 ---
 
-### Step 5: Install RadianceFleet's Python Dependencies
+### Step 3: Install Dependencies and Activate the Environment
 
 Move into the backend folder and let `uv` install everything RadianceFleet needs:
 
@@ -275,9 +198,9 @@ After activation, your terminal prompt changes to show `(.venv)` at the beginnin
 
 ---
 
-### Step 6: Initialize and Load Sample Data
+### Step 4: Initialize the Database and Load Sample Data
 
-This single command sets up the database tables, imports the 11 monitoring corridors (shipping routes and STS zones), and loads 7 synthetic vessels that demonstrate every detection type:
+This single command creates a local SQLite database, sets up the tables, imports the 11 monitoring corridors (shipping routes and STS zones), and loads 7 synthetic vessels that demonstrate every detection type:
 
 ```bash
 radiancefleet setup --with-sample-data
@@ -300,11 +223,13 @@ You will see output like:
 [setup] Done. Open the web interface to begin reviewing alerts.
 ```
 
+No Docker or PostgreSQL is involved. The database is a single file stored in the `backend/` folder.
+
 The sample data is explained in [Understanding the Sample Data](#understanding-the-sample-data) below.
 
 ---
 
-### Step 7: Start the Web Interface
+### Step 5: Start the Web Interface
 
 Run the server:
 
@@ -327,7 +252,7 @@ To stop the server later, press `Ctrl+C` in the terminal.
 
 ---
 
-### Step 8: Explore the Web Interface
+### Step 6: Explore the Web Interface
 
 Once the interface loads, you will see four main areas:
 
@@ -505,20 +430,9 @@ Replace `kse` with whatever label identifies your source. The tool uses fuzzy ma
 
 Yes, for detection and analysis. Once you have AIS data loaded and sanctions lists downloaded, RadianceFleet runs entirely locally. The only features that require internet are `radiancefleet data fetch` (downloading sanctions lists) and the Copernicus satellite imagery links (which open in your browser). The database, detection pipeline, and web interface all run locally on your computer.
 
-**The database shows "unhealthy" in `docker compose ps`. What do I do?**
+**I get "command not found: radiancefleet" after Step 3. What do I do?**
 
-First, check that Docker Desktop is running (look for the whale icon in your menu bar or system tray). Then try:
-
-```bash
-docker compose down
-docker compose up -d
-```
-
-Wait 30 seconds and run `docker compose ps` again. If the database still shows unhealthy, check whether port 5432 is in use by another application — PostgreSQL uses this port by default. If you have another PostgreSQL installation running, stop it first.
-
-**I get "command not found: radiancefleet" after Step 5. What do I do?**
-
-Make sure you activated the virtual environment. In the `backend` folder, run:
+Make sure you activated the virtual environment (see Step 3). In the `backend` folder, run:
 
 ```bash
 source .venv/bin/activate

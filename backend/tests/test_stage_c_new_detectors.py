@@ -175,12 +175,9 @@ def _find_risk_scoring_yaml():
 
     import yaml
 
-    # __file__ is backend/tests/test_*.py  -> parent.parent.parent = repo root
-    repo_root = Path(__file__).parent.parent.parent
+    # __file__ is backend/tests/test_*.py  -> resolve() then parent.parent.parent = repo root
+    repo_root = Path(__file__).resolve().parent.parent.parent
     config_path = repo_root / "config" / "risk_scoring.yaml"
-    if not config_path.exists():
-        # Fallback: try relative from backend/
-        config_path = Path(__file__).parent.parent / "config" / "risk_scoring.yaml"
     if not config_path.exists():
         return None
     return yaml.safe_load(config_path.read_text())
@@ -197,8 +194,7 @@ class TestYAMLSections:
 
     def test_yaml_has_route_laundering_section(self):
         config = _find_risk_scoring_yaml()
-        if config is None:
-            pytest.skip("risk_scoring.yaml not found")
+        assert config is not None, "risk_scoring.yaml not found at config/risk_scoring.yaml"
         assert "route_laundering" in config
         assert config["route_laundering"]["confirmed_3_hop"] == 35
         assert config["route_laundering"]["partial_2_hop"] == 20
@@ -206,24 +202,21 @@ class TestYAMLSections:
 
     def test_yaml_has_pi_cycling_section(self):
         config = _find_risk_scoring_yaml()
-        if config is None:
-            pytest.skip("risk_scoring.yaml not found")
+        assert config is not None, "risk_scoring.yaml not found at config/risk_scoring.yaml"
         assert "pi_cycling" in config
         assert config["pi_cycling"]["rapid_change_90d"] == 20
         assert config["pi_cycling"]["non_ig_club"] == 30
 
     def test_yaml_has_sparse_transmission_section(self):
         config = _find_risk_scoring_yaml()
-        if config is None:
-            pytest.skip("risk_scoring.yaml not found")
+        assert config is not None, "risk_scoring.yaml not found at config/risk_scoring.yaml"
         assert "sparse_transmission" in config
         assert config["sparse_transmission"]["moderate_sparsity"] == 15
         assert config["sparse_transmission"]["severe_sparsity"] == 25
 
     def test_yaml_has_vessel_type_consistency_section(self):
         config = _find_risk_scoring_yaml()
-        if config is None:
-            pytest.skip("risk_scoring.yaml not found")
+        assert config is not None, "risk_scoring.yaml not found at config/risk_scoring.yaml"
         assert "vessel_type_consistency" in config
         assert config["vessel_type_consistency"]["type_dwt_mismatch"] == 25
         assert config["vessel_type_consistency"]["recent_type_change"] == 15

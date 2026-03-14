@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
-from pathlib import Path
 
 from rich.console import Console
 from rich.table import Table
@@ -62,17 +63,13 @@ def _import_corridors(db) -> None:
             geom = None
             raw_geom = c_data.get("geometry")
             if raw_geom and isinstance(raw_geom, dict):
-                try:
+                with contextlib.suppress(Exception):
                     geom = shapely_shape(raw_geom).wkt
-                except Exception:
-                    pass
             elif raw_geom and isinstance(raw_geom, str):
-                try:
+                with contextlib.suppress(Exception):
                     from shapely import wkt as shapely_wkt
 
                     geom = shapely_wkt.loads(raw_geom).wkt
-                except Exception:
-                    pass
 
             if not existing:
                 corridor = Corridor(
@@ -107,7 +104,7 @@ def _load_sample_data(db) -> None:
     if not sample_path.exists():
         import subprocess
 
-        subprocess.run(
+        subprocess.run(  # noqa: S603
             [sys.executable, "scripts/generate_sample_data.py"],
             check=True,
             capture_output=True,
@@ -154,7 +151,7 @@ def _print_summary(con: Console) -> None:
         finally:
             db.close()
     except Exception:
-        logger.debug("Failed to display CLI stats summary", exc_info=True)
+        logger.debug("Failed to print DB summary counts", exc_info=True)
 
 
 def _print_next_steps(con: Console, after: str = "start") -> None:

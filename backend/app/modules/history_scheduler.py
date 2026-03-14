@@ -9,6 +9,7 @@ Thread-based, same pattern as CollectionScheduler.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 from collections.abc import Callable
@@ -89,10 +90,8 @@ class HistoryScheduler:
             except Exception as e:
                 logger.error("History backfill cycle error: %s", e)
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     db.close()
-                except Exception:
-                    pass
 
             self._shutdown_event.wait(timeout=interval_s)
 

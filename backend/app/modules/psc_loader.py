@@ -23,6 +23,7 @@ following the load_psc_ftm() or load_emsa_bans() patterns above.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -296,10 +297,8 @@ def load_emsa_bans(
         # Parse ban date for recency check
         ban_date = None
         if ban_date_str:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 ban_date = date.fromisoformat(str(ban_date_str)[:10])
-            except (ValueError, TypeError):
-                pass
 
         if ban_date and ban_date < cutoff:
             continue

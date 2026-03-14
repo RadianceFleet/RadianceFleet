@@ -467,7 +467,7 @@ def get_fleet_cluster(cluster_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.warning("Owner cluster detail fetch failed for cluster %s: %s", cluster_id, e)
-        raise HTTPException(status_code=500, detail="Error fetching cluster details")
+        raise HTTPException(status_code=500, detail="Error fetching cluster details") from e
 
 
 @router.get("/fleet/alerts", tags=["fleet"])
@@ -685,7 +685,7 @@ def create_corridor(body: CorridorCreateRequest, request: Request, db: Session =
             shape = shapely_wkt.loads(body.geometry_wkt)
             geom = shape.wkt
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid geometry_wkt: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid geometry_wkt: {e}") from e
 
     corridor = Corridor(
         name=body.name,
@@ -1218,7 +1218,7 @@ def coverage_geojson():
                 shape = shapely_wkt.loads(wkt)
                 geometry = shapely.geometry.mapping(shape)
             except Exception:
-                logger.debug("WKT geometry parsing failed for coverage region", exc_info=True)
+                logger.debug("Coverage WKT geometry parsing failed", exc_info=True)
 
         features.append(
             {
@@ -1328,7 +1328,7 @@ def search_satellite_archive(request: Request, body: dict, db: Session = Depends
     try:
         return search_archive_for_alert(db, alert_id, provider)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/satellite/orders/{order_id}/submit", tags=["satellite"])
@@ -1346,7 +1346,7 @@ def submit_satellite_order(
     try:
         return submit_order(db, order_id, scene_ids)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/satellite/orders/{order_id}/cancel", tags=["satellite"])
@@ -1362,7 +1362,7 @@ def cancel_satellite_order(
     try:
         return cancel_order(db, order_id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/satellite/orders/poll", tags=["satellite"])

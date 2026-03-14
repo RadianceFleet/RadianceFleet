@@ -232,9 +232,7 @@ def _count_outside_bounds(features: dict[str, float | None]) -> int:
         val = features.get(key)
         if val is None:
             continue
-        if low is not None and val < low:
-            outside += 1
-        elif high is not None and val > high:
+        if (low is not None and val < low) or (high is not None and val > high):
             outside += 1
     return outside
 

@@ -637,8 +637,8 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
             name = raw_name.strip() or None
 
         # ── Extract identifiers ───────────────────────────────────────────────
-        def _first_prop(key: str) -> str | None:
-            val = props.get(key)
+        def _first_prop(key: str, _props: dict = props) -> str | None:
+            val = _props.get(key)
             if isinstance(val, list):
                 return val[0].strip() if val else None
             return val.strip() if val else None

@@ -204,7 +204,7 @@ def detect_convoys(
 
     for bk in sorted(bucket_grid.keys()):
         grid = bucket_grid[bk]
-        for cell, vessel_list in grid.items():
+        for _cell, vessel_list in grid.items():
             if len(vessel_list) < 2:
                 continue
             for i in range(len(vessel_list)):
@@ -456,7 +456,7 @@ def detect_arctic_no_ice_class(db: Session) -> dict:
 
         in_arctic = False
         for pt in recent_points:
-            for cid, bbox in arctic_bboxes:
+            for _cid, bbox in arctic_bboxes:
                 if _in_bbox(pt.lat, pt.lon, bbox):
                     in_arctic = True
                     break

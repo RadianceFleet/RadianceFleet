@@ -969,11 +969,7 @@ def compute_gap_score(
                 breakdown["name_all_caps_numbers"] = metadata_cfg.get("name_all_caps_numbers", 10)
         if vessel.deadweight is not None and isinstance(vessel.deadweight, (int, float)):
             _vessel_type_str = str(vessel.vessel_type or "").lower()
-            if vessel.deadweight > 500_000:
-                breakdown["invalid_metadata_impossible_dwt"] = metadata_signals_cfg.get(
-                    "invalid_metadata_impossible_dwt", 15
-                )
-            elif vessel.deadweight < 100 and "tanker" in _vessel_type_str:
+            if vessel.deadweight > 500_000 or (vessel.deadweight < 100 and "tanker" in _vessel_type_str):
                 breakdown["invalid_metadata_impossible_dwt"] = metadata_signals_cfg.get(
                     "invalid_metadata_impossible_dwt", 15
                 )
@@ -1832,7 +1828,7 @@ def compute_gap_score(
             if det.detection_lat is None or det.detection_lon is None:
                 continue
             # Match by corridor if both have one
-            if det.corridor_id is not None and gap.corridor_id is not None:
+            if det.corridor_id is not None and gap.corridor_id is not None:  # noqa: SIM102
                 if det.corridor_id == gap.corridor_id:
                     dark_detections.append(det)
                     continue
@@ -2111,7 +2107,7 @@ def compute_gap_score(
 
         # Flag hopping scoring — FIX: skip if flag_changes_3plus_90d already
         # in breakdown (same 3 flag changes were triggering BOTH +40 and +50).
-        if _scoring_settings.FLAG_HOPPING_SCORING_ENABLED:
+        if _scoring_settings.FLAG_HOPPING_SCORING_ENABLED:  # noqa: SIM102
             if "flag_changes_3plus_90d" not in breakdown:
                 flag_hop = (
                     db.query(SpoofingAnomaly)
@@ -2390,7 +2386,7 @@ def compute_gap_score(
             )
             .all()
         )
-        for ra in replay_anomalies:
+        for _ra in replay_anomalies:
             pts = replay_cfg.get("high_correlation_replay", 45)
             breakdown["track_replay"] = pts
 

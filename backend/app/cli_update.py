@@ -278,7 +278,7 @@ def update(
             upsert_heartbeat(db, "cron-updater", status="error", error=str(e))
             db.commit()
         except Exception:
-            logger.debug("Failed to write heartbeat during error handling", exc_info=True)
+            logger.debug("Failed to record heartbeat error", exc_info=True)
         raise
     finally:
         db.close()

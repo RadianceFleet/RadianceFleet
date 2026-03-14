@@ -1,40 +1,40 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { AlertListPage } from './components/AlertList'
-import { AlertDetail } from './components/AlertDetail'
-import { ErrorBoundary } from './components/ErrorBoundary'
-import { AppLayout } from './components/layout/AppLayout'
-import { RequireAuth } from './components/RequireAuth'
-import { DashboardPage } from './pages/DashboardPage'
-import { VesselSearchPage } from './pages/VesselSearchPage'
-import { VesselDetailPage } from './pages/VesselDetailPage'
-import { MapOverviewPage } from './pages/MapOverviewPage'
-import { StsEventsPage } from './pages/StsEventsPage'
-import { CorridorsPage } from './pages/CorridorsPage'
-import { CorridorDetailPage } from './pages/CorridorDetailPage'
-import { WatchlistPage } from './pages/WatchlistPage'
-import { IngestionPage } from './pages/IngestionPage'
-import { DetectionPanel } from './pages/DetectionPanel'
-import { DarkVesselsPage } from './pages/DarkVesselsPage'
-import { MergeCandidatesPage } from './pages/MergeCandidatesPage'
-import { DonatePage } from './pages/DonatePage'
-import { FleetAnalysisPage } from './pages/FleetAnalysisPage'
-import { OwnershipGraphPage } from './pages/OwnershipGraphPage'
-import { DetectorResultsPage } from './pages/DetectorResultsPage'
-import { VoyagePredictionPage } from './pages/VoyagePredictionPage'
-import { HuntPage } from './pages/HuntPage'
-import { TipsAdminPage } from './pages/TipsAdminPage'
-import { VesselTimelinePage } from './pages/VesselTimelinePage'
-import { AccuracyDashboardPage } from './pages/AccuracyDashboardPage'
-import { DataHealthPage } from './pages/DataHealthPage'
-import { GlobalDetectionsPage } from './pages/GlobalDetectionsPage'
-import { EmbedVesselPage } from './pages/EmbedVesselPage'
-import { useAlertStream } from './hooks/useAlertStream'
-import { AlertToast } from './components/AlertToast'
-import { useAuth } from './hooks/useAuth'
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AlertListPage } from "./components/AlertList";
+import { AlertDetail } from "./components/AlertDetail";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AppLayout } from "./components/layout/AppLayout";
+import { RequireAuth } from "./components/RequireAuth";
+import { DashboardPage } from "./pages/DashboardPage";
+import { VesselSearchPage } from "./pages/VesselSearchPage";
+import { VesselDetailPage } from "./pages/VesselDetailPage";
+import { MapOverviewPage } from "./pages/MapOverviewPage";
+import { StsEventsPage } from "./pages/StsEventsPage";
+import { CorridorsPage } from "./pages/CorridorsPage";
+import { CorridorDetailPage } from "./pages/CorridorDetailPage";
+import { WatchlistPage } from "./pages/WatchlistPage";
+import { IngestionPage } from "./pages/IngestionPage";
+import { DetectionPanel } from "./pages/DetectionPanel";
+import { DarkVesselsPage } from "./pages/DarkVesselsPage";
+import { MergeCandidatesPage } from "./pages/MergeCandidatesPage";
+import { DonatePage } from "./pages/DonatePage";
+import { FleetAnalysisPage } from "./pages/FleetAnalysisPage";
+import { OwnershipGraphPage } from "./pages/OwnershipGraphPage";
+import { DetectorResultsPage } from "./pages/DetectorResultsPage";
+import { VoyagePredictionPage } from "./pages/VoyagePredictionPage";
+import { HuntPage } from "./pages/HuntPage";
+import { TipsAdminPage } from "./pages/TipsAdminPage";
+import { VesselTimelinePage } from "./pages/VesselTimelinePage";
+import { AccuracyDashboardPage } from "./pages/AccuracyDashboardPage";
+import { DataHealthPage } from "./pages/DataHealthPage";
+import { GlobalDetectionsPage } from "./pages/GlobalDetectionsPage";
+import { EmbedVesselPage } from "./pages/EmbedVesselPage";
+import { useAlertStream } from "./hooks/useAlertStream";
+import { AlertToast } from "./components/AlertToast";
+import { useAuth } from "./hooks/useAuth";
 
 export default function App() {
-  const { isAuthenticated } = useAuth()
-  const { lastAlert } = useAlertStream({ enabled: isAuthenticated })
+  const { isAuthenticated } = useAuth();
+  const { lastAlert } = useAlertStream({ enabled: isAuthenticated });
 
   return (
     <BrowserRouter>
@@ -58,7 +58,14 @@ export default function App() {
             <Route path="watchlist" element={<WatchlistPage />} />
             <Route path="fleet" element={<FleetAnalysisPage />} />
             <Route path="ownership" element={<OwnershipGraphPage />} />
-            <Route path="ingest" element={<RequireAuth><IngestionPage /></RequireAuth>} />
+            <Route
+              path="ingest"
+              element={
+                <RequireAuth>
+                  <IngestionPage />
+                </RequireAuth>
+              }
+            />
             <Route path="detections" element={<GlobalDetectionsPage />} />
             <Route path="dark-vessels" element={<DarkVesselsPage />} />
             <Route path="merge-candidates" element={<MergeCandidatesPage />} />
@@ -66,11 +73,18 @@ export default function App() {
             <Route path="detect" element={<DetectionPanel />} />
             <Route path="accuracy" element={<AccuracyDashboardPage />} />
             <Route path="data-health" element={<DataHealthPage />} />
-            <Route path="admin/tips" element={<RequireAuth><TipsAdminPage /></RequireAuth>} />
+            <Route
+              path="admin/tips"
+              element={
+                <RequireAuth>
+                  <TipsAdminPage />
+                </RequireAuth>
+              }
+            />
             <Route path="donate" element={<DonatePage />} />
           </Route>
         </Routes>
       </ErrorBoundary>
     </BrowserRouter>
-  )
+  );
 }

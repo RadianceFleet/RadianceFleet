@@ -217,6 +217,19 @@ radiancefleet update --stream-time 30m
 
 ---
 
+## Choosing Between SQLite and PostgreSQL
+
+| Scenario | Recommendation |
+|---|---|
+| 1 analyst on a laptop | SQLite. No setup needed beyond `uv sync`. |
+| 2-5 analysts, shared server | SQLite is fine for read-heavy triage. Switch to PostgreSQL if you hit write contention (concurrent alert updates). |
+| 5+ analysts or production API | PostgreSQL. Row-level locking, connection pooling, and `pg_dump` backups scale better. |
+| Public-facing instance | PostgreSQL. SQLite does not handle concurrent writes from multiple web requests well. |
+
+SQLite is the default and requires zero configuration. PostgreSQL is optional and only needed when you outgrow single-user concurrency.
+
+---
+
 ## Local Development (SQLite, no Docker)
 
 This path is the fastest way to run RadianceFleet on a laptop without any external services.
@@ -663,6 +676,26 @@ docker exec -i radiancefleet_db psql -U radiancefleet radiancefleet < backup_202
 
 Test restores periodically. A backup that has never been tested is not a backup.
 
+### CLI backup and restore
+
+RadianceFleet includes built-in backup commands that work with both SQLite and PostgreSQL:
+
+```bash
+# Create a backup (writes to backups/ directory by default)
+radiancefleet db backup
+
+# Create a backup to a specific path
+radiancefleet db backup --output /path/to/backup.sql
+
+# Restore from a backup
+radiancefleet db restore /path/to/backup.sql
+
+# Restore with --force to skip confirmation prompt
+radiancefleet db restore --force /path/to/backup.sql
+```
+
+For PostgreSQL, the CLI wraps `pg_dump`/`psql` and includes row-count verification and foreign key checks. For SQLite, it copies the database file. Run `radiancefleet db backup` before any major ingestion or schema migration.
+
 ---
 
 ## Health Check
@@ -743,6 +776,65 @@ The worker has three layers of resilience:
    waits 60 seconds (breaker reset timeout) and reconnects automatically.
 3. **Docker restart:** `restart: unless-stopped` handles unexpected crashes (OOM,
    segfault). The inner retry logic handles normal transient failures.
+
+---
+
+## SSL/TLS with a Reverse Proxy
+
+If you expose RadianceFleet to the internet (or even a private network), terminate TLS at a reverse proxy. Do not run the FastAPI server with direct HTTPS — use nginx, Caddy, or a cloud load balancer in front of it.
+
+### Minimal nginx HTTPS config
+
+```nginx
+server {
+    listen 80;
+    server_name radiancefleet.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name radiancefleet.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/radiancefleet.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/radiancefleet.example.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+
+    # Frontend static files
+    root /var/www/radiancefleet;
+    index index.html;
+
+    location / {
+        try_files $uri /index.html;
+    }
+
+    # Proxy API and health endpoints to FastAPI
+    location /api/ {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_buffering    off;
+        proxy_read_timeout 120s;
+    }
+
+    location /health {
+        proxy_pass http://127.0.0.1:8000;
+    }
+}
+```
+
+For free certificates, use Let's Encrypt with certbot:
+
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d radiancefleet.example.com
+```
+
+Certbot auto-renews via a systemd timer. The `--proxy-headers` flag on the uvicorn start command ensures rate limiting reads the real client IP from `X-Forwarded-For`.
+
+For the multi-user setup with bearer token authentication, see the [Multi-User Production](#multi-user-production) section above, which extends this config with authorization checks.
 
 ---
 

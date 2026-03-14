@@ -323,9 +323,7 @@ def is_suspicious_mid(mmsi: str) -> bool:
         return True
     if mid in MICRO_TERRITORY_MIDS:
         return True
-    if mid not in ITU_MID_ALLOCATION:
-        return True
-    return False
+    return mid not in ITU_MID_ALLOCATION
 
 
 def flag_to_risk_category(flag: str | None) -> FlagRiskEnum:

@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import time
 from collections.abc import Callable
@@ -76,10 +77,8 @@ def retry_request(
             if resp.status_code == 429:
                 retry_after = resp.headers.get("Retry-After")
                 if retry_after:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         delay = max(delay, float(retry_after))
-                    except (ValueError, TypeError):
-                        pass
 
             logger.warning(
                 "HTTP %d from %s — retrying in %.0fs (attempt %d/%d)",

@@ -67,6 +67,11 @@ class SkylightProvider(VerificationProvider):
         return 0.0  # Free for NGOs
 
     def verify_vessel(self, vessel: Vessel) -> VerificationResult:
+        """Stub: correlates satellite imagery with AIS positions to detect spoofing.
+
+        Requires SKYLIGHT_API_KEY. Free for qualifying NGOs — apply at skylight.global.
+        Implementation needs their vessel detection API (not yet publicly documented).
+        """
         api_key = getattr(settings, "SKYLIGHT_API_KEY", None)
         if not api_key:
             return VerificationResult(
@@ -94,6 +99,11 @@ class SpireProvider(VerificationProvider):
         return 0.50  # Estimated per-query cost
 
     def verify_vessel(self, vessel: Vessel) -> VerificationResult:
+        """Stub: verifies vessel position via Spire's satellite AIS constellation.
+
+        Requires SPIRE_API_KEY (paid subscription, ~$0.50/query).
+        Implementation needs Spire Vessels API v2 with position history endpoint.
+        """
         api_key = getattr(settings, "SPIRE_API_KEY", None)
         if not api_key:
             return VerificationResult(
@@ -122,6 +132,11 @@ class SeaWebProvider(VerificationProvider):
         return 2.00  # Estimated per-query cost
 
     def verify_vessel(self, vessel: Vessel) -> VerificationResult:
+        """Stub: looks up beneficial ownership, ISM manager, and P&I club via Sea-web.
+
+        Requires SEAWEB_API_KEY (paid subscription, ~$2.00/query).
+        Implementation needs S&P Global Maritime API with vessel-by-IMO endpoint.
+        """
         api_key = getattr(settings, "SEAWEB_API_KEY", None)
         if not api_key:
             return VerificationResult(

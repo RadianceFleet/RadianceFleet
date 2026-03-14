@@ -251,6 +251,7 @@ def test_point_inside_bbox_but_outside_polygon():
     With Shapely geometry, find_corridor_for_point should NOT match this point.
     """
     from unittest.mock import MagicMock
+
     from app.modules.corridor_correlator import find_corridor_for_point
 
     # Diamond polygon WKT: vertices at (lon, lat) = (25,56), (26,55), (25,54), (24,55)
@@ -281,6 +282,7 @@ def test_transit_trajectory_through_corridor():
     With Shapely intersection, _intersecting_rows SHOULD match this trajectory.
     """
     from unittest.mock import MagicMock
+
     from app.modules.corridor_correlator import _intersecting_rows
 
     rect_wkt = "POLYGON ((24 54.5, 26 54.5, 26 55.5, 24 55.5, 24 54.5))"

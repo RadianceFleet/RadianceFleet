@@ -1,0 +1,14 @@
+pre-commit:
+  parallel: true
+  commands:
+    ruff-check:
+      glob: "backend/**/*.py"
+      run: cd backend && uv run ruff check --fix {staged_files}
+      stage_fixed: true
+    ruff-format:
+      glob: "backend/**/*.py"
+      run: cd backend && uv run ruff format {staged_files}
+      stage_fixed: true
+    eslint:
+      glob: "frontend/**/*.{ts,tsx}"
+      run: cd frontend && npx eslint {staged_files}

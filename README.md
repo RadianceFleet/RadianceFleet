@@ -3,7 +3,7 @@
 ![CI](https://github.com/radiancefleet/RadianceFleet/actions/workflows/ci.yml/badge.svg)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
-![Tests](https://img.shields.io/badge/tests-2782%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-2818%20passing-brightgreen)
 [![Docker](https://img.shields.io/badge/Docker%20Hub-radiancefleet-blue)](https://hub.docker.com/r/radiancefleet/radiancefleet)
 
 Open-source maritime anomaly detection for Russian shadow fleet triage.
@@ -24,7 +24,7 @@ RadianceFleet helps investigative journalists, OSINT researchers, and NGO analys
 - Detects loitering (pre-STS behavior) and ship-to-ship transfers
 - Scores each alert 0-100 with explainable, configurable weights (YAML)
 - Cross-references OFAC SDN, KSE shadow fleet list, and OpenSanctions watchlists
-- Correlates gaps against 11 seed corridors (export routes, STS zones, dark zones)
+- Correlates gaps against 52 corridors (export routes, STS zones, dark zones)
 - Prepares Sentinel-1 satellite check packages with pre-filled Copernicus Browser URLs
 - Places commercial satellite orders via Planet Labs and Capella Space APIs with budget enforcement
 - Exports evidence cards (Markdown, JSON, CSV, and PDF) with mandatory analyst disclaimer and chain-of-custody
@@ -89,12 +89,12 @@ For a detailed walkthrough, see [docs/quickstart.md](docs/quickstart.md).
 
 ```
 backend/              Python package
-  app/models/         SQLAlchemy data models (48 tables)
-  app/modules/        Detection engines (55+ modules)
-  app/api/            FastAPI REST endpoints (90+)
+  app/models/         SQLAlchemy data models (50 tables)
+  app/modules/        Detection engines (82 modules)
+  app/api/            FastAPI REST endpoints (132)
   app/schemas/        Pydantic request/response schemas
   app/cli.py          Typer CLI entry point
-  tests/              pytest (2,782+ tests)
+  tests/              pytest (2,818 tests)
 frontend/             React 18 + TypeScript + Vite + React-Leaflet
 config/               corridors.yaml, risk_scoring.yaml, coverage.yaml
 railway.toml          Railway deployment config (web + cron services)
@@ -120,7 +120,7 @@ railway.toml          Railway deployment config (web + cron services)
 - **Loitering detection** -- 1h rolling SOG windows, laid-up vessel flags (30d/60d), loiter-gap-loiter pattern linking
 - **STS transfer detection** -- 200m proximity over 2h sustained windows, heading alignment filter, corridor-aware scoring
 - **Risk scoring engine** -- 12 signal categories, corridor and vessel-size multipliers, legitimacy deductions, gap frequency subsumption
-- **Corridor correlation** -- ST_Intersects trajectory-based matching against 11 seed corridors
+- **Corridor correlation** -- Shapely bounding-box trajectory matching against 52 corridors
 - **Watchlist matching** -- OFAC SDN, KSE shadow fleet, OpenSanctions with fuzzy name matching
 - **Satellite workflow** -- bounding box generation, Copernicus Browser URL pre-fill, commercial order placement (Planet Labs, Capella Space) with budget enforcement
 - **Multi-analyst workflow** -- role-based auth (analyst/senior/admin), alert assignment, DB-level edit locks, optimistic locking, evidence chain-of-custody with approval workflow
@@ -151,7 +151,7 @@ radiancefleet detect-gaps [--from] [--to]      Run AIS gap detection
 radiancefleet detect-spoofing [--from] [--to]  Run spoofing detection
 radiancefleet detect-loitering [--from] [--to] Detect loitering and update laid-up flags
 radiancefleet detect-sts [--from] [--to]       Detect ship-to-ship transfer events
-radiancefleet correlate-corridors              Run ST_Intersects corridor correlation
+radiancefleet correlate-corridors              Run corridor correlation
 radiancefleet score-alerts                     Score all unscored gap events
 radiancefleet rescore-all-alerts               Clear and recompute all risk scores
 
@@ -175,7 +175,7 @@ radiancefleet serve [--host] [--port] [--reload]
 
 ## Configuration
 
-- **config/corridors.yaml** -- 11 seed corridors: 4 Russian export routes, 5 STS zones, 2 dark zones (GPS jamming). Add custom corridors or adjust risk weights.
+- **config/corridors.yaml** -- 52 corridors: export routes, STS zones, dark zones (GPS jamming), and regional coverage areas. Add custom corridors or adjust risk weights.
 - **config/risk_scoring.yaml** -- all scoring weights, score bands, detection thresholds. See [docs/risk-scoring-config.md](docs/risk-scoring-config.md).
 
 Score bands (from `risk_scoring.yaml`):

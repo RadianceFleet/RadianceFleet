@@ -2,6 +2,13 @@
 
 Uses pybreaker to prevent cascading failures when external services are down.
 Each breaker trips after 5 consecutive failures and resets after 60 seconds.
+
+States:
+  - closed: healthy, requests pass through normally.
+  - open: failing, all requests short-circuit with CircuitBreakerError.
+  - half-open: testing, one request is allowed through to probe recovery.
+
+Exposed via GET /health/circuits. See get_circuit_states().
 """
 
 from __future__ import annotations
@@ -14,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 
 class LoggingListener(pybreaker.CircuitBreakerListener):
+    """Logs state transitions (e.g. closed->open) at WARNING level."""
+
     def state_change(self, cb, old_state, new_state):
         logger.warning("Circuit breaker '%s': %s -> %s", cb.name, old_state.name, new_state.name)
 
@@ -21,6 +30,7 @@ class LoggingListener(pybreaker.CircuitBreakerListener):
 _listener = LoggingListener()
 
 breakers = {
+    # -- AIS data sources: when open, ingestion falls back to other feeds --
     "gfw": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="gfw", listeners=[_listener]
     ),
@@ -36,14 +46,19 @@ breakers = {
     "kystverket": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="kystverket", listeners=[_listener]
     ),
+    "aishub": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="aishub", listeners=[_listener]
+    ),
+    # -- Vessel registry / enrichment: when open, enrichment fields go stale --
     "equasis": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="equasis", listeners=[_listener]
     ),
+    "datalastic": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="datalastic", listeners=[_listener]
+    ),
+    # -- Environmental / regulatory data --
     "noaa": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="noaa", listeners=[_listener]
-    ),
-    "aishub": pybreaker.CircuitBreaker(
-        fail_max=5, reset_timeout=60, name="aishub", listeners=[_listener]
     ),
     "dma": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="dma", listeners=[_listener]
@@ -54,6 +69,7 @@ breakers = {
     "copernicus": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="copernicus", listeners=[_listener]
     ),
+    # -- Satellite imagery providers: when open, order submission is blocked --
     "planet": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="planet", listeners=[_listener]
     ),
@@ -65,9 +81,6 @@ breakers = {
     ),
     "umbra": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="umbra", listeners=[_listener]
-    ),
-    "datalastic": pybreaker.CircuitBreaker(
-        fail_max=5, reset_timeout=60, name="datalastic", listeners=[_listener]
     ),
 }
 

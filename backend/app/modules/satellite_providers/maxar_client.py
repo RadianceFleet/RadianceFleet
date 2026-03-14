@@ -31,7 +31,7 @@ from app.utils.http_retry import retry_request
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.maxar.com"
-_TOKEN_URL = "https://account.maxar.com/auth/realms/mds/protocol/openid-connect/token"
+_TOKEN_URL = "https://account.maxar.com/auth/realms/mds/protocol/openid-connect/token"  # noqa: S105
 _DISCOVERY_URL = f"{_BASE_URL}/discovery/v2/search"
 _ORDERS_URL = f"{_BASE_URL}/ordering/v1"
 _TIMEOUT = 30.0
@@ -79,7 +79,7 @@ def _get_access_token(
         return key
 
     # Check cache
-    if not force_refresh and _token_cache.get("token"):
+    if not force_refresh and _token_cache.get("token"):  # noqa: SIM102
         if _time.monotonic() < _token_cache.get("expires_at", 0):
             return _token_cache["token"]
 

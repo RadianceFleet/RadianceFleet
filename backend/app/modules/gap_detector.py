@@ -70,6 +70,7 @@ def _is_in_anchorage_corridor(
 ) -> bool:
     """Check if a position falls within any anchorage_holding corridor."""
     from shapely.geometry import Point
+
     from app.models.base import CorridorTypeEnum
     from app.models.corridor import Corridor
     from app.modules.corridor_correlator import _geometry_wkt
@@ -93,7 +94,7 @@ def _is_in_anchorage_corridor(
             continue
         try:
             shape = load_geometry(wkt)
-        except Exception:
+        except Exception:  # noqa: S112
             continue
         if shape and shape.buffer(tolerance).contains(pt):
             return True
@@ -697,7 +698,7 @@ def run_spoofing_detection(
                 # Scale threshold by latitude to prevent false positives at high latitudes
                 lat_scale = max(math.cos(math.radians(mean_lat)), 0.3)
                 threshold = 0.02 / lat_scale  # Caps at ~0.067° at very high latitudes
-                if std_lat < threshold and std_lon_corrected < threshold:
+                if std_lat < threshold and std_lon_corrected < threshold:  # noqa: SIM102
                     if not _is_near_port(db, mean_lat, statistics.mean(lons)):
                         existing = (
                             db.query(SpoofingAnomaly)
@@ -739,7 +740,7 @@ def run_spoofing_detection(
             window = [p for p in points[i:] if p.timestamp_utc <= window_end]
             if len(window) >= 2:
                 status_values = [p.nav_status for p in window if p.nav_status is not None]
-                changes = sum(1 for a, b in zip(status_values, status_values[1:]) if a != b)
+                changes = sum(1 for a, b in zip(status_values, status_values[1:], strict=False) if a != b)
                 if changes >= 3:
                     existing_erratic = (
                         db.query(SpoofingAnomaly)
@@ -777,7 +778,7 @@ def run_spoofing_detection(
                         next_win = [p for p in points[next_i:] if p.timestamp_utc <= next_we]
                         if len(next_win) >= 2:
                             next_sv = [p.nav_status for p in next_win if p.nav_status is not None]
-                            next_ch = sum(1 for a, b in zip(next_sv, next_sv[1:]) if a != b)
+                            next_ch = sum(1 for a, b in zip(next_sv, next_sv[1:], strict=False) if a != b)
                             if next_ch >= 3:
                                 episode_end_idx = max(
                                     idx
@@ -872,7 +873,7 @@ def run_spoofing_detection(
                         run_hours = (
                             slow_run[-1].timestamp_utc - slow_run[0].timestamp_utc
                         ).total_seconds() / 3600
-                        if run_hours >= 12:
+                        if run_hours >= 12:  # noqa: SIM102
                             if not any(_is_near_port(db, p.lat, p.lon) for p in slow_run):
                                 existing = (
                                     db.query(SpoofingAnomaly)

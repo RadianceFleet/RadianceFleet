@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,7 +64,7 @@ class Settings(BaseSettings):
     BARENTSWATCH_ENABLED: bool = False
     BARENTSWATCH_CLIENT_ID: str = ""
     BARENTSWATCH_CLIENT_SECRET: str = ""
-    BARENTSWATCH_TOKEN_URL: str = "https://id.barentswatch.no/connect/token"
+    BARENTSWATCH_TOKEN_URL: str = "https://id.barentswatch.no/connect/token"  # noqa: S105
     BARENTSWATCH_API_URL: str = "https://live.ais.barentswatch.no/api"
     # NOAA historical AIS
     NOAA_BASE_URL: str = "https://coast.noaa.gov/htdata/CMSP/AISDataHandler"
@@ -227,6 +228,15 @@ class Settings(BaseSettings):
 
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
+
+    @model_validator(mode="after")
+    def _check_admin_auth_consistency(self) -> "Settings":
+        if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:
+            raise ValueError(
+                "ADMIN_JWT_SECRET must be set when ADMIN_PASSWORD is configured. "
+                "Generate one with: openssl rand -hex 32"
+            )
+        return self
 
 
 settings = Settings()

@@ -74,7 +74,7 @@ class TestNormalizeName:
         result = _normalize_name("\u0411\u0410\u041b\u0422\u0418\u0419\u0421\u041a")
         # unidecode transliterates Cyrillic to ASCII
         assert result.isascii()
-        assert "BALTIISK" in result or "BALTIYSK" in result or "BALTIISK" == result
+        assert "BALTIISK" in result or "BALTIYSK" in result or result == "BALTIISK"
 
     def test_normalize_name_accented(self):
         """Accented Latin characters should be normalized."""

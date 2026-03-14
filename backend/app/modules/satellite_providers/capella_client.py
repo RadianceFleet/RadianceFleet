@@ -54,7 +54,7 @@ def _get_access_token(
     Capella uses POST /token with the API key in the Authorization header.
     Token is cached until expiry minus a 30s safety margin.
     """
-    if not force_refresh and _token_cache.get("token"):
+    if not force_refresh and _token_cache.get("token"):  # noqa: SIM102
         if _time.monotonic() < _token_cache.get("expires_at", 0):
             return _token_cache["token"]
 

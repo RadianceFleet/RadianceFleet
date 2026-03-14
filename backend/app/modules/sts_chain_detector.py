@@ -140,10 +140,7 @@ def detect_sts_chains(
         intermediary_ids = chain[1:-1]
 
         # Score: +20 for 3-hop, +40 for 4+
-        if chain_length >= 4:
-            score = 40
-        else:
-            score = 20
+        score = 40 if chain_length >= 4 else 20
 
         # Build evidence
         hops = []

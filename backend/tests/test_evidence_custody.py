@@ -129,9 +129,7 @@ class TestExportSetsExportedBy:
                 q.filter.return_value.order_by.return_value.first.return_value = mock_card
             elif model_name == "Corridor":
                 q.filter.return_value.first.return_value = None
-            elif model_name == "AISPoint":
-                q.filter.return_value.order_by.return_value.first.return_value = None
-            elif model_name == "SatelliteCheck":
+            elif model_name == "AISPoint" or model_name == "SatelliteCheck":
                 q.filter.return_value.order_by.return_value.first.return_value = None
             else:
                 q.filter.return_value.first.return_value = None

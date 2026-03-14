@@ -302,7 +302,7 @@ def predict_next_destination(db: Session, vessel_id: int) -> dict | None:
                         result["deviation_score"] = 25
                         result["deviation_toward_sts_zone"] = corr.name
                         break
-                except Exception:
+                except Exception:  # noqa: S112
                     continue
         except Exception as exc:
             logger.warning("Route deviation check failed: %s", exc)

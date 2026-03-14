@@ -49,13 +49,12 @@ class TestLoiteringDetection:
         with patch(
             "app.modules.loitering_detector.run_loitering_detection",
             return_value={"loitering_events": 2},
+        ), patch(
+            "app.modules.loitering_detector.detect_laid_up_vessels",
+            return_value={"laid_up_updated": 1},
         ):
-            with patch(
-                "app.modules.loitering_detector.detect_laid_up_vessels",
-                return_value={"laid_up_updated": 1},
-            ):
-                resp = api_client.post("/api/v1/loitering/detect")
-                assert resp.status_code == 200
+            resp = api_client.post("/api/v1/loitering/detect")
+            assert resp.status_code == 200
 
     def test_get_loitering_events_empty(self, api_client, mock_db):
         resp = api_client.get("/api/v1/loitering/1")

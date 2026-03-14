@@ -745,13 +745,7 @@ class TestTimeline:
                 q.filter.return_value.all.return_value = [gap]
             elif model.__name__ == "SpoofingAnomaly":
                 q.filter.return_value.all.return_value = [spoof]
-            elif model.__name__ == "LoiteringEvent":
-                q.filter.return_value.all.return_value = []
-            elif model.__name__ == "StsTransferEvent":
-                q.filter.return_value.all.return_value = []
-            elif model.__name__ == "PortCall":
-                q.filter.return_value.all.return_value = []
-            elif model.__name__ == "MergeOperation":
+            elif model.__name__ == "LoiteringEvent" or model.__name__ == "StsTransferEvent" or model.__name__ == "PortCall" or model.__name__ == "MergeOperation":
                 q.filter.return_value.all.return_value = []
             else:
                 q.filter.return_value.all.return_value = []

@@ -65,7 +65,7 @@ def backup(
 
         try:
             with open(out_path, "wb") as f:
-                result = subprocess.run(pg_args, stdout=f, stderr=subprocess.PIPE, env=env)
+                result = subprocess.run(pg_args, stdout=f, stderr=subprocess.PIPE, env=env)  # noqa: S603
             if result.returncode != 0:
                 typer.echo(f"ERROR: pg_dump failed: {result.stderr.decode()}", err=True)
                 raise typer.Exit(1)
@@ -131,7 +131,7 @@ def restore(
         pg_args.extend(["-d", parsed.path.lstrip("/")])
         pg_args.append(backup_path)
 
-        result = subprocess.run(pg_args, stderr=subprocess.PIPE, env=env)
+        result = subprocess.run(pg_args, stderr=subprocess.PIPE, env=env)  # noqa: S603
         if result.returncode != 0:
             stderr = result.stderr.decode()
             # pg_restore returns non-zero on warnings too

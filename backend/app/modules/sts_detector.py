@@ -80,9 +80,7 @@ def _is_bunkering_vessel(db: Session, vessel_id: int) -> bool:
     if not exclusions:
         return False
     vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
-    if vessel and vessel.mmsi in exclusions:
-        return True
-    return False
+    return bool(vessel and vessel.mmsi in exclusions)
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -306,10 +304,7 @@ def _in_any_anchorage_exclusion(
     exclusion_bboxes: list[tuple[float, float, float, float]],
 ) -> bool:
     """Return True if the position falls within any anchorage exclusion zone."""
-    for bbox in exclusion_bboxes:
-        if _in_bbox(lat, lon, bbox, tolerance=0.0):
-            return True
-    return False
+    return any(_in_bbox(lat, lon, bbox, tolerance=0.0) for bbox in exclusion_bboxes)
 
 
 # ── Bucketing helpers ─────────────────────────────────────────────────────────
@@ -453,7 +448,7 @@ def _phase_a(
 
     for bk in sorted(bucket_grid.keys()):
         grid = bucket_grid[bk]
-        for cell, vessel_list in grid.items():
+        for _cell, vessel_list in grid.items():
             if len(vessel_list) < 2:
                 continue
             # Check all pairs in this grid cell.
@@ -554,7 +549,7 @@ def _phase_a(
                             run_start = idx
                             continue
                     except Exception:
-                        logger.warning("Port containment check failed, proceeding with STS detection", exc_info=True)
+                        logger.warning("Port proximity check failed", exc_info=True)
 
                     # Bunkering vessel exclusion: skip if either vessel is a known bunkering vessel
                     if _is_bunkering_vessel(db, vid1) or _is_bunkering_vessel(db, vid2):
@@ -894,10 +889,10 @@ def _phase_c_dark_dark(
 
 def _gap_in_bbox(gap, bbox: tuple[float, float, float, float]) -> bool:
     """Check if a gap's off or on position falls within a bounding box."""
-    if gap.gap_off_lat is not None and gap.gap_off_lon is not None:
+    if gap.gap_off_lat is not None and gap.gap_off_lon is not None:  # noqa: SIM102
         if _in_bbox(gap.gap_off_lat, gap.gap_off_lon, bbox):
             return True
-    if gap.gap_on_lat is not None and gap.gap_on_lon is not None:
+    if gap.gap_on_lat is not None and gap.gap_on_lon is not None:  # noqa: SIM102
         if _in_bbox(gap.gap_on_lat, gap.gap_on_lon, bbox):
             return True
     return False
@@ -938,9 +933,7 @@ def _vessel_has_risk_factor(vessel) -> bool:
             return True
     if getattr(vessel, "psc_detained_last_12m", False):
         return True
-    if getattr(vessel, "vessel_laid_up_in_sts_zone", False):
-        return True
-    return False
+    return bool(getattr(vessel, "vessel_laid_up_in_sts_zone", False))
 
 
 def _mean_position_lat(gap_a, gap_b) -> float | None:

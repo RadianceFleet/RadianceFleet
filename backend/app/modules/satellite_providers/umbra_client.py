@@ -33,7 +33,7 @@ from app.utils.http_retry import retry_request
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://api.canopy.umbra.space"
-_TOKEN_URL = "https://auth.canopy.umbra.space/oauth/token"
+_TOKEN_URL = "https://auth.canopy.umbra.space/oauth/token"  # noqa: S105
 _STAC_URL = f"{_BASE_URL}/v2/stac/search"
 _TASKING_URL = f"{_BASE_URL}/tasking/tasks"
 _TIMEOUT = 30.0
@@ -59,7 +59,7 @@ def _get_access_token(
     Umbra enforces a strict 50 token requests / 24h limit,
     so we cache aggressively.
     """
-    if not force_refresh and _token_cache.get("token"):
+    if not force_refresh and _token_cache.get("token"):  # noqa: SIM102
         if _time.monotonic() < _token_cache.get("expires_at", 0):
             return _token_cache["token"]
 

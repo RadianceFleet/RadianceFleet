@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 import anyio
@@ -78,18 +79,14 @@ async def sse_alerts(
     # Parse Last-Event-ID for resume
     last_id = 0
     if last_event_id:
-        try:
+        with contextlib.suppress(ValueError):
             last_id = int(last_event_id)
-        except ValueError:
-            pass
 
     # Also check header (fetch-event-source sends it as header)
     header_last_id = request.headers.get("Last-Event-ID")
     if header_last_id and not last_event_id:
-        try:
+        with contextlib.suppress(ValueError):
             last_id = int(header_last_id)
-        except ValueError:
-            pass
 
     async def event_generator():
         global _active_connections
@@ -106,7 +103,7 @@ async def sse_alerts(
 
                 # Query for new alerts in a thread (don't block event loop)
                 alerts = await anyio.to_thread.run_sync(
-                    lambda: _query_new_alerts(last_id, min_score)
+                    lambda _lid=last_id: _query_new_alerts(_lid, min_score)
                 )
 
                 for alert in alerts:

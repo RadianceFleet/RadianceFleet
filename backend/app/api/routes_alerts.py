@@ -86,10 +86,7 @@ def list_alerts(
         "duration_minutes": AISGapEvent.duration_minutes,
     }
     sort_col = sort_col_map.get(sort_by, AISGapEvent.risk_score)
-    if sort_order == "asc":
-        q = q.order_by(sort_col.asc())
-    else:
-        q = q.order_by(sort_col.desc())
+    q = q.order_by(sort_col.asc()) if sort_order == "asc" else q.order_by(sort_col.desc())
 
     total = q.count()
     results = q.offset(skip).limit(limit).all()
@@ -847,7 +844,7 @@ def export_evidence(
         try:
             pdf_bytes = export_evidence_pdf(alert_id, db)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         _audit_log(
             db,
             "evidence_export",

@@ -1,162 +1,197 @@
-import { useState } from 'react'
-import 'leaflet/dist/leaflet.css'
-import { MapContainer, Marker, Popup } from 'react-leaflet'
-import { useAlertMapPoints } from '../hooks/useAlerts'
-import { MapLayerControl } from '../components/map/LayerControl'
-import { CorridorZoneOverlay } from '../components/map/CorridorZoneOverlay'
-import { LoiteringOverlay } from '../components/map/LoiteringOverlay'
-import { DarkVesselOverlay } from '../components/map/DarkVesselOverlay'
-import { CoverageOverlay } from '../components/map/CoverageOverlay'
-import { VesselTrackOverlay } from '../components/map/VesselTrackOverlay'
-import { AlertHeatmapOverlay } from '../components/map/AlertHeatmapOverlay'
-import { Link } from 'react-router-dom'
-import { DataFreshnessBanner } from '../components/DataFreshnessBanner'
-import { useDarkVessels } from '../hooks/useDarkVessels'
-import L from 'leaflet'
-import { Spinner } from '../components/ui/Spinner'
+import { useState } from "react";
+import "leaflet/dist/leaflet.css";
+import { MapContainer, Marker, Popup } from "react-leaflet";
+import { useAlertMapPoints } from "../hooks/useAlerts";
+import { MapLayerControl } from "../components/map/LayerControl";
+import { CorridorZoneOverlay } from "../components/map/CorridorZoneOverlay";
+import { LoiteringOverlay } from "../components/map/LoiteringOverlay";
+import { DarkVesselOverlay } from "../components/map/DarkVesselOverlay";
+import { CoverageOverlay } from "../components/map/CoverageOverlay";
+import { VesselTrackOverlay } from "../components/map/VesselTrackOverlay";
+import { AlertHeatmapOverlay } from "../components/map/AlertHeatmapOverlay";
+import { Link } from "react-router-dom";
+import { DataFreshnessBanner } from "../components/DataFreshnessBanner";
+import { useDarkVessels } from "../hooks/useDarkVessels";
+import L from "leaflet";
+import { Spinner } from "../components/ui/Spinner";
 
 function scoreIcon(score: number) {
   const hex =
-    score >= 76 ? '#dc2626' :
-    score >= 51 ? '#ea580c' :
-    score >= 21 ? '#d97706' :
-    '#16a34a'
+    score >= 76 ? "#dc2626" : score >= 51 ? "#ea580c" : score >= 21 ? "#d97706" : "#16a34a";
   return L.divIcon({
-    className: '',
+    className: "",
     html: `<div style="width:14px;height:14px;background:${hex};border-radius:50%;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.5)"></div>`,
     iconAnchor: [7, 7],
-  })
+  });
 }
 
 export function MapOverviewPage() {
-  const { data, isLoading } = useAlertMapPoints()
-  const [showCorridors, setShowCorridors] = useState(true)
-  const [showLoitering, setShowLoitering] = useState(false)
-  const [showDarkVessels, setShowDarkVessels] = useState(false)
-  const [showCoverage, setShowCoverage] = useState(false)
-  const [showHeatmap, setShowHeatmap] = useState(false)
-  const [selectedVesselId, setSelectedVesselId] = useState<number | null>(null)
-  const [selectedVesselName, setSelectedVesselName] = useState<string | undefined>(undefined)
+  const { data, isLoading } = useAlertMapPoints();
+  const [showCorridors, setShowCorridors] = useState(true);
+  const [showLoitering, setShowLoitering] = useState(false);
+  const [showDarkVessels, setShowDarkVessels] = useState(false);
+  const [showCoverage, setShowCoverage] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [selectedVesselId, setSelectedVesselId] = useState<number | null>(null);
+  const [selectedVesselName, setSelectedVesselName] = useState<string | undefined>(undefined);
 
-  const { data: darkVesselData } = useDarkVessels({ limit: 1 })
-  const darkVesselCount = darkVesselData?.total ?? 0
+  const { data: darkVesselData } = useDarkVessels({ limit: 1 });
+  const darkVesselCount = darkVesselData?.total ?? 0;
 
-  const alerts = (data?.points ?? []).filter(a => a.last_lat != null && a.last_lon != null)
+  const alerts = (data?.points ?? []).filter((a) => a.last_lat != null && a.last_lon != null);
 
   return (
     <>
-    <DataFreshnessBanner />
-    <div style={{ height: 'calc(100vh - 120px)', borderRadius: 'var(--radius-md)', overflow: 'hidden', position: 'relative' }}>
-      {isLoading && <Spinner text="Loading map data…" />}
-      <div style={{
-        position: 'absolute', top: 10, right: 10, zIndex: 1000,
-        background: 'var(--bg-card)', border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)', padding: '6px 10px', fontSize: 12,
-      }}>
-        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block' }}>
-          <input
-            type="checkbox"
-            checked={showCorridors}
-            onChange={e => setShowCorridors(e.target.checked)}
-            style={{ marginRight: 6 }}
-          />
-          Corridors
-        </label>
-        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
-          <input
-            type="checkbox"
-            checked={showLoitering}
-            onChange={e => setShowLoitering(e.target.checked)}
-            style={{ marginRight: 6 }}
-          />
-          Loitering Zones
-        </label>
-        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
-          <input
-            type="checkbox"
-            checked={showDarkVessels}
-            onChange={e => setShowDarkVessels(e.target.checked)}
-            style={{ marginRight: 6 }}
-          />
-          Dark Vessels ({darkVesselCount})
-        </label>
-        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
-          <input
-            type="checkbox"
-            checked={showCoverage}
-            onChange={e => setShowCoverage(e.target.checked)}
-            style={{ marginRight: 6 }}
-          />
-          Coverage Quality
-        </label>
-        <label style={{ cursor: 'pointer', color: 'var(--text-body)', display: 'block', marginTop: 4 }}>
-          <input
-            type="checkbox"
-            checked={showHeatmap}
-            onChange={e => setShowHeatmap(e.target.checked)}
-            style={{ marginRight: 6 }}
-          />
-          Alert Heatmap
-        </label>
-        {selectedVesselId && (
-          <button
-            onClick={() => { setSelectedVesselId(null); setSelectedVesselName(undefined) }}
-            style={{
-              display: 'block', marginTop: 6, fontSize: 11, cursor: 'pointer',
-              background: '#3b82f6', color: '#fff', border: 'none',
-              borderRadius: 4, padding: '2px 8px',
-            }}
-          >
-            Hide Track
-          </button>
-        )}
-      </div>
-      <MapContainer
-        center={[40, 25]}
-        zoom={4}
-        style={{ height: '100%', width: '100%' }}
-        attributionControl={false}
+      <DataFreshnessBanner />
+      <div
+        style={{
+          height: "calc(100vh - 120px)",
+          borderRadius: "var(--radius-md)",
+          overflow: "hidden",
+          position: "relative",
+        }}
       >
-        <MapLayerControl />
-        {showCorridors && <CorridorZoneOverlay />}
-        {showLoitering && <LoiteringOverlay />}
-        {showDarkVessels && <DarkVesselOverlay />}
-        {showCoverage && <CoverageOverlay />}
-        {showHeatmap && <AlertHeatmapOverlay />}
-        {selectedVesselId && <VesselTrackOverlay vesselId={selectedVesselId} vesselName={selectedVesselName} />}
-
-        {alerts.map(a => (
-          <Marker
-            key={a.gap_event_id}
-            position={[a.last_lat!, a.last_lon!]}
-            icon={scoreIcon(a.risk_score)}
+        {isLoading && <Spinner text="Loading map data…" />}
+        <div
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            zIndex: 1000,
+            background: "var(--bg-card)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius)",
+            padding: "6px 10px",
+            fontSize: 12,
+          }}
+        >
+          <label style={{ cursor: "pointer", color: "var(--text-body)", display: "block" }}>
+            <input
+              type="checkbox"
+              checked={showCorridors}
+              onChange={(e) => setShowCorridors(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            Corridors
+          </label>
+          <label
+            style={{ cursor: "pointer", color: "var(--text-body)", display: "block", marginTop: 4 }}
           >
-            <Popup>
-              <div style={{ fontSize: 13, fontFamily: 'monospace' }}>
-                <b>Alert #{a.gap_event_id}</b><br />
-                Score: <b>{a.risk_score}</b><br />
-                {a.vessel_name ?? 'Unknown vessel'}<br />
-                {a.gap_start_utc.slice(0, 16).replace('T', ' ')} UTC<br />
-                Duration: {(a.duration_minutes / 60).toFixed(1)}h<br />
-                <Link to={`/alerts/${a.gap_event_id}`}>View details</Link>
-                {' | '}
-                <a
-                  href="#"
-                  onClick={e => {
-                    e.preventDefault()
-                    setSelectedVesselId(a.vessel_id)
-                    setSelectedVesselName(a.vessel_name ?? undefined)
-                  }}
-                  style={{ color: '#3b82f6' }}
-                >
-                  Show Track
-                </a>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
-    </div>
+            <input
+              type="checkbox"
+              checked={showLoitering}
+              onChange={(e) => setShowLoitering(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            Loitering Zones
+          </label>
+          <label
+            style={{ cursor: "pointer", color: "var(--text-body)", display: "block", marginTop: 4 }}
+          >
+            <input
+              type="checkbox"
+              checked={showDarkVessels}
+              onChange={(e) => setShowDarkVessels(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            Dark Vessels ({darkVesselCount})
+          </label>
+          <label
+            style={{ cursor: "pointer", color: "var(--text-body)", display: "block", marginTop: 4 }}
+          >
+            <input
+              type="checkbox"
+              checked={showCoverage}
+              onChange={(e) => setShowCoverage(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            Coverage Quality
+          </label>
+          <label
+            style={{ cursor: "pointer", color: "var(--text-body)", display: "block", marginTop: 4 }}
+          >
+            <input
+              type="checkbox"
+              checked={showHeatmap}
+              onChange={(e) => setShowHeatmap(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            Alert Heatmap
+          </label>
+          {selectedVesselId && (
+            <button
+              onClick={() => {
+                setSelectedVesselId(null);
+                setSelectedVesselName(undefined);
+              }}
+              style={{
+                display: "block",
+                marginTop: 6,
+                fontSize: 11,
+                cursor: "pointer",
+                background: "#3b82f6",
+                color: "#fff",
+                border: "none",
+                borderRadius: 4,
+                padding: "2px 8px",
+              }}
+            >
+              Hide Track
+            </button>
+          )}
+        </div>
+        <MapContainer
+          center={[40, 25]}
+          zoom={4}
+          style={{ height: "100%", width: "100%" }}
+          attributionControl={false}
+        >
+          <MapLayerControl />
+          {showCorridors && <CorridorZoneOverlay />}
+          {showLoitering && <LoiteringOverlay />}
+          {showDarkVessels && <DarkVesselOverlay />}
+          {showCoverage && <CoverageOverlay />}
+          {showHeatmap && <AlertHeatmapOverlay />}
+          {selectedVesselId && (
+            <VesselTrackOverlay vesselId={selectedVesselId} vesselName={selectedVesselName} />
+          )}
+
+          {alerts.map((a) => (
+            <Marker
+              key={a.gap_event_id}
+              position={[a.last_lat!, a.last_lon!]}
+              icon={scoreIcon(a.risk_score)}
+            >
+              <Popup>
+                <div style={{ fontSize: 13, fontFamily: "monospace" }}>
+                  <b>Alert #{a.gap_event_id}</b>
+                  <br />
+                  Score: <b>{a.risk_score}</b>
+                  <br />
+                  {a.vessel_name ?? "Unknown vessel"}
+                  <br />
+                  {a.gap_start_utc.slice(0, 16).replace("T", " ")} UTC
+                  <br />
+                  Duration: {(a.duration_minutes / 60).toFixed(1)}h<br />
+                  <Link to={`/alerts/${a.gap_event_id}`}>View details</Link>
+                  {" | "}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setSelectedVesselId(a.vessel_id);
+                      setSelectedVesselName(a.vessel_name ?? undefined);
+                    }}
+                    style={{ color: "#3b82f6" }}
+                  >
+                    Show Track
+                  </a>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
+        </MapContainer>
+      </div>
     </>
-  )
+  );
 }

@@ -26,10 +26,12 @@ Then open http://127.0.0.1:8000/docs in a browser.
 
 ## Authentication
 
-Two authentication mechanisms are available:
+RadianceFleet supports dual authentication. Endpoints check both mechanisms and accept whichever is present:
 
-1. **API key** (read-only gate): Set `RADIANCEFLEET_API_KEY` to require `X-API-Key` header on all requests.
-2. **JWT analyst auth** (write endpoint protection): All alert write endpoints require a Bearer token obtained via `POST /admin/login`. Tokens carry `analyst_id`, `username`, and `role` claims. Roles: `analyst`, `senior_analyst`, `admin`.
+1. **Public API key** (`X-API-Key` header): Admin-provisioned read-only keys created via `POST /admin/api-keys`. Suitable for external integrations, dashboards, and embeddable widgets. Each key has a `read_only` scope and a `30/minute` rate limit.
+2. **JWT Bearer token** (`Authorization: Bearer <token>`): Obtained via `POST /admin/login`. Tokens carry `analyst_id`, `username`, and `role` claims. Roles: `analyst`, `senior_analyst`, `admin`. Required for all write operations (verdicts, assignments, locks, admin CRUD).
+
+When `RADIANCEFLEET_API_KEY` is set in the environment, it acts as a global gate requiring a matching `X-API-Key` header on all requests (legacy mode).
 
 Login:
 
@@ -37,13 +39,19 @@ Login:
 curl -X POST "http://localhost:8000/api/v1/admin/login" \
   -H "Content-Type: application/json" \
   -d '{"username": "alice", "password": "secret"}'
-# Returns: {"access_token": "eyJ...", "analyst": {...}}
+# Returns: {"token": "eyJ...", "analyst": {...}}
 ```
 
 Include the token on subsequent requests:
 
 ```bash
 curl -H "Authorization: Bearer eyJ..." "http://localhost:8000/api/v1/alerts/my"
+```
+
+Or use a public API key for read-only access:
+
+```bash
+curl -H "X-API-Key: rf_abc123..." "http://localhost:8000/api/v1/alerts?min_score=76"
 ```
 
 ---
@@ -131,6 +139,20 @@ All paths below are relative to `/api/v1/`.
 | `POST` | `/evidence-cards/{card_id}/approve` | Approve an evidence card (senior_analyst or admin only) |
 | `POST` | `/evidence-cards/{card_id}/reject` | Reject an evidence card with notes (senior_analyst or admin only) |
 
+### Saved Filters
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/alerts/saved-filters` | List saved filters for the current analyst | JWT |
+| `POST` | `/alerts/saved-filters` | Save a filter configuration (body: `{name, filter_json, is_default}`) | JWT |
+| `DELETE` | `/alerts/saved-filters/{filter_id}` | Delete a saved filter (own filters only) | JWT |
+
+### Alert Trends
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/alerts/trends` | Time-bucketed alert counts for trend charts; query param `period` (`7d`, `30d`, `90d`) | No |
+
 ### Satellite Orders
 
 | Method | Path | Description |
@@ -215,6 +237,35 @@ Vessel hunt endpoints implement FR9: given a gap event, compute a drift ellipse 
 | `PATCH` | `/admin/analysts/{analyst_id}` | Update analyst role, display name, or active status (admin only) |
 | `POST` | `/admin/analysts/{analyst_id}/reset-password` | Reset an analyst's password (admin only) |
 | `GET` | `/audit-log` | View the analyst action audit trail (see docs/METHODOLOGY.md for audit requirements); filterable by `action` and `entity_type`; paginated |
+
+### API Keys
+
+Manage public read-only API keys for external integrations. All endpoints require admin role.
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `POST` | `/admin/api-keys` | Create a new read-only API key; returns the raw key once (body: `{name}`) | Admin |
+| `GET` | `/admin/api-keys` | List all API keys (hashes excluded) | Admin |
+| `DELETE` | `/admin/api-keys/{key_id}` | Deactivate an API key (soft delete) | Admin |
+
+### Webhooks
+
+Register webhook endpoints to receive HMAC-signed event notifications (3x retry on failure). All endpoints require admin role.
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `POST` | `/admin/webhooks` | Register a webhook endpoint (body: `{url, events, secret}`) | Admin |
+| `GET` | `/admin/webhooks` | List all registered webhooks (secrets excluded) | Admin |
+| `DELETE` | `/admin/webhooks/{webhook_id}` | Deactivate a webhook (soft delete) | Admin |
+| `POST` | `/admin/webhooks/{webhook_id}/test` | Send a test event to a webhook URL | Admin |
+
+### SSE (Server-Sent Events)
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/sse/alerts` | Stream new alerts in real time via SSE; query params: `min_score` (default 51), `Last-Event-ID` for reconnection resume | JWT |
+
+The SSE stream emits `alert` events with JSON payloads (`gap_event_id`, `vessel_id`, `risk_score`, `gap_start_utc`, `duration_minutes`, `status`) and periodic `ping` keepalives. Max 20 concurrent connections (configurable via `SSE_MAX_CONNECTIONS`). Returns 503 when the limit is reached.
 
 ### System
 

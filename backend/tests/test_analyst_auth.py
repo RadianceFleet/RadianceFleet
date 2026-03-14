@@ -58,9 +58,8 @@ def real_client(_db_engine, _real_db):
             db.close()
 
     app.dependency_overrides[get_db] = override
-    with patch("app.database.init_db"):
-        with TestClient(app) as c:
-            yield c
+    with patch("app.database.init_db"), TestClient(app) as c:
+        yield c
     app.dependency_overrides.clear()
 
 

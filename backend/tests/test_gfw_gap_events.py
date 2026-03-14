@@ -310,14 +310,12 @@ class TestGapAnchorPoints:
             # all other queries (AISPoint dedup) fall through to real session
             return q
 
-        with patch.object(db, "query", side_effect=patched_query):
-            with patch(
-                "app.modules.gfw_client.search_vessel",
-                return_value=[{"gfw_id": "gfw-123", "mmsi": vessel.mmsi}],
-            ):
-                with patch("app.modules.gfw_client.get_vessel_events", return_value=events):
-                    with patch("time.sleep"):
-                        result = import_gfw_gap_events(db, "2025-12-01", "2025-12-31", token="test")
+        with patch.object(db, "query", side_effect=patched_query), patch(
+            "app.modules.gfw_client.search_vessel",
+            return_value=[{"gfw_id": "gfw-123", "mmsi": vessel.mmsi}],
+        ), patch("app.modules.gfw_client.get_vessel_events", return_value=events):
+            with patch("time.sleep"):
+                result = import_gfw_gap_events(db, "2025-12-01", "2025-12-31", token="test")
         return result
 
     # ------------------------------------------------------------------

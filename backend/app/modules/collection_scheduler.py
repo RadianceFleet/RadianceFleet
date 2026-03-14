@@ -11,6 +11,7 @@ Design decisions:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import threading
@@ -134,17 +135,13 @@ class CollectionScheduler:
                     if run:
                         self._fail_collection_run(db, run, str(e))
                 except Exception:
-                    logger.debug("Failed to mark collection run as failed for %s", source_name, exc_info=True)
+                    logger.debug("Failed to mark collection run as failed", exc_info=True)
                 # Persist error status
-                try:
+                with contextlib.suppress(Exception):
                     self._update_ingestion_status(db, source_name, error=str(e))
-                except Exception:
-                    logger.debug("Failed to update ingestion status for %s", source_name, exc_info=True)
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     db.close()
-                except Exception:
-                    pass
 
             # Retention pruning
             self._prune_old_points(source_name)
@@ -197,7 +194,7 @@ class CollectionScheduler:
             run.details_json = json.dumps({"error": error_msg})
             db.commit()
         except Exception:
-            logger.debug("Failed to write collection run status", exc_info=True)
+            logger.debug("Failed to persist collection run failure", exc_info=True)
 
     def _update_ingestion_status(
         self, db: Session, source_name: str, result: dict | None = None, error: str | None = None

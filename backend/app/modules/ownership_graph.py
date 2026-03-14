@@ -177,7 +177,7 @@ def build_ownership_graph(db: Session) -> dict:
     now = datetime.now(tz=None)  # naive UTC — matches VesselOwner.verified_at
     window_start = now - timedelta(days=365)
 
-    for vessel_id, vo_list in vessel_owners.items():
+    for _vessel_id, vo_list in vessel_owners.items():
         # Count owners with verified_at within the last 12 months
         # (ownership changes are proxied by verified_at or creation time)
         recent_changes = 0
@@ -199,7 +199,7 @@ def build_ownership_graph(db: Session) -> dict:
     shared_address_count = 0
     if sanctioned_countries:
         for o in owners:
-            if not o.is_sanctioned and o.country:
+            if not o.is_sanctioned and o.country:  # noqa: SIM102
                 if o.country.strip().lower() in sanctioned_countries:
                     shared_address_count += 1
     stats["shared_address_sanctioned"] = shared_address_count

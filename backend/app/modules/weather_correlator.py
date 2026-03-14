@@ -59,8 +59,8 @@ def _fetch_open_meteo(lat_grid: float, lon_grid: float, date_str: str) -> dict[s
         f"&hourly=wind_speed_10m,wind_gusts_10m"
     )
     try:
-        req = Request(url, headers={"User-Agent": "RadianceFleet/1.0"})
-        with urlopen(req, timeout=10) as resp:
+        req = Request(url, headers={"User-Agent": "RadianceFleet/1.0"})  # noqa: S310
+        with urlopen(req, timeout=10) as resp:  # noqa: S310
             data = _json.loads(resp.read().decode("utf-8"))
 
         hourly = data.get("hourly", {})
@@ -170,7 +170,7 @@ def compute_weather_deduction(weather_data: dict[str, Any]) -> tuple[int, str]:
     effective_wind = None
     if isinstance(wind_speed, (int, float)):
         effective_wind = wind_speed
-    if isinstance(wind_gust, (int, float)):
+    if isinstance(wind_gust, (int, float)):  # noqa: SIM102
         if effective_wind is None or wind_gust > effective_wind:
             effective_wind = wind_gust
 

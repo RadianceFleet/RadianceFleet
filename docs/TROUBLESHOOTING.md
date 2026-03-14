@@ -235,7 +235,7 @@ imagery verification step.
 
 ### "Corridor correlation is not matching vessels that clearly passed through"
 
-The corridor correlator uses `ST_Intersects` on the trajectory between
+The corridor correlator uses Shapely bounding-box checks on the trajectory between
 consecutive AIS positions — not on the gap endpoints alone. If a vessel has
 very sparse AIS positions (e.g. one position before and one position after
 transiting a corridor), the interpolated straight-line trajectory may miss a

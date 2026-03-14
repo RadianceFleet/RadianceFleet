@@ -11,6 +11,7 @@ ETag/Last-Modified headers are cached to skip redundant downloads.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from datetime import date
@@ -79,9 +80,7 @@ def _validate_ofac_csv(path: Path) -> bool:
             return True
         # Headerless format: first field is a numeric ent_num
         first_field = first_line.split(",", 1)[0].strip().strip('"')
-        if first_field.isdigit():
-            return True
-        return False
+        return bool(first_field.isdigit())
     except Exception:
         return False
 
@@ -150,7 +149,7 @@ def _download_file(
 
     for attempt in range(1 + len(_RETRY_DELAYS)):
         try:
-            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
+            with httpx.Client(timeout=timeout, follow_redirects=True) as client:  # noqa: SIM117
                 with client.stream("GET", url, headers=headers) as response:
                     if response.status_code == 304:
                         logger.info("%s: not modified (304), skipping download", source_key)
@@ -161,10 +160,8 @@ def _download_file(
                         if response.status_code == 429:
                             retry_after = response.headers.get("Retry-After")
                             if retry_after:
-                                try:
+                                with contextlib.suppress(ValueError, TypeError):
                                     delay = max(delay, float(retry_after))
-                                except (ValueError, TypeError):
-                                    pass
                         logger.warning(
                             "%s: HTTP %d — retrying in %.0fs",
                             source_key,
@@ -226,10 +223,8 @@ def _download_file(
 
 
 def _cleanup_tmp(tmp_path: Path) -> None:
-    try:
+    with contextlib.suppress(OSError):
         tmp_path.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def _host(url: str) -> str:

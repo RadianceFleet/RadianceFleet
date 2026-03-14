@@ -333,7 +333,7 @@ def _score_candidate(
             return 0, reasons
 
     # Historical IMO cross-reference
-    if "same_imo" not in reasons and "imo_mismatch" not in reasons:
+    if "same_imo" not in reasons and "imo_mismatch" not in reasons:  # noqa: SIM102
         if settings.HISTORY_CROSS_REFERENCE_ENABLED:
             from app.utils.vessel_identity import validate_imo_checksum as _validate_imo_hist
 
@@ -362,7 +362,7 @@ def _score_candidate(
         elif _dark_tanker_by_type and _new_tanker_by_type:
             score += 10
             reasons["same_vessel_type"] = {"points": 10, "note": "both_tanker_category"}
-    elif not dark_v.vessel_type and not new_v.vessel_type:
+    elif not dark_v.vessel_type and not new_v.vessel_type:  # noqa: SIM102
         if is_tanker_type(dark_v) and is_tanker_type(new_v):
             score += 5
             reasons["same_vessel_type"] = {"points": 5, "note": "dwt_inferred_tanker"}
@@ -375,7 +375,7 @@ def _score_candidate(
             reasons["similar_dwt"] = {"points": 10, "ratio": round(ratio, 3)}
 
     # Similar year_built (within ±3)
-    if dark_v.year_built and new_v.year_built:
+    if dark_v.year_built and new_v.year_built:  # noqa: SIM102
         if abs(dark_v.year_built - new_v.year_built) <= 3:
             score += 5
             reasons["similar_year_built"] = {"points": 5}
@@ -481,7 +481,7 @@ def _score_candidate(
                     score += 10
                     reasons["shared_pi_club"] = {"points": 10, "pi_club": _dark_pi}
         except Exception:
-            logger.warning("PI club comparison skipped due to VesselOwner query failure", exc_info=True)
+            logger.warning("PI club comparison failed", exc_info=True)
 
     # Fingerprint similarity bonus: behavioral fingerprint matching
     if settings.FINGERPRINT_ENABLED:
@@ -493,7 +493,7 @@ def _score_candidate(
                 score = max(0, score + fp_bonus)
                 reasons["fingerprint_match"] = {"points": fp_bonus}
         except Exception:
-            logger.warning("Fingerprint similarity check skipped", exc_info=True)
+            logger.warning("Fingerprint similarity check failed", exc_info=True)
 
     # --- Negative signals (anti-merge evidence) ---
 
@@ -1041,7 +1041,7 @@ def detect_merge_chains(db: Session) -> dict:
         has_scrapped_imo = False
         for vid in ordered_ids:
             v = db.query(Vessel).get(vid)
-            if v and v.imo:
+            if v and v.imo:  # noqa: SIM102
                 if not validate_imo_checksum(v.imo):
                     has_scrapped_imo = True
                     break

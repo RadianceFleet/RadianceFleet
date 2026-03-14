@@ -1,43 +1,43 @@
-import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
-import { useVesselSearch } from '../hooks/useVessels'
-import { Card } from '../components/ui/Card'
-import { Spinner } from '../components/ui/Spinner'
-import { ScoreBadge } from '../components/ui/ScoreBadge'
-import { EmptyState } from '../components/ui/EmptyState'
+import { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
+import { useVesselSearch } from "../hooks/useVessels";
+import { Card } from "../components/ui/Card";
+import { Spinner } from "../components/ui/Spinner";
+import { ScoreBadge } from "../components/ui/ScoreBadge";
+import { EmptyState } from "../components/ui/EmptyState";
 
-const cellStyle: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.8125rem' }
+const cellStyle: React.CSSProperties = { padding: "0.5rem 0.75rem", fontSize: "0.8125rem" };
 const headStyle: React.CSSProperties = {
   ...cellStyle,
   fontWeight: 600,
-  color: 'var(--text-muted)',
-  textAlign: 'left' as const,
-  borderBottom: '1px solid var(--border)',
-}
+  color: "var(--text-muted)",
+  textAlign: "left" as const,
+  borderBottom: "1px solid var(--border)",
+};
 
 function useDebouncedValue(value: string, delayMs: number) {
-  const [debounced, setDebounced] = useState(value)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const [debounced, setDebounced] = useState(value);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    timerRef.current = setTimeout(() => setDebounced(value), delayMs)
-    return () => clearTimeout(timerRef.current)
-  }, [value, delayMs])
+    timerRef.current = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timerRef.current);
+  }, [value, delayMs]);
 
-  return debounced
+  return debounced;
 }
 
 export function VesselSearchPage() {
-  const [search, setSearch] = useState('')
-  const [flag, setFlag] = useState('')
-  const [vesselType, setVesselType] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(false)
-  const [minDwt, setMinDwt] = useState('')
-  const [maxDwt, setMaxDwt] = useState('')
-  const [minYearBuilt, setMinYearBuilt] = useState('')
-  const [watchlistOnly, setWatchlistOnly] = useState(false)
+  const [search, setSearch] = useState("");
+  const [flag, setFlag] = useState("");
+  const [vesselType, setVesselType] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [minDwt, setMinDwt] = useState("");
+  const [maxDwt, setMaxDwt] = useState("");
+  const [minYearBuilt, setMinYearBuilt] = useState("");
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
 
-  const debouncedSearch = useDebouncedValue(search, 300)
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const filters = {
     search: debouncedSearch || undefined,
@@ -48,90 +48,163 @@ export function VesselSearchPage() {
     min_year_built: minYearBuilt || undefined,
     watchlist_only: watchlistOnly || undefined,
     limit: 20,
-  }
+  };
 
-  const { data, isLoading, error } = useVesselSearch(filters)
-  const vessels = data?.items
+  const { data, isLoading, error } = useVesselSearch(filters);
+  const vessels = data?.items;
 
-  const hasFilters = !!(debouncedSearch || flag || vesselType || minDwt || maxDwt || minYearBuilt || watchlistOnly)
+  const hasFilters = !!(
+    debouncedSearch ||
+    flag ||
+    vesselType ||
+    minDwt ||
+    maxDwt ||
+    minYearBuilt ||
+    watchlistOnly
+  );
 
   return (
     <div style={{ maxWidth: 1000 }}>
-      <h2 style={{ margin: '0 0 1rem', fontSize: '1rem', color: 'var(--text-muted)' }}>
+      <h2 style={{ margin: "0 0 1rem", fontSize: "1rem", color: "var(--text-muted)" }}>
         Vessel Search
       </h2>
 
-      <Card style={{ marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+      <Card style={{ marginBottom: "1rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <input
             type="text"
             placeholder="Search MMSI, IMO, or name..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             style={{
               flex: 1,
               minWidth: 200,
-              padding: '0.5rem 0.75rem',
-              background: 'var(--bg-base)',
-              color: 'var(--text-body)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              fontSize: '0.8125rem',
-              outline: 'none',
+              padding: "0.5rem 0.75rem",
+              background: "var(--bg-base)",
+              color: "var(--text-body)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              fontSize: "0.8125rem",
+              outline: "none",
             }}
           />
           <input
             type="text"
             placeholder="Flag (e.g. PA)"
             value={flag}
-            onChange={e => setFlag(e.target.value)}
+            onChange={(e) => setFlag(e.target.value)}
             style={{
               width: 120,
-              padding: '0.5rem 0.75rem',
-              background: 'var(--bg-base)',
-              color: 'var(--text-body)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              fontSize: '0.8125rem',
-              outline: 'none',
+              padding: "0.5rem 0.75rem",
+              background: "var(--bg-base)",
+              color: "var(--text-body)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              fontSize: "0.8125rem",
+              outline: "none",
             }}
           />
           <input
             type="text"
             placeholder="Vessel type"
             value={vesselType}
-            onChange={e => setVesselType(e.target.value)}
+            onChange={(e) => setVesselType(e.target.value)}
             style={{
               width: 160,
-              padding: '0.5rem 0.75rem',
-              background: 'var(--bg-base)',
-              color: 'var(--text-body)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)',
-              fontSize: '0.8125rem',
-              outline: 'none',
+              padding: "0.5rem 0.75rem",
+              background: "var(--bg-base)",
+              color: "var(--text-body)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              fontSize: "0.8125rem",
+              outline: "none",
             }}
           />
           <button
-            onClick={() => setShowAdvanced(p => !p)}
+            onClick={() => setShowAdvanced((p) => !p)}
             style={{
-              padding: '0.5rem 0.75rem', background: 'none', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius)', color: 'var(--text-muted)', fontSize: '0.8125rem', cursor: 'pointer',
+              padding: "0.5rem 0.75rem",
+              background: "none",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              color: "var(--text-muted)",
+              fontSize: "0.8125rem",
+              cursor: "pointer",
             }}
           >
-            {showAdvanced ? 'Hide' : 'Advanced'} Filters
+            {showAdvanced ? "Hide" : "Advanced"} Filters
           </button>
         </div>
         {showAdvanced && (
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginTop: '0.5rem' }}>
-            <input type="number" placeholder="Min DWT" value={minDwt} onChange={e => setMinDwt(e.target.value)}
-              style={{ width: 110, padding: '0.5rem 0.75rem', background: 'var(--bg-base)', color: 'var(--text-body)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '0.8125rem' }} />
-            <input type="number" placeholder="Max DWT" value={maxDwt} onChange={e => setMaxDwt(e.target.value)}
-              style={{ width: 110, padding: '0.5rem 0.75rem', background: 'var(--bg-base)', color: 'var(--text-body)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '0.8125rem' }} />
-            <input type="number" placeholder="Built after" value={minYearBuilt} onChange={e => setMinYearBuilt(e.target.value)}
-              style={{ width: 110, padding: '0.5rem 0.75rem', background: 'var(--bg-base)', color: 'var(--text-body)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '0.8125rem' }} />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8125rem', color: 'var(--text-body)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={watchlistOnly} onChange={e => setWatchlistOnly(e.target.checked)} />
+          <div
+            style={{
+              display: "flex",
+              gap: "0.5rem",
+              alignItems: "center",
+              flexWrap: "wrap",
+              marginTop: "0.5rem",
+            }}
+          >
+            <input
+              type="number"
+              placeholder="Min DWT"
+              value={minDwt}
+              onChange={(e) => setMinDwt(e.target.value)}
+              style={{
+                width: 110,
+                padding: "0.5rem 0.75rem",
+                background: "var(--bg-base)",
+                color: "var(--text-body)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                fontSize: "0.8125rem",
+              }}
+            />
+            <input
+              type="number"
+              placeholder="Max DWT"
+              value={maxDwt}
+              onChange={(e) => setMaxDwt(e.target.value)}
+              style={{
+                width: 110,
+                padding: "0.5rem 0.75rem",
+                background: "var(--bg-base)",
+                color: "var(--text-body)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                fontSize: "0.8125rem",
+              }}
+            />
+            <input
+              type="number"
+              placeholder="Built after"
+              value={minYearBuilt}
+              onChange={(e) => setMinYearBuilt(e.target.value)}
+              style={{
+                width: 110,
+                padding: "0.5rem 0.75rem",
+                background: "var(--bg-base)",
+                color: "var(--text-body)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                fontSize: "0.8125rem",
+              }}
+            />
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: "0.8125rem",
+                color: "var(--text-body)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={watchlistOnly}
+                onChange={(e) => setWatchlistOnly(e.target.checked)}
+              />
               Watchlist only
             </label>
           </div>
@@ -149,7 +222,7 @@ export function VesselSearchPage() {
         {hasFilters && isLoading && <Spinner text="Searching vessels..." />}
 
         {hasFilters && error && (
-          <p style={{ color: 'var(--score-critical)', fontSize: '0.875rem', padding: '1rem' }}>
+          <p style={{ color: "var(--score-critical)", fontSize: "0.875rem", padding: "1rem" }}>
             Failed to search vessels
           </p>
         )}
@@ -159,10 +232,10 @@ export function VesselSearchPage() {
         )}
 
         {vessels && vessels.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr style={{ background: 'var(--bg-base)' }}>
+                <tr style={{ background: "var(--bg-base)" }}>
                   <th style={headStyle}>MMSI</th>
                   <th style={headStyle}>Name</th>
                   <th style={headStyle}>Flag</th>
@@ -173,65 +246,68 @@ export function VesselSearchPage() {
                 </tr>
               </thead>
               <tbody>
-                {vessels.map(v => (
-                  <tr key={String(v.vessel_id)} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace' }}>
+                {vessels.map((v) => (
+                  <tr key={String(v.vessel_id)} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ ...cellStyle, fontFamily: "monospace" }}>
                       <Link
                         to={`/vessels/${v.vessel_id}`}
-                        style={{ color: 'var(--accent)', textDecoration: 'none' }}
+                        style={{ color: "var(--accent)", textDecoration: "none" }}
                       >
-                        {String(v.mmsi ?? '-')}
+                        {String(v.mmsi ?? "-")}
                       </Link>
                     </td>
                     <td style={cellStyle}>
                       <Link
                         to={`/vessels/${v.vessel_id}`}
-                        style={{ color: 'var(--text-bright)', textDecoration: 'none' }}
+                        style={{ color: "var(--text-bright)", textDecoration: "none" }}
                       >
-                        {String(v.name ?? '-')}
+                        {String(v.name ?? "-")}
                       </Link>
                     </td>
-                    <td style={cellStyle}>{String(v.flag ?? '-')}</td>
-                    <td style={{ ...cellStyle, color: 'var(--text-dim)' }}>
-                      {String(v.vessel_type ?? '-')}
+                    <td style={cellStyle}>{String(v.flag ?? "-")}</td>
+                    <td style={{ ...cellStyle, color: "var(--text-dim)" }}>
+                      {String(v.vessel_type ?? "-")}
                     </td>
-                    <td style={{ ...cellStyle, fontFamily: 'monospace' }}>
-                      {v.deadweight != null ? Number(v.deadweight).toLocaleString() : '-'}
+                    <td style={{ ...cellStyle, fontFamily: "monospace" }}>
+                      {v.deadweight != null ? Number(v.deadweight).toLocaleString() : "-"}
                     </td>
                     <td style={cellStyle}>
                       {v.last_risk_score != null ? (
                         <ScoreBadge score={Number(v.last_risk_score)} size="sm" />
                       ) : (
-                        <span style={{ color: 'var(--text-dim)' }}>-</span>
+                        <span style={{ color: "var(--text-dim)" }}>-</span>
                       )}
                     </td>
                     <td style={cellStyle}>
                       {v.watchlist_status ? (
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '0.125rem 0.375rem',
-                          background: 'var(--score-critical)',
-                          color: 'white',
-                          borderRadius: 'var(--radius)',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                        }}>
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "0.125rem 0.375rem",
+                            background: "var(--score-critical)",
+                            color: "white",
+                            borderRadius: "var(--radius)",
+                            fontSize: "0.75rem",
+                            fontWeight: 600,
+                          }}
+                        >
                           LISTED
                         </span>
                       ) : (
-                        <span style={{ color: 'var(--text-dim)' }}>-</span>
+                        <span style={{ color: "var(--text-dim)" }}>-</span>
                       )}
                       {v.matched_via_absorbed_mmsi && (
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '0.125rem 0.375rem',
-                          background: 'var(--warning)',
-                          color: 'white',
-                          borderRadius: 'var(--radius)',
-                          fontSize: '0.625rem',
-                          fontWeight: 600,
-                          marginLeft: 4,
-                        }}
+                        <span
+                          style={{
+                            display: "inline-block",
+                            padding: "0.125rem 0.375rem",
+                            background: "var(--warning)",
+                            color: "white",
+                            borderRadius: "var(--radius)",
+                            fontSize: "0.625rem",
+                            fontWeight: 600,
+                            marginLeft: 4,
+                          }}
                           title={`Matched via absorbed MMSI ${v.matched_via_absorbed_mmsi}`}
                         >
                           ALIAS
@@ -246,5 +322,5 @@ export function VesselSearchPage() {
         )}
       </Card>
     </div>
-  )
+  );
 }

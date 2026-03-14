@@ -30,7 +30,7 @@ AIS CSV files
 │ loitering_detector │          │  corridor_correlator   │
 │ .py                │          │  .py                   │
 │                    │          │                        │
-│ Polars 1h rolling  │          │ ST_Intersects on gap   │
+│ Polars 1h rolling  │          │ Shapely bbox on gap    │
 │ SOG windows;       │          │ trajectory; assigns    │
 │ laid-up 30d/60d    │          │ corridor_id,           │
 │ flags; loiter-gap  │          │ dark_zone_id,          │
@@ -101,7 +101,7 @@ distance in nautical miles between the two boundary points, then derives the
 **velocity plausibility ratio**: actual distance divided by the maximum possible
 distance at the vessel's class-specific top speed (from the `CLASS_SPEEDS` lookup).
 Ratios above 1.1 set `impossible_speed_flag=True`. A **rotated ellipse movement
-envelope** is persisted for each gap using GeoAlchemy2 geometry, with semi-major and
+envelope** is persisted for each gap as WKT text (via Shapely), with semi-major and
 semi-minor axes scaled from `max_speed * duration` and the heading of the pre-gap AIS
 point; the estimation method (LINEAR / SPLINE / KALMAN) is selected by gap duration.
 The module also runs **spoofing detection** covering five typologies: anchor spoof
@@ -152,13 +152,12 @@ records for the same vessel pair and time window.
 ### corridor_correlator.py
 
 Links AIS gap events to maritime corridors and dark zones. For each gap, the module
-constructs the straight-line trajectory between the gap's start and end AIS points and
-tests it against every stored corridor polygon using **ST_Intersects**
-(`ST_MakeLine` / `ST_MakePoint` via PostGIS or SpatiaLite). This trajectory-based
-approach catches vessels that transit through a corridor without stopping inside it,
-which a simpler `ST_Within` test on the gap endpoints would miss. When the spatial
-extension is unavailable (SQLite without SpatiaLite loaded), the module falls back to a
-bounding-box overlap check on the gap's endpoint coordinates, logging a one-time warning.
+constructs a bounding box from the gap's start and end AIS points and tests it against
+every stored corridor polygon using **Shapely bounding-box intersection** on WKT text
+columns. This approach works identically on both SQLite and PostgreSQL (no PostGIS or
+SpatiaLite required). The trajectory-based bbox check catches vessels that transit
+through a corridor without stopping inside it, which a simpler point-in-polygon test
+on the gap endpoints would miss.
 If multiple corridors intersect a gap trajectory, the one with the highest `risk_weight`
 is selected. Dark zone correlation runs independently via `find_dark_zone_for_gap` and
 sets `in_dark_zone=True` on the gap, allowing a gap to carry both a corridor association
@@ -369,11 +368,12 @@ session and closes it after the request completes. No route opens a session dire
 
 | File | Scope | Endpoints |
 |------|-------|-----------|
-| `routes_vessels.py` | `/vessels/*` — search, detail, history, watchlist, track export | ~21 |
-| `routes_alerts.py` | `/alerts/*` — list, detail, status, notes, export (JSON/MD/CSV/PDF), satellite check | ~13 |
-| `routes_detection.py` | `/detect/*`, `/fleet/*`, corridors, hunt, merge chains, coverage, STS events | ~23 |
-| `routes_admin.py` | `/admin/*`, `/ingestion/*`, watchlist, scoring, dark vessels | ~16 |
-| `routes_health.py` | `/health/*` — health check, data freshness, stats | ~3 |
+| `routes_vessels.py` | `/vessels/*` — search, detail, history, watchlist, track export | 24 |
+| `routes_alerts.py` | `/alerts/*` — list, detail, status, notes, export (JSON/MD/CSV/PDF), assign, lock, verdict, saved filters, trends | 26 |
+| `routes_detection.py` | `/detect/*`, `/fleet/*`, corridors, hunt, merge chains, coverage, satellite, STS events | 44 |
+| `routes_admin.py` | `/admin/*`, `/ingestion/*`, `/analysts/*`, watchlist, scoring, API keys, webhooks | 33 |
+| `routes_health.py` | `/health/*` — health check, data freshness, workers | 4 |
+| `routes_sse.py` | `/sse/alerts` — SSE real-time alert stream | 1 |
 | `_helpers.py` | Shared utilities: `limiter`, `_audit_log()` | — |
 
 ### Key endpoints (all under `/api/v1/`)
@@ -410,10 +410,11 @@ See `docs/API.md` for the complete endpoint reference with query parameters.
 Two YAML files are loaded at application startup and passed into the scoring and
 corridor systems.
 
-**`config/corridors.yaml`** — defines 11 seed corridors: 4 export routes (Baltic,
-Turkish Straits, Black Sea, Persian Gulf approaches), 5 STS zones (Laconian Gulf,
-Ceuta, Kerch Strait anchorage, Singapore anchorage, Nakhodka Bay), and 2 dark zones
-(Black Sea GPS-spoofing zone, Eastern Mediterranean GNSS-denial zone). Each corridor
+**`config/corridors.yaml`** — defines 52 corridors including export routes (Baltic,
+Turkish Straits, Black Sea, Persian Gulf approaches), STS zones (Laconian Gulf,
+Ceuta, Kerch Strait anchorage, Singapore anchorage, Nakhodka Bay, Gulf of Oman,
+and others), and dark zones (Black Sea GPS-spoofing zone, Eastern Mediterranean
+GNSS-denial zone). Each corridor
 entry specifies a name, type enum value, GeoJSON-compatible polygon coordinates, a
 `risk_weight` (used to select the highest-priority corridor when multiple intersect a
 gap trajectory), and an optional `is_jamming_zone: true` flag.
@@ -434,10 +435,10 @@ unit tests can supply a known configuration without touching the filesystem.
 
 ## Key Design Decisions
 
-### ST_Intersects vs ST_Within
+### Bounding-Box Intersection vs Point-in-Polygon
 
-Corridor correlation uses `ST_Intersects(ST_MakeLine(start_point, end_point), corridor.geometry)`
-rather than `ST_Within(endpoint, corridor.geometry)`. A vessel conducting a dark
+Corridor correlation uses Shapely bounding-box intersection between the gap trajectory
+and corridor polygons, rather than a point-in-polygon test on the gap endpoints. A vessel conducting a dark
 transfer through the Laconian Gulf STS zone may switch off its AIS transmitter inside
 the zone but have its last pre-gap AIS fix outside the zone boundary. A point-in-polygon
 test on the endpoint would miss the event entirely; the trajectory intersection approach

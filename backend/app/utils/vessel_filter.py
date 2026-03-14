@@ -69,10 +69,7 @@ def is_tanker_type(vessel: Any) -> bool:
     # DWT fallback
     dwt = getattr(vessel, "deadweight", None)
     min_dwt = cfg.get("tanker_min_dwt", 20_000)
-    if isinstance(dwt, (int, float)) and dwt >= min_dwt:
-        return True
-
-    return False
+    return bool(isinstance(dwt, (int, float)) and dwt >= min_dwt)
 
 
 def reload_filter_config() -> dict[str, Any]:

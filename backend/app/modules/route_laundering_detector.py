@@ -271,7 +271,7 @@ def _find_best_pattern(
                             },
                         ],
                     }
-                    if best is None or 3 > best[0]:
+                    if best is None or best[0] < 3:
                         best = (3, evidence)
                     found_3_hop = True
                     break

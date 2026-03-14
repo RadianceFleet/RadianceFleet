@@ -60,15 +60,22 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
-ignore = ["E501", "E402"]
+select = ["E", "F", "I", "UP", "S", "B", "SIM"]  # TODO: add PTH after os.path migration
+ignore = [
+    "E501", "E402",
+    "B008",  # FastAPI Depends()/Query()/File() in defaults is idiomatic
+]
 
 [tool.ruff.lint.per-file-ignores]
 "app/models/*.py" = ["F821"]  # SQLAlchemy Mapped[] forward references
+"tests/*.py" = ["S101", "S105", "S106", "S108", "S110", "S112", "S310", "S314", "B007", "B023", "B905", "SIM105", "SIM117", "SIM222", "UP031"]
+"tests/**/*.py" = ["S101", "S105", "S106", "S108", "S110", "S112", "S310", "S314", "B007", "B023", "B905", "SIM105", "SIM117", "SIM222", "UP031"]
+"scripts/*.py" = ["S101", "S311"]  # assert + random in sample data generation
+"migrate_to_pg.py" = ["S608"]  # SQL string construction in internal migration tool
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-p no:xdist -p no:randomly --timeout=30"
+addopts = "-p no:xdist -p no:randomly --timeout=30 --cov=app --cov-report=term-missing"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

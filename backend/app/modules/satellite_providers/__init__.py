@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -26,13 +27,12 @@ def list_providers() -> list[str]:
     return list(_PROVIDERS.keys())
 
 
-# Eagerly import providers so they self-register
-try:
+# Eagerly import providers so they self-register.
+# Optional providers — missing API key raises ValueError at construction time.
+with contextlib.suppress(ImportError):
     from app.modules.satellite_providers import (
         capella_client,  # noqa: F401
         maxar_client,  # noqa: F401
         planet_client,  # noqa: F401
         umbra_client,  # noqa: F401
     )
-except ImportError:
-    pass  # Optional providers — missing API key raises ValueError at construction time

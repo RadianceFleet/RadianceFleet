@@ -44,7 +44,7 @@ def _pr_auc(precisions: list[float], recalls: list[float]) -> float:
     if len(precisions) < 2:
         return 0.0
     # Sort by recall ascending
-    pairs = sorted(zip(recalls, precisions))
+    pairs = sorted(zip(recalls, precisions, strict=False))
     auc = 0.0
     for i in range(1, len(pairs)):
         dr = pairs[i][0] - pairs[i - 1][0]

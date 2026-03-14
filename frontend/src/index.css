@@ -16,13 +16,26 @@
   --radius: 4px;
   --radius-md: 8px;
 }
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 body {
   margin: 0;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
   background: var(--bg-base);
   color: var(--text-bright);
 }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-@keyframes spin { to { transform: rotate(360deg) } }
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

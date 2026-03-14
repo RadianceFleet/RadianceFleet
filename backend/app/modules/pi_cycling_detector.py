@@ -113,10 +113,7 @@ def run_pi_cycling_detection(db: Session) -> dict:
         non_ig = not _is_ig_club(new_club)
 
         # Determine score
-        if non_ig:
-            score = 30
-        else:
-            score = 20
+        score = 30 if non_ig else 20
 
         # Check for existing anomaly
         existing = (
