@@ -507,3 +507,39 @@ export interface NarrativeResponse {
   warnings: string[];
   generated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Regional FP Tuning types
+// ---------------------------------------------------------------------------
+
+export interface ScoringRegion {
+  region_id: number;
+  name: string;
+  description: string | null;
+  corridor_ids: number[];
+  signal_overrides: Record<string, number> | null;
+  corridor_multiplier_override: number | null;
+  gap_duration_multiplier: number;
+  is_active: boolean;
+  fp_rate: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShadowScoreResult {
+  alert_id: number;
+  original_score: number;
+  proposed_score: number;
+  original_band: string;
+  proposed_band: string;
+  band_changed: boolean;
+}
+
+export interface ShadowScoreResponse {
+  corridor_id: number;
+  alerts_scored: number;
+  band_changes: number;
+  avg_score_delta: number;
+  predicted_fp_rate_change: number | null;
+  results: ShadowScoreResult[];
+}
