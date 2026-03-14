@@ -42,6 +42,10 @@ class RegionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CorridorAddRequest(BaseModel):
+    corridor_id: int
+
+
 class ShadowScoreRequest(BaseModel):
     signal_overrides: dict[str, float] | None = None
     corridor_multiplier_override: float | None = None

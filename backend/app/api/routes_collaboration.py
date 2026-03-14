@@ -440,6 +440,8 @@ def mark_all_notifications_read(
 @router.get("/analysts/workload/detailed")
 def get_detailed_workload(db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
     """Per-analyst detailed workload with utilization and online status."""
+    from sqlalchemy import func
+
     from app.models.analyst import Analyst
     from app.models.gap_event import AISGapEvent
     from app.modules.analyst_presence import get_online_analysts
@@ -447,15 +449,31 @@ def get_detailed_workload(db: Session = Depends(get_db), auth: dict = Depends(re
     analysts = db.query(Analyst).filter(Analyst.is_active == True).all()  # noqa: E712
     online_ids = {a["analyst_id"] for a in get_online_analysts()}
 
+    # Batch-fetch open and assigned counts (avoid N+1)
+    analyst_ids = [a.analyst_id for a in analysts]
+    terminal = ["dismissed", "documented", "confirmed_fp"]
+    open_counts_rows = (
+        db.query(AISGapEvent.assigned_to, func.count())
+        .filter(
+            AISGapEvent.assigned_to.in_(analyst_ids),
+            AISGapEvent.status.notin_(terminal),
+        )
+        .group_by(AISGapEvent.assigned_to)
+        .all()
+    )
+    open_counts = dict(open_counts_rows)
+    assigned_counts_rows = (
+        db.query(AISGapEvent.assigned_to, func.count())
+        .filter(AISGapEvent.assigned_to.in_(analyst_ids))
+        .group_by(AISGapEvent.assigned_to)
+        .all()
+    )
+    assigned_counts = dict(assigned_counts_rows)
+
     results = []
     for analyst in analysts:
-        open_count = db.query(AISGapEvent).filter(
-            AISGapEvent.assigned_to == analyst.analyst_id,
-            AISGapEvent.status.notin_(["dismissed", "documented", "confirmed_fp"]),
-        ).count()
-        assigned_count = db.query(AISGapEvent).filter(
-            AISGapEvent.assigned_to == analyst.analyst_id,
-        ).count()
+        open_count = open_counts.get(analyst.analyst_id, 0)
+        assigned_count = assigned_counts.get(analyst.analyst_id, 0)
 
         # Simple utilization: ratio of open alerts to a reasonable max (10)
         utilization = min(open_count / 10.0, 1.0) if open_count > 0 else 0.0

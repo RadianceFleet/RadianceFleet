@@ -107,12 +107,15 @@ def suggest_case_grouping(db: Session, alert_id: int) -> list[dict]:
                 partner_ids.add(sts.vessel_1_id)
 
         if partner_ids:
+            sts_window = source_alert.gap_start_utc - timedelta(days=30)
             partner_alerts = (
                 db.query(AISGapEvent)
                 .filter(
                     AISGapEvent.vessel_id.in_(partner_ids),
                     AISGapEvent.gap_event_id != alert_id,
+                    AISGapEvent.gap_start_utc >= sts_window,
                 )
+                .limit(50)
                 .all()
             )
             for a in partner_alerts:

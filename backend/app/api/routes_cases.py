@@ -102,20 +102,32 @@ def list_cases(
         q = q.filter(InvestigationCase.assigned_to == assigned_to)
 
     cases = q.order_by(InvestigationCase.updated_at.desc()).all()
+    if not cases:
+        return []
+
+    # Batch-fetch alert counts (avoid N+1)
+    from sqlalchemy import func
+
+    case_ids = [c.case_id for c in cases]
+    count_rows = (
+        db.query(CaseAlert.case_id, func.count())
+        .filter(CaseAlert.case_id.in_(case_ids))
+        .group_by(CaseAlert.case_id)
+        .all()
+    )
+    counts = dict(count_rows)
+
+    # Batch-fetch assigned analysts (avoid N+1)
+    analyst_ids = {c.assigned_to for c in cases if c.assigned_to}
+    analyst_map: dict[int, str] = {}
+    if analyst_ids:
+        analysts_list = db.query(Analyst).filter(Analyst.analyst_id.in_(analyst_ids)).all()
+        analyst_map = {a.analyst_id: a.username for a in analysts_list}
+
     result = []
     for case in cases:
-        alert_count = (
-            db.query(CaseAlert).filter(CaseAlert.case_id == case.case_id).count()
-        )
-        assigned_username = None
-        if case.assigned_to:
-            analyst = (
-                db.query(Analyst)
-                .filter(Analyst.analyst_id == case.assigned_to)
-                .first()
-            )
-            if analyst:
-                assigned_username = analyst.username
+        alert_count = counts.get(case.case_id, 0)
+        assigned_username = analyst_map.get(case.assigned_to) if case.assigned_to else None
         result.append(_case_to_response(case, alert_count, assigned_username))
     return result
 
@@ -173,6 +185,14 @@ def update_case(
     )
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    # Only case owner, assignee, or senior/admin can update
+    analyst_id = auth.get("analyst_id")
+    role = auth.get("role", "analyst")
+    is_owner = case.created_by == analyst_id or case.assigned_to == analyst_id
+    is_elevated = role in ("senior_analyst", "admin")
+    if not is_owner and not is_elevated:
+        raise HTTPException(status_code=403, detail="Not authorized to update this case")
 
     if body.title is not None:
         case.title = body.title

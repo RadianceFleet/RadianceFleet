@@ -29,6 +29,7 @@ from app.schemas.fp_tuning import (
     ScoringOverrideResponse,
 )
 from app.schemas.regions import (
+    CorridorAddRequest,
     RegionCreate,
     RegionResponse,
     RegionUpdate,
@@ -642,7 +643,7 @@ def delete_region(
 @router.post("/regions/{region_id}/corridors", tags=["regions"])
 def add_corridor_to_region(
     region_id: int,
-    body: dict,
+    body: CorridorAddRequest,
     db: Session = Depends(get_db),
     _auth: dict = Depends(require_senior_or_admin),
 ):
@@ -653,9 +654,7 @@ def add_corridor_to_region(
     _check_enabled()
     region = _get_region_or_404(db, region_id)
 
-    corridor_id = body.get("corridor_id")
-    if corridor_id is None:
-        raise HTTPException(status_code=422, detail="corridor_id is required")
+    corridor_id = body.corridor_id
 
     # Verify corridor exists
     _get_corridor_or_404(db, corridor_id)
