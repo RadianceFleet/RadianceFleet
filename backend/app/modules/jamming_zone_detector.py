@@ -465,10 +465,11 @@ def run_jamming_detection(
                 len(cluster_points),
             )
 
+    # Commit new/merged zones before decay (apply_zone_decay commits internally)
+    db.commit()
+
     # Step 5: Apply decay
     decay_result = apply_zone_decay(db, now)
-
-    db.commit()
 
     result = {
         "zones_created": zones_created,

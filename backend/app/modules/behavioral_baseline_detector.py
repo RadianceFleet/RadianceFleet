@@ -590,6 +590,7 @@ def run_behavioral_baseline(db: Session) -> dict[str, Any]:
         "profiles_created": 0,
         "profiles_updated": 0,
         "skipped_insufficient_data": 0,
+        "skipped_below_threshold": 0,
         "errors": [],
     }
 
@@ -605,6 +606,10 @@ def run_behavioral_baseline(db: Session) -> dict[str, Any]:
             profile = build_vessel_profile(db, vessel_id)
             if profile is None:
                 stats["skipped_insufficient_data"] += 1
+                continue
+
+            if profile["deviation_score"] < TIER_MEDIUM_THRESHOLD:
+                stats["skipped_below_threshold"] += 1
                 continue
 
             # Check if updating or creating

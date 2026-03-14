@@ -221,6 +221,8 @@ def _assign_layer(owner: Any, all_owners: dict[int, tuple[Any, int]], max_depth:
 def _find_sanctions_paths(
     nodes: list[dict[str, Any]],
     edges: list[dict[str, Any]],
+    max_paths: int = 50,
+    max_path_length: int = 10,
 ) -> list[list[str]]:
     """BFS from each sanctioned node to find connected paths."""
     sanctioned_ids = {n["id"] for n in nodes if n.get("is_sanctioned")}
@@ -241,10 +243,16 @@ def _find_sanctions_paths(
     paths: list[list[str]] = []
 
     for start_id in sanctioned_ids:
+        if len(paths) >= max_paths:
+            break
+
         visited: set[str] = set()
         queue: deque[list[str]] = deque([[start_id]])
 
         while queue:
+            if len(paths) >= max_paths:
+                break
+
             path = queue.popleft()
             current = path[-1]
 
@@ -255,6 +263,9 @@ def _find_sanctions_paths(
             # If we reached another node (not start), record the path
             if len(path) > 1:
                 paths.append(path[:])
+
+            if len(path) >= max_path_length:
+                continue
 
             for neighbor in adj.get(current, []):
                 if neighbor not in visited:
@@ -475,6 +486,7 @@ def build_ownership_network(
         "nodes": nodes,
         "edges": edges,
         "sanctions_paths": sanctions_paths,
+        "paths_truncated": len(sanctions_paths) >= 50,
         "stats": {
             "total_nodes": len(nodes),
             "total_edges": len(edges),

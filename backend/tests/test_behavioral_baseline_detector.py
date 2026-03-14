@@ -506,10 +506,10 @@ class TestIntegration:
             "route_pattern": {"top_corridors": []},
             "gap_pattern": {"frequency": 0},
             "temporal_pattern": {"buckets_6h": [0, 0, 0, 0]},
-            "deviation_score": 0.3,
-            "deviation_signals": [],
-            "risk_score_component": 8.0,
-            "tier": "low",
+            "deviation_score": 0.5,
+            "deviation_signals": ["speed_z_score"],
+            "risk_score_component": 18.0,
+            "tier": "medium",
         }
 
         db = MagicMock()

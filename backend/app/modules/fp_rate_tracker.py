@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Integer, and_, func
 from sqlalchemy.orm import Session
@@ -98,7 +98,7 @@ def _compute_trend(
 
     Returns "increasing", "decreasing", or "stable".
     """
-    now = now or datetime.utcnow()
+    now = now or datetime.now(UTC)
     boundary_recent = now - timedelta(days=30)
     boundary_prev = now - timedelta(days=60)
 
@@ -174,7 +174,7 @@ def compute_fp_rate(db: Session, corridor_id: int) -> CorridorFPRate | None:
     if corridor is None:
         return None
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     total, fp_count, rate = _fp_rate_for_window(db, corridor_id)
     _, _, rate_30d = _fp_rate_for_window(db, corridor_id, since=now - timedelta(days=30))
     _, _, rate_90d = _fp_rate_for_window(db, corridor_id, since=now - timedelta(days=90))
