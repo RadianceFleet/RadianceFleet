@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # ── Source URLs ──────────────────────────────────────────────────────────────
 
 OFAC_SDN_URL = "https://www.treasury.gov/ofac/downloads/sdn.csv"
+OFAC_SDN_XML_URL = "https://www.treasury.gov/ofac/downloads/sdn_xml.zip"
 OPENSANCTIONS_URL = "https://data.opensanctions.org/datasets/latest/sanctions/entities.ftm.json"
 
 # PSC detention data sources (FTM JSON format from OpenSanctions)
@@ -286,6 +287,71 @@ def fetch_ofac_sdn(
     _save_metadata(output_dir, metadata)
     logger.info("OFAC SDN downloaded to %s", path)
     return {"path": path, "status": "downloaded", "error": None}
+
+
+def fetch_ofac_sdn_xml(
+    output_dir: Path | str | None = None,
+    *,
+    force: bool = False,
+    timeout: float | None = None,
+) -> dict:
+    """Download the OFAC SDN XML (zip, ~92% smaller than CSV).
+
+    Downloads ``sdn_xml.zip`` from treasury.gov and extracts the XML file.
+    Falls back to CSV download via :func:`fetch_ofac_sdn` on any error.
+
+    Returns ``{"path": Path, "status": "downloaded"|"up_to_date"|"error",
+               "error": str|None}``.
+    """
+    import zipfile
+
+    output_dir = Path(output_dir or settings.DATA_DIR)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metadata = _load_metadata(output_dir)
+
+    today = date.today().isoformat()
+    zip_filename = f"ofac_sdn_{today}.xml.zip"
+    zip_path = output_dir / zip_filename
+
+    path, error = _download_file(
+        OFAC_SDN_XML_URL, zip_path, "ofac_xml", metadata, force=force, timeout=timeout
+    )
+
+    if error:
+        logger.warning("OFAC SDN XML download failed, falling back to CSV: %s", error)
+        return fetch_ofac_sdn(output_dir, force=force, timeout=timeout)
+
+    if path is None:
+        # 304 Not Modified
+        _save_metadata(output_dir, metadata)
+        existing = _find_latest(output_dir, "ofac_sdn_")
+        return {
+            "path": existing,
+            "status": "up_to_date",
+            "error": None,
+        }
+
+    # Extract XML from the zip
+    try:
+        with zipfile.ZipFile(path, "r") as zf:
+            xml_names = [n for n in zf.namelist() if n.lower().endswith(".xml")]
+            if not xml_names:
+                path.unlink(missing_ok=True)
+                logger.warning("No XML file in OFAC SDN zip, falling back to CSV")
+                return fetch_ofac_sdn(output_dir, force=force, timeout=timeout)
+            xml_name = xml_names[0]
+            xml_output = output_dir / f"ofac_sdn_{today}.xml"
+            with zf.open(xml_name) as src, open(xml_output, "wb") as dst:
+                dst.write(src.read())
+        # Clean up the zip file
+        path.unlink(missing_ok=True)
+        _save_metadata(output_dir, metadata)
+        logger.info("OFAC SDN XML extracted to %s", xml_output)
+        return {"path": xml_output, "status": "downloaded", "error": None}
+    except (zipfile.BadZipFile, OSError) as exc:
+        path.unlink(missing_ok=True)
+        logger.warning("OFAC SDN XML extraction failed, falling back to CSV: %s", exc)
+        return fetch_ofac_sdn(output_dir, force=force, timeout=timeout)
 
 
 def fetch_opensanctions_vessels(

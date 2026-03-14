@@ -44,7 +44,7 @@ services:
 
   ws-worker:
     build: .
-    entrypoint: ["uv", "run", "radiancefleet", "stream"]
+    entrypoint: ["uv", "run", "radiancefleet", "worker", "start"]
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg2://radiancefleet:radiancefleet@db:5432/radiancefleet
@@ -55,6 +55,11 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "uv", "run", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     profiles:
       - worker
 

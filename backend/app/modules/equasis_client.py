@@ -99,6 +99,38 @@ class EquasisClient:
             logger.warning("Equasis search_by_imo(%s) failed: %s", imo, exc)
             return None
 
+    def get_ownership_chain(self, imo: str) -> list[dict]:
+        """Scrape the Company History tab for all company roles.
+
+        Returns list of dicts:
+          [{"role": str, "company_name": str, "company_id": str,
+            "flag": str, "since": str}, ...]
+        """
+        try:
+            resp = self._get(
+                "/restricted/CompanyHistory", {"P_IMO": imo}
+            )
+            return _parse_company_history(resp.text)
+        except Exception as exc:
+            logger.warning("Equasis get_ownership_chain(%s) failed: %s", imo, exc)
+            return []
+
+    def get_pi_info(self, imo: str) -> dict | None:
+        """Fetch P&I club information for a vessel from Equasis.
+
+        Scrapes the same vessel detail page as ``search_by_imo`` and parses
+        the company table for a row where the role contains "P&I".
+
+        Returns ``{"club_name": str, "effective_date": str | None}`` or
+        ``None`` if no P&I entry is found on the page.
+        """
+        try:
+            resp = self._get("/restricted/ShipInfo", {"P_IMO": imo})
+            return _parse_pi_section(resp.text)
+        except Exception as exc:
+            logger.warning("Equasis get_pi_info(%s) failed: %s", imo, exc)
+            return None
+
     def search_by_mmsi(self, mmsi: str) -> dict | None:
         """Fallback search by MMSI when IMO is unavailable."""
         try:
@@ -167,3 +199,63 @@ def _parse_vessel_page(html: str) -> dict | None:
                 break
 
     return data if data else None
+
+
+def _parse_company_history(html: str) -> list[dict]:
+    """Parse Equasis Company History page for all company roles.
+
+    The company table has rows with columns:
+      [company_id, role, company_name, flag, since_date]
+
+    Returns list of dicts with keys: role, company_name, company_id, flag, since.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    results: list[dict] = []
+
+    for tr in soup.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) < 5:
+            continue
+        company_id = tds[0].get_text(strip=True)
+        role = tds[1].get_text(strip=True)
+        company_name = tds[2].get_text(strip=True)
+        flag = tds[3].get_text(strip=True)
+        since = tds[4].get_text(strip=True)
+        if not role or not company_name:
+            continue
+        results.append(
+            {
+                "role": role,
+                "company_name": company_name,
+                "company_id": company_id,
+                "flag": flag,
+                "since": since,
+            }
+        )
+
+    return results
+
+
+def _parse_pi_section(html: str) -> dict | None:
+    """Extract P&I club information from an Equasis vessel detail page.
+
+    Equasis lists company roles in a ``<tbody>`` table with columns:
+    ``[company_id, role, company_name, flag, since_date]``.
+    We look for a row whose *role* column contains "P&I".
+
+    Returns ``{"club_name": str, "effective_date": str | None}`` or
+    ``None`` when no P&I entry is present.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    for tr in soup.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) < 3:
+            continue
+        role = tds[1].get_text(strip=True)
+        if "P&I" not in role and "p&i" not in role.lower():
+            continue
+        club_name = tds[2].get_text(strip=True)
+        effective_date = tds[4].get_text(strip=True) if len(tds) >= 5 else None
+        if club_name:
+            return {"club_name": club_name, "effective_date": effective_date or None}
+    return None

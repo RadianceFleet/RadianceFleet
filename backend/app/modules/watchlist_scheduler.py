@@ -269,6 +269,56 @@ def update_source(
     removed = len(before_ids - after_ids)
     unchanged = len(before_ids & after_ids)
 
+    # Fire webhooks for OFAC_SDN when new vessels are added
+    if (
+        source_name == "OFAC_SDN"
+        and added > 0
+        and settings.OFAC_SDN_WEBHOOK_ON_NEW
+    ):
+        try:
+            from app.models.vessel_watchlist import VesselWatchlist
+
+            new_vessel_ids = after_ids - before_ids
+            new_entries = (
+                db.query(VesselWatchlist)
+                .filter(
+                    VesselWatchlist.vessel_id.in_(new_vessel_ids),
+                    VesselWatchlist.watchlist_source == "OFAC_SDN",
+                )
+                .all()
+            )
+            vessels_added = []
+            for entry in new_entries:
+                vessel_name = None
+                if entry.vessel:
+                    vessel_name = entry.vessel.name
+                vessels_added.append({
+                    "vessel_id": entry.vessel_id,
+                    "name": vessel_name,
+                    "reason": entry.reason,
+                })
+
+            import asyncio
+
+            from app.modules.webhook_dispatcher import fire_webhooks
+
+            payload = {
+                "added": added,
+                "removed": removed,
+                "vessels_added": vessels_added,
+            }
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(fire_webhooks(db, "ofac_sdn_update", payload))
+                else:
+                    loop.run_until_complete(fire_webhooks(db, "ofac_sdn_update", payload))
+            except RuntimeError:
+                asyncio.run(fire_webhooks(db, "ofac_sdn_update", payload))
+            logger.info("OFAC SDN webhook fired: added=%d removed=%d", added, removed)
+        except Exception:
+            logger.warning("Failed to fire OFAC SDN webhook", exc_info=True)
+
     logger.info(
         "Watchlist %s updated: added=%d removed=%d unchanged=%d matched=%d unmatched=%d",
         source_name,

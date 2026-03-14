@@ -10,6 +10,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api._helpers import _audit_log, _get_coverage_quality, _validate_date_range, limiter
+from app.auth import require_auth
 from app.config import settings
 from app.database import get_db
 from app.schemas.corridor import CorridorCreateRequest, CorridorUpdateRequest
@@ -1380,3 +1381,49 @@ def satellite_budget(db: Session = Depends(get_db)):
     from app.modules.satellite_order_manager import get_satellite_budget_status
 
     return get_satellite_budget_status(db)
+
+
+# ---------------------------------------------------------------------------
+# Yente Sanctions Screening
+# ---------------------------------------------------------------------------
+
+
+@router.post("/detect/screen-vessel/{vessel_id}", tags=["detection"])
+@limiter.limit(settings.RATE_LIMIT_DEFAULT)
+def screen_vessel(
+    vessel_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Screen a vessel against sanctions lists via the yente API.
+
+    Requires authentication.  Returns 503 if yente is disabled, 404 if vessel
+    not found.
+    """
+    if not settings.YENTE_ENABLED:
+        raise HTTPException(status_code=503, detail="Yente sanctions screening is disabled")
+
+    from app.models.vessel import Vessel
+    from app.modules.watchlist_loader import screen_vessel_via_yente
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    result = screen_vessel_via_yente(db, vessel)
+    return {"vessel_id": vessel_id, "screening": result}
+
+
+@router.post("/validate-gaps-sar", tags=["detection"])
+def validate_gaps_sar(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+):
+    """Cross-correlate AIS gaps with SAR/VIIRS detections (v4.0)."""
+    from app.modules.gap_sar_validator import validate_gaps_with_sar
+
+    dt_from = datetime.combine(date_from, datetime.min.time()) if date_from else None
+    dt_to = datetime.combine(date_to, datetime.max.time()) if date_to else None
+    return validate_gaps_with_sar(db, date_from=dt_from, date_to=dt_to)

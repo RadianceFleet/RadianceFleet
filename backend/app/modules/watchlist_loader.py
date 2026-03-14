@@ -748,6 +748,95 @@ def load_opensanctions(db: Session, json_path: str) -> dict:
     return {"matched": matched, "unmatched": unmatched, "stubs_created": stubs_created}
 
 
+# ── Yente live screening ─────────────────────────────────────────────────────
+
+# Map yente dataset names to existing watchlist source labels.
+_YENTE_DATASET_MAP: dict[str, str] = {
+    "us_ofac_sdn": "OFAC_SDN",
+    "us_ofac": "OFAC_SDN",
+    "eu_fsf": "EU_COUNCIL",
+    "eu_sanctions": "EU_COUNCIL",
+    "un_sc_sanctions": "UN_SANCTIONS",
+    "un_sanctions": "UN_SANCTIONS",
+    "tokyo_mou": "TOKYO_MOU",
+}
+
+
+def _yente_dataset_to_source(datasets: list[str]) -> str:
+    """Map yente dataset identifiers to a RadianceFleet watchlist source label."""
+    for ds in datasets:
+        ds_lower = ds.lower()
+        for key, source in _YENTE_DATASET_MAP.items():
+            if key in ds_lower:
+                return source
+    return "OPENSANCTIONS"
+
+
+def screen_vessel_via_yente(db: Session, vessel: Vessel) -> dict:
+    """Screen a single vessel against sanctions lists via the yente API.
+
+    Calls ``yente_client.match_vessel()`` and upserts any matches above
+    threshold into the watchlist using the existing ``_upsert_watchlist``
+    helper.
+
+    Args:
+        db: Active SQLAlchemy session.
+        vessel: The ``Vessel`` ORM object to screen.
+
+    Returns:
+        ``{"matches": int, "sources": [str]}`` — count and source labels
+        of sanctions hits.  Returns ``{"matches": 0, "sources": []}``
+        when ``YENTE_ENABLED`` is ``False`` or no matches found.
+    """
+    from app.config import settings
+
+    if not settings.YENTE_ENABLED:
+        return {"matches": 0, "sources": []}
+
+    from app.modules.yente_client import match_vessel
+
+    vessel_name = vessel.name or ""
+    if not vessel_name:
+        logger.warning("screen_vessel_via_yente: vessel_id=%d has no name — skipping", vessel.vessel_id)
+        return {"matches": 0, "sources": []}
+
+    matches = match_vessel(
+        name=vessel_name,
+        mmsi=vessel.mmsi,
+        imo=getattr(vessel, "imo", None),
+        flag=getattr(vessel, "flag", None),
+    )
+
+    sources_seen: list[str] = []
+    for m in matches:
+        datasets = m.get("datasets", [])
+        source = _yente_dataset_to_source(datasets)
+        score = m.get("score", 0.0)
+        confidence = int(score * 100)
+
+        _upsert_watchlist(
+            db,
+            vessel=vessel,
+            watchlist_source=source,
+            reason=f"Yente match: {m.get('name', '')} (score={score:.2f})",
+            match_confidence=confidence,
+            match_type="yente_api",
+        )
+        if source not in sources_seen:
+            sources_seen.append(source)
+
+    if matches:
+        db.commit()
+        logger.info(
+            "Yente screening for vessel_id=%d: %d matches, sources=%s",
+            vessel.vessel_id,
+            len(matches),
+            sources_seen,
+        )
+
+    return {"matches": len(matches), "sources": sources_seen}
+
+
 # ── FleetLeaks loader ────────────────────────────────────────────────────────
 
 

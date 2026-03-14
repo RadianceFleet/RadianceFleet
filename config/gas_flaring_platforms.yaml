@@ -1,0 +1,62 @@
+# Known gas flaring platforms — used to filter false positives from VIIRS
+# nighttime light detections. Detections within the exclusion radius
+# (default 5 nm) of these platforms are removed.
+#
+# Sources: NOAA EOG Global Gas Flaring Survey, Skytruth Flaring Map
+# Coordinates are approximate platform cluster centroids.
+
+platforms:
+  # Baltic Sea
+  - name: "Petrobaltic B3 (Poland)"
+    lat: 55.55
+    lon: 18.15
+    region: "Baltic Sea"
+
+  - name: "Kravtsovskoye (Russia, Kaliningrad)"
+    lat: 55.32
+    lon: 20.30
+    region: "Baltic Sea"
+
+  # North Sea
+  - name: "Ekofisk Complex (Norway)"
+    lat: 56.55
+    lon: 3.22
+    region: "North Sea"
+
+  - name: "Brent Field (UK)"
+    lat: 61.05
+    lon: 1.72
+    region: "North Sea"
+
+  - name: "Forties Field (UK)"
+    lat: 57.72
+    lon: 0.97
+    region: "North Sea"
+
+  - name: "Troll Field (Norway)"
+    lat: 60.64
+    lon: 3.72
+    region: "North Sea"
+
+  # Mediterranean
+  - name: "Bouri Field (Libya)"
+    lat: 34.33
+    lon: 12.85
+    region: "Mediterranean"
+
+  - name: "Vega Field (Italy/Sicily)"
+    lat: 37.13
+    lon: 12.35
+    region: "Mediterranean"
+
+  # Black Sea
+  - name: "Odessa Shelf Platforms (Ukraine)"
+    lat: 45.27
+    lon: 31.00
+    region: "Black Sea"
+
+  # Barents Sea
+  - name: "Prirazlomnoye (Russia)"
+    lat: 69.25
+    lon: 57.35
+    region: "Barents Sea"

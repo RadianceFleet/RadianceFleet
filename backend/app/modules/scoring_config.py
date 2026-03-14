@@ -55,6 +55,7 @@ _EXPECTED_SECTIONS = [
     "destination",
     "sts_chains",
     "scrapped_registry",
+    "mmsi_zombie",
     "track_replay",
     "merge_chains",
     "ownership_graph",
@@ -65,6 +66,8 @@ _EXPECTED_SECTIONS = [
     "sparse_transmission",
     "vessel_type_consistency",
     "watchlist_stub_scoring",
+    "viirs",
+    "gap_sar_validation",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)

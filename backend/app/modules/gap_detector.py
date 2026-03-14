@@ -704,23 +704,47 @@ def run_spoofing_detection(
                             db.query(SpoofingAnomaly)
                             .filter(
                                 SpoofingAnomaly.vessel_id == vessel.vessel_id,
-                                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.CIRCLE_SPOOF,
+                                SpoofingAnomaly.anomaly_type.in_([
+                                    SpoofingTypeEnum.CIRCLE_SPOOF,
+                                    SpoofingTypeEnum.CIRCLE_SPOOF_STATIONARY,
+                                    SpoofingTypeEnum.CIRCLE_SPOOF_DELIBERATE,
+                                    SpoofingTypeEnum.CIRCLE_SPOOF_EQUIPMENT,
+                                ]),
                                 SpoofingAnomaly.start_time_utc == window[0].timestamp_utc,
                             )
                             .first()
                         )
                         if not existing:
+                            # Classify the circle pattern sub-type
+                            from app.modules.circle_classifier import (
+                                CLASSIFICATION_SCORES,
+                                classify_circle_pattern,
+                            )
+
+                            _circle_class = classify_circle_pattern(window)
+                            _circle_type_map = {
+                                "stationary": SpoofingTypeEnum.CIRCLE_SPOOF_STATIONARY,
+                                "deliberate": SpoofingTypeEnum.CIRCLE_SPOOF_DELIBERATE,
+                                "equipment": SpoofingTypeEnum.CIRCLE_SPOOF_EQUIPMENT,
+                            }
+                            _circle_enum = _circle_type_map.get(
+                                _circle_class, SpoofingTypeEnum.CIRCLE_SPOOF
+                            )
+                            _circle_score = CLASSIFICATION_SCORES.get(_circle_class, 35)
                             db.add(
                                 SpoofingAnomaly(
                                     vessel_id=vessel.vessel_id,
-                                    anomaly_type=SpoofingTypeEnum.CIRCLE_SPOOF,
+                                    anomaly_type=_circle_enum,
                                     start_time_utc=window[0].timestamp_utc,
                                     end_time_utc=window[-1].timestamp_utc,
-                                    risk_score_component=35,
+                                    risk_score_component=_circle_score,
                                     evidence_json={
                                         "std_lat": std_lat,
                                         "std_lon_corrected": std_lon_corrected,
                                         "median_sog": statistics.median(sogs),
+                                        "circle_classification": _circle_class,
+                                        "centroid_lat": mean_lat,
+                                        "centroid_lon": statistics.mean(lons),
                                     },
                                 )
                             )

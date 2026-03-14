@@ -82,6 +82,14 @@ breakers = {
     "umbra": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="umbra", listeners=[_listener]
     ),
+    # -- VIIRS nighttime lights: when open, VIIRS collection is blocked --
+    "viirs": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="viirs", listeners=[_listener]
+    ),
+    # -- Sanctions screening --
+    "yente": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="yente", listeners=[_listener]
+    ),
 }
 
 

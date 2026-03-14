@@ -82,6 +82,7 @@ class TestCollectionSources:
             mock_settings.DMA_ENABLED = False
             mock_settings.AISSTREAM_API_KEY = None
             mock_settings.DATALASTIC_API_KEY = None
+            mock_settings.VIIRS_ENABLED = False
             mock_settings.COLLECT_DIGITRAFFIC_INTERVAL = 1800
             mock_settings.COLLECT_AISSTREAM_INTERVAL = 300
 

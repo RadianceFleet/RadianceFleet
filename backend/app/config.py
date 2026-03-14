@@ -147,6 +147,9 @@ class Settings(BaseSettings):
     # P&I validation
     PI_VALIDATION_DETECTION_ENABLED: bool = True
     PI_VALIDATION_SCORING_ENABLED: bool = True
+    # ── P&I Insurance Verification ──────────────────────────────────────────
+    PI_VERIFICATION_ENABLED: bool = False
+    PI_VERIFICATION_SCORING_ENABLED: bool = True
     # Fraudulent registry
     FRAUDULENT_REGISTRY_DETECTION_ENABLED: bool = True
     FRAUDULENT_REGISTRY_SCORING_ENABLED: bool = True
@@ -172,6 +175,9 @@ class Settings(BaseSettings):
     SCRAPPED_REGISTRY_SCORING_ENABLED: bool = True
     TRACK_REPLAY_DETECTION_ENABLED: bool = True
     TRACK_REPLAY_SCORING_ENABLED: bool = True
+    # MMSI Zombie Detection
+    MMSI_ZOMBIE_DETECTION_ENABLED: bool = True
+    MMSI_ZOMBIE_SCORING_ENABLED: bool = True
     # MMSI chain detection
     MERGE_CHAIN_DETECTION_ENABLED: bool = True
     MERGE_CHAIN_SCORING_ENABLED: bool = True
@@ -205,6 +211,11 @@ class Settings(BaseSettings):
     # Watchlist stub scoring
     WATCHLIST_STUB_SCORING_ENABLED: bool = True
 
+    # ── Gap-SAR Validation ──────────────────────────────────────────────────
+    GAP_SAR_VALIDATION_ENABLED: bool = True
+    GAP_SAR_SEARCH_RADIUS_NM: float = 30.0
+    GAP_SAR_TIME_WINDOW_H: int = 12
+
     # ── Historical Data Pipeline ────────────────────────────────────────────
     HISTORY_BACKFILL_ENABLED: bool = False
     NOAA_BACKFILL_ENABLED: bool = False
@@ -226,6 +237,39 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     SENTRY_TRACES_SAMPLE_RATE: float = 0.1
     SENTRY_ENVIRONMENT: str = "production"
+
+    # ── VIIRS Nighttime Lights ──────────────────────────────────────────────
+    VIIRS_ENABLED: bool = False
+    VIIRS_EOG_BASE_URL: str = "https://eogdata.mines.edu/wwwdata/viirs_products/vbd/v23"
+    VIIRS_DATA_DIR: str = "data/viirs"
+    VIIRS_SCORING_ENABLED: bool = True
+    COLLECT_VIIRS_INTERVAL: int = 86400  # 24 hours
+    VIIRS_GAS_FLARING_FILTER_ENABLED: bool = True
+    VIIRS_GAS_FLARING_EXCLUSION_RADIUS_NM: float = 5.0
+
+    # ── Yente Sanctions Screening ───────────────────────────────────────────
+    YENTE_API_URL: str = "http://localhost:8100"
+    YENTE_API_KEY: str | None = None
+    YENTE_ENABLED: bool = False
+    YENTE_MATCH_THRESHOLD: float = 0.7
+    YENTE_DATASETS: str = "default"
+
+    # ── Equasis Ownership ───────────────────────────────────────────────────
+    EQUASIS_OWNERSHIP_RATE_LIMIT_S: float = 10.0
+    EQUASIS_OWNERSHIP_MAX_HOPS: int = 5
+
+    # ── Aisstream Worker ────────────────────────────────────────────────────
+    AISSTREAM_WORKER_HEALTH_PORT: int = 8001
+    AISSTREAM_WORKER_RECONNECT_DELAY_S: int = 5
+    AISSTREAM_WORKER_MAX_RECONNECT_ATTEMPTS: int = 100
+    AISSTREAM_WORKER_STATS_INTERVAL_S: int = 60
+
+    # ── OFAC SDN Sync ────────────────────────────────────────────────────
+    OFAC_SDN_WEBHOOK_ON_NEW: bool = True
+
+    # ── GFW SAR Enhancement ──────────────────────────────────────────────
+    GFW_SAR_SWEEP_INTERVAL_HOURS: int = 24
+    GFW_SAR_MIN_CONFIDENCE: float = 0.5
 
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False

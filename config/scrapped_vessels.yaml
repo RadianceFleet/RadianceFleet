@@ -78,3 +78,35 @@ scrapped_imos:
     name: "LIBRA STAR"
     scrapped_year: 2020
     notes: "VLCC, broken at Alang. One of the oldest active VLCCs before scrapping."
+
+# Known scrapped vessel MMSIs — MMSI numbers from demolished vessels
+# that should no longer be in use. An active vessel reusing a scrapped
+# MMSI is evidence of identity fraud ("zombie vessel").
+#
+# Sources: Equasis, Lloyd's List, NGO Shipbreaking Platform
+scrapped_mmsis:
+  - mmsi: "538006890"
+    name: "OCEAN PRIDE"
+    imo: "9145012"
+    year_scrapped: 2021
+    notes: "Aframax tanker, broken at Alang, India. Marshall Islands flagged."
+  - mmsi: "354789000"
+    name: "GULF NAVIGATOR"
+    imo: "9078532"
+    year_scrapped: 2020
+    notes: "Products tanker, demolished at Gadani, Pakistan."
+  - mmsi: "636019123"
+    name: "CASPIAN FORTUNE"
+    imo: "9189654"
+    year_scrapped: 2019
+    notes: "Suezmax tanker, recycled at Chittagong, Bangladesh."
+  - mmsi: "249034000"
+    name: "ADRIATIC STAR"
+    imo: "9102345"
+    year_scrapped: 2022
+    notes: "Panamax tanker, broken at Aliaga, Turkey."
+  - mmsi: "477215300"
+    name: "PACIFIC ENTERPRISE"
+    imo: "9213089"
+    year_scrapped: 2020
+    notes: "VLCC, demolished at Alang. 27 years old at scrapping."

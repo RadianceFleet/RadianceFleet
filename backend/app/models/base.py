@@ -56,6 +56,9 @@ class AlertStatusEnum(enum.StrEnum):
 class SpoofingTypeEnum(enum.StrEnum):
     ANCHOR_SPOOF = "anchor_spoof"
     CIRCLE_SPOOF = "circle_spoof"
+    CIRCLE_SPOOF_STATIONARY = "circle_spoof_stationary"
+    CIRCLE_SPOOF_DELIBERATE = "circle_spoof_deliberate"
+    CIRCLE_SPOOF_EQUIPMENT = "circle_spoof_equipment"
     SLOW_ROLL = "slow_roll"
     MMSI_REUSE = "mmsi_reuse"
     NAV_STATUS_MISMATCH = "nav_status_mismatch"

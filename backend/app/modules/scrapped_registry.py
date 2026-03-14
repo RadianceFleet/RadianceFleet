@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 # ── Lazy-loaded scrapped vessel registry ────────────────────────────────────
 _SCRAPPED_REGISTRY: dict[str, dict] | None = None
+_SCRAPPED_MMSIS: dict[str, dict] | None = None
 
 
 def _load_scrapped_registry() -> dict[str, dict]:
@@ -67,10 +68,45 @@ def _load_scrapped_registry() -> dict[str, dict]:
     return _SCRAPPED_REGISTRY
 
 
+def _load_scrapped_mmsis() -> dict[str, dict]:
+    """Load and cache scrapped_mmsis section from scrapped_vessels.yaml.
+
+    Returns dict keyed by MMSI string with value containing name/imo/year/notes.
+    """
+    global _SCRAPPED_MMSIS
+    if _SCRAPPED_MMSIS is not None:
+        return _SCRAPPED_MMSIS
+
+    config_path = Path("config/scrapped_vessels.yaml")
+    if not config_path.exists():
+        logger.warning("scrapped_vessels.yaml not found at %s", config_path)
+        _SCRAPPED_MMSIS = {}
+        return _SCRAPPED_MMSIS
+
+    with open(config_path) as f:
+        raw = yaml.safe_load(f) or {}
+
+    entries = raw.get("scrapped_mmsis", [])
+    _SCRAPPED_MMSIS = {}
+    for entry in entries:
+        mmsi = str(entry.get("mmsi", "")).strip()
+        if mmsi:
+            _SCRAPPED_MMSIS[mmsi] = {
+                "name": entry.get("name", ""),
+                "imo": str(entry.get("imo", "")).strip(),
+                "year_scrapped": entry.get("year_scrapped"),
+                "notes": entry.get("notes", ""),
+            }
+
+    logger.info("Loaded %d scrapped vessel MMSIs", len(_SCRAPPED_MMSIS))
+    return _SCRAPPED_MMSIS
+
+
 def reload_scrapped_registry() -> dict[str, dict]:
     """Force-reload scrapped registry from disk."""
-    global _SCRAPPED_REGISTRY
+    global _SCRAPPED_REGISTRY, _SCRAPPED_MMSIS
     _SCRAPPED_REGISTRY = None
+    _SCRAPPED_MMSIS = None
     return _load_scrapped_registry()
 
 
@@ -156,6 +192,106 @@ def detect_scrapped_imo_reuse(
 
     logger.info(
         "Scrapped IMO detection: %d matches, %d anomalies created",
+        matches,
+        anomalies_created,
+    )
+    return {
+        "status": "ok",
+        "matches": matches,
+        "anomalies_created": anomalies_created,
+    }
+
+
+# ── Part 1b: MMSI zombie vessel detection ────────────────────────────────────
+
+
+def detect_mmsi_zombie_reuse(
+    db: Session,
+    date_from: Any = None,
+    date_to: Any = None,
+) -> dict:
+    """Detect vessels reusing MMSI numbers from scrapped/demolished vessels.
+
+    Args:
+        db: SQLAlchemy session.
+        date_from: Optional start date filter (unused, kept for pipeline compat).
+        date_to: Optional end date filter (unused, kept for pipeline compat).
+
+    Returns:
+        {"status": "ok", "matches": N, "anomalies_created": N}
+        or {"status": "disabled"} if feature flag is off.
+    """
+    if not settings.MMSI_ZOMBIE_DETECTION_ENABLED:
+        return {"status": "disabled"}
+
+    registry = _load_scrapped_mmsis()
+    if not registry:
+        return {"status": "ok", "matches": 0, "anomalies_created": 0}
+
+    # Query all vessels with non-null MMSI
+    vessels = db.query(Vessel).filter(Vessel.mmsi.isnot(None), Vessel.mmsi != "").all()
+
+    matches = 0
+    anomalies_created = 0
+
+    for vessel in vessels:
+        mmsi = str(vessel.mmsi).strip()
+
+        if mmsi not in registry:
+            continue
+
+        matches += 1
+        scrapped_info = registry[mmsi]
+
+        # Check for existing anomaly with subtype mmsi_zombie
+        existing = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+            )
+            .all()
+        )
+
+        already_flagged = any(
+            (a.evidence_json or {}).get("subtype") == "mmsi_zombie" for a in existing
+        )
+        if already_flagged:
+            continue
+
+        # Determine score: higher if vessel has different IMO than scrapped record
+        scrapped_imo = scrapped_info.get("imo", "")
+        vessel_imo = (vessel.imo or "").strip()
+        if vessel_imo.upper().startswith("IMO"):
+            vessel_imo = vessel_imo[3:].strip()
+
+        different_imo = bool(vessel_imo and scrapped_imo and vessel_imo != scrapped_imo)
+        score = 50 if different_imo else 45
+
+        now = datetime.now(UTC)
+        anomaly = SpoofingAnomaly(
+            vessel_id=vessel.vessel_id,
+            anomaly_type=SpoofingTypeEnum.IMO_FRAUD,
+            start_time_utc=now,
+            risk_score_component=score,
+            evidence_json={
+                "subtype": "mmsi_zombie",
+                "scrapped_mmsi": mmsi,
+                "scrapped_vessel_name": scrapped_info["name"],
+                "scrapped_imo": scrapped_imo,
+                "year_scrapped": scrapped_info["year_scrapped"],
+                "different_imo": different_imo,
+                "notes": scrapped_info["notes"],
+            },
+        )
+        db.add(anomaly)
+        anomalies_created += 1
+
+    if anomalies_created > 0:
+        db.commit()
+
+    logger.info(
+        "MMSI zombie detection: %d matches, %d anomalies created",
         matches,
         anomalies_created,
     )

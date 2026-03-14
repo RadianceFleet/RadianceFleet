@@ -446,6 +446,9 @@ _POSITION_PILLAR_KEYS = frozenset(
         # AIS reporting quality, spoofing events, gaps
         "anchor_in_open_ocean",
         "circle_pattern",
+        "circle_spoof_stationary",
+        "circle_spoof_deliberate",
+        "circle_spoof_equipment",
         "slow_roll",
         "mmsi_reuse_implied_speed_30kn",
         "mmsi_reuse_implied_speed_100kn",
@@ -1850,6 +1853,89 @@ def compute_gap_score(
                     "unmatched_detection_outside_corridor", 20
                 )
 
+    # Phase v4.0: VIIRS nighttime lights scoring
+    # Checks for VIIRS boat detections (scene_id starts with 'viirs-') that
+    # correlate with this vessel's AIS gap — spatially and temporally.
+    if db is not None and gap.vessel_id is not None and getattr(_scoring_settings, "VIIRS_SCORING_ENABLED", True):  # noqa: E501
+            try:
+                from app.models.stubs import DarkVesselDetection as _VIIRS_DVD
+                from app.utils.geo import haversine_nm as _viirs_haversine
+
+                viirs_detections_q = (
+                    db.query(_VIIRS_DVD)
+                    .filter(
+                        _VIIRS_DVD.scene_id.like("viirs-%"),
+                        _VIIRS_DVD.detection_time_utc.between(
+                            gap.gap_start_utc - timedelta(hours=6),
+                            gap.gap_end_utc + timedelta(hours=6),
+                        ),
+                    )
+                    .all()
+                )
+
+                viirs_gap_lat = viirs_gap_lon = None
+                if hasattr(gap, "gap_off_lat") and gap.gap_off_lat is not None:
+                    viirs_gap_lat, viirs_gap_lon = gap.gap_off_lat, gap.gap_off_lon
+                elif gap.start_point is not None:
+                    viirs_gap_lat, viirs_gap_lon = gap.start_point.lat, gap.start_point.lon
+
+                viirs_max_radius = gap.max_plausible_distance_nm or 200.0
+
+                viirs_matches = []
+                for vdet in viirs_detections_q:
+                    if vdet.detection_lat is None or vdet.detection_lon is None:
+                        continue
+                    if vdet.corridor_id is not None and gap.corridor_id is not None and vdet.corridor_id == gap.corridor_id:  # noqa: E501
+                            viirs_matches.append(vdet)
+                            continue
+                    if viirs_gap_lat is not None and viirs_gap_lon is not None:
+                        vdist = _viirs_haversine(
+                            viirs_gap_lat, viirs_gap_lon,
+                            vdet.detection_lat, vdet.detection_lon,
+                        )
+                        if vdist <= viirs_max_radius:
+                            viirs_matches.append(vdet)
+
+                viirs_cfg = config.get("viirs", {})
+                if viirs_matches:
+                    has_viirs_corridor = any(
+                        v.corridor_id is not None for v in viirs_matches
+                    )
+                    # Check for gap-correlated detections
+                    has_gap_correlated = any(
+                        v.ais_match_result == "gap_correlated" for v in viirs_matches
+                    )
+                    if has_gap_correlated:
+                        breakdown["viirs_ais_gap_match"] = viirs_cfg.get(
+                            "viirs_ais_gap_temporal_match", 20
+                        )
+                    elif has_viirs_corridor:
+                        breakdown["viirs_unmatched_in_corridor"] = viirs_cfg.get(
+                            "unmatched_viirs_in_corridor", 25
+                        )
+                    else:
+                        breakdown["viirs_unmatched"] = viirs_cfg.get(
+                            "unmatched_viirs_outside_corridor", 15
+                        )
+            except Exception:
+                logger.debug("VIIRS scoring failed", exc_info=True)
+
+    # v4.0: Gap-SAR validation — cross-correlate AIS gaps with SAR detections
+    if _scoring_settings.GAP_SAR_VALIDATION_ENABLED and gap is not None:
+        sar_val = (getattr(gap, "risk_breakdown_json", None) or {}).get("sar_validation")
+        if sar_val:
+            gs_cfg = config.get("gap_sar_validation", {})
+            sar_result = sar_val.get("result")
+            if sar_result == "confirmed":
+                breakdown["gap_sar_confirmed_dark"] = gs_cfg.get("confirmed_dark_transit", 40)
+                # Bonus for multiple detections (capped at 15)
+                det_count = len(sar_val.get("detections", []))
+                if det_count > 1:
+                    bonus_per = gs_cfg.get("sar_detection_count_bonus", 5)
+                    breakdown["gap_sar_detection_bonus"] = min(det_count * bonus_per, 15)
+            elif sar_result == "outage":
+                breakdown["gap_sar_possible_outage"] = gs_cfg.get("possible_outage", -10)
+
     # Phase 6.13: Sanctioned port scoring
     # Signal 1: Confirmed PortCall to sanctioned terminal (+50)
     # Signal 2: Gap endpoint within 10nm of sanctioned terminal (+25)
@@ -2239,6 +2325,20 @@ def compute_gap_score(
         except Exception as e:
             logger.debug("P&I validation scoring failed for vessel %s: %s", vessel.vessel_id, e)
 
+    # ── Stage 2-A+: P&I Equasis verification (Equasis-sourced IG club check) ─
+    if _scoring_settings.PI_VERIFICATION_SCORING_ENABLED and db is not None and vessel is not None:
+        try:
+            from app.modules.pi_verification import check_pi_coverage
+
+            pi_result = check_pi_coverage(db, vessel)
+            if pi_result is not None:
+                if pi_result["found"]:
+                    breakdown["pi_equasis_ig_club"] = pi_val_cfg.get("pi_equasis_ig_club", -15)
+                else:
+                    breakdown["pi_equasis_not_found"] = pi_val_cfg.get("pi_equasis_not_found", 30)
+        except Exception as e:
+            logger.debug("P&I Equasis verification failed for vessel %s: %s", vessel.vessel_id, e)
+
     # ── Stage 2-B: Fraudulent registry scoring ─────────────────────────────
     if _scoring_settings.FRAUDULENT_REGISTRY_SCORING_ENABLED and vessel is not None:
         fr_cfg = config.get("fraudulent_registry", {})
@@ -2374,6 +2474,31 @@ def compute_gap_score(
             if ev.get("subtype") == "scrapped_imo":
                 pts = scrapped_cfg.get("scrapped_imo_reuse", 50)
                 breakdown["scrapped_imo_reuse"] = pts
+
+    # ── Stage 3-C: MMSI zombie scoring ──────────────────────────────────────
+    if (
+        _scoring_settings.MMSI_ZOMBIE_SCORING_ENABLED
+        and db is not None
+        and vessel is not None
+    ):
+        zombie_cfg = config.get("mmsi_zombie", {})
+        zombie_anomalies = (
+            db.query(SpoofingAnomaly)
+            .filter(
+                SpoofingAnomaly.vessel_id == vessel.vessel_id,
+                SpoofingAnomaly.anomaly_type == SpoofingTypeEnum.IMO_FRAUD,
+            )
+            .all()
+        )
+        for za in zombie_anomalies:
+            ev = za.evidence_json or {}
+            if ev.get("subtype") == "mmsi_zombie":
+                if ev.get("different_imo"):
+                    pts = zombie_cfg.get("mmsi_reuse_with_different_imo", 50)
+                    breakdown["mmsi_zombie_different_imo"] = pts
+                else:
+                    pts = zombie_cfg.get("scrapped_mmsi_reuse", 45)
+                    breakdown["mmsi_zombie_reuse"] = pts
 
     # ── Stage 3-C: Track replay scoring ──────────────────────────────────────
     if _scoring_settings.TRACK_REPLAY_SCORING_ENABLED and db is not None and vessel is not None:
@@ -2867,6 +2992,9 @@ def compute_gap_score(
             "mmsi_reuse_implied_speed_30kn",
             "mmsi_reuse_implied_speed_100kn",
             "circle_pattern",
+            "circle_spoof_stationary",
+            "circle_spoof_deliberate",
+            "circle_spoof_equipment",
             "identity_swap",
             "cross_receiver_disagreement",
             "imo_fabricated",

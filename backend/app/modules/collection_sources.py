@@ -88,6 +88,18 @@ def _collect_datalastic(db: Session, duration_seconds: int = 300) -> dict:
     }
 
 
+def _collect_viirs(db: Session, duration_seconds: int = 300) -> dict:
+    """Collect VIIRS nighttime light detections."""
+    from app.modules.viirs_client import collect_viirs
+
+    result = collect_viirs(db)
+    return {
+        "points_imported": result.get("imported", 0),
+        "vessels_seen": 0,
+        "errors": result.get("errors", 0),
+    }
+
+
 # Registry of all known sources
 _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
     "digitraffic": lambda: SourceInfo(
@@ -132,6 +144,13 @@ _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
         interval_seconds=getattr(settings, "COLLECT_DATALASTIC_INTERVAL", 3600),
         enabled=bool(getattr(settings, "DATALASTIC_API_KEY", None)),
         collector=_collect_datalastic,
+    ),
+    "viirs": lambda: SourceInfo(
+        name="viirs",
+        description="NOAA VIIRS nighttime boat detections",
+        interval_seconds=getattr(settings, "COLLECT_VIIRS_INTERVAL", 86400),
+        enabled=getattr(settings, "VIIRS_ENABLED", False),
+        collector=_collect_viirs,
     ),
 }
 

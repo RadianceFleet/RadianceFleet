@@ -18,6 +18,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.vessel_owner import VesselOwner
 
 logger = logging.getLogger(__name__)
 
@@ -312,3 +313,89 @@ def propagate_sanctions(db: Session) -> dict:
         stats["vessels_flagged"],
     )
     return stats
+
+
+# ── Equasis ownership import ────────────────────────────────────────────────
+
+_ROLE_TO_OWNERSHIP_TYPE: dict[str, str] = {
+    "Registered Owner": "registered_owner",
+    "ISM Manager": "ism_manager",
+    "Ship Manager": "ship_manager",
+    "DOC Company": "doc_company",
+    "Commercial Manager": "commercial_manager",
+    "Technical Manager": "technical_manager",
+    "Operator": "operator",
+    "Bareboat Charterer": "bareboat_charterer",
+}
+
+
+def import_equasis_ownership(
+    db: Session,
+    vessel_id: int,
+    chain_data: list[dict],
+) -> list[VesselOwner]:
+    """Import Equasis ownership chain data into VesselOwner records.
+
+    Takes the chain data list from EquasisClient.get_ownership_chain() and
+    creates/updates VesselOwner entries for the given vessel.
+
+    Args:
+        db: SQLAlchemy session.
+        vessel_id: ID of the vessel to associate ownership with.
+        chain_data: List of dicts with keys: role, company_name, company_id, flag, since.
+
+    Returns:
+        List of created/updated VesselOwner records.
+    """
+    created: list[VesselOwner] = []
+
+    for entry in chain_data:
+        role = entry.get("role", "")
+        company_name = entry.get("company_name", "")
+        if not company_name:
+            continue
+
+        ownership_type = _ROLE_TO_OWNERSHIP_TYPE.get(role, role.lower().replace(" ", "_"))
+
+        # Check for existing record with same vessel + owner_name + ownership_type
+        existing = (
+            db.query(VesselOwner)
+            .filter(
+                VesselOwner.vessel_id == vessel_id,
+                VesselOwner.owner_name == company_name,
+                VesselOwner.ownership_type == ownership_type,
+            )
+            .first()
+        )
+
+        if existing:
+            # Update country if available
+            flag = entry.get("flag", "")
+            if flag and not existing.country:
+                existing.country = flag[:10]
+            existing.source_url = "https://www.equasis.org"
+            created.append(existing)
+            continue
+
+        flag = entry.get("flag", "")
+        record = VesselOwner(
+            vessel_id=vessel_id,
+            owner_name=company_name,
+            ownership_type=ownership_type,
+            country=flag[:10] if flag else None,
+            is_sanctioned=False,
+            source_url="https://www.equasis.org",
+            ism_manager=company_name if role == "ISM Manager" else None,
+        )
+        db.add(record)
+        created.append(record)
+
+    if created:
+        db.commit()
+        logger.info(
+            "Imported %d Equasis ownership records for vessel_id=%d",
+            len(created),
+            vessel_id,
+        )
+
+    return created

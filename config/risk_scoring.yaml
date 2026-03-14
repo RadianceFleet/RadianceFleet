@@ -53,7 +53,10 @@ movement_envelope:
 # AIS SPOOFING DETECTIONS
 spoofing:
   anchor_in_open_ocean: 10
-  circle_pattern: 35
+  circle_pattern: 35                    # backward compat for historical records
+  circle_pattern_stationary: 25          # GPS jamming — vessel not actually moving
+  circle_pattern_deliberate: 35          # intentional circle spoofing while moving
+  circle_pattern_equipment: 10           # GPS equipment malfunction (spiral drift)
   slow_roll: 12
   mmsi_reuse_implied_speed_30kn: 40
   mmsi_reuse_implied_speed_100kn: 55
@@ -202,6 +205,18 @@ dark_vessel:
   unmatched_detection_in_corridor: 35  # satellite detection with no AIS match in known corridor
   unmatched_detection_outside_corridor: 20  # satellite detection with no AIS match
 
+# VIIRS NIGHTTIME LIGHTS (v4.0) — boat detections with no AIS match
+viirs:
+  unmatched_viirs_in_corridor: 25
+  unmatched_viirs_outside_corridor: 15
+  viirs_ais_gap_temporal_match: 20
+
+# GAP-SAR VALIDATION (v4.0) — cross-correlate AIS gaps with SAR detections
+gap_sar_validation:
+  confirmed_dark_transit: 40
+  possible_outage: -10
+  sar_detection_count_bonus: 5
+
 # IDENTITY MERGE SIGNALS
 identity_merge:
   identity_merge_detected: 30       # vessel absorbed another MMSI (confirmed identity switch)
@@ -302,6 +317,8 @@ pi_validation:
   unknown_insurer: 25
   known_fraudulent: 40
   no_insurer: 15
+  pi_equasis_not_found: 30
+  pi_equasis_ig_club: -15
 
 # FRAUDULENT REGISTRY (Stage 2-B) — non-operational or high-risk flag registries
 fraudulent_registry:
@@ -346,6 +363,11 @@ sts_chains:
 scrapped_registry:
   scrapped_imo_reuse: 50
   merge_scrapped_imo_bonus: 15
+
+# MMSI ZOMBIE (v4.0) — scrapped vessel MMSI reuse
+mmsi_zombie:
+  scrapped_mmsi_reuse: 45
+  mmsi_reuse_with_different_imo: 50
 
 # TRACK REPLAY (Stage 3-C) — historical route pattern repetition
 track_replay:

@@ -1163,6 +1163,144 @@ def import_gfw_port_visits(
     return {"created": created, "errors": errors}
 
 
+def sweep_corridors_sar_incremental(
+    db: Session,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    corridor_types: list[str] | None = None,
+    token: str | None = None,
+) -> dict:
+    """Incrementally sweep corridors for SAR detections, skipping recently-swept ones.
+
+    Checks each corridor's most recent GFW SAR detection time and skips corridors
+    that were swept within ``GFW_SAR_SWEEP_INTERVAL_HOURS``.  For remaining
+    corridors, fetches detections via :func:`get_sar_detections`, applies a
+    confidence filter (``GFW_SAR_MIN_CONFIDENCE``), and uses a compound dedup
+    key of ``(scene_id, detection_lat, detection_lon)`` before importing.
+
+    Returns summary dict with corridors_swept, corridors_skipped,
+    detections_imported, detections_filtered.
+    """
+    import time
+
+    from sqlalchemy import func as sa_func
+
+    from app.models.corridor import Corridor
+    from app.models.stubs import DarkVesselDetection
+
+    token = token or settings.GFW_API_TOKEN
+    if not token:
+        raise ValueError("GFW_API_TOKEN not configured")
+
+    if not start_date:
+        start_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not end_date:
+        end_date = datetime.utcnow().strftime("%Y-%m-%d")
+
+    sweep_interval_hours = settings.GFW_SAR_SWEEP_INTERVAL_HOURS
+    min_confidence = settings.GFW_SAR_MIN_CONFIDENCE
+    cutoff = datetime.utcnow() - timedelta(hours=sweep_interval_hours)
+
+    summary: dict[str, Any] = {
+        "corridors_swept": 0,
+        "corridors_skipped": 0,
+        "detections_imported": 0,
+        "detections_filtered": 0,
+        "errors": [],
+    }
+
+    # Load corridors
+    q = db.query(Corridor).filter(Corridor.geometry.isnot(None))
+    if corridor_types:
+        q = q.filter(Corridor.corridor_type.in_(corridor_types))
+    corridors = q.all()
+
+    if not corridors:
+        return summary
+
+    # Find most recent SAR detection per corridor (using scene_id prefix as source marker)
+    last_sweep_rows = (
+        db.query(
+            DarkVesselDetection.corridor_id,
+            sa_func.max(DarkVesselDetection.detection_time_utc).label("last_detection"),
+        )
+        .filter(
+            DarkVesselDetection.corridor_id.isnot(None),
+            DarkVesselDetection.scene_id.like("gfw-sar-%"),
+        )
+        .group_by(DarkVesselDetection.corridor_id)
+        .all()
+    )
+    last_swept: dict[int, datetime] = {
+        row.corridor_id: row.last_detection
+        for row in last_sweep_rows
+        if row.last_detection is not None
+    }
+
+    consecutive_failures = 0
+
+    for corridor in corridors:
+        # Check if recently swept
+        last_dt = last_swept.get(corridor.corridor_id)
+        if last_dt is not None and last_dt >= cutoff:
+            summary["corridors_skipped"] += 1
+            continue
+
+        bbox = _extract_bbox_from_wkt(corridor.geometry)
+        if bbox is None:
+            continue
+
+        try:
+            detections = get_sar_detections(
+                bbox, token=token, start_date=start_date, end_date=end_date
+            )
+            time.sleep(1)  # Rate-limit
+        except Exception as exc:
+            consecutive_failures += 1
+            logger.warning(
+                "SAR incremental sweep failed for corridor %s: %s", corridor.name, exc
+            )
+            summary["errors"].append(f"{corridor.name}: {exc}")
+            if consecutive_failures >= 3:
+                break
+            continue
+
+        consecutive_failures = 0
+        summary["corridors_swept"] += 1
+
+        # Filter by confidence and import with compound dedup
+        for det in detections:
+            confidence = det.get("model_confidence")
+            if confidence is not None and confidence < min_confidence:
+                summary["detections_filtered"] += 1
+                continue
+
+            scene_id = det.get("scene_id", "")
+            d_lat = det.get("detection_lat")
+            d_lon = det.get("detection_lon")
+
+            # Compound dedup: (scene_id, detection_lat, detection_lon)
+            if scene_id and d_lat is not None and d_lon is not None:
+                existing = (
+                    db.query(DarkVesselDetection)
+                    .filter(
+                        DarkVesselDetection.scene_id == scene_id,
+                        DarkVesselDetection.detection_lat == d_lat,
+                        DarkVesselDetection.detection_lon == d_lon,
+                    )
+                    .first()
+                )
+                if existing:
+                    continue
+
+            det["corridor_id"] = corridor.corridor_id
+            result = import_sar_detections_to_db([det], db)
+            summary["detections_imported"] += result.get("dark", 0) + result.get("matched", 0)
+
+    logger.info("SAR incremental sweep: %s", {k: v for k, v in summary.items() if k != "errors"})
+    return summary
+
+
 def _extract_bbox_from_wkt(wkt: str | None) -> tuple[float, float, float, float] | None:
     """Extract (lat_min, lon_min, lat_max, lon_max) bounding box from WKT POLYGON.
 

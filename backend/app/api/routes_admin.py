@@ -429,6 +429,30 @@ def admin_detector_correlation(
     return detector_correlation_report(db)
 
 
+@router.post("/admin/watchlist-sync", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def admin_watchlist_sync(
+    request: Request,
+    source: str = Query("OFAC_SDN", description="Watchlist source name to sync"),
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: trigger a manual watchlist sync for a given source."""
+    from app.modules.watchlist_scheduler import run_watchlist_update
+
+    results = run_watchlist_update(db, force=True, sources=[source])
+    _audit_log(
+        db,
+        "watchlist_sync",
+        "watchlist",
+        details={"source": source, "results": results},
+        request=request,
+        analyst_id=_admin["analyst_id"],
+    )
+    db.commit()
+    return {"source": source, "results": results}
+
+
 @router.post("/admin/purge-observations", tags=["admin"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def admin_purge_observations(
