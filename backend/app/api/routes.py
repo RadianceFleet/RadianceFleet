@@ -25,6 +25,7 @@ from app.api.routes_jamming_zones import router as jamming_zones_router
 from app.api.routes_ownership_network import router as ownership_network_router
 from app.api.routes_public import router as public_router
 from app.api.routes_sse import router as sse_router
+from app.api.routes_sse_unified import router as sse_unified_router
 from app.api.routes_sts_hotspots import router as sts_hotspots_router
 from app.api.routes_trajectory_pca import router as trajectory_pca_router
 from app.api.routes_vessels import router as vessels_router
@@ -36,6 +37,7 @@ router.include_router(detection_router)
 router.include_router(admin_router)
 router.include_router(health_router)
 router.include_router(sse_router)
+router.include_router(sse_unified_router)
 router.include_router(trajectory_pca_router)
 router.include_router(behavioral_baseline_router)
 router.include_router(sts_hotspots_router)
