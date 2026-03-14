@@ -44,3 +44,39 @@ class WorkloadSummary(BaseModel):
     open_alerts: int
     assigned_alerts: int
     avg_resolution_hours: float | None = None
+
+
+class DetailedWorkloadSummary(BaseModel):
+    """Extended workload summary with utilization, online status, and specializations."""
+
+    analyst_id: int
+    analyst_name: str
+    open_alerts: int
+    assigned_alerts: int
+    avg_resolution_hours: float | None = None
+    utilization: float = 0.0
+    is_online: bool = False
+    specializations: list[str] = []
+    shift_start_hour: int | None = None
+    shift_end_hour: int | None = None
+
+
+class ActivityFeedEntry(BaseModel):
+    """A single event in the analyst activity feed."""
+
+    event_type: str
+    analyst_name: str
+    description: str
+    timestamp: str | None = None
+    related_id: int | None = None
+
+
+class QueueEntry(BaseModel):
+    """An unassigned alert in the assignment queue."""
+
+    alert_id: int
+    risk_score: int
+    vessel_name: str | None = None
+    corridor_name: str | None = None
+    suggested_analyst_id: int | None = None
+    suggested_analyst_name: str | None = None

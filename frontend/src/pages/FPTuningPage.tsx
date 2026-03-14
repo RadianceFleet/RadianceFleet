@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "../api";
+import { apiFetch } from "../lib/api";
 import FPRateByCorridorChart from "../components/charts/FPRateByCorridorChart";
+import { RegionSelector } from "../components/RegionSelector";
+import { SignalOverrideEditor } from "../components/SignalOverrideEditor";
+import { ShadowScorePreview } from "../components/ShadowScorePreview";
+import { CalibrationTimeline } from "../components/CalibrationTimeline";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -158,6 +162,8 @@ export default function FPTuningPage() {
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<number>>(
     () => new Set()
   );
+  const [selectedRegion, setSelectedRegion] = useState<number | null>(null);
+  const [signalOverrides, setSignalOverrides] = useState<Record<string, number>>({});
 
   const {
     data: fpRates,
@@ -251,6 +257,18 @@ export default function FPTuningPage() {
       <p className="text-gray-600 mb-6">
         Monitor false-positive rates by corridor and adjust scoring parameters.
       </p>
+
+      {/* Region selector */}
+      <RegionSelector selectedId={selectedRegion} onSelect={setSelectedRegion} />
+
+      {/* Signal override editor */}
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold mb-3">Signal Overrides</h2>
+        <SignalOverrideEditor overrides={signalOverrides} onChange={setSignalOverrides} />
+        {selectedRegion && (
+          <ShadowScorePreview corridorId={selectedRegion} overrides={signalOverrides} />
+        )}
+      </div>
 
       {/* Chart */}
       {fpRates && fpRates.length > 0 && (
@@ -375,6 +393,12 @@ export default function FPTuningPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Calibration Timeline */}
+      <div className="mt-8 mb-8">
+        <h2 className="text-lg font-semibold mb-3">Calibration History</h2>
+        <CalibrationTimeline corridorId={selectedRegion} />
       </div>
 
       {/* Override Modal */}

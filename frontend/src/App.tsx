@@ -37,6 +37,7 @@ const OwnershipNetworkPage = lazy(() => import('./pages/OwnershipNetworkPage'));
 const FPTuningPage = lazy(() => import('./pages/FPTuningPage'));
 const PublicDashboardPage = lazy(() => import('./pages/PublicDashboardPage'));
 const EmbedGeneratorPage = lazy(() => import('./pages/EmbedGeneratorPage'));
+const TeamDashboardPage = lazy(() => import('./pages/TeamDashboardPage'));
 
 export default function App() {
   const { isAuthenticated } = useAuth();
@@ -103,6 +104,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <Suspense fallback={<div>Loading...</div>}><EmbedGeneratorPage /></Suspense>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="team"
+              element={
+                <RequireAuth>
+                  <Suspense fallback={<div>Loading...</div>}><TeamDashboardPage /></Suspense>
                 </RequireAuth>
               }
             />
