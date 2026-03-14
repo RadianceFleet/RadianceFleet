@@ -131,3 +131,18 @@ class MergeCandidateStatusEnum(enum.StrEnum):
     AUTO_MERGED = "auto_merged"
     ANALYST_MERGED = "analyst_merged"
     REJECTED = "rejected"
+
+
+class CaseStatusEnum(enum.StrEnum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    PENDING_REVIEW = "pending_review"
+    CLOSED = "closed"
+    ARCHIVED = "archived"
+
+
+class CasePriorityEnum(enum.StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
