@@ -591,3 +591,49 @@ export interface ShadowScoreResponse {
   predicted_fp_rate_change: number | null;
   results: ShadowScoreResult[];
 }
+
+// ---------------------------------------------------------------------------
+// Notification types
+// ---------------------------------------------------------------------------
+
+export interface NotificationEvent {
+  event_id: number;
+  event_type: string;
+  payload: Record<string, unknown> | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Detailed Workload types (for team dashboard)
+// ---------------------------------------------------------------------------
+
+export interface DetailedWorkloadSummary {
+  analyst_id: number;
+  analyst_name: string;
+  open_alerts: number;
+  assigned_alerts: number;
+  avg_resolution_hours: number | null;
+  utilization: number;
+  is_online: boolean;
+  specializations: string[];
+  shift_start_hour: number | null;
+  shift_end_hour: number | null;
+}
+
+export interface ActivityFeedEntry {
+  event_type: string;
+  analyst_name: string;
+  description: string;
+  timestamp: string;
+  related_id: number | null;
+}
+
+export interface QueueEntry {
+  alert_id: number;
+  risk_score: number;
+  vessel_name: string | null;
+  corridor_name: string | null;
+  suggested_analyst_id: number | null;
+  suggested_analyst_name: string | null;
+}

@@ -30,6 +30,7 @@ from app.models.isolation_forest_anomaly import IsolationForestAnomaly
 from app.models.jamming_zone import JammingZone, JammingZoneGap
 from app.models.loitering_event import LoiteringEvent
 from app.models.merge_candidate import MergeCandidate
+from app.models.notification_event import NotificationEvent
 from app.models.merge_chain import MergeChain
 from app.models.merge_operation import MergeOperation
 from app.models.movement_envelope import MovementEnvelope
@@ -132,4 +133,5 @@ __all__ = [
     "CaseAlert",
     "CalibrationEvent",
     "ScoringRegion",
+    "NotificationEvent",
 ]

@@ -82,6 +82,13 @@ def create_handoff(
     alert.assigned_at = datetime.now(UTC)
 
     db.commit()
+
+    # Emit handoff notification to target analyst
+    from app.modules.collaboration_notifier import emit_handoff as _emit_handoff
+
+    _emit_handoff(db, body.to_analyst_id, alert_id, from_name, body.notes)
+    db.commit()
+
     db.refresh(handoff)
 
     return HandoffResponse(
@@ -378,3 +385,51 @@ def suggest_alert_assignment(
     if suggested is None:
         return {"suggested_analyst_id": None, "reason": "No eligible analysts available"}
     return {"suggested_analyst_id": suggested}
+
+
+# ---------------------------------------------------------------------------
+# Notification endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/notifications")
+def get_notifications(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Get pending notifications for the authenticated analyst."""
+    from app.modules.collaboration_notifier import get_pending_events
+
+    events = get_pending_events(db, auth["analyst_id"])
+    return {
+        "notifications": events,
+        "unread_count": sum(1 for e in events if not e["is_read"]),
+    }
+
+
+@router.post("/notifications/{event_id}/read")
+def mark_notification_read(
+    event_id: int,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Mark a single notification as read."""
+    from app.modules.collaboration_notifier import mark_read
+
+    if mark_read(db, event_id, auth["analyst_id"]):
+        db.commit()
+        return {"status": "ok"}
+    raise HTTPException(status_code=404, detail="Notification not found")
+
+
+@router.post("/notifications/read-all")
+def mark_all_notifications_read(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Mark all notifications as read for the authenticated analyst."""
+    from app.modules.collaboration_notifier import mark_all_read
+
+    count = mark_all_read(db, auth["analyst_id"])
+    db.commit()
+    return {"marked_read": count}
