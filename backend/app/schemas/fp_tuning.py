@@ -45,6 +45,9 @@ class ScoringOverrideCreate(BaseModel):
         1.0, ge=0.1, le=5.0, description="Gap duration scoring scale factor"
     )
     description: str | None = Field(None, max_length=2000, description="Reason for override")
+    signal_overrides: dict[str, float] | None = Field(
+        None, description="Per-signal overrides: {'section.key': value}"
+    )
 
 
 class ScoringOverrideResponse(BaseModel):
@@ -60,5 +63,24 @@ class ScoringOverrideResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     is_active: bool = True
+    signal_overrides: dict[str, float] | None = None
+    region_id: int | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class CalibrationEventResponse(BaseModel):
+    """Response for a calibration audit trail event."""
+
+    event_id: int
+    corridor_id: int | None = None
+    region_id: int | None = None
+    event_type: str
+    before_values: dict | None = None
+    after_values: dict | None = None
+    impact_summary: dict | None = None
+    analyst_id: int | None = None
+    reason: str | None = None
+    created_at: datetime | None = None
 
     model_config = {"from_attributes": True}

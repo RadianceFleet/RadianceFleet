@@ -17,6 +17,7 @@ No hard cap; 76+ is "critical" regardless of upper bound.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import logging
@@ -68,6 +69,73 @@ def _count_gaps_in_window(db: Session, alert: AISGapEvent, days: int) -> int:
     )
 
 
+def _load_corridor_overrides(db: Session) -> dict[int, dict]:
+    """Pre-fetch all active corridor scoring overrides. Single query."""
+    from app.models.corridor_scoring_override import CorridorScoringOverride
+
+    overrides = (
+        db.query(CorridorScoringOverride)
+        .filter(CorridorScoringOverride.is_active.is_(True))
+        .all()
+    )
+    result: dict[int, dict] = {}
+    for ov in overrides:
+        parsed: dict = {}
+        if ov.signal_overrides_json:
+            try:
+                parsed = json.loads(ov.signal_overrides_json)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Invalid signal_overrides_json for corridor %d", ov.corridor_id)
+        parsed["_corridor_multiplier_override"] = ov.corridor_multiplier_override
+        parsed["_gap_duration_multiplier"] = ov.gap_duration_multiplier
+        result[ov.corridor_id] = parsed
+    return result
+
+
+def _merge_overrides(base_config: dict, corridor_overrides: dict) -> dict:
+    """Deep-merge corridor-specific overrides into a copy of the global config.
+
+    Override keys use dot notation: "section.key" maps to config["section"]["key"].
+    Handles 3-level nesting for speed_anomaly (e.g., "speed_anomaly.thresholds.high").
+    Validates values are numeric before merging.
+    """
+    merged = copy.deepcopy(base_config)
+    for key, value in corridor_overrides.items():
+        if key.startswith("_"):
+            continue  # internal keys like _corridor_multiplier_override
+        if value is None:
+            continue  # skip None values — would bypass .get() defaults
+        parts = key.split(".")
+        if len(parts) == 2:
+            section, subkey = parts
+            if (
+                section in merged
+                and isinstance(merged[section], dict)
+                and isinstance(value, (int, float))
+            ):
+                merged[section][subkey] = value
+        elif len(parts) == 3:
+            section, mid, subkey = parts
+            if (
+                section in merged
+                and isinstance(merged[section], dict)
+                and mid in merged[section]
+                and isinstance(merged[section][mid], dict)
+                and isinstance(value, (int, float))
+            ):
+                merged[section][mid][subkey] = value
+    return merged
+
+
+def _merge_config_with_overrides(
+    config: dict, corridor_id: int | None, corridor_overrides: dict
+) -> dict:
+    """Get merged config for a specific corridor. Fast-path when no overrides exist."""
+    if corridor_id is None or corridor_id not in corridor_overrides:
+        return config  # no copy needed — fast path
+    return _merge_overrides(config, corridor_overrides[corridor_id])
+
+
 def score_all_alerts(db: Session, scoring_date: datetime = None) -> dict:
     """Score all unscored gap events.
 
@@ -76,6 +144,7 @@ def score_all_alerts(db: Session, scoring_date: datetime = None) -> dict:
             Defaults to now if not provided.
     """
     config = load_scoring_config()
+    corridor_overrides = _load_corridor_overrides(db)
     alerts = db.query(AISGapEvent).filter(AISGapEvent.risk_score == 0).all()
     scored = 0
     feed_outage_skipped = 0
@@ -88,9 +157,11 @@ def score_all_alerts(db: Session, scoring_date: datetime = None) -> dict:
         gaps_7d = _count_gaps_in_window(db, alert, 7)
         gaps_14d = _count_gaps_in_window(db, alert, 14)
         gaps_30d = _count_gaps_in_window(db, alert, 30)
+        # Merge corridor-specific overrides into config
+        merged_config = _merge_config_with_overrides(config, alert.corridor_id, corridor_overrides)
         score, breakdown = compute_gap_score(
             alert,
-            config,
+            merged_config,
             gaps_in_7d=gaps_7d,
             gaps_in_14d=gaps_14d,
             gaps_in_30d=gaps_30d,
@@ -98,6 +169,9 @@ def score_all_alerts(db: Session, scoring_date: datetime = None) -> dict:
             db=db,
             pre_gap_sog=getattr(alert, "pre_gap_sog", None),
         )
+        # Store override source in breakdown for traceability
+        if merged_config is not config and isinstance(breakdown, dict):
+            breakdown["_override_source"] = f"corridor:{alert.corridor_id}"
         alert.risk_score = score
         alert.risk_breakdown_json = breakdown
         scored += 1

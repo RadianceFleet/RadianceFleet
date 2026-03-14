@@ -33,6 +33,8 @@ class CorridorScoringOverride(Base):
         DateTime, default=func.now(), onupdate=func.now(), nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    signal_overrides_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    region_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     corridor: Mapped[Corridor] = relationship("Corridor")
     creator: Mapped[Analyst | None] = relationship("Analyst", foreign_keys=[created_by])

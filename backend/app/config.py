@@ -320,6 +320,7 @@ class Settings(BaseSettings):
 
     # --- v4.2: FP Tuning ---
     FP_TUNING_ENABLED: bool = True
+    REGIONAL_FP_TUNING_ENABLED: bool = True
 
     # --- v4.2: Embed Widget ---
     EMBED_CORS_ORIGINS: str = ""

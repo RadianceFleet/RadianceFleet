@@ -162,6 +162,9 @@ def _run_migrations() -> None:
         ("analysts", "max_concurrent_alerts", "INTEGER NOT NULL DEFAULT 10"),
         ("analysts", "shift_start_hour", "INTEGER"),
         ("analysts", "shift_end_hour", "INTEGER"),
+        # v4.3 — regional FP tuning: per-signal overrides
+        ("corridor_scoring_overrides", "signal_overrides_json", "TEXT"),
+        ("corridor_scoring_overrides", "region_id", "INTEGER"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
