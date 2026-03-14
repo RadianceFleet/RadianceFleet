@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import require_auth
@@ -17,7 +16,6 @@ from app.database import SessionLocal, get_db
 from app.schemas.collaboration import (
     HandoffRequest,
     HandoffResponse,
-    PresenceInfo,
     WorkloadSummary,
 )
 

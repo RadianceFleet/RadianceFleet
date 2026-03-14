@@ -57,7 +57,7 @@ vi.mock("../hooks/usePublicDashboard", () => ({
   }),
 }));
 
-import { PublicDashboardPage } from "../pages/PublicDashboardPage";
+import PublicDashboardPage from "../pages/PublicDashboardPage";
 
 describe("PublicDashboardPage", () => {
   it("renders stat cards with vessel count", () => {

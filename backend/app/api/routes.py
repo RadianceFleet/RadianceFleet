@@ -14,20 +14,20 @@ from app.api._helpers import (
 )
 from app.api.routes_admin import router as admin_router
 from app.api.routes_alerts import router as alerts_router
-from app.api.routes_detection import router as detection_router
-from app.api.routes_health import router as health_router
-from app.api.routes_sse import router as sse_router
-from app.api.routes_vessels import router as vessels_router
-from app.api.routes_trajectory_pca import router as trajectory_pca_router
 from app.api.routes_behavioral_baseline import router as behavioral_baseline_router
-from app.api.routes_sts_hotspots import router as sts_hotspots_router
-from app.api.routes_jamming_zones import router as jamming_zones_router
-from app.api.routes_explainability import router as explainability_router
-from app.api.routes_ownership_network import router as ownership_network_router
 from app.api.routes_collaboration import router as collaboration_router
-from app.api.routes_fp_tuning import router as fp_tuning_router
-from app.api.routes_public import router as public_router
+from app.api.routes_detection import router as detection_router
 from app.api.routes_embed import router as embed_router
+from app.api.routes_explainability import router as explainability_router
+from app.api.routes_fp_tuning import router as fp_tuning_router
+from app.api.routes_health import router as health_router
+from app.api.routes_jamming_zones import router as jamming_zones_router
+from app.api.routes_ownership_network import router as ownership_network_router
+from app.api.routes_public import router as public_router
+from app.api.routes_sse import router as sse_router
+from app.api.routes_sts_hotspots import router as sts_hotspots_router
+from app.api.routes_trajectory_pca import router as trajectory_pca_router
+from app.api.routes_vessels import router as vessels_router
 
 router = APIRouter()
 router.include_router(vessels_router)

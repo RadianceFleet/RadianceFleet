@@ -8,9 +8,8 @@ to reduce alert fatigue in high-FP corridors.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
 
 from sqlalchemy import Integer, and_, func
 from sqlalchemy.orm import Session

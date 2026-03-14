@@ -15,6 +15,7 @@ Algorithm:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import math
@@ -163,7 +164,7 @@ def _compute_convex_hull_wkt(
 
             geom = Point(clon, clat).buffer(buffer_deg)
         else:
-            points = [(lon, lat) for lat, lon in zip(lats, lons)]
+            points = [(lon, lat) for lat, lon in zip(lats, lons, strict=False)]
             hull = MultiPoint(points).convex_hull
             geom = hull.buffer(buffer_deg)
 
@@ -179,7 +180,7 @@ def _compute_radius_nm(lats: list[float], lons: list[float]) -> float:
         return 0.0
     clat = sum(lats) / len(lats)
     clon = sum(lons) / len(lons)
-    return max(haversine_nm(clat, clon, lat, lon) for lat, lon in zip(lats, lons))
+    return max(haversine_nm(clat, clon, lat, lon) for lat, lon in zip(lats, lons, strict=False))
 
 
 def _compute_iou(wkt_a: str | None, wkt_b: str | None) -> float:
@@ -235,9 +236,8 @@ def apply_zone_decay(db: Session, now: datetime | None = None) -> dict[str, int]
 
         # Ensure timezone-aware comparison
         if last_gap.tzinfo is None:
-            from datetime import timezone
 
-            last_gap = last_gap.replace(tzinfo=timezone.utc)
+            last_gap = last_gap.replace(tzinfo=UTC)
 
         days_since = (now - last_gap).total_seconds() / 86400.0
 
@@ -401,10 +401,8 @@ def run_jamming_detection(
                 # Merge evidence
                 old_evidence = {}
                 if ez.evidence_json:
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError, TypeError):
                         old_evidence = json.loads(ez.evidence_json)
-                    except (json.JSONDecodeError, TypeError):
-                        pass
                 old_evidence.update(evidence)
                 old_evidence["merged"] = True
                 old_evidence["iou"] = round(iou, 3)
@@ -540,10 +538,8 @@ def get_jamming_zones_geojson(
 
         evidence = {}
         if z.evidence_json:
-            try:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
                 evidence = json.loads(z.evidence_json)
-            except (json.JSONDecodeError, TypeError):
-                pass
 
         features.append(
             {
@@ -572,10 +568,8 @@ def _zone_to_dict(z: Any) -> dict[str, Any]:
     """Convert a JammingZone ORM object to a dictionary."""
     evidence = {}
     if z.evidence_json:
-        try:
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
             evidence = json.loads(z.evidence_json)
-        except (json.JSONDecodeError, TypeError):
-            pass
 
     return {
         "zone_id": z.zone_id,

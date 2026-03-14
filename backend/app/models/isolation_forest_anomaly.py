@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, JSON, String
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String
 
 from app.models.base import Base
 

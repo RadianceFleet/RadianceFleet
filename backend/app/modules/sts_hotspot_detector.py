@@ -183,7 +183,7 @@ def _compute_trend(
     x_mean = sum(x_vals) / n
     y_mean = sum(window_counts) / n
 
-    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_vals, window_counts))
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(x_vals, window_counts, strict=False))
     denominator = sum((x - x_mean) ** 2 for x in x_vals)
 
     if denominator == 0:

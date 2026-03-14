@@ -221,7 +221,6 @@ def compute_spe(
     Projects each data point onto the minor components (components n_components
     through p-1) and computes the squared norm of the residual.
     """
-    n = len(data)
     p = len(data[0]) if data else 0
     spe_values = []
 
@@ -392,7 +391,7 @@ def run_pca_detection(
         dedup_query.delete(synchronize_session=False)
 
     anomalies_created = 0
-    for i, (seg, score, spe_val) in enumerate(zip(segments, scores, spe_values)):
+    for i, (seg, score, spe_val) in enumerate(zip(segments, scores, spe_values, strict=False)):
         tier, risk_component = assign_tier(score)
 
         if score < _TIER_LOW_PERCENTILE:

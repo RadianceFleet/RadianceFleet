@@ -361,7 +361,7 @@ def build_ownership_network(
 
     # Step 4: Walk downward to find child owners
     children_map = _walk_children(db, set(all_owners.keys()))
-    for parent_id, children in children_map.items():
+    for _parent_id, children in children_map.items():
         for child in children:
             if child.owner_id not in all_owners:
                 all_owners[child.owner_id] = (child, 0)
@@ -381,7 +381,7 @@ def build_ownership_network(
 
     # Step 6: Build owner nodes with layer assignment
     max_depth_seen = 0
-    for oid, (owner, d) in filtered_owners.items():
+    for _oid, (owner, d) in filtered_owners.items():
         if len(nodes) >= limit:
             break
         layer = _assign_layer(owner, filtered_owners, depth)

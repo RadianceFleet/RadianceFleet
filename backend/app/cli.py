@@ -22,13 +22,13 @@ from __future__ import annotations
 import app.cli_db as _cli_db  # noqa: F401,E402
 import app.cli_history as _cli_history  # noqa: F401,E402
 import app.cli_psc as _cli_psc  # noqa: F401,E402
-import app.cli_worker as _cli_worker  # noqa: F401,E402
 
 # ---------------------------------------------------------------------------
 # Import sub-command modules — registers commands on `app` / `history_app`
 # ---------------------------------------------------------------------------
 import app.cli_update as _cli_update  # noqa: F401,E402
 import app.cli_vessels as _cli_vessels  # noqa: F401,E402
+import app.cli_worker as _cli_worker  # noqa: F401,E402
 
 # ---------------------------------------------------------------------------
 # Core objects — shared by all sub-command modules

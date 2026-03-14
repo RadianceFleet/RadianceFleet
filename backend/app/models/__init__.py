@@ -12,6 +12,7 @@ from app.models.collection_run import CollectionRun
 from app.models.convoy_event import ConvoyEvent
 from app.models.corridor import Corridor
 from app.models.corridor_gap_baseline import CorridorGapBaseline
+from app.models.corridor_scoring_override import CorridorScoringOverride
 from app.models.crea_voyage import CreaVoyage
 from app.models.dark_zone import DarkZone
 from app.models.data_coverage_window import DataCoverageWindow
@@ -20,8 +21,10 @@ from app.models.evidence_card import EvidenceCard
 from app.models.fleet_alert import FleetAlert
 from app.models.gap_event import AISGapEvent
 from app.models.ground_truth import GroundTruthVessel
+from app.models.handoff_note import HandoffNote
 from app.models.ingestion_status import IngestionStatus
 from app.models.isolation_forest_anomaly import IsolationForestAnomaly
+from app.models.jamming_zone import JammingZone, JammingZoneGap
 from app.models.loitering_event import LoiteringEvent
 from app.models.merge_candidate import MergeCandidate
 from app.models.merge_chain import MergeChain
@@ -40,25 +43,22 @@ from app.models.satellite_order_log import SatelliteOrderLog
 from app.models.satellite_tasking_candidate import SatelliteTaskingCandidate
 from app.models.saved_filter import SavedFilter
 from app.models.spoofing_anomaly import SpoofingAnomaly
+from app.models.sts_hotspot import StsHotspot
 from app.models.sts_transfer import StsTransferEvent
 from app.models.stubs import DarkVesselDetection, HuntCandidate, SearchMission, VesselTargetProfile
 from app.models.tip_submission import TipSubmission
 from app.models.trajectory_cluster import TrajectoryCluster
 from app.models.trajectory_cluster_member import TrajectoryClusterMember
+from app.models.trajectory_pca_anomaly import TrajectoryPcaAnomaly
 from app.models.verification_log import VerificationLog
 from app.models.vessel import Vessel
+from app.models.vessel_behavioral_profile import VesselBehavioralProfile
 from app.models.vessel_fingerprint import VesselFingerprint
 from app.models.vessel_history import VesselHistory
 from app.models.vessel_owner import VesselOwner
 from app.models.vessel_watchlist import VesselWatchlist
 from app.models.webhook import Webhook
 from app.models.worker_heartbeat import WorkerHeartbeat
-from app.models.trajectory_pca_anomaly import TrajectoryPcaAnomaly
-from app.models.vessel_behavioral_profile import VesselBehavioralProfile
-from app.models.sts_hotspot import StsHotspot
-from app.models.jamming_zone import JammingZone, JammingZoneGap
-from app.models.handoff_note import HandoffNote
-from app.models.corridor_scoring_override import CorridorScoringOverride
 
 __all__ = [
     "Base",

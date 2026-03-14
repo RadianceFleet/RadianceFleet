@@ -28,14 +28,12 @@ function setSearchParams(params: Record<string, string>) {
   });
 }
 
+import WidgetRoot from "../embed/WidgetRoot";
+
 function renderWidget() {
-  // Import fresh each time to pick up new location.search
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  // Dynamic import workaround — just require directly
-  const WidgetRoot =
-    require("../embed/WidgetRoot").default;
   return render(
     <QueryClientProvider client={queryClient}>
       <WidgetRoot />

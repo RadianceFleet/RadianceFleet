@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -438,7 +438,7 @@ def build_vessel_profile(
     Returns profile dict or None if insufficient data (< 10 positions).
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
     baseline_start = now - timedelta(days=BASELINE_DAYS)
     baseline_end = now - timedelta(days=CURRENT_WINDOW_DAYS)

@@ -102,6 +102,6 @@ describe("EmbedGeneratorPage", () => {
     });
 
     expect(screen.queryByTestId("preview-iframe")).toBeNull();
-    expect(screen.getByText(/Select a vessel/)).toBeTruthy();
+    expect(screen.getByText(/Select a vessel and enter/)).toBeTruthy();
   });
 });
