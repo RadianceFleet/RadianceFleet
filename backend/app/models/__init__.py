@@ -45,6 +45,7 @@ from app.models.satellite_order import SatelliteOrder
 from app.models.satellite_order_log import SatelliteOrderLog
 from app.models.satellite_tasking_candidate import SatelliteTaskingCandidate
 from app.models.saved_filter import SavedFilter
+from app.models.scoring_region import ScoringRegion
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.sts_hotspot import StsHotspot
 from app.models.sts_transfer import StsTransferEvent
@@ -130,4 +131,5 @@ __all__ = [
     "InvestigationCase",
     "CaseAlert",
     "CalibrationEvent",
+    "ScoringRegion",
 ]

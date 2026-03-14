@@ -318,3 +318,46 @@ def generate_calibration_suggestions(
             suggestions.append(suggestion)
 
     return suggestions
+
+
+def compute_region_fp_rate(db: Session, region_id: int) -> CorridorFPRate | None:
+    """Compute aggregated FP rate across all corridors in a region."""
+    import json
+
+    from app.models.scoring_region import ScoringRegion
+
+    region = db.query(ScoringRegion).filter(ScoringRegion.region_id == region_id).first()
+    if region is None:
+        return None
+
+    corridor_ids: list[int] = []
+    if region.corridor_ids_json:
+        import contextlib
+
+        with contextlib.suppress(json.JSONDecodeError, TypeError):
+            corridor_ids = json.loads(region.corridor_ids_json)
+
+    if not corridor_ids:
+        return CorridorFPRate(
+            corridor_id=0,
+            corridor_name=region.name,
+        )
+
+    # Aggregate FP rates across corridors
+    total_reviewed = 0
+    total_fp = 0
+    for cid in corridor_ids:
+        rate = compute_fp_rate(db, cid)
+        if rate:
+            total_reviewed += rate.total_alerts
+            total_fp += rate.false_positives
+
+    fp_rate = total_fp / total_reviewed if total_reviewed > 0 else 0.0
+
+    return CorridorFPRate(
+        corridor_id=0,
+        corridor_name=region.name,
+        total_alerts=total_reviewed,
+        false_positives=total_fp,
+        fp_rate=round(fp_rate, 4),
+    )
