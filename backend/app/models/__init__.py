@@ -8,6 +8,7 @@ from app.models.analyst import Analyst
 from app.models.api_key import ApiKey
 from app.models.audit_log import AuditLog
 from app.models.base import Base
+from app.models.case_alert import CaseAlert
 from app.models.collection_run import CollectionRun
 from app.models.convoy_event import ConvoyEvent
 from app.models.corridor import Corridor
@@ -23,6 +24,7 @@ from app.models.gap_event import AISGapEvent
 from app.models.ground_truth import GroundTruthVessel
 from app.models.handoff_note import HandoffNote
 from app.models.ingestion_status import IngestionStatus
+from app.models.investigation_case import InvestigationCase
 from app.models.isolation_forest_anomaly import IsolationForestAnomaly
 from app.models.jamming_zone import JammingZone, JammingZoneGap
 from app.models.loitering_event import LoiteringEvent
@@ -124,4 +126,6 @@ __all__ = [
     "JammingZoneGap",
     "HandoffNote",
     "CorridorScoringOverride",
+    "InvestigationCase",
+    "CaseAlert",
 ]

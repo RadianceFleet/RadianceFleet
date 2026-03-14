@@ -507,3 +507,51 @@ export interface NarrativeResponse {
   warnings: string[];
   generated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Investigation Case types
+// ---------------------------------------------------------------------------
+
+export interface CaseCreate {
+  title: string;
+  description?: string | null;
+  priority?: string;
+  vessel_id?: number | null;
+  corridor_id?: number | null;
+  tags?: string[] | null;
+}
+
+export interface CaseUpdate {
+  title?: string | null;
+  description?: string | null;
+  status?: string | null;
+  priority?: string | null;
+  assigned_to?: number | null;
+  tags?: string[] | null;
+}
+
+export interface CaseResponse {
+  case_id: number;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  assigned_to: number | null;
+  assigned_to_username: string | null;
+  created_by: number | null;
+  vessel_id: number | null;
+  corridor_id: number | null;
+  tags: string[];
+  alert_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CaseSuggestion {
+  alert_id: number;
+  related_alerts: Array<{
+    alert_id: number;
+    reason: string;
+    score: number;
+  }>;
+}

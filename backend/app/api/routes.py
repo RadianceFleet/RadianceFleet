@@ -14,6 +14,7 @@ from app.api._helpers import (
 )
 from app.api.routes_admin import router as admin_router
 from app.api.routes_alerts import router as alerts_router
+from app.api.routes_cases import router as cases_router
 from app.api.routes_behavioral_baseline import router as behavioral_baseline_router
 from app.api.routes_collaboration import router as collaboration_router
 from app.api.routes_detection import router as detection_router
@@ -46,3 +47,4 @@ router.include_router(collaboration_router)
 router.include_router(fp_tuning_router)
 router.include_router(public_router)
 router.include_router(embed_router)
+router.include_router(cases_router)
