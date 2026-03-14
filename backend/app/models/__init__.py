@@ -8,6 +8,7 @@ from app.models.analyst import Analyst
 from app.models.api_key import ApiKey
 from app.models.audit_log import AuditLog
 from app.models.base import Base
+from app.models.calibration_event import CalibrationEvent
 from app.models.collection_run import CollectionRun
 from app.models.convoy_event import ConvoyEvent
 from app.models.corridor import Corridor
@@ -124,4 +125,5 @@ __all__ = [
     "JammingZoneGap",
     "HandoffNote",
     "CorridorScoringOverride",
+    "CalibrationEvent",
 ]
