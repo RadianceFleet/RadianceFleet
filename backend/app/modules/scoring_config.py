@@ -168,6 +168,25 @@ def load_scoring_config() -> dict[str, Any]:
     return _SCORING_CONFIG
 
 
+def validate_signal_override_keys(overrides: dict) -> list[str]:
+    """Validate that override keys match known scoring sections.
+
+    Returns list of invalid keys.
+    """
+    invalid = []
+    for key in overrides:
+        if key.startswith("_"):
+            continue
+        parts = key.split(".")
+        if len(parts) < 2:
+            invalid.append(key)
+            continue
+        section = parts[0]
+        if section not in _EXPECTED_SECTIONS:
+            invalid.append(key)
+    return invalid
+
+
 def reload_scoring_config() -> dict[str, Any]:
     """Force-reload scoring config from disk (e.g. after YAML edits)."""
     global _SCORING_CONFIG

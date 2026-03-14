@@ -157,6 +157,9 @@ def _run_migrations() -> None:
         ("evidence_cards", "approved_at", "DATETIME"),
         ("evidence_cards", "approval_status", "VARCHAR(20)"),
         ("evidence_cards", "approval_notes", "TEXT"),
+        # v4.3 — regional FP tuning: per-signal overrides
+        ("corridor_scoring_overrides", "signal_overrides_json", "TEXT"),
+        ("corridor_scoring_overrides", "region_id", "INTEGER"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
