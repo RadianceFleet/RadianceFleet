@@ -303,3 +303,151 @@ async def sse_presence(
             _active_presence_connections -= 1
 
     return EventSourceResponse(event_generator())
+
+
+# ---------------------------------------------------------------------------
+# Detailed workload
+# ---------------------------------------------------------------------------
+
+
+@router.get("/analysts/workload/detailed")
+def get_detailed_workload(db: Session = Depends(get_db), auth: dict = Depends(require_auth)):
+    """Per-analyst detailed workload with utilization and online status."""
+    from app.models.analyst import Analyst
+    from app.models.gap_event import AISGapEvent
+    from app.modules.analyst_presence import get_online_analysts
+
+    analysts = db.query(Analyst).filter(Analyst.is_active == True).all()  # noqa: E712
+    online_ids = {a["analyst_id"] for a in get_online_analysts()}
+
+    results = []
+    for analyst in analysts:
+        open_count = db.query(AISGapEvent).filter(
+            AISGapEvent.assigned_to == analyst.analyst_id,
+            AISGapEvent.status.notin_(["dismissed", "documented", "confirmed_fp"]),
+        ).count()
+        assigned_count = db.query(AISGapEvent).filter(
+            AISGapEvent.assigned_to == analyst.analyst_id,
+        ).count()
+
+        # Simple utilization: ratio of open alerts to a reasonable max (10)
+        utilization = min(open_count / 10.0, 1.0) if open_count > 0 else 0.0
+
+        specializations: list[str] = []
+        if getattr(analyst, "specializations_json", None):
+            try:
+                parsed = json.loads(analyst.specializations_json)
+                if isinstance(parsed, list):
+                    specializations = parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        results.append({
+            "analyst_id": analyst.analyst_id,
+            "analyst_name": analyst.display_name or analyst.username,
+            "open_alerts": open_count,
+            "assigned_alerts": assigned_count,
+            "avg_resolution_hours": None,
+            "utilization": round(utilization, 3),
+            "is_online": analyst.analyst_id in online_ids,
+            "specializations": specializations,
+            "shift_start_hour": getattr(analyst, "shift_start_hour", None),
+            "shift_end_hour": getattr(analyst, "shift_end_hour", None),
+        })
+
+    results.sort(key=lambda x: x["utilization"], reverse=True)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Activity feed
+# ---------------------------------------------------------------------------
+
+
+@router.get("/analysts/activity-feed")
+def get_activity_feed(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Recent handoffs and assignment changes."""
+    from app.models.handoff_note import HandoffNote
+
+    handoffs = (
+        db.query(HandoffNote)
+        .order_by(HandoffNote.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    feed = []
+    for h in handoffs:
+        from_name = (
+            h.from_analyst.display_name or h.from_analyst.username
+            if h.from_analyst
+            else "Unknown"
+        )
+        to_name = (
+            h.to_analyst.display_name or h.to_analyst.username
+            if h.to_analyst
+            else "Unknown"
+        )
+        feed.append({
+            "event_type": "handoff",
+            "analyst_name": from_name,
+            "description": f"Handed off alert #{h.alert_id} to {to_name}",
+            "timestamp": h.created_at.isoformat() if h.created_at else None,
+            "related_id": h.alert_id,
+        })
+
+    feed.sort(key=lambda x: x["timestamp"] or "", reverse=True)
+    return feed[:limit]
+
+
+# ---------------------------------------------------------------------------
+# Assignment queue
+# ---------------------------------------------------------------------------
+
+
+@router.get("/analysts/queue")
+def get_assignment_queue(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Unassigned high-risk alerts with suggested assignee."""
+    from app.models.analyst import Analyst
+    from app.models.gap_event import AISGapEvent
+    from app.modules.analyst_presence import suggest_assignment
+
+    unassigned = (
+        db.query(AISGapEvent)
+        .filter(
+            AISGapEvent.assigned_to.is_(None),
+            AISGapEvent.risk_score >= 51,
+            AISGapEvent.status.notin_(["dismissed", "documented", "confirmed_fp"]),
+        )
+        .order_by(AISGapEvent.risk_score.desc())
+        .limit(50)
+        .all()
+    )
+
+    # Get a single suggested analyst (same for all unassigned alerts)
+    suggested = suggest_assignment(db)
+    suggested_name = None
+    if suggested:
+        analyst = db.query(Analyst).filter(Analyst.analyst_id == suggested).first()
+        if analyst:
+            suggested_name = analyst.display_name or analyst.username
+
+    results = []
+    for alert in unassigned:
+        results.append({
+            "alert_id": alert.gap_event_id,
+            "risk_score": alert.risk_score,
+            "vessel_name": None,
+            "corridor_name": None,
+            "suggested_analyst_id": suggested,
+            "suggested_analyst_name": suggested_name,
+        })
+
+    return results
