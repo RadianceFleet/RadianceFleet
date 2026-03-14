@@ -2934,7 +2934,6 @@ def compute_gap_score(
             signals = ev.get("signals", {})
             pts = 0
             if "interval_cv" in signals:
-                cv_score = signals["interval_cv"].get("score", 0)
                 cv_val = signals["interval_cv"].get("cv", 0)
                 if cv_val > 2.0:
                     pts = max(pts, ra_cfg.get("interval_cv_high", 25))
