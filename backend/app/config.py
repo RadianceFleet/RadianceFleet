@@ -322,6 +322,11 @@ class Settings(BaseSettings):
     FP_TUNING_ENABLED: bool = True
     REGIONAL_FP_TUNING_ENABLED: bool = True
 
+    # ── Auto-Calibration ─────────────────────────────────────────────
+    AUTO_CALIBRATION_ENABLED: bool = False
+    AUTO_CALIBRATION_MAX_ADJUSTMENT_PCT: int = 15
+    AUTO_CALIBRATION_COOLDOWN_DAYS: int = 7
+
     # --- v4.2: Embed Widget ---
     EMBED_CORS_ORIGINS: str = ""
 

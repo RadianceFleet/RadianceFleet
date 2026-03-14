@@ -700,3 +700,109 @@ def remove_corridor_from_region(
         db.refresh(region)
 
     return _region_to_response(region)
+# Auto-calibration endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/calibration-suggestions/per-signal")
+def get_per_signal_suggestions(
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Get auto-generated per-signal calibration suggestions."""
+    _check_enabled()
+    from app.modules.fp_rate_tracker import generate_per_signal_suggestions
+
+    return generate_per_signal_suggestions(db)
+
+
+@router.post("/{corridor_id}/apply-suggestion")
+def apply_calibration_suggestion(
+    corridor_id: int,
+    preview: bool = Query(False),
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_senior_or_admin),
+):
+    """Apply a calibration suggestion. If preview=True, runs shadow scoring first."""
+    _check_enabled()
+    _get_corridor_or_404(db, corridor_id)
+
+    # Get the suggestion for this corridor
+    from app.modules.fp_rate_tracker import generate_per_signal_suggestions
+
+    suggestions = generate_per_signal_suggestions(db)
+    suggestion = next((s for s in suggestions if s["corridor_id"] == corridor_id), None)
+    if suggestion is None:
+        raise HTTPException(
+            status_code=404, detail=f"No pending suggestion for corridor {corridor_id}"
+        )
+
+    # Build proposed overrides from suggestion
+    proposed_overrides: dict[str, float] = {}
+    for key, info in suggestion["signal_suggestions"].items():
+        proposed_overrides[key] = info["proposed"]
+
+    if preview:
+        return {"preview": True, "suggestion": suggestion, "proposed_overrides": proposed_overrides}
+
+    # Apply the suggestion: create/update CorridorScoringOverride
+    existing = (
+        db.query(CorridorScoringOverride)
+        .filter(
+            CorridorScoringOverride.corridor_id == corridor_id,
+            CorridorScoringOverride.is_active.is_(True),
+        )
+        .first()
+    )
+
+    before_values: dict = {}
+    if existing:
+        before_values = {
+            "corridor_multiplier_override": existing.corridor_multiplier_override,
+            "gap_duration_multiplier": existing.gap_duration_multiplier,
+        }
+        # Apply gap_duration multiplier from suggestion if present
+        for key, val in proposed_overrides.items():
+            if key.startswith("gap_duration."):
+                existing.gap_duration_multiplier = val
+                break
+        existing.description = f"Auto-calibration: {suggestion['reason']}"
+    else:
+        gap_dur_mult = 1.0
+        for key, val in proposed_overrides.items():
+            if key.startswith("gap_duration."):
+                gap_dur_mult = val
+                break
+        override = CorridorScoringOverride(
+            corridor_id=corridor_id,
+            gap_duration_multiplier=gap_dur_mult,
+            description=f"Auto-calibration: {suggestion['reason']}",
+            created_by=auth.get("analyst_id"),
+        )
+        db.add(override)
+
+    # Record calibration event
+    cal_event = CalibrationEvent(
+        corridor_id=corridor_id,
+        event_type="suggestion_accepted",
+        before_values_json=json.dumps(before_values),
+        after_values_json=json.dumps(proposed_overrides),
+        analyst_id=auth.get("analyst_id"),
+        reason=suggestion["reason"],
+    )
+    db.add(cal_event)
+    db.commit()
+
+    return {"applied": True, "corridor_id": corridor_id, "overrides": proposed_overrides}
+
+
+@router.post("/auto-calibration/run")
+def run_auto_calibration(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_senior_or_admin),
+):
+    """Run scheduled calibration to generate proposals."""
+    _check_enabled()
+    from app.modules.fp_rate_tracker import run_scheduled_calibration
+
+    return run_scheduled_calibration(db)

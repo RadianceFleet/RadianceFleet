@@ -361,3 +361,113 @@ def compute_region_fp_rate(db: Session, region_id: int) -> CorridorFPRate | None
         false_positives=total_fp,
         fp_rate=round(fp_rate, 4),
     )
+
+
+
+# ---------------------------------------------------------------------------
+# Auto-calibration: per-signal suggestions
+# ---------------------------------------------------------------------------
+
+# Signal bounds (section -> (min_multiplier, max_multiplier))
+_SIGNAL_BOUNDS: dict[str, tuple[float, float]] = {
+    "gap_duration": (0.5, 3.0),
+    "gap_frequency": (0.3, 5.0),
+    "speed_anomaly": (0.3, 5.0),
+    "spoofing": (0.3, 5.0),
+    "metadata": (0.3, 5.0),
+    "dark_zone": (0.3, 5.0),
+    "sts": (0.3, 5.0),
+    "corridor": (0.3, 5.0),
+}
+
+
+def generate_per_signal_suggestions(db: Session) -> list[dict]:
+    """Generate per-signal calibration suggestions using FP rate and signal effectiveness data.
+
+    For each corridor with FP rate > 15%, analyze which signals contribute most to
+    false positives and suggest per-signal adjustments.
+
+    Constraints:
+    - Max +/-15% adjustment per signal per cycle (configurable via AUTO_CALIBRATION_MAX_ADJUSTMENT_PCT)
+    - Hard floor/ceiling per signal (gap_duration weight: 0.5x-3.0x, others: 0.3x-5.0x)
+    - Cooldown: no re-suggestion if last calibration was within AUTO_CALIBRATION_COOLDOWN_DAYS
+    """
+    from app.config import settings
+    from app.models.calibration_event import CalibrationEvent
+    from app.modules.scoring_config import load_scoring_config
+
+    max_adj = getattr(settings, "AUTO_CALIBRATION_MAX_ADJUSTMENT_PCT", 15) / 100.0
+    cooldown_days = getattr(settings, "AUTO_CALIBRATION_COOLDOWN_DAYS", 7)
+
+    rates = compute_fp_rates(db)
+    config = load_scoring_config()
+    suggestions = []
+
+    for fp in rates:
+        if fp.total_alerts < 10:
+            continue
+        if fp.fp_rate <= 0.15:
+            continue
+
+        # Check cooldown
+        recent_cal = (
+            db.query(CalibrationEvent)
+            .filter(
+                CalibrationEvent.corridor_id == fp.corridor_id,
+                CalibrationEvent.created_at >= datetime.now(UTC) - timedelta(days=cooldown_days),
+            )
+            .first()
+        )
+        if recent_cal:
+            continue
+
+        # Generate per-signal suggestions based on FP rate severity
+        adjustment = min(fp.fp_rate * 0.3, max_adj)  # Scale adjustment by FP rate, capped
+
+        signal_suggestions: dict[str, dict] = {}
+        for section in ["gap_duration", "spoofing", "dark_zone", "sts"]:
+            section_config = config.get(section, {})
+            if not isinstance(section_config, dict):
+                continue
+            for key, val in section_config.items():
+                if isinstance(val, (int, float)) and val > 0:
+                    proposed = round(val * (1 - adjustment), 2)
+                    bounds = _SIGNAL_BOUNDS.get(section, (0.3, 5.0))
+                    proposed = max(bounds[0], min(bounds[1], proposed))
+                    if proposed != val:
+                        signal_suggestions[f"{section}.{key}"] = {
+                            "current": val,
+                            "proposed": proposed,
+                            "adjustment_pct": round((proposed - val) / val * 100, 1),
+                        }
+
+        if signal_suggestions:
+            suggestions.append({
+                "corridor_id": fp.corridor_id,
+                "corridor_name": fp.corridor_name,
+                "fp_rate": fp.fp_rate,
+                "total_alerts": fp.total_alerts,
+                "signal_suggestions": signal_suggestions,
+                "reason": f"FP rate {fp.fp_rate:.0%} exceeds 15% threshold with {fp.total_alerts} reviewed alerts",
+            })
+
+    return suggestions
+
+
+def run_scheduled_calibration(db: Session) -> dict:
+    """Generate proposals only (no auto-apply in v1).
+
+    Returns summary of suggested calibrations. All suggestions require
+    senior/admin approval via POST /corridors/{id}/apply-suggestion.
+    """
+    from app.config import settings
+
+    if not getattr(settings, "AUTO_CALIBRATION_ENABLED", False):
+        return {"status": "disabled", "suggestions": []}
+
+    suggestions = generate_per_signal_suggestions(db)
+    return {
+        "status": "ok",
+        "suggestion_count": len(suggestions),
+        "suggestions": suggestions,
+    }
