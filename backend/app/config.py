@@ -294,6 +294,11 @@ class Settings(BaseSettings):
     # ── Ownership Transparency Scoring ────────────────────────────────
     OWNERSHIP_TRANSPARENCY_SCORING_ENABLED: bool = True
 
+    # ── Analyst Collaboration ──────────────────────────────────────────────
+    AUTO_ASSIGNMENT_ENABLED: bool = False
+    WORKLOAD_PRIORITY_WEIGHTING_ENABLED: bool = True
+    AUTO_ASSIGN_MIN_SCORE: int = 51
+
     # --- v4.2: Trajectory PCA ---
     TRAJECTORY_PCA_ENABLED: bool = True
     TRAJECTORY_PCA_SCORING_ENABLED: bool = True

@@ -114,19 +114,33 @@ def get_alert_viewers(alert_id: int) -> list[int]:
     ]
 
 
-def suggest_assignment(db: Session, exclude_ids: list[int] | None = None) -> int | None:
+def suggest_assignment(
+    db: Session,
+    alert_id: int | None = None,
+    exclude_ids: list[int] | None = None,
+) -> int | None:
     """Suggest an analyst for assignment based on workload balancing.
 
     Finds the active analyst with the fewest open (non-dismissed/non-documented)
-    alerts currently assigned to them.
+    alerts currently assigned to them.  When WORKLOAD_PRIORITY_WEIGHTING_ENABLED
+    is True, delegates to the smart workload balancer which considers shift
+    windows, specializations, and fairness.
 
     Args:
         db: SQLAlchemy session.
+        alert_id: Optional alert ID for specialization matching.
         exclude_ids: Analyst IDs to exclude from consideration.
 
     Returns:
         analyst_id of the suggested analyst, or None if no analysts available.
     """
+    from app.config import settings
+
+    if getattr(settings, "WORKLOAD_PRIORITY_WEIGHTING_ENABLED", False):
+        from app.modules.workload_balancer import suggest_assignment as smart_suggest
+
+        return smart_suggest(db, alert_id=alert_id, exclude_ids=exclude_ids)
+
     from app.models.analyst import Analyst
     from app.models.gap_event import AISGapEvent
 

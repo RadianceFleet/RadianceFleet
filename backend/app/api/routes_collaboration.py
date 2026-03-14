@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from sqlalchemy.orm import Session
 
-from app.auth import require_auth
+from app.auth import require_auth, require_senior_or_admin
 from app.database import SessionLocal, get_db
 from app.schemas.collaboration import (
     HandoffRequest,
@@ -303,3 +303,78 @@ async def sse_presence(
             _active_presence_connections -= 1
 
     return EventSourceResponse(event_generator())
+
+
+# ---------------------------------------------------------------------------
+# Auto-assignment
+# ---------------------------------------------------------------------------
+
+
+@router.post("/auto-assign/run")
+def run_auto_assignment(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_senior_or_admin),
+):
+    """Trigger auto-assignment queue processing. Requires senior/admin."""
+    from app.config import settings
+
+    if not getattr(settings, "AUTO_ASSIGNMENT_ENABLED", False):
+        raise HTTPException(status_code=404, detail="Auto-assignment is not enabled")
+
+    from app.modules.auto_assignment import process_assignment_queue
+
+    results = process_assignment_queue(db)
+    return {"assigned": len(results), "assignments": results}
+
+
+@router.get("/auto-assign/preview")
+def preview_auto_assignment(
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Preview proposed auto-assignments without applying them."""
+    from app.config import settings
+    from app.models.gap_event import AISGapEvent
+    from app.modules.workload_balancer import suggest_assignment
+
+    min_score = getattr(settings, "AUTO_ASSIGN_MIN_SCORE", 51)
+    terminal = ("dismissed", "documented", "confirmed_fp")
+
+    alerts = (
+        db.query(AISGapEvent)
+        .filter(
+            AISGapEvent.assigned_to.is_(None),
+            AISGapEvent.risk_score >= min_score,
+            AISGapEvent.status.notin_(list(terminal)),
+        )
+        .order_by(AISGapEvent.risk_score.desc())
+        .all()
+    )
+
+    proposals: list[dict] = []
+    for alert in alerts:
+        suggested = suggest_assignment(db, alert_id=alert.gap_event_id)
+        proposals.append(
+            {
+                "alert_id": alert.gap_event_id,
+                "suggested_analyst_id": suggested,
+                "risk_score": alert.risk_score,
+            }
+        )
+
+    return {"count": len(proposals), "proposals": proposals}
+
+
+@router.post("/alerts/{alert_id}/suggest-assignment")
+def suggest_alert_assignment(
+    alert_id: int,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Suggest the best analyst for a specific alert."""
+    from app.modules.analyst_presence import suggest_assignment
+
+    suggested = suggest_assignment(db, alert_id=alert_id)
+    if suggested is None:
+        return {"suggested_analyst_id": None, "reason": "No eligible analysts available"}
+    return {"suggested_analyst_id": suggested}

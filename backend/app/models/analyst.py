@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,3 +24,9 @@ class Analyst(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # v4.3 — workload balancer
+    specializations_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    max_concurrent_alerts: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    shift_start_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shift_end_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
