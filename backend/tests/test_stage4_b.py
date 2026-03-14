@@ -886,7 +886,7 @@ class TestPipelineWiring:
 
                 try:
                     discover_dark_vessels(db, "2025-01-01", "2025-01-31", skip_fetch=True)
-                except Exception:
+                except Exception:  # noqa: S110
                     # Pipeline may fail at various steps; we just check the step was attempted
                     pass
 
@@ -920,7 +920,7 @@ class TestPipelineWiring:
                     result = discover_dark_vessels(db, "2025-01-01", "2025-01-31", skip_fetch=True)
                     # fingerprint_computation should NOT be in steps
                     assert "fingerprint_computation" not in result.get("steps", {})
-                except Exception:
+                except Exception:  # noqa: S110
                     pass
 
 

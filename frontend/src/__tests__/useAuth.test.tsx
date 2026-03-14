@@ -108,6 +108,14 @@ describe('useAuth', () => {
     expect(result.current.isAuthenticated).toBe(true)
     expect(result.current.token).toBe('new-jwt-token')
     expect(getStorage().getItem('rf_admin_token')).toBe('new-jwt-token')
+
+    // Verify fetch was called with correct request body
+    expect(fetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        body: JSON.stringify({ username: 'admin', password: 'password' }),
+      }),
+    )
   })
 
   it('login returns false on failure', async () => {

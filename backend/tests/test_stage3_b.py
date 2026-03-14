@@ -395,7 +395,7 @@ class TestPipelineWiring:
             # Mock loitering import
             try:
                 discover_dark_vessels(db, "2025-01-01", "2025-06-30", skip_fetch=True)
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
 
             # Verify chain detection was called

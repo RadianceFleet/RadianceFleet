@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     # Collection scheduler
     COLLECT_DIGITRAFFIC_INTERVAL: int = 1800  # 30 min
     COLLECT_AISSTREAM_INTERVAL: int = 300  # 5 min
+    COLLECT_DATALASTIC_INTERVAL: int = 3600  # 60 min
     COLLECT_RETENTION_DAYS: int = 90
     DATA_FETCH_TIMEOUT: float = 120.0
 

@@ -68,8 +68,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "app/models/*.py" = ["F821"]  # SQLAlchemy Mapped[] forward references
-"tests/*.py" = ["S101", "S105", "S106", "S108", "S110", "S112", "S310", "S314", "B007", "B023", "B905", "SIM105", "SIM117", "SIM222", "UP031"]
-"tests/**/*.py" = ["S101", "S105", "S106", "S108", "S110", "S112", "S310", "S314", "B007", "B023", "B905", "SIM105", "SIM117", "SIM222", "UP031"]
+"tests/*.py" = ["S101", "S105", "S106", "S108", "S112", "S310", "S314", "B007", "B023", "B905", "SIM105", "SIM117", "SIM222", "UP031"]
+"tests/**/*.py" = ["S101", "S105", "S106", "S108", "S112", "S310", "S314", "B007", "B023", "B905", "SIM105", "SIM117", "SIM222", "UP031"]
 "scripts/*.py" = ["S101", "S311"]  # assert + random in sample data generation
 "migrate_to_pg.py" = ["S608"]  # SQL string construction in internal migration tool
 

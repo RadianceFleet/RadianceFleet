@@ -76,6 +76,18 @@ def _collect_dma(db: Session, duration_seconds: int = 300) -> dict:
     return fetch_and_import_dma(db, start_date=yesterday, end_date=yesterday)
 
 
+def _collect_datalastic(db: Session, duration_seconds: int = 300) -> dict:
+    """Enrich vessel metadata from Datalastic API."""
+    from app.modules.vessel_enrichment import enrich_vessels_from_datalastic
+
+    result = enrich_vessels_from_datalastic(db, limit=200)
+    return {
+        "points_imported": 0,
+        "vessels_seen": result.get("enriched", 0) + result.get("skipped", 0),
+        "errors": result.get("failed", 0),
+    }
+
+
 # Registry of all known sources
 _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
     "digitraffic": lambda: SourceInfo(
@@ -113,6 +125,13 @@ _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
         interval_seconds=86400,
         enabled=getattr(settings, "DMA_ENABLED", False),
         collector=_collect_dma,
+    ),
+    "datalastic": lambda: SourceInfo(
+        name="datalastic",
+        description="Datalastic vessel metadata enrichment (DWT, type, year)",
+        interval_seconds=getattr(settings, "COLLECT_DATALASTIC_INTERVAL", 3600),
+        enabled=bool(getattr(settings, "DATALASTIC_API_KEY", None)),
+        collector=_collect_datalastic,
     ),
 }
 

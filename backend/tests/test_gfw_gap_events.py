@@ -387,12 +387,12 @@ class TestGapAnchorPoints:
         # causing a transaction rollback — so we rollback and verify what remains.
         try:
             self._run_import(db_real, vessel, events)
-        except Exception:
+        except Exception:  # noqa: S110
             pass
         # Ensure the session is usable after any rollback from the second run.
         try:
             db_real.rollback()
-        except Exception:
+        except Exception:  # noqa: S110
             pass
         db_real.expire_all()
 

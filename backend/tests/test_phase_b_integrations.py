@@ -248,7 +248,7 @@ class TestFleetLeaks:
                             if mmsi_val in vessel_lookup:
                                 result.first.return_value = vessel_lookup[mmsi_val]
                                 return result
-                    except Exception:
+                    except (AttributeError, TypeError):
                         pass
                 # Default: return vessel for MMSI match
                 result.first.return_value = mock_vessel_1

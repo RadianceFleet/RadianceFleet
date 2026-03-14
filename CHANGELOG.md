@@ -3,12 +3,17 @@
 All notable changes to RadianceFleet will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [3.5.0] - 2026-03-14
 
 ### Added
 - **Datalastic vessel enrichment**: API client for authoritative DWT, vessel type, year built, callsign, and gross tonnage via Datalastic REST API. Circuit breaker protected. Auto-runs during `radiancefleet start` and `radiancefleet update` when `DATALASTIC_API_KEY` is configured.
 - **PSC MOU coverage documentation**: Documented Paris MOU account request process and regional MOU access limitations in DATA_SOURCES.md.
 - **E2E journey tests**: export verification, journalist triage, OSINT bulk triage, resilience patterns
+- **Code quality enforcement**: Ruff linting/formatting, ESLint + Prettier for frontend, lefthook pre-commit hooks.
+- **Frontend test coverage**: 18 new component tests (Vitest) + config validation test.
+- **Error handling audit**: 22 silent `except: pass` blocks replaced with tiered logging (warning/error with context).
+- **Corridor geometry upgrade**: Shapely corridor matching upgraded from bounding-box to polygon intersection.
+- **CONFIGURATION.md**: New documentation covering all environment variables and config files.
 
 ## [3.4.0] - 2026-03-08
 

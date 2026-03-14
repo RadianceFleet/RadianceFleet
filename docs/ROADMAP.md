@@ -229,6 +229,33 @@ Phase 1 ("Usable by a journalist today") from the strategic product analysis —
 
 ---
 
+## v3.4 — Complete (Satellite Expansion + Analyst Productivity + Community APIs)
+
+| Feature | Description |
+|---------|-------------|
+| Maxar satellite provider | OAuth2 ROPC + API key auth, Discovery/Catalog API v2, Ordering API v1. Archive and fresh tasking with configurable pricing. |
+| Umbra satellite provider | OAuth2 client credentials (50 token/24h limit), STAC v2 archive search, tasking API. SAR provider (cloud-independent). All 4 satellite providers now registered. |
+| Analyst productivity | Vessel track overlay on map, alert heatmap (leaflet.heat), SSE real-time alert push with `Last-Event-ID` resume, saved filters per analyst, dashboard trend charts (7d/30d/90d). |
+| Data quality | Live signal effectiveness (per-signal FP rate + lift from verdicts), rescore diff report, feed outage dashboard banner, coverage gap info popups with suggested commercial sources. |
+| Operations | DB backup/restore CLI (`radiancefleet backup`/`restore`), PG migration hardening (row counts, FK checks, `--force`), Prometheus metrics (optional, `/metrics`), slow query logging (>500ms). |
+| Community APIs | Public API keys (`api_keys` table, dual auth via `X-API-Key` + JWT), HMAC-signed webhooks (3x retry), embeddable vessel widgets (`/embed/vessel/:vesselId`), CSV export column picker. |
+| Models | `SavedFilter`, `ApiKey`, `Webhook` (3 new tables). |
+
+---
+
+## v3.5 — Complete (Data Quality + Code Quality)
+
+| Feature | Description |
+|---------|-------------|
+| Datalastic API client | Authoritative vessel enrichment (DWT, vessel type, year built, callsign, gross tonnage) via Datalastic REST API. Circuit breaker protected. Auto-runs on `start` and `update`. |
+| Code quality enforcement | Ruff linting/formatting for Python, ESLint + Prettier for TypeScript/React, lefthook pre-commit hooks for automated checks. |
+| Frontend test coverage | 18 new Vitest component tests + config validation test. |
+| Error handling audit | 22 silent `except: pass` blocks replaced with tiered logging (warning/error with context). |
+| Corridor geometry upgrade | Shapely corridor matching upgraded from bounding-box to polygon intersection for improved accuracy. |
+| Documentation | CONFIGURATION.md (all environment variables and config files), PSC MOU coverage notes in DATA_SOURCES.md. |
+
+---
+
 ## Open / In Progress
 
 | Item | Status |
@@ -240,7 +267,7 @@ Phase 1 ("Usable by a journalist today") from the strategic product analysis —
 
 ## Known Limitations
 
-- **SQLite geometry**: Corridor correlation uses Shapely bounding-box checks on WKT text columns (works on both SQLite and PostgreSQL). For complex polygons or large corridor sets, migrating to native PostGIS ST_Intersects with GiST indexes would improve accuracy and performance.
+- **SQLite geometry**: Corridor correlation uses Shapely polygon intersection on WKT text columns (works on both SQLite and PostgreSQL). For large corridor sets, migrating to native PostGIS ST_Intersects with GiST indexes would improve performance. See [`docs/POSTGIS_EVALUATION.md`](POSTGIS_EVALUATION.md) for a full migration evaluation.
 - **Satellite order providers**: All four providers (Planet Labs, Capella Space, Maxar, Umbra) are fully implemented but require valid API keys. Orders stay in draft until analyst confirms (budget safety).
 - **Equasis ToS**: `equasis_client.py` is disabled by default (`EQUASIS_SCRAPING_ENABLED=false`). Automated Equasis access violates their Terms of Service. Use Datalastic API for production enrichment.
 - **BarentsWatch 14-day limit**: Historical data older than 14 days is purged by BarentsWatch; only recent Norwegian EEZ data is available.

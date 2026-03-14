@@ -121,4 +121,19 @@ describe('apiFetch', () => {
       expect.objectContaining({ method: 'POST' }),
     )
   })
+
+  it('does not set Content-Type header when body is FormData', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true }),
+    } as Response)
+
+    const formData = new FormData()
+    formData.append('file', new Blob(['test']), 'test.csv')
+
+    await apiFetch('/ingestion/upload', { method: 'POST', body: formData })
+    const call = vi.mocked(fetch).mock.calls[0]
+    const headers = call[1]?.headers as Record<string, string>
+    expect(headers['Content-Type']).toBeUndefined()
+  })
 })
