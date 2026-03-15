@@ -376,6 +376,11 @@ class Settings(BaseSettings):
     INCREMENTAL_SCORING_ENABLED: bool = True
     INCREMENTAL_SCORING_BATCH_SIZE: int = 500
 
+    # ── Alert Deduplication Engine ────────────────────────────────────────────────
+    ALERT_DEDUP_ENABLED: bool = True
+    ALERT_DEDUP_TIME_WINDOW_DAYS: int = 7
+    ALERT_DEDUP_MIN_GROUP_SIZE: int = 2
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:

@@ -165,6 +165,8 @@ def _run_migrations() -> None:
         # v4.3 — regional FP tuning: per-signal overrides
         ("corridor_scoring_overrides", "signal_overrides_json", "TEXT"),
         ("corridor_scoring_overrides", "region_id", "INTEGER"),
+        # v4.3 — alert deduplication engine
+        ("ais_gap_events", "alert_group_id", "INTEGER"),
     ]
 
     _col_cache: dict[str, set[str]] = {}
