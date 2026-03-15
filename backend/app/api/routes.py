@@ -50,3 +50,6 @@ router.include_router(fp_tuning_router)
 router.include_router(public_router)
 router.include_router(embed_router)
 router.include_router(cases_router)
+
+from app.api.routes_archival import router as archival_router
+router.include_router(archival_router)

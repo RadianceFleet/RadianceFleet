@@ -358,6 +358,15 @@ class Settings(BaseSettings):
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
 
+    # ── Data Retention & Archival ────────────────────────────────────────────────
+    ARCHIVE_ENABLED: bool = True
+    ARCHIVE_BEFORE_DELETE: bool = True
+    ARCHIVE_RETENTION_DAYS: int = 90
+    ARCHIVE_COMPRESSION: str = "gzip"
+    ARCHIVE_BATCH_SIZE: int = 50000
+    ARCHIVE_STORAGE_DIR: str = "data/archives"
+    ARCHIVE_MAX_AGE_DAYS: int | None = None
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:
