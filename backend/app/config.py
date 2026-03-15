@@ -358,6 +358,16 @@ class Settings(BaseSettings):
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
 
+    # ── Bulk Export Subscriptions ────────────────────────────────────────────────
+    EXPORT_SUBSCRIPTIONS_ENABLED: bool = False
+    EXPORT_MAX_ROWS: int = 100000
+    EXPORT_TEMP_DIR: str = "data/exports"
+    EXPORT_FILE_RETENTION_HOURS: int = 72
+    EXPORT_S3_BUCKET: str | None = None
+    EXPORT_S3_PREFIX: str | None = None
+    EXPORT_S3_REGION: str | None = None
+    EXPORT_S3_ENDPOINT_URL: str | None = None
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:

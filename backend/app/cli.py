@@ -20,6 +20,7 @@ Commands:
 from __future__ import annotations
 
 import app.cli_db as _cli_db  # noqa: F401,E402
+import app.cli_export as _cli_export  # noqa: F401,E402
 import app.cli_history as _cli_history  # noqa: F401,E402
 import app.cli_psc as _cli_psc  # noqa: F401,E402
 
