@@ -319,6 +319,21 @@ def update_source(
         except Exception:
             logger.warning("Failed to fire OFAC SDN webhook", exc_info=True)
 
+    # Trigger sanctions propagation when new watchlist entries are added
+    if added > 0 and settings.SANCTIONS_PROPAGATION_ENABLED:
+        try:
+            from app.modules.sanctions_propagation import propagate_sanctions_multi_hop
+
+            new_vessel_ids_for_propagation = after_ids - before_ids
+            for vid in new_vessel_ids_for_propagation:
+                propagate_sanctions_multi_hop(db, vessel_id=vid)
+            logger.info(
+                "Sanctions propagation triggered for %d new watchlist vessels",
+                len(new_vessel_ids_for_propagation),
+            )
+        except Exception:
+            logger.warning("Failed to run sanctions propagation", exc_info=True)
+
     logger.info(
         "Watchlist %s updated: added=%d removed=%d unchanged=%d matched=%d unmatched=%d",
         source_name,

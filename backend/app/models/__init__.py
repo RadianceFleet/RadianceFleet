@@ -41,6 +41,7 @@ from app.models.port import Port
 from app.models.port_call import PortCall
 from app.models.psc_detention import PscDetention
 from app.models.route_template import RouteTemplate
+from app.models.sanctions_propagation import SanctionsPropagation
 from app.models.satellite_check import SatelliteCheck
 from app.models.satellite_order import SatelliteOrder
 from app.models.satellite_order_log import SatelliteOrderLog
@@ -134,4 +135,5 @@ __all__ = [
     "CalibrationEvent",
     "ScoringRegion",
     "NotificationEvent",
+    "SanctionsPropagation",
 ]

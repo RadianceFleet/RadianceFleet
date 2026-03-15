@@ -608,3 +608,11 @@ multiplier_gating:
   enabled: true
   min_base_score: 25
   min_families_for_multiplier: 2
+
+# SANCTIONS PROPAGATION — multi-hop risk propagation through shared infrastructure
+sanctions_propagation:
+  depth_1: 40
+  depth_2: 25
+  depth_3: 15
+  compound_signal_bonus: 10
+  max_score: 50
