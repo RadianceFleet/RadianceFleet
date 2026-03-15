@@ -715,6 +715,18 @@ def get_per_signal_suggestions(
     return generate_per_signal_suggestions(db)
 
 
+@router.get("/calibration-suggestions/lift-based")
+def get_lift_based_suggestions(
+    db: Session = Depends(get_db),
+    credentials=Depends(require_auth),
+):
+    """Get per-signal weight adjustment proposals based on analyst verdict lift scores."""
+    _check_enabled()
+    from app.modules.fp_rate_tracker import generate_lift_based_suggestions
+
+    return generate_lift_based_suggestions(db)
+
+
 @router.post("/{corridor_id}/apply-suggestion")
 def apply_calibration_suggestion(
     corridor_id: int,
