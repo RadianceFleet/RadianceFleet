@@ -11,6 +11,7 @@ import { VerificationBadge } from "../components/VerificationBadge";
 import { VesselTimeline } from "../components/VesselTimeline";
 import { TipForm } from "../components/TipForm";
 import { RouteLaunderingSection } from "../components/RouteLaunderingSection";
+import { VesselSimilarityPanel } from "../components/VesselSimilarityPanel";
 import { SubscribeForm } from "../components/SubscribeForm";
 import { VesselInfoSection } from "./VesselInfoSection";
 import { VesselIdentityTimeline } from "./VesselIdentityTimeline";
@@ -282,6 +283,9 @@ export function VesselDetailPage() {
           </table>
         )}
       </Card>
+
+      {/* ---- Similar Vessels ---- */}
+      <VesselSimilarityPanel vesselId={id!} />
 
       {/* ---- Route Laundering ---- */}
       <RouteLaunderingSection vesselId={id!} />

@@ -1001,3 +1001,27 @@ def get_vessel_voyage_prediction(
         msg = "Insufficient port call history"
         return {"vessel_id": vessel_id, "prediction": None, "message": msg}
     return result
+
+
+# ---------------------------------------------------------------------------
+# Vessel Similarity
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vessels/{vessel_id}/similar", tags=["vessels"])
+def get_similar_vessels(
+    vessel_id: int,
+    limit: int = Query(20, ge=1, le=100),
+    include_ownership: bool = Query(True),
+    db: Session = Depends(get_db),
+):
+    """Find vessels similar to this vessel by behavioural fingerprint + ownership overlap."""
+    from app.modules.vessel_similarity import find_similar_vessels
+
+    results = find_similar_vessels(
+        db,
+        vessel_id,
+        limit=limit,
+        include_ownership=include_ownership,
+    )
+    return {"vessel_id": vessel_id, "similar_vessels": results, "total": len(results)}
