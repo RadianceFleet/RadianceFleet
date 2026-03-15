@@ -22,14 +22,14 @@ class DraughtChangeEvent(Base):
     new_draught_m: Mapped[float] = mapped_column(Float, nullable=False)
     delta_m: Mapped[float] = mapped_column(Float, nullable=False)  # signed
     nearest_port_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("ports.port_id"), nullable=True
+        Integer, ForeignKey("ports.port_id"), nullable=True, index=True
     )
     distance_to_port_nm: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_offshore: Mapped[bool] = mapped_column(Boolean, default=False)
     linked_gap_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("ais_gap_events.gap_event_id"), nullable=True
+        Integer, ForeignKey("ais_gap_events.gap_event_id"), nullable=True, index=True
     )
     linked_sts_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("sts_transfer_events.sts_id"), nullable=True
+        Integer, ForeignKey("sts_transfer_events.sts_id"), nullable=True, index=True
     )
     risk_score_component: Mapped[int] = mapped_column(Integer, default=0)

@@ -9,9 +9,9 @@ import anyio
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
+from app.api._helpers import _query_new_alerts
 from app.auth import require_auth
 from app.config import settings
-from app.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -19,42 +19,6 @@ router = APIRouter()
 
 # Track active SSE connections
 _active_connections = 0
-
-
-def _query_new_alerts(last_id: int, min_score: int) -> list[dict]:
-    """Query alerts newer than last_id with score >= min_score. Runs in thread."""
-    db = SessionLocal()
-    try:
-        from app.models.gap_event import AISGapEvent
-
-        q = (
-            db.query(AISGapEvent)
-            .filter(
-                AISGapEvent.gap_event_id > last_id,
-                AISGapEvent.risk_score >= min_score,
-            )
-            .order_by(AISGapEvent.gap_event_id.asc())
-            .limit(50)
-        )
-        results = []
-        for alert in q.all():
-            results.append(
-                {
-                    "gap_event_id": alert.gap_event_id,
-                    "vessel_id": alert.vessel_id,
-                    "risk_score": alert.risk_score,
-                    "gap_start_utc": alert.gap_start_utc.isoformat()
-                    if alert.gap_start_utc
-                    else None,
-                    "duration_minutes": alert.duration_minutes,
-                    "status": str(alert.status.value)
-                    if hasattr(alert.status, "value")
-                    else str(alert.status),
-                }
-            )
-        return results
-    finally:
-        db.close()
 
 
 @router.get("/sse/alerts", tags=["sse"])

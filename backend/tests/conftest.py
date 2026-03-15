@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.auth import require_auth, require_senior_or_admin
+from app.auth import require_admin, require_auth, require_senior_or_admin
 from app.database import get_db
 from app.main import app
 
@@ -38,6 +38,7 @@ def api_client(mock_db):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[require_auth] = override_auth
     app.dependency_overrides[require_senior_or_admin] = override_auth
+    app.dependency_overrides[require_admin] = override_auth
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()

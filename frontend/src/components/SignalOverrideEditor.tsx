@@ -135,5 +135,3 @@ export function SignalOverrideEditor({ overrides, onChange }: Props) {
     </div>
   );
 }
-
-export default SignalOverrideEditor;

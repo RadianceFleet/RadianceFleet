@@ -25,13 +25,13 @@ class LoiteringEvent(Base):
     mean_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     mean_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
     corridor_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("corridors.corridor_id"), nullable=True
+        Integer, ForeignKey("corridors.corridor_id"), nullable=True, index=True
     )
     preceding_gap_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("ais_gap_events.gap_event_id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("ais_gap_events.gap_event_id", ondelete="SET NULL"), nullable=True, index=True
     )
     following_gap_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("ais_gap_events.gap_event_id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("ais_gap_events.gap_event_id", ondelete="SET NULL"), nullable=True, index=True
     )
     risk_score_component: Mapped[int] = mapped_column(Integer, default=0)
 

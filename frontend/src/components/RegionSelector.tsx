@@ -47,5 +47,3 @@ export function RegionSelector({ selectedId, onSelect }: Props) {
     </div>
   );
 }
-
-export default RegionSelector;

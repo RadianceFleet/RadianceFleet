@@ -21,6 +21,7 @@ import copy
 import hashlib
 import json
 import logging
+import re
 import statistics as _stats
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -42,6 +43,79 @@ from app.modules.scoring_stubs import *  # noqa: F401,F403
 from app.modules.scoring_stubs import score_watchlist_stubs
 
 logger = logging.getLogger(__name__)
+
+# ── Module-level constant sets ────────────────────────────────────────────────
+
+_SANCTIONED_SOURCES = frozenset({"OFAC_SDN", "EU_COUNCIL"})
+
+_NON_COMMERCIAL_TYPES = frozenset({
+    "fishing",
+    "pleasure",
+    "sailing",
+    "tug",
+    "pilot",
+    "search_rescue",
+    "passenger",
+})
+
+# AIS numeric type codes: 50=pilot, 51=SAR, 52=tug, 53=port tender,
+# 54=anti-pollution, 55=law enforcement, 58=medical transport, 59=gov ship
+_NON_COMMERCIAL_AIS_CODES = frozenset({
+    "type 50",
+    "type 51",
+    "type 52",
+    "type 53",
+    "type 54",
+    "type 55",
+    "type 58",
+    "type 59",
+})
+
+_GENERIC_NAMES = frozenset({
+    "TANKER",
+    "VESSEL",
+    "UNKNOWN",
+    "SHIP",
+    "BOAT",
+    "TBN",
+    "TBA",
+    "N/A",
+    "TEST",
+})
+
+_SANCTIONED_PORT_NAMES = frozenset({
+    "primorsk",
+    "ust-luga",
+    "ust luga",
+    "novorossiysk",
+    "kozmino",
+    "de-kastri",
+    "varandey",
+    "taman",
+    "tuapse",
+    "vysotsk",
+    "kavkaz",
+})
+
+_OPEN_REGISTRY_FLAGS = frozenset({
+    "PA",
+    "LR",
+    "MH",
+    "BS",
+    "SG",
+    "CM",
+    "KM",
+    "GQ",
+    "PW",
+    "SL",
+    "HN",
+    "GA",
+    "TZ",
+    "ST",
+    "GM",
+    "VU",
+    "CK",
+})
 
 
 def _gap_frequency_filter(alert: AISGapEvent):
@@ -357,7 +431,6 @@ def _sts_with_watchlisted_vessel(db: Session, vessel) -> tuple[int, str | None]:
 
     best_score = 0
     best_source = None
-    _SANCTIONED_SOURCES = {"OFAC_SDN", "EU_COUNCIL"}
 
     for sts in sts_events:
         partner_id = sts.vessel_2_id if sts.vessel_1_id == vessel.vessel_id else sts.vessel_1_id
@@ -889,30 +962,10 @@ def compute_gap_score(
     # Large vessels (DWT > 5000) are always treated as commercial regardless of
     # AIS-broadcast type. This prevents type-manipulation evasion (100k DWT vessel
     # broadcasting "fishing" would still be scored fully).
-    _NON_COMMERCIAL_TYPES = {
-        "fishing",
-        "pleasure",
-        "sailing",
-        "tug",
-        "pilot",
-        "search_rescue",
-        "passenger",
-    }
-    # AIS numeric type codes: 50=pilot, 51=SAR, 52=tug, 53=port tender,
-    # 54=anti-pollution, 55=law enforcement, 58=medical transport, 59=gov ship
     # These are stored as "Type 50", "Type 51", etc. in the DB — the keyword
     # set above does not match them, so we need explicit code mapping.
-    _NON_COMMERCIAL_AIS_CODES = {
-        "type 50",
-        "type 51",
-        "type 52",
-        "type 53",
-        "type 54",
-        "type 55",
-        "type 58",
-        "type 59",
-    }
     _is_non_commercial = False
+    flag_risk = ""
     _is_low_risk_flag = False  # Fix 1: gate for data-absence suppression + corridor cap
     _suppress_data_absence = (
         False  # Fix 2: suppress signals that fire on missing data for EU vessels
@@ -1020,17 +1073,6 @@ def compute_gap_score(
         metadata_signals_cfg = config.get("sts_patterns", {})
         metadata_cfg = config.get("metadata", {})
         _vessel_name = str(vessel.name or "").strip().upper()
-        _GENERIC_NAMES = {
-            "TANKER",
-            "VESSEL",
-            "UNKNOWN",
-            "SHIP",
-            "BOAT",
-            "TBN",
-            "TBA",
-            "N/A",
-            "TEST",
-        }
         if not _vessel_name:
             # Completely unnamed vessel with MMSI — highly suspicious
             breakdown["no_name_at_all"] = metadata_cfg.get("no_name_at_all", 20)
@@ -1040,9 +1082,7 @@ def compute_gap_score(
             )
         else:
             # Pattern: "TANKER 001", "SHIP 22" — all-caps + digits (C4ADS "Unmasked" pattern)
-            import re as _re
-
-            if _re.match(r"^[A-Z]+(?: [A-Z0-9]+)* \d+$", _vessel_name):
+            if re.match(r"^[A-Z]+(?: [A-Z0-9]+)* \d+$", _vessel_name):
                 breakdown["name_all_caps_numbers"] = metadata_cfg.get("name_all_caps_numbers", 10)
         if vessel.deadweight is not None and isinstance(vessel.deadweight, (int, float)):
             _vessel_type_str = str(vessel.vessel_type or "").lower()
@@ -1505,7 +1545,7 @@ def compute_gap_score(
                     db.query(_PC_name)
                     .filter(
                         _PC_name.vessel_id == vessel.vessel_id,
-                        _PC_name.departure_utc is not None,
+                        _PC_name.departure_utc.isnot(None),
                         _PC_name.departure_utc <= gap.gap_start_utc,
                     )
                     .order_by(_PC_name.departure_utc.desc())
@@ -1866,7 +1906,6 @@ def compute_gap_score(
     if db is not None and vessel is not None:
         sts_assoc_pts, sts_assoc_source = _sts_with_watchlisted_vessel(db, vessel)
         if sts_assoc_pts > 0:
-            _SANCTIONED_SOURCES = {"OFAC_SDN", "EU_COUNCIL"}
             if sts_assoc_source in _SANCTIONED_SOURCES:
                 breakdown["sts_with_sanctioned_vessel"] = sts_assoc_pts
             else:
@@ -2072,19 +2111,6 @@ def compute_gap_score(
         try:
             from app.models.crea_voyage import CreaVoyage as _CreaV
 
-            _SANCTIONED_PORT_NAMES = {
-                "primorsk",
-                "ust-luga",
-                "ust luga",
-                "novorossiysk",
-                "kozmino",
-                "de-kastri",
-                "varandey",
-                "taman",
-                "tuapse",
-                "vysotsk",
-                "kavkaz",
-            }
             crea_voyages = db.query(_CreaV).filter(_CreaV.vessel_id == vessel.vessel_id).all()
             for cv in crea_voyages:
                 _dp = (cv.departure_port or "").lower()
@@ -2403,6 +2429,7 @@ def compute_gap_score(
 
     # ── Stage 2-A+: P&I Equasis verification (Equasis-sourced IG club check) ─
     if _scoring_settings.PI_VERIFICATION_SCORING_ENABLED and db is not None and vessel is not None:
+        pi_val_cfg = config.get("pi_validation", {})
         try:
             from app.modules.pi_verification import check_pi_coverage
 
@@ -2597,7 +2624,9 @@ def compute_gap_score(
         try:
             from app.models.merge_chain import MergeChain
 
-            chains = db.query(MergeChain).all()
+            chains = db.query(MergeChain).filter(
+                MergeChain.vessel_ids_json.like(f"%{vessel.vessel_id}%")
+            ).all()
             for chain in chains:
                 v_ids = chain.vessel_ids_json or []
                 if vessel.vessel_id in v_ids:
@@ -2617,7 +2646,7 @@ def compute_gap_score(
 
     # ── Stage 5-B: Convoy scoring ────────────────────────────────────────────
     if _scoring_settings.CONVOY_SCORING_ENABLED and db is not None and vessel is not None:
-        config.get("convoy", {})
+        convoy_cfg = config.get("convoy", {})
         try:
             from sqlalchemy import or_ as _or_convoy
 
@@ -2959,7 +2988,7 @@ def compute_gap_score(
                     AISGapEvent.vessel_id == vessel.vessel_id,
                     AISGapEvent.gap_start_utc >= _baseline_lookback,
                     AISGapEvent.gap_start_utc < gap.gap_start_utc,
-                    AISGapEvent.gap_id != gap.gap_id,
+                    AISGapEvent.gap_event_id != gap.gap_event_id,
                 )
                 .all()
             )
@@ -2991,25 +3020,6 @@ def compute_gap_score(
     # Matching 3+ dimensions triggers composite signal.
     kse_cfg = config.get("kse_profile", {})
     if kse_cfg.get("enabled", True) and vessel is not None:
-        _OPEN_REGISTRY_FLAGS = {
-            "PA",
-            "LR",
-            "MH",
-            "BS",
-            "SG",
-            "CM",
-            "KM",
-            "GQ",
-            "PW",
-            "SL",
-            "HN",
-            "GA",
-            "TZ",
-            "ST",
-            "GM",
-            "VU",
-            "CK",
-        }
         _kse_hits = 0
         # Compute age safely — may not be defined if year_built is None
         _kse_age = max(0, current_year - vessel.year_built) if vessel.year_built is not None else 0

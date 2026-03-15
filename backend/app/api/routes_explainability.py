@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth import require_auth
 from app.database import get_db
 from app.models.gap_event import AISGapEvent
 from app.modules.signal_explainer import explain_alert
@@ -25,6 +26,7 @@ router = APIRouter(tags=["explainability"])
 def get_alert_explanation(
     alert_id: int,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ) -> ExplainabilityResponse:
     """Generate an explainability report for the given alert."""
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()

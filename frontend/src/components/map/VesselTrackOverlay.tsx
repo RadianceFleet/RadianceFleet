@@ -19,13 +19,14 @@ export function VesselTrackOverlay({ vesselId, vesselName }: Props) {
   if (isLoading || !geojson || !geojson.features?.length) return null;
 
   const feature = geojson.features[0];
+  const geometry = feature.geometry;
   const points = feature.properties?.point_data ?? [];
 
   return (
     <>
       <GeoJSON key={`track-${vesselId}`} data={geojson} style={() => trackStyle} />
-      {points.slice(0, 200).map((pt: GeoJSON.Feature, i: number) => {
-        const coords = feature.geometry?.coordinates?.[i];
+      {geometry?.type === 'LineString' && points.slice(0, 200).map((pt: GeoJSON.Feature, i: number) => {
+        const coords = geometry.coordinates?.[i];
         if (!coords) return null;
         return (
           <CircleMarker
@@ -37,16 +38,16 @@ export function VesselTrackOverlay({ vesselId, vesselName }: Props) {
             <Popup>
               <div style={{ fontSize: 12, fontFamily: "monospace" }}>
                 {vesselName && <b>{vesselName}</b>}
-                {pt.timestamp && (
+                {pt.properties?.timestamp && (
                   <>
                     <br />
-                    {pt.timestamp.slice(0, 16).replace("T", " ")} UTC
+                    {pt.properties.timestamp.slice(0, 16).replace("T", " ")} UTC
                   </>
                 )}
-                {pt.sog != null && (
+                {pt.properties?.sog != null && (
                   <>
                     <br />
-                    SOG: {pt.sog} kn
+                    SOG: {pt.properties.sog} kn
                   </>
                 )}
               </div>

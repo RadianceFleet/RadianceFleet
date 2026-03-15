@@ -498,9 +498,11 @@ def _make_api_test_app():
         finally:
             sess.close()
 
+    from app.auth import require_auth
     from app.database import get_db
 
     app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[require_auth] = lambda: {"analyst_id": 1, "username": "test", "role": "admin"}
 
     client = TestClient(app)
     return client, engine

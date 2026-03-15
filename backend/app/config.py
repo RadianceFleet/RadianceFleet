@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     # Collection scheduler
     COLLECT_DIGITRAFFIC_INTERVAL: int = 1800  # 30 min
     COLLECT_AISSTREAM_INTERVAL: int = 300  # 5 min
+    COLLECT_KYSTVERKET_INTERVAL: int = 300  # 5 min
+    COLLECT_BARENTSWATCH_INTERVAL: int = 1800  # 30 min
     COLLECT_DATALASTIC_INTERVAL: int = 3600  # 60 min
     COLLECT_RETENTION_DAYS: int = 90
     DATA_FETCH_TIMEOUT: float = 120.0
@@ -145,13 +147,11 @@ class Settings(BaseSettings):
     FLEET_ANALYSIS_ENABLED: bool = True
     FLEET_SCORING_ENABLED: bool = True
     # P&I validation
-    PI_VALIDATION_DETECTION_ENABLED: bool = True
     PI_VALIDATION_SCORING_ENABLED: bool = True
     # ── P&I Insurance Verification ──────────────────────────────────────────
     PI_VERIFICATION_ENABLED: bool = False
     PI_VERIFICATION_SCORING_ENABLED: bool = True
     # Fraudulent registry
-    FRAUDULENT_REGISTRY_DETECTION_ENABLED: bool = True
     FRAUDULENT_REGISTRY_SCORING_ENABLED: bool = True
     # Stale AIS data
     STALE_AIS_DETECTION_ENABLED: bool = True
@@ -183,10 +183,8 @@ class Settings(BaseSettings):
     MERGE_CHAIN_SCORING_ENABLED: bool = True
     # Behavioral fingerprinting
     FINGERPRINT_ENABLED: bool = True
-    FINGERPRINT_SCORING_ENABLED: bool = True
     # Satellite-AIS correlation
     SAR_CORRELATION_ENABLED: bool = True
-    SAR_CORRELATION_SCORING_ENABLED: bool = True
     # Corporate ownership graph
     OWNERSHIP_GRAPH_ENABLED: bool = True
     OWNERSHIP_GRAPH_SCORING_ENABLED: bool = True

@@ -15,7 +15,7 @@ class SatelliteTaskingCandidate(Base):
 
     candidate_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     corridor_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("corridors.corridor_id"), nullable=True
+        Integer, ForeignKey("corridors.corridor_id"), nullable=True, index=True
     )
     vessel_a_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True

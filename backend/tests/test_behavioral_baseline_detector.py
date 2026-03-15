@@ -569,15 +569,20 @@ class TestEdgeCases:
 class TestAPIEndpoints:
     """Tests for behavioral baseline API endpoints."""
 
-    def test_run_endpoint_disabled(self):
-        """POST /detect/behavioral-baseline returns 404 when disabled."""
+    def _make_client(self):
         from fastapi.testclient import TestClient
         from app.api.routes_behavioral_baseline import router
+        from app.auth import require_auth
         from fastapi import FastAPI
 
         app = FastAPI()
         app.include_router(router)
-        client = TestClient(app)
+        app.dependency_overrides[require_auth] = lambda: {"analyst_id": 1, "username": "test", "role": "admin"}
+        return TestClient(app)
+
+    def test_run_endpoint_disabled(self):
+        """POST /detect/behavioral-baseline returns 404 when disabled."""
+        client = self._make_client()
 
         with patch("app.api.routes_behavioral_baseline.settings") as mock_settings:
             # Simulate BEHAVIORAL_BASELINE_ENABLED not set (getattr returns False)
@@ -587,13 +592,7 @@ class TestAPIEndpoints:
 
     def test_get_endpoint_disabled(self):
         """GET /detect/behavioral-baseline/{id} returns 404 when disabled."""
-        from fastapi.testclient import TestClient
-        from app.api.routes_behavioral_baseline import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = self._make_client()
 
         with patch("app.api.routes_behavioral_baseline.settings") as mock_settings:
             delattr(mock_settings, "BEHAVIORAL_BASELINE_ENABLED")
@@ -602,13 +601,7 @@ class TestAPIEndpoints:
 
     def test_refresh_endpoint_disabled(self):
         """POST /detect/behavioral-baseline/{id}/refresh returns 404 when disabled."""
-        from fastapi.testclient import TestClient
-        from app.api.routes_behavioral_baseline import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = self._make_client()
 
         with patch("app.api.routes_behavioral_baseline.settings") as mock_settings:
             delattr(mock_settings, "BEHAVIORAL_BASELINE_ENABLED")
@@ -617,13 +610,7 @@ class TestAPIEndpoints:
 
     def test_run_endpoint_enabled(self):
         """POST /detect/behavioral-baseline runs detection when enabled."""
-        from fastapi.testclient import TestClient
-        from app.api.routes_behavioral_baseline import router
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = self._make_client()
 
         with patch("app.api.routes_behavioral_baseline.settings") as mock_settings, \
              patch("app.modules.behavioral_baseline_detector.run_behavioral_baseline") as mock_run:

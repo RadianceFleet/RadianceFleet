@@ -23,7 +23,7 @@ class StsHotspot(Base):
     trend: Mapped[str] = mapped_column(String(20), nullable=False, default="stable")
     trend_slope: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     corridor_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("corridors.corridor_id"), nullable=True
+        Integer, ForeignKey("corridors.corridor_id"), nullable=True, index=True
     )
     risk_score_component: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)

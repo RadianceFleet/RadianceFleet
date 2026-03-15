@@ -16,7 +16,8 @@ from app.models.corridor import Corridor
 from app.models.gap_event import AISGapEvent
 from app.models.scoring_region import ScoringRegion
 from app.modules.fp_rate_tracker import CorridorFPRate, compute_region_fp_rate
-from app.modules.shadow_scorer import _get_score_band, shadow_score
+from app.modules.risk_scoring import _score_band
+from app.modules.shadow_scorer import shadow_score
 
 
 # ---------------------------------------------------------------------------
@@ -307,14 +308,14 @@ class TestShadowScoring:
         assert fresh.risk_score == 50
 
     def test_get_score_band(self):
-        assert _get_score_band(80) == "critical"
-        assert _get_score_band(76) == "critical"
-        assert _get_score_band(75) == "high"
-        assert _get_score_band(51) == "high"
-        assert _get_score_band(50) == "medium"
-        assert _get_score_band(26) == "medium"
-        assert _get_score_band(25) == "low"
-        assert _get_score_band(0) == "low"
+        assert _score_band(80) == "critical"
+        assert _score_band(76) == "critical"
+        assert _score_band(75) == "high"
+        assert _score_band(51) == "high"
+        assert _score_band(50) == "medium"
+        assert _score_band(21) == "medium"
+        assert _score_band(20) == "low"
+        assert _score_band(0) == "low"
 
     def test_shadow_score_avg_delta(self, db: Session):
         corridor = _make_corridor(db, name="Delta Corridor")

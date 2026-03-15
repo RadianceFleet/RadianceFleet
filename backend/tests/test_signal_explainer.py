@@ -348,11 +348,11 @@ class TestAPIEndpoint:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
-        app.dependency_overrides = {}
-
+        from app.auth import require_auth
         from app.database import get_db
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_auth] = lambda: {"analyst_id": 1, "username": "test", "role": "admin"}
 
         client = TestClient(app)
         resp = client.get("/api/v1/alerts/999/explain")
@@ -382,9 +382,11 @@ class TestAPIEndpoint:
             mock_vessel,
         ]
 
+        from app.auth import require_auth
         from app.database import get_db
 
         app.dependency_overrides[get_db] = lambda: mock_db
+        app.dependency_overrides[require_auth] = lambda: {"analyst_id": 1, "username": "test", "role": "admin"}
 
         client = TestClient(app)
         resp = client.get("/api/v1/alerts/1/explain")

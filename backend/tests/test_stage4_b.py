@@ -784,14 +784,12 @@ class TestMergeBonus:
 
 class TestFeatureFlags:
     def test_config_has_fingerprint_flags(self):
-        """Config includes FINGERPRINT_ENABLED and FINGERPRINT_SCORING_ENABLED."""
+        """Config includes FINGERPRINT_ENABLED."""
         from app.config import Settings
 
         s = Settings()
         assert hasattr(s, "FINGERPRINT_ENABLED")
-        assert hasattr(s, "FINGERPRINT_SCORING_ENABLED")
         assert s.FINGERPRINT_ENABLED is True
-        assert s.FINGERPRINT_SCORING_ENABLED is True
 
     def test_run_fingerprint_disabled(self):
         """run_fingerprint_computation returns empty stats when disabled."""

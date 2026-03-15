@@ -486,6 +486,9 @@ behavioral_baseline:
   min_std_hours: 0.5            # Skip if std too small (uniform gaps — not anomalous)
   sigma_2_points: 25            # >2σ deviation from own baseline
   sigma_3_points: 40            # >3σ deviation from own baseline (strong indicator)
+  high: 25
+  medium: 15
+  low: 7
 
 # WATCHLIST STUB SCORING — static scoring for vessels with no AIS history
 watchlist_stub_scoring:
@@ -565,11 +568,6 @@ trajectory_pca:
   high: 30
   medium: 18
   low: 8
-
-behavioral_baseline:
-  high: 25
-  medium: 15
-  low: 7
 
 sts_hotspot:
   high: 28

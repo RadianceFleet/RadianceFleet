@@ -15,7 +15,7 @@ class TrajectoryClusterMember(Base):
 
     member_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     cluster_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("trajectory_clusters.cluster_id"), nullable=False
+        Integer, ForeignKey("trajectory_clusters.cluster_id"), nullable=False, index=True
     )
     vessel_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True

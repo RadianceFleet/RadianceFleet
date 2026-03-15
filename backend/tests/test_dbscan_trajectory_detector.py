@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.modules.dbscan_trajectory_detector import (
-    EARTH_RADIUS_NM,
     SCORE_HIGH_DEVIATION,
     SCORE_MODERATE_DEVIATION,
     SCORE_NOISE_IN_CORRIDOR,

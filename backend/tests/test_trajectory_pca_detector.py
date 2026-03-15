@@ -545,16 +545,21 @@ class TestGetVesselPcaAnomalies:
 class TestAPIEndpoints:
     """Tests for the trajectory PCA API endpoints."""
 
-    def test_post_disabled(self):
-        """POST /detect/trajectory-pca returns 503 when disabled."""
+    def _make_client(self):
+        from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
         from app.api.routes_trajectory_pca import router
+        from app.auth import require_auth
 
-        from fastapi import FastAPI
         app = FastAPI()
         app.include_router(router)
-        client = TestClient(app)
+        app.dependency_overrides[require_auth] = lambda: {"analyst_id": 1, "username": "test", "role": "admin"}
+        return TestClient(app)
+
+    def test_post_disabled(self):
+        """POST /detect/trajectory-pca returns 503 when disabled."""
+        client = self._make_client()
 
         with patch("app.api.routes_trajectory_pca.settings") as mock_settings:
             mock_settings.TRAJECTORY_PCA_ENABLED = False
@@ -563,14 +568,7 @@ class TestAPIEndpoints:
 
     def test_get_disabled(self):
         """GET /detect/trajectory-pca/{vessel_id} returns 503 when disabled."""
-        from fastapi.testclient import TestClient
-
-        from app.api.routes_trajectory_pca import router
-
-        from fastapi import FastAPI
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = self._make_client()
 
         with patch("app.api.routes_trajectory_pca.settings") as mock_settings:
             mock_settings.TRAJECTORY_PCA_ENABLED = False
@@ -579,14 +577,7 @@ class TestAPIEndpoints:
 
     def test_post_enabled_runs_detection(self):
         """POST /detect/trajectory-pca runs detection when enabled."""
-        from fastapi.testclient import TestClient
-
-        from app.api.routes_trajectory_pca import router
-
-        from fastapi import FastAPI
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = self._make_client()
 
         with patch("app.api.routes_trajectory_pca.settings") as mock_settings, \
              patch("app.modules.trajectory_pca_detector.run_pca_detection") as mock_run:
@@ -599,14 +590,7 @@ class TestAPIEndpoints:
 
     def test_get_enabled_returns_results(self):
         """GET /detect/trajectory-pca/{vessel_id} returns anomaly results."""
-        from fastapi.testclient import TestClient
-
-        from app.api.routes_trajectory_pca import router
-
-        from fastapi import FastAPI
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = self._make_client()
 
         with patch("app.api.routes_trajectory_pca.settings") as mock_settings, \
              patch("app.modules.trajectory_pca_detector.get_vessel_pca_anomalies") as mock_get:
@@ -619,14 +603,7 @@ class TestAPIEndpoints:
 
     def test_get_not_found(self):
         """GET /detect/trajectory-pca/{vessel_id} returns 404 when no results."""
-        from fastapi.testclient import TestClient
-
-        from app.api.routes_trajectory_pca import router
-
-        from fastapi import FastAPI
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+        client = self._make_client()
 
         with patch("app.api.routes_trajectory_pca.settings") as mock_settings, \
              patch("app.modules.trajectory_pca_detector.get_vessel_pca_anomalies") as mock_get:

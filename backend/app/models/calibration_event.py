@@ -23,7 +23,7 @@ class CalibrationEvent(Base):
     after_values_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     impact_summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     analyst_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("analysts.analyst_id"), nullable=True
+        Integer, ForeignKey("analysts.analyst_id"), nullable=True, index=True
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), nullable=False)

@@ -15,10 +15,10 @@ class SatelliteOrder(Base):
 
     satellite_order_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     sat_check_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("satellite_checks.sat_check_id"), nullable=True
+        Integer, ForeignKey("satellite_checks.sat_check_id"), nullable=True, index=True
     )
     tasking_candidate_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("satellite_tasking_candidates.candidate_id"), nullable=True
+        Integer, ForeignKey("satellite_tasking_candidates.candidate_id"), nullable=True, index=True
     )
     provider: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     order_type: Mapped[str] = mapped_column(

@@ -23,5 +23,5 @@ class CaseAlert(Base):
     )
     added_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
     added_by: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("analysts.analyst_id"), nullable=True
+        Integer, ForeignKey("analysts.analyst_id"), nullable=True, index=True
     )

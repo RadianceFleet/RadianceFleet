@@ -112,14 +112,14 @@ _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
     "kystverket": lambda: SourceInfo(
         name="kystverket",
         description="Norwegian AIS TCP stream (Barents/Norwegian Sea)",
-        interval_seconds=getattr(settings, "COLLECT_AISSTREAM_INTERVAL", 300),
+        interval_seconds=getattr(settings, "COLLECT_KYSTVERKET_INTERVAL", 300),
         enabled=getattr(settings, "KYSTVERKET_ENABLED", False),
         collector=_collect_kystverket,
     ),
     "barentswatch": lambda: SourceInfo(
         name="barentswatch",
         description="Norwegian EEZ REST API (Murmansk corridor)",
-        interval_seconds=getattr(settings, "COLLECT_DIGITRAFFIC_INTERVAL", 1800),
+        interval_seconds=getattr(settings, "COLLECT_BARENTSWATCH_INTERVAL", 1800),
         enabled=getattr(settings, "BARENTSWATCH_ENABLED", False),
         collector=_collect_barentswatch,
     ),

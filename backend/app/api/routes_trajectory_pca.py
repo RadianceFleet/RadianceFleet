@@ -8,6 +8,7 @@ from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth import require_auth
 from app.config import settings
 from app.database import get_db
 
@@ -21,6 +22,7 @@ def run_trajectory_pca(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run PCA-based trajectory anomaly detection.
 
@@ -47,6 +49,7 @@ def run_trajectory_pca(
 def get_trajectory_pca_anomalies(
     vessel_id: int,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Get PCA trajectory anomaly results for a specific vessel."""
     enabled = getattr(settings, "TRAJECTORY_PCA_ENABLED", False)

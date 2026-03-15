@@ -26,6 +26,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.database import get_db
+from app.schemas.analyst import AnalystCreate, AnalystLoginRequest, AnalystPasswordReset, AnalystUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,7 @@ def list_audit_logs(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
 ):
     """List audit log entries (PRD NFR5)."""
     from app.models.audit_log import AuditLog
@@ -210,21 +212,19 @@ def list_audit_logs(
 
 @router.post("/admin/login", tags=["admin"])
 @limiter.limit("5/hour")
-def admin_login(request: Request, body: dict, db: Session = Depends(get_db)):
+def admin_login(request: Request, body: AnalystLoginRequest, db: Session = Depends(get_db)):
     """Rate-limited login. Supports analyst DB login (username+password) and legacy admin login."""
     from datetime import datetime as _dt
 
     from app.models.analyst import Analyst
-    from app.schemas.analyst import AnalystLoginRequest, AnalystLoginResponse, AnalystRead
+    from app.schemas.analyst import AnalystLoginResponse, AnalystRead
 
-    parsed = AnalystLoginRequest(**body)
-
-    if parsed.username:
+    if body.username:
         # DB-backed analyst login
-        analyst = db.query(Analyst).filter(Analyst.username == parsed.username).first()
+        analyst = db.query(Analyst).filter(Analyst.username == body.username).first()
         if not analyst or not analyst.is_active:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        if not verify_password(parsed.password, analyst.password_hash):
+        if not verify_password(body.password, analyst.password_hash):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         analyst.last_login_at = _dt.now(UTC)
         db.commit()
@@ -236,7 +236,7 @@ def admin_login(request: Request, body: dict, db: Session = Depends(get_db)):
         ).model_dump()
     else:
         # Legacy admin login (no username — uses ADMIN_PASSWORD env var)
-        if not verify_admin_password(parsed.password):
+        if not verify_admin_password(body.password):
             raise HTTPException(status_code=401, detail="Invalid password")
         return {"token": create_admin_token()}
 
@@ -257,31 +257,30 @@ def admin_refresh(request: Request, auth: dict = Depends(require_auth)):
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def create_analyst(
     request: Request,
-    body: dict,
+    body: AnalystCreate,
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_role),
 ):
     """Admin: create a new analyst account."""
     from app.models.analyst import Analyst
     from app.models.base import AnalystRoleEnum
-    from app.schemas.analyst import AnalystCreate, AnalystRead
+    from app.schemas.analyst import AnalystRead
 
-    parsed = AnalystCreate(**body)
     valid_roles = {e.value for e in AnalystRoleEnum}
-    if parsed.role not in valid_roles:
+    if body.role not in valid_roles:
         raise HTTPException(
             status_code=422, detail=f"Invalid role. Must be one of: {sorted(valid_roles)}"
         )
 
-    existing = db.query(Analyst).filter(Analyst.username == parsed.username).first()
+    existing = db.query(Analyst).filter(Analyst.username == body.username).first()
     if existing:
         raise HTTPException(status_code=409, detail="Username already exists")
 
     analyst = Analyst(
-        username=parsed.username,
-        display_name=parsed.display_name,
-        password_hash=hash_password(parsed.password),
-        role=parsed.role,
+        username=body.username,
+        display_name=body.display_name,
+        password_hash=hash_password(body.password),
+        role=body.role,
         is_active=True,
     )
     db.add(analyst)
@@ -309,7 +308,7 @@ def list_analysts(
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def update_analyst(
     analyst_id: int,
-    body: dict,
+    body: AnalystUpdate,
     request: Request,
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_role),
@@ -322,17 +321,17 @@ def update_analyst(
     if not analyst:
         raise HTTPException(status_code=404, detail="Analyst not found")
 
-    if "role" in body:
+    if body.role is not None:
         valid_roles = {e.value for e in AnalystRoleEnum}
-        if body["role"] not in valid_roles:
+        if body.role not in valid_roles:
             raise HTTPException(
                 status_code=422, detail=f"Invalid role. Must be one of: {sorted(valid_roles)}"
             )
-        analyst.role = body["role"]
-    if "display_name" in body:
-        analyst.display_name = body["display_name"]
-    if "is_active" in body:
-        analyst.is_active = body["is_active"]
+        analyst.role = body.role
+    if body.display_name is not None:
+        analyst.display_name = body.display_name
+    if body.is_active is not None:
+        analyst.is_active = body.is_active
 
     db.commit()
     return {"status": "updated", "analyst_id": analyst_id}
@@ -342,7 +341,7 @@ def update_analyst(
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def reset_analyst_password(
     analyst_id: int,
-    body: dict,
+    body: AnalystPasswordReset,
     request: Request,
     db: Session = Depends(get_db),
     _admin=Depends(require_admin_role),
@@ -354,11 +353,7 @@ def reset_analyst_password(
     if not analyst:
         raise HTTPException(status_code=404, detail="Analyst not found")
 
-    new_password = body.get("password")
-    if not new_password:
-        raise HTTPException(status_code=422, detail="password is required")
-
-    analyst.password_hash = hash_password(new_password)
+    analyst.password_hash = hash_password(body.password)
     db.commit()
     return {"status": "password_reset", "analyst_id": analyst_id}
 
@@ -525,7 +520,7 @@ def get_tips(
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: Session = Depends(get_db),
-    _user=Depends(require_auth),
+    _admin=Depends(require_admin_role),
 ):
     """Admin: list tip submissions, paginated."""
     from sqlalchemy import select
@@ -753,6 +748,7 @@ def trigger_backfill(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
 ):
     """Trigger manual backfill for a data source and date range."""
     _validate_date_range(date_from, date_to)

@@ -26,7 +26,7 @@ class CorridorScoringOverride(Base):
     gap_duration_multiplier: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("analysts.analyst_id"), nullable=True
+        Integer, ForeignKey("analysts.analyst_id"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

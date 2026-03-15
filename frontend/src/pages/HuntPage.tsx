@@ -420,5 +420,3 @@ function MissionDetail({ missionId, onBack }: { missionId: number; onBack: () =>
     </>
   );
 }
-
-export default HuntPage;

@@ -1,4 +1,3 @@
-import React from 'react'
 import { MapContainer, TileLayer, Marker } from 'react-leaflet'
 import type { WidgetTheme } from './widgetTheme'
 import 'leaflet/dist/leaflet.css'

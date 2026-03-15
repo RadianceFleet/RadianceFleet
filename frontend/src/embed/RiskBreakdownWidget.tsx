@@ -1,4 +1,3 @@
-import React from 'react'
 import type { WidgetTheme } from './widgetTheme'
 
 interface Signal {

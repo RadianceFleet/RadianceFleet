@@ -23,7 +23,7 @@ class AISGapEvent(Base):
         Integer, ForeignKey("ais_points.ais_point_id"), nullable=True
     )
     end_point_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("ais_points.ais_point_id"), nullable=True
+        Integer, ForeignKey("ais_points.ais_point_id"), nullable=True, index=True
     )
     gap_start_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     gap_end_utc: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -43,7 +43,7 @@ class AISGapEvent(Base):
     actual_gap_distance_nm: Mapped[float | None] = mapped_column(Float, nullable=True)
     in_dark_zone: Mapped[bool] = mapped_column(Boolean, default=False)
     dark_zone_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("dark_zones.zone_id"), nullable=True
+        Integer, ForeignKey("dark_zones.zone_id"), nullable=True, index=True
     )
     pre_gap_sog: Mapped[float | None] = mapped_column(Float, nullable=True)
     # SOG of the last AIS point before the gap; captured at detection time

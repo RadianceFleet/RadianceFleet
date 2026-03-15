@@ -133,5 +133,3 @@ export function ShadowScorePreview({ corridorId, overrides }: Props) {
     </div>
   );
 }
-
-export default ShadowScorePreview;

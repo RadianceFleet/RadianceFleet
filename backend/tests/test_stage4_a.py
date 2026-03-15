@@ -123,24 +123,33 @@ def _make_gap_and_vessel():
 def _make_scoring_db(chain_list=None):
     """Create a mock db that returns chain_list for MergeChain queries and
     safe defaults for all other queries."""
-    db = MagicMock()
-    # Default: all query().filter().all() returns empty list
-    db.query.return_value.filter.return_value.all.return_value = []
-    db.query.return_value.filter.return_value.first.return_value = None
-    db.query.return_value.filter.return_value.count.return_value = 0
-    db.query.return_value.filter.return_value.scalar.return_value = 0
-    db.query.return_value.join.return_value.filter.return_value.count.return_value = 0
-    db.query.return_value.filter.return_value.order_by.return_value.first.return_value = None
-    db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
-    db.query.return_value.filter.return_value.order_by.return_value.asc.return_value = None
-    db.query.return_value.get.return_value = None
+    from app.models.merge_chain import MergeChain
 
-    if chain_list is not None:
-        # The MergeChain query is db.query(MergeChain).all()
-        # Since MagicMock doesn't distinguish between model types in query(),
-        # we set the global all() to return chains; the try/except in scoring
-        # handles any issues from other query sections.
-        db.query.return_value.all.return_value = chain_list
+    # Create separate mocks for MergeChain queries vs default queries
+    default_query = MagicMock()
+    default_query.filter.return_value.all.return_value = []
+    default_query.filter.return_value.first.return_value = None
+    default_query.filter.return_value.count.return_value = 0
+    default_query.filter.return_value.scalar.return_value = 0
+    default_query.join.return_value.filter.return_value.count.return_value = 0
+    default_query.filter.return_value.order_by.return_value.first.return_value = None
+    default_query.filter.return_value.order_by.return_value.all.return_value = []
+    default_query.filter.return_value.order_by.return_value.asc.return_value = None
+    default_query.get.return_value = None
+    default_query.all.return_value = []
+
+    chain_query = MagicMock()
+    chain_query.filter.return_value.all.return_value = chain_list or []
+    chain_query.all.return_value = chain_list or []
+
+    db = MagicMock()
+
+    def query_side_effect(model, *args):
+        if model is MergeChain:
+            return chain_query
+        return default_query
+
+    db.query.side_effect = query_side_effect
 
     return db
 

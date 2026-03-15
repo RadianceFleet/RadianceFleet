@@ -2,26 +2,15 @@
 
 from __future__ import annotations
 
-import copy
 import logging
 
 from sqlalchemy.orm import Session
 
 from app.models.gap_event import AISGapEvent
+from app.modules.risk_scoring import _merge_overrides, _score_band
 from app.modules.scoring_config import load_scoring_config
 
 logger = logging.getLogger(__name__)
-
-
-def _get_score_band(score: int) -> str:
-    """Map score to band name."""
-    if score >= 76:
-        return "critical"
-    if score >= 51:
-        return "high"
-    if score >= 26:
-        return "medium"
-    return "low"
 
 
 def shadow_score(
@@ -58,31 +47,7 @@ def shadow_score(
 
     # Build merged config with proposed overrides
     base_config = load_scoring_config()
-    merged_config = copy.deepcopy(base_config)
-
-    # Apply proposed signal overrides
-    for key, value in (proposed_overrides.get("signal_overrides") or {}).items():
-        if value is None:
-            continue
-        parts = key.split(".")
-        if len(parts) == 2:
-            section, subkey = parts
-            if (
-                section in merged_config
-                and isinstance(merged_config[section], dict)
-                and isinstance(value, (int, float))
-            ):
-                merged_config[section][subkey] = value
-        elif len(parts) == 3:
-            section, mid, subkey = parts
-            if (
-                section in merged_config
-                and isinstance(merged_config[section], dict)
-                and mid in merged_config[section]
-                and isinstance(merged_config[section][mid], dict)
-                and isinstance(value, (int, float))
-            ):
-                merged_config[section][mid][subkey] = value
+    merged_config = _merge_overrides(base_config, proposed_overrides.get("signal_overrides") or {})
 
     results = []
     total_delta = 0
@@ -90,7 +55,7 @@ def shadow_score(
 
     for alert in alerts:
         original_score = alert.risk_score
-        original_band = _get_score_band(original_score)
+        original_band = _score_band(original_score)
 
         gaps_7d = _count_gaps_in_window(db, alert, 7)
         gaps_14d = _count_gaps_in_window(db, alert, 14)
@@ -106,7 +71,7 @@ def shadow_score(
             pre_gap_sog=getattr(alert, "pre_gap_sog", None),
         )
 
-        proposed_band = _get_score_band(proposed_score)
+        proposed_band = _score_band(proposed_score)
         changed = original_band != proposed_band
         if changed:
             band_changes += 1

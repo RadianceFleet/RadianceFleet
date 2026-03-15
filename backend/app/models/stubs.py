@@ -20,7 +20,7 @@ class VesselTargetProfile(Base):
     __tablename__ = "vessel_target_profiles"
 
     profile_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False)
+    vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)
     reference_images_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     hull_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     deadweight_dwt: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -42,9 +42,9 @@ class SearchMission(Base):
     __tablename__ = "search_missions"
 
     mission_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False)
+    vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)
     profile_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("vessel_target_profiles.profile_id"), nullable=True
+        Integer, ForeignKey("vessel_target_profiles.profile_id"), nullable=True, index=True
     )
     search_start_utc: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     search_end_utc: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -66,7 +66,7 @@ class HuntCandidate(Base):
 
     candidate_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     mission_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("search_missions.mission_id"), nullable=False
+        Integer, ForeignKey("search_missions.mission_id"), nullable=False, index=True
     )
     detection_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     detection_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -97,12 +97,12 @@ class DarkVesselDetection(Base):
     ais_match_attempted: Mapped[bool] = mapped_column(Boolean, default=False)
     ais_match_result: Mapped[str | None] = mapped_column(String(20), nullable=True)
     matched_vessel_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("vessels.vessel_id"), nullable=True
+        Integer, ForeignKey("vessels.vessel_id"), nullable=True, index=True
     )
     corridor_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("corridors.corridor_id"), nullable=True
+        Integer, ForeignKey("corridors.corridor_id"), nullable=True, index=True
     )
     model_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_gap_event_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("ais_gap_events.gap_event_id"), nullable=True
+        Integer, ForeignKey("ais_gap_events.gap_event_id"), nullable=True, index=True
     )

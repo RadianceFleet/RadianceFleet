@@ -13,9 +13,9 @@ class OwnerClusterMember(Base):
 
     member_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     cluster_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("owner_clusters.cluster_id"), nullable=False
+        Integer, ForeignKey("owner_clusters.cluster_id"), nullable=False, index=True
     )
     owner_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("vessel_owners.owner_id"), nullable=False
+        Integer, ForeignKey("vessel_owners.owner_id"), nullable=False, index=True
     )
     similarity_score: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.routes_ownership_network import router
+from app.auth import require_auth
 from app.database import get_db
 from app.models.base import Base
 from app.models.owner_cluster import OwnerCluster  # noqa: F401
@@ -53,6 +54,7 @@ def client(db):
             pass
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[require_auth] = lambda: {"analyst_id": 1, "username": "test", "role": "admin"}
     return TestClient(app)
 
 

@@ -18,7 +18,6 @@ from fastapi.testclient import TestClient
 from app.modules.sts_hotspot_detector import (
     DEFAULT_EPS_NM,
     DEFAULT_MIN_SAMPLES,
-    EARTH_RADIUS_NM,
     SCORE_BASE,
     SCORE_CORRIDOR_BONUS,
     SCORE_GROWING_BONUS,
@@ -30,10 +29,11 @@ from app.modules.sts_hotspot_detector import (
     _compute_risk_score,
     _compute_trend,
     _dbscan,
-    _haversine_nm,
     get_hotspots_geojson,
+    haversine_nm,
     run_hotspot_detection,
 )
+from app.utils.geo import _EARTH_RADIUS_NM as EARTH_RADIUS_NM
 
 
 # ── Haversine tests ──────────────────────────────────────────────────────────
@@ -41,31 +41,31 @@ from app.modules.sts_hotspot_detector import (
 
 class TestHaversine:
     def test_same_point_returns_zero(self):
-        assert _haversine_nm(0.0, 0.0, 0.0, 0.0) == 0.0
+        assert haversine_nm(0.0, 0.0, 0.0, 0.0) == 0.0
 
     def test_known_distance_equator(self):
         """1 degree of longitude at equator ~ 60 NM."""
-        d = _haversine_nm(0.0, 0.0, 0.0, 1.0)
+        d = haversine_nm(0.0, 0.0, 0.0, 1.0)
         assert 59.5 < d < 60.5
 
     def test_known_distance_latitude(self):
         """1 degree of latitude ~ 60 NM everywhere."""
-        d = _haversine_nm(0.0, 0.0, 1.0, 0.0)
+        d = haversine_nm(0.0, 0.0, 1.0, 0.0)
         assert 59.5 < d < 60.5
 
     def test_symmetry(self):
-        d1 = _haversine_nm(10.0, 20.0, 30.0, 40.0)
-        d2 = _haversine_nm(30.0, 40.0, 10.0, 20.0)
+        d1 = haversine_nm(10.0, 20.0, 30.0, 40.0)
+        d2 = haversine_nm(30.0, 40.0, 10.0, 20.0)
         assert abs(d1 - d2) < 1e-10
 
     def test_high_latitude_longitude_compression(self):
         """At 60N, 1 degree longitude ~ 30 NM (cos(60) = 0.5)."""
-        d = _haversine_nm(60.0, 0.0, 60.0, 1.0)
+        d = haversine_nm(60.0, 0.0, 60.0, 1.0)
         assert 29.5 < d < 30.5
 
     def test_antipodal_points(self):
         """Distance from pole to pole ~ pi * earth_radius."""
-        d = _haversine_nm(90.0, 0.0, -90.0, 0.0)
+        d = haversine_nm(90.0, 0.0, -90.0, 0.0)
         expected = math.pi * EARTH_RADIUS_NM
         assert abs(d - expected) < 1.0
 
@@ -299,9 +299,10 @@ class TestCorridorOverlap:
 
 class TestFeatureFlag:
     def test_disabled_by_default(self):
-        """STS_HOTSPOT_ENABLED is not in Settings, so getattr returns False."""
+        """When STS_HOTSPOT_ENABLED is False, detection returns disabled."""
         mock_db = MagicMock()
-        result = run_hotspot_detection(mock_db)
+        with patch("app.modules.sts_hotspot_detector.getattr", return_value=False):
+            result = run_hotspot_detection(mock_db)
         assert result.get("disabled") is True
         assert result["hotspots_found"] == 0
 

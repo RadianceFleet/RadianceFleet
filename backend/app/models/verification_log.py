@@ -17,7 +17,7 @@ class VerificationLog(Base):
     __tablename__ = "verification_logs"
 
     log_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False)
+    vessel_id: Mapped[int] = mapped_column(Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     request_time_utc: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(UTC)

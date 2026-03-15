@@ -7,6 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.auth import require_auth
 from app.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,7 @@ def get_vessel_ownership_network(
     depth: int = Query(default=3, ge=1, le=10, description="Max BFS depth"),
     limit: int = Query(default=100, ge=1, le=500, description="Max nodes"),
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Get ownership network graph centered on a specific vessel."""
     from app.models.vessel import Vessel
@@ -45,6 +47,7 @@ def get_fleet_ownership_network(
     depth: int = Query(default=3, ge=1, le=10, description="Max BFS depth"),
     limit: int = Query(default=100, ge=1, le=500, description="Max nodes"),
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Get fleet-wide ownership network graph with optional filters."""
     from app.modules.network_graph_builder import build_ownership_network

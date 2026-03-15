@@ -266,5 +266,3 @@ function StsTab() {
     </Card>
   );
 }
-
-export default GlobalDetectionsPage;

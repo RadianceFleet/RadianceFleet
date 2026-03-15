@@ -11,14 +11,6 @@ export function useHuntTargets(filters?: { skip?: number; limit?: number }) {
   });
 }
 
-export function useHuntTarget(profileId: number | undefined) {
-  return useQuery({
-    queryKey: ["hunt-target", profileId],
-    queryFn: () => apiFetch<VesselTargetProfile>(`/hunt/targets/${profileId}`),
-    enabled: profileId != null,
-  });
-}
-
 export function useCreateHuntTarget() {
   const qc = useQueryClient();
   return useMutation({
@@ -36,14 +28,6 @@ export function useHuntMissions(filters?: { skip?: number; limit?: number }) {
   return useQuery({
     queryKey: ["hunt-missions", filters],
     queryFn: () => apiFetch<SearchMission[]>(`/hunt/missions?${params}`),
-  });
-}
-
-export function useHuntMission(missionId: number | undefined) {
-  return useQuery({
-    queryKey: ["hunt-mission", missionId],
-    queryFn: () => apiFetch<SearchMission>(`/hunt/missions/${missionId}`),
-    enabled: missionId != null,
   });
 }
 

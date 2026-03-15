@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import FPRateByCorridorChart from "../components/charts/FPRateByCorridorChart";
@@ -176,7 +176,6 @@ export default function FPTuningPage() {
 
   const {
     data: suggestions,
-    isLoading: suggestionsLoading,
   } = useQuery<CalibrationSuggestion[]>({
     queryKey: ["calibration-suggestions"],
     queryFn: () => apiFetch("/api/v1/corridors/calibration-suggestions"),

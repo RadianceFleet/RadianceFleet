@@ -15,13 +15,13 @@ class MergeOperation(Base):
 
     merge_op_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     candidate_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("merge_candidates.candidate_id"), nullable=True
+        Integer, ForeignKey("merge_candidates.candidate_id"), nullable=True, index=True
     )
     canonical_vessel_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("vessels.vessel_id"), nullable=False
+        Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True
     )
     absorbed_vessel_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("vessels.vessel_id"), nullable=False
+        Integer, ForeignKey("vessels.vessel_id"), nullable=False, index=True
     )
     executed_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     executed_by: Mapped[str] = mapped_column(String(100), nullable=False, default="auto")

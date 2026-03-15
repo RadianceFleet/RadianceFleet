@@ -75,6 +75,15 @@ _EXPECTED_SECTIONS = [
     "trajectory_pca",
     "behavioral_baseline",
     "sts_hotspot",
+    "sanctioned_port",
+    "temporal_decay",
+    "eez_proximity",
+    "kse_profile",
+    "corroboration",
+    "data_completeness",
+    "false_positive_suppression",
+    "detection_thresholds",
+    "hunt_scoring",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)

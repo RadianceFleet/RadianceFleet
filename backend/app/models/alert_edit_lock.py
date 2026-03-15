@@ -19,7 +19,7 @@ class AlertEditLock(Base):
         Integer, ForeignKey("ais_gap_events.gap_event_id"), nullable=False, unique=True
     )
     analyst_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("analysts.analyst_id"), nullable=False
+        Integer, ForeignKey("analysts.analyst_id"), nullable=False, index=True
     )
     acquired_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

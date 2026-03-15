@@ -21,6 +21,16 @@ class AnalystRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AnalystUpdate(BaseModel):
+    role: str | None = None
+    display_name: str | None = None
+    is_active: bool | None = None
+
+
+class AnalystPasswordReset(BaseModel):
+    password: str
+
+
 class AnalystLoginRequest(BaseModel):
     password: str
     username: str | None = None

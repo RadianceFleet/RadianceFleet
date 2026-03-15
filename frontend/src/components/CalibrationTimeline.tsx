@@ -92,5 +92,3 @@ export function CalibrationTimeline({ corridorId }: Props) {
     </div>
   );
 }
-
-export default CalibrationTimeline;

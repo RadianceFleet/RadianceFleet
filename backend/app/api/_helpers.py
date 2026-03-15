@@ -137,6 +137,42 @@ def _audit_log(
     db.add(log)
 
 
+def _query_new_alerts(last_id: int, min_score: int) -> list[dict]:
+    """Query alerts newer than last_id with score >= min_score. Runs in thread."""
+    from app.database import SessionLocal
+    from app.models.gap_event import AISGapEvent
+
+    db = SessionLocal()
+    try:
+        alerts = (
+            db.query(AISGapEvent)
+            .filter(
+                AISGapEvent.gap_event_id > last_id,
+                AISGapEvent.risk_score >= min_score,
+            )
+            .order_by(AISGapEvent.gap_event_id.asc())
+            .limit(50)
+            .all()
+        )
+        return [
+            {
+                "gap_event_id": a.gap_event_id,
+                "vessel_id": a.vessel_id,
+                "risk_score": a.risk_score,
+                "gap_start_utc": a.gap_start_utc.isoformat()
+                if a.gap_start_utc
+                else None,
+                "duration_minutes": a.duration_minutes,
+                "status": str(a.status.value)
+                if hasattr(a.status, "value")
+                else str(a.status),
+            }
+            for a in alerts
+        ]
+    finally:
+        db.close()
+
+
 def _validate_date_range(date_from, date_to) -> None:
     """Reject if date_from is after date_to."""
     if date_from and date_to and date_from > date_to:

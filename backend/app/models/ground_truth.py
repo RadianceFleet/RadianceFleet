@@ -25,6 +25,6 @@ class GroundTruthVessel(Base):
     date_listed: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     vessel_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("vessels.vessel_id"), nullable=True
+        Integer, ForeignKey("vessels.vessel_id"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)

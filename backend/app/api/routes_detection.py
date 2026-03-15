@@ -40,6 +40,7 @@ def detect_gaps(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run AIS gap detection over the specified date range."""
     from app.modules.gap_detector import run_gap_detection
@@ -52,6 +53,7 @@ def detect_spoofing(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run AIS spoofing detection (impossible speed, anchor-in-ocean, circle spoof, etc.)."""
     from app.modules.gap_detector import run_spoofing_detection
@@ -311,6 +313,7 @@ def validate_sts_event(
     user_validated: bool | None = None,
     confidence_override: float | None = Query(None, ge=0.0, le=1.0),
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Analyst validation: confirm/reject an STS transfer event."""
     from app.models.sts_transfer import StsTransferEvent
@@ -365,6 +368,7 @@ def detect_loitering(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run loitering detection and update laid-up vessel flags."""
     from app.modules.loitering_detector import detect_laid_up_vessels, run_loitering_detection
@@ -380,6 +384,7 @@ def detect_sts(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run ship-to-ship transfer detection.
 
@@ -668,7 +673,7 @@ def get_corridor(corridor_id: int, db: Session = Depends(get_db)):
 
 @router.post("/corridors", tags=["corridors"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def create_corridor(body: CorridorCreateRequest, request: Request, db: Session = Depends(get_db)):
+def create_corridor(body: CorridorCreateRequest, request: Request, db: Session = Depends(get_db), _auth: dict = Depends(require_auth)):
     """Create a new corridor."""
     from app.models.base import CorridorTypeEnum
     from app.models.corridor import Corridor
@@ -716,7 +721,7 @@ def create_corridor(body: CorridorCreateRequest, request: Request, db: Session =
 @router.patch("/corridors/{corridor_id}", tags=["corridors"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def update_corridor(
-    corridor_id: int, body: CorridorUpdateRequest, request: Request, db: Session = Depends(get_db)
+    corridor_id: int, body: CorridorUpdateRequest, request: Request, db: Session = Depends(get_db), _auth: dict = Depends(require_auth)
 ):
     """Update corridor metadata."""
     from app.models.base import CorridorTypeEnum
@@ -759,7 +764,7 @@ def update_corridor(
 
 @router.delete("/corridors/{corridor_id}", tags=["corridors"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def delete_corridor(corridor_id: int, request: Request, db: Session = Depends(get_db)):
+def delete_corridor(corridor_id: int, request: Request, db: Session = Depends(get_db), _auth: dict = Depends(require_auth)):
     """Delete a corridor. Returns 409 if gap events are linked to it."""
     from app.models.corridor import Corridor
     from app.models.gap_event import AISGapEvent
@@ -1318,7 +1323,7 @@ def get_satellite_order(order_id: int, db: Session = Depends(get_db)):
 
 @router.post("/satellite/orders/search", tags=["satellite"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def search_satellite_archive(request: Request, body: dict, db: Session = Depends(get_db)):
+def search_satellite_archive(request: Request, body: dict, db: Session = Depends(get_db), _auth: dict = Depends(require_auth)):
     """Search satellite archive for an alert."""
     from app.modules.satellite_order_manager import search_archive_for_alert
 
@@ -1339,6 +1344,7 @@ def submit_satellite_order(
     body: dict,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Submit a draft satellite order."""
     from app.modules.satellite_order_manager import submit_order
@@ -1356,6 +1362,7 @@ def cancel_satellite_order(
     order_id: int,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Cancel a satellite order."""
     from app.modules.satellite_order_manager import cancel_order
@@ -1368,7 +1375,7 @@ def cancel_satellite_order(
 
 @router.post("/satellite/orders/poll", tags=["satellite"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def poll_satellite_orders(request: Request, db: Session = Depends(get_db)):
+def poll_satellite_orders(request: Request, db: Session = Depends(get_db), _auth: dict = Depends(require_auth)):
     """Poll status of active satellite orders."""
     from app.modules.satellite_order_manager import poll_order_status
 
@@ -1420,6 +1427,7 @@ def cluster_trajectories(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run DBSCAN trajectory clustering on AIS data.
 
@@ -1464,6 +1472,7 @@ def get_vessel_clusters(
 @router.post("/detect/reporting-anomaly", tags=["detection"])
 def detect_reporting_anomaly(
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run AIS reporting rate anomaly detection across all vessels."""
     from app.modules.ais_reporting_anomaly_detector import run_reporting_anomaly_detection
@@ -1539,6 +1548,7 @@ def validate_gaps_sar(
     date_from: date | None = None,
     date_to: date | None = None,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Cross-correlate AIS gaps with SAR/VIIRS detections (v4.0)."""
     from app.modules.gap_sar_validator import validate_gaps_with_sar
@@ -1556,6 +1566,7 @@ def validate_gaps_sar(
 @router.post("/detect/isolation-forest", tags=["detection"])
 def detect_isolation_forest(
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run Isolation Forest multi-feature anomaly detection across all vessels."""
     from app.modules.isolation_forest_detector import run_isolation_forest_detection

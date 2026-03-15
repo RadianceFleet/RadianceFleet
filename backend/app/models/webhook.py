@@ -14,6 +14,6 @@ class Webhook(Base):
     url = Column(String, nullable=False)
     events = Column(String, default="critical_alert")
     secret = Column(String, nullable=True)
-    created_by = Column(Integer, ForeignKey("analysts.analyst_id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("analysts.analyst_id"), nullable=True, index=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))

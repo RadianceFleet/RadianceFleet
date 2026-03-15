@@ -18,7 +18,7 @@ class FleetAlert(Base):
 
     alert_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     owner_cluster_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("owner_clusters.cluster_id"), nullable=True
+        Integer, ForeignKey("owner_clusters.cluster_id"), nullable=True, index=True
     )
     alert_type: Mapped[str] = mapped_column(String(50), nullable=False)
     vessel_ids_json: Mapped[list | None] = mapped_column(JSON, nullable=True)

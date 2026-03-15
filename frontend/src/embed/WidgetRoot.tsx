@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getTheme, type WidgetTheme } from './widgetTheme'
 import AlertTimelineWidget from './AlertTimelineWidget'
@@ -39,8 +39,8 @@ function SummaryWidget({ data, theme }: { data: Record<string, unknown>; theme: 
       </div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
         <span style={{ color: theme.textSecondary }}>MMSI: {data.mmsi as string}</span>
-        {data.imo && <span style={{ color: theme.textSecondary }}>IMO: {data.imo as string}</span>}
-        {data.flag && <span style={{ color: theme.textSecondary }}>Flag: {data.flag as string}</span>}
+        {data.imo ? <span style={{ color: theme.textSecondary }}>IMO: {String(data.imo)}</span> : null}
+        {data.flag ? <span style={{ color: theme.textSecondary }}>Flag: {String(data.flag)}</span> : null}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
         <span
@@ -59,9 +59,9 @@ function SummaryWidget({ data, theme }: { data: Record<string, unknown>; theme: 
         {data.risk_score != null && (
           <span style={{ color: theme.textSecondary }}>Score: {data.risk_score as number}</span>
         )}
-        {data.on_watchlist && (
+        {data.on_watchlist ? (
           <span style={{ color: theme.tierColors.critical, fontWeight: 600 }}>Watchlisted</span>
-        )}
+        ) : null}
       </div>
     </div>
   )
@@ -138,12 +138,14 @@ export default function WidgetRoot() {
     )
   }
 
+  const widgetData = data as Record<string, unknown>
+
   return (
     <div style={containerStyle} data-testid="widget-root">
-      {params.type === 'summary' && <SummaryWidget data={data} theme={theme} />}
-      {params.type === 'timeline' && <AlertTimelineWidget data={data} theme={theme} />}
-      {params.type === 'risk' && <RiskBreakdownWidget data={data} theme={theme} />}
-      {params.type === 'map' && <MapSnippetWidget data={data} theme={theme} />}
+      {params.type === 'summary' && <SummaryWidget data={widgetData} theme={theme} />}
+      {params.type === 'timeline' && <AlertTimelineWidget data={widgetData as never} theme={theme} />}
+      {params.type === 'risk' && <RiskBreakdownWidget data={widgetData as never} theme={theme} />}
+      {params.type === 'map' && <MapSnippetWidget data={widgetData as never} theme={theme} />}
     </div>
   )
 }

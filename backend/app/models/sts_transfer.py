@@ -41,7 +41,7 @@ class StsTransferEvent(Base):
     mean_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     mean_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
     corridor_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("corridors.corridor_id"), nullable=True
+        Integer, ForeignKey("corridors.corridor_id"), nullable=True, index=True
     )
     satellite_confirmation_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # ETA in minutes for approaching-vector detections (Phase 5.1 Phase B)

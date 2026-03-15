@@ -19,6 +19,7 @@ from app.api._helpers import (
     _validate_date_range,
     limiter,
 )
+from app.auth import require_auth
 from app.config import settings
 from app.database import get_db
 
@@ -532,7 +533,7 @@ class OwnerUpdateRequest(BaseModel):
 @router.patch("/vessels/{vessel_id}/owner", tags=["vessels"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def update_vessel_owner(
-    request: Request, vessel_id: int, body: OwnerUpdateRequest, db: Session = Depends(get_db)
+    request: Request, vessel_id: int, body: OwnerUpdateRequest, db: Session = Depends(get_db), _auth: dict = Depends(require_auth)
 ):
     """Update or create vessel ownership verification record."""
     from app.models.vessel import Vessel
@@ -569,7 +570,7 @@ def update_vessel_owner(
 @router.post("/vessels/{vessel_id}/verify", tags=["vessels"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def verify_vessel_endpoint(
-    request: Request, vessel_id: int, provider: str = "skylight", db: Session = Depends(get_db)
+    request: Request, vessel_id: int, provider: str = "skylight", db: Session = Depends(get_db), _auth: dict = Depends(require_auth)
 ):
     """Trigger pay-per-query verification for a vessel."""
     from app.modules.paid_verification import verify_vessel
@@ -602,7 +603,7 @@ from app.schemas.alerts import WatchlistAddRequest
 
 @router.post("/watchlist", tags=["watchlist"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def add_to_watchlist(body: WatchlistAddRequest, request: Request, db: Session = Depends(get_db)):
+def add_to_watchlist(body: WatchlistAddRequest, request: Request, db: Session = Depends(get_db), _auth: dict = Depends(require_auth)):
     """Add a vessel to the local watchlist."""
     from app.models.vessel import Vessel
     from app.models.vessel_watchlist import VesselWatchlist
@@ -671,7 +672,7 @@ def list_watchlist(
 
 @router.delete("/watchlist/{watchlist_entry_id}", tags=["watchlist"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
-def remove_from_watchlist(watchlist_entry_id: int, request: Request, db: Session = Depends(get_db)):
+def remove_from_watchlist(watchlist_entry_id: int, request: Request, db: Session = Depends(get_db), _auth: dict = Depends(require_auth)):
     """Remove a watchlist entry (soft delete)."""
     from app.models.vessel_watchlist import VesselWatchlist
 
@@ -695,6 +696,7 @@ async def import_watchlist_file(
     source: str = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Batch-import watchlist from CSV file. source: ofac | kse | opensanctions"""
     _check_upload_size(file)
@@ -839,6 +841,7 @@ def confirm_merge_candidate(
     candidate_id: int,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Analyst confirms a merge candidate — executes the merge."""
     from app.models.base import MergeCandidateStatusEnum
@@ -884,6 +887,7 @@ def reject_merge_candidate(
     candidate_id: int,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Analyst rejects a merge candidate."""
     from app.models.base import MergeCandidateStatusEnum
@@ -912,6 +916,7 @@ def manual_merge_vessels(
     vessel_b_id: int = Query(..., description="Second vessel ID"),
     reason: str = Query("", description="Reason for merge"),
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Manually merge two vessels (analyst-driven linking)."""
     from app.modules.identity_resolver import execute_merge

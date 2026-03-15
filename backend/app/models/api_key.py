@@ -19,7 +19,7 @@ class ApiKey(Base):
     scope: Mapped[str] = mapped_column(String(50), nullable=False, default="read_only")
     rate_limit: Mapped[str] = mapped_column(String(50), nullable=False, default="30/minute")
     created_by: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("analysts.analyst_id"), nullable=True
+        Integer, ForeignKey("analysts.analyst_id"), nullable=True, index=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(

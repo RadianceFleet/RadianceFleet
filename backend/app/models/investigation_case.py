@@ -24,13 +24,13 @@ class InvestigationCase(Base):
         SAEnum(CasePriorityEnum), nullable=False, default=CasePriorityEnum.MEDIUM
     )
     assigned_to: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("analysts.analyst_id"), nullable=True
+        Integer, ForeignKey("analysts.analyst_id"), nullable=True, index=True
     )
     created_by: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("analysts.analyst_id"), nullable=True
+        Integer, ForeignKey("analysts.analyst_id"), nullable=True, index=True
     )
     vessel_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("vessels.vessel_id"), nullable=True
+        Integer, ForeignKey("vessels.vessel_id"), nullable=True, index=True
     )
     corridor_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tags_json: Mapped[str | None] = mapped_column(Text, nullable=True)

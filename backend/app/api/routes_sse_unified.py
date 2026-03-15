@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
+from app.api._helpers import _query_new_alerts
 from app.auth import require_auth
 from app.config import settings
 from app.database import SessionLocal
@@ -20,41 +21,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _active_unified_connections = 0
-
-
-def _query_new_alerts(last_id: int, min_score: int) -> list[dict]:
-    """Query alerts newer than last_id. Runs in thread."""
-    db = SessionLocal()
-    try:
-        from app.models.gap_event import AISGapEvent
-
-        alerts = (
-            db.query(AISGapEvent)
-            .filter(
-                AISGapEvent.gap_event_id > last_id,
-                AISGapEvent.risk_score >= min_score,
-            )
-            .order_by(AISGapEvent.gap_event_id.asc())
-            .limit(50)
-            .all()
-        )
-        return [
-            {
-                "gap_event_id": a.gap_event_id,
-                "vessel_id": a.vessel_id,
-                "risk_score": a.risk_score,
-                "gap_start_utc": a.gap_start_utc.isoformat()
-                if a.gap_start_utc
-                else None,
-                "duration_minutes": a.duration_minutes,
-                "status": str(a.status.value)
-                if hasattr(a.status, "value")
-                else str(a.status),
-            }
-            for a in alerts
-        ]
-    finally:
-        db.close()
 
 
 def _query_presence() -> list[dict]:

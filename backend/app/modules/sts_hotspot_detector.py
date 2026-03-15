@@ -18,17 +18,16 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.utils.geo import haversine_nm
+
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
-
-EARTH_RADIUS_NM = 3440.065  # Mean Earth radius in nautical miles
 
 DEFAULT_EPS_NM = 10.0
 DEFAULT_MIN_SAMPLES = 3
@@ -46,25 +45,6 @@ SCORE_CORRIDOR_BONUS = 10.0
 SCORE_MAX = 100.0
 
 
-# ── Haversine (local copy — no cross-detector coupling) ─────────────────────
-
-
-def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance in nautical miles between two WGS-84 points.
-
-    Uses the haversine formula which correctly handles high-latitude
-    distortion (at 60N, 1 deg longitude ~ 30nm vs ~ 60nm for latitude).
-    """
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return EARTH_RADIUS_NM * c
-
-
 # ── Distance matrix ─────────────────────────────────────────────────────────
 
 
@@ -74,7 +54,7 @@ def _build_distance_matrix(points: list[tuple[float, float]]) -> list[list[float
     matrix = [[0.0] * n for _ in range(n)]
     for i in range(n):
         for j in range(i + 1, n):
-            d = _haversine_nm(points[i][0], points[i][1], points[j][0], points[j][1])
+            d = haversine_nm(points[i][0], points[i][1], points[j][0], points[j][1])
             matrix[i][j] = d
             matrix[j][i] = d
     return matrix
@@ -258,7 +238,7 @@ def _compute_radius_nm(
     if len(points) <= 1:
         return 0.0
     return max(
-        _haversine_nm(centroid_lat, centroid_lon, p[0], p[1])
+        haversine_nm(centroid_lat, centroid_lon, p[0], p[1])
         for p in points
     )
 

@@ -24,12 +24,12 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.utils.geo import haversine_nm
 
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-EARTH_RADIUS_NM = 3440.065  # Mean Earth radius in nautical miles
 WINDOW_HOURS = 24
 DOWNSAMPLE_MINUTES = 30
 
@@ -50,25 +50,6 @@ SCORE_MODERATE_DEVIATION = 15
 # Deviation thresholds (ratio of cluster radius to global median radius)
 HIGH_DEVIATION_THRESHOLD = 3.0
 MODERATE_DEVIATION_THRESHOLD = 2.0
-
-
-# ── Haversine ────────────────────────────────────────────────────────────────
-
-
-def haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance in nautical miles between two WGS-84 points.
-
-    Uses the haversine formula which correctly handles high-latitude
-    distortion (at 60N, 1° longitude ≈ 30nm vs ≈ 60nm for latitude).
-    """
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return EARTH_RADIUS_NM * c
 
 
 def compute_bearing(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

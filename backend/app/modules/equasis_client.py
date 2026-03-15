@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import time
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 
 from app.config import settings
@@ -43,17 +43,17 @@ class EquasisClient:
             raise RuntimeError(
                 "EQUASIS_USERNAME and EQUASIS_PASSWORD must be set when scraping is enabled."
             )
-        self._session: requests.Session | None = None
+        self._client: httpx.Client | None = None
 
     def _login(self) -> None:
         """POST /authen/HomePage and persist session cookie.
 
-        allow_redirects=False is intentional: Equasis POST returns the logged-in
-        page directly with a 200 + Set-Cookie. Following redirects (allow_redirects=True)
+        follow_redirects=False is intentional: Equasis POST returns the logged-in
+        page directly with a 200 + Set-Cookie. Following redirects (follow_redirects=True)
         causes the final GET to return an empty body, losing the session.
         """
-        session = requests.Session()
-        resp = session.post(
+        client = httpx.Client(follow_redirects=False)
+        resp = client.post(
             f"{self.BASE_URL}/authen/HomePage",
             params={"fs": "HomePage"},
             data={
@@ -61,7 +61,6 @@ class EquasisClient:
                 "j_password": settings.EQUASIS_PASSWORD,
             },
             timeout=15,
-            allow_redirects=False,
         )
         resp.raise_for_status()
         # Success: response body contains "Logout" (authenticated state)
@@ -70,23 +69,24 @@ class EquasisClient:
             raise RuntimeError(
                 "Equasis login failed — check EQUASIS_USERNAME and EQUASIS_PASSWORD."
             )
-        self._session = session
+        self._client = client
         logger.debug("Equasis login successful")
 
-    def _get(self, path: str, params: dict) -> requests.Response:
+    def _get(self, path: str, params: dict) -> httpx.Response:
         """Lazy login + automatic re-login on session expiry."""
-        if self._session is None:
+        if self._client is None:
             self._login()
         time.sleep(_REQUEST_DELAY_S)
         resp = breakers["equasis"].call(
-            self._session.get, f"{self.BASE_URL}{path}", params=params, timeout=15
+            self._client.get, f"{self.BASE_URL}{path}", params=params, timeout=15
         )
         # Re-login if session expired (redirect to /authen/ or /public/ or 401)
-        if resp.status_code == 401 or "/authen/" in resp.url or "/public/" in resp.url:
+        resp_url = str(resp.url)
+        if resp.status_code == 401 or "/authen/" in resp_url or "/public/" in resp_url:
             logger.debug("Equasis session expired, re-logging in")
-            self._session = None
+            self._client = None
             self._login()
-            resp = self._session.get(f"{self.BASE_URL}{path}", params=params, timeout=15)
+            resp = self._client.get(f"{self.BASE_URL}{path}", params=params, timeout=15)
         resp.raise_for_status()
         return resp
 

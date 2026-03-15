@@ -419,17 +419,13 @@ class TestIntegration:
     def test_feature_flags_exist(self):
         """Settings class should have all Stage 2-A/2-B feature flags."""
         s = Settings()
-        assert hasattr(s, "PI_VALIDATION_DETECTION_ENABLED")
         assert hasattr(s, "PI_VALIDATION_SCORING_ENABLED")
-        assert hasattr(s, "FRAUDULENT_REGISTRY_DETECTION_ENABLED")
         assert hasattr(s, "FRAUDULENT_REGISTRY_SCORING_ENABLED")
 
     def test_feature_flags_default_true(self):
         """All Stage 2-A/2-B feature flags should default to True (E6: stable detectors)."""
         s = Settings()
-        assert s.PI_VALIDATION_DETECTION_ENABLED is True
         assert s.PI_VALIDATION_SCORING_ENABLED is True
-        assert s.FRAUDULENT_REGISTRY_DETECTION_ENABLED is True
         assert s.FRAUDULENT_REGISTRY_SCORING_ENABLED is True
 
     def test_pi_clubs_config_loader(self):

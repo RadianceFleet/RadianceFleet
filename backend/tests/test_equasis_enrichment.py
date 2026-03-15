@@ -170,7 +170,7 @@ class TestEquasisClientInit:
             with patch.object(settings, "EQUASIS_USERNAME", "user@example.com"):
                 with patch.object(settings, "EQUASIS_PASSWORD", "secret"):
                     client = EquasisClient()
-                    assert client._session is None  # session not yet established
+                    assert client._client is None  # session not yet established
 
 
 # ===========================================================================
@@ -196,7 +196,7 @@ class TestEquasisLogin:
             "https://www.equasis.org/EquasisWeb/authen/HomePage?fs=HomePage",
             text=_LOGIN_SUCCESS_HTML,
         )
-        with patch("requests.Session") as MockSession:
+        with patch("httpx.Client") as MockSession:
             mock_session_instance = MagicMock()
             mock_session_instance.post.return_value = success_resp
             MockSession.return_value = mock_session_instance
@@ -207,7 +207,7 @@ class TestEquasisLogin:
                 with patch.object(settings, "EQUASIS_PASSWORD", "pw"):
                     client._login()
 
-        assert client._session is mock_session_instance
+        assert client._client is mock_session_instance
 
     def test_login_fails_on_wrong_credentials(self):
         """_login() raises RuntimeError when POST response lacks 'Logout' (still on login form)."""
@@ -218,7 +218,7 @@ class TestEquasisLogin:
             "https://www.equasis.org/EquasisWeb/authen/HomePage?fs=HomePage",
             text="<html><body><form><input name='j_email'/></form></body></html>",
         )
-        with patch("requests.Session") as MockSession:
+        with patch("httpx.Client") as MockSession:
             mock_session_instance = MagicMock()
             mock_session_instance.post.return_value = bad_resp
             MockSession.return_value = mock_session_instance
@@ -249,7 +249,7 @@ class TestEquasisGet:
     def test_get_lazy_login(self):
         """_get() calls _login() before the first GET when no session exists."""
         client = self._make_client()
-        assert client._session is None
+        assert client._client is None
 
         good_resp = _make_response(
             "https://www.equasis.org/EquasisWeb/restricted/ShipInfo",
@@ -263,7 +263,7 @@ class TestEquasisGet:
             # Set a real-ish mock session
             session_mock = MagicMock()
             session_mock.get.return_value = good_resp
-            client._session = session_mock
+            client._client = session_mock
 
         client._login = mock_login
 
@@ -277,7 +277,7 @@ class TestEquasisGet:
         from app.config import settings
         from app.modules.equasis_client import EquasisClient
 
-        # We need to intercept requests.Session at the class level so both the initial
+        # We need to intercept httpx.Client at the class level so both the initial
         # login (which creates a new Session()) and the subsequent calls go through our mock.
 
         # Responses sequence:
@@ -306,7 +306,7 @@ class TestEquasisGet:
                 with patch.object(settings, "EQUASIS_PASSWORD", "pw"):
                     client = EquasisClient()
 
-        # We patch requests.Session at module level so new Session() calls return our mock
+        # We patch httpx.Client at module level so new Session() calls return our mock
         session_mock = MagicMock()
         session_mock.post.return_value = login_post_resp
         # First GET returns expired redirect; second returns valid page
@@ -320,7 +320,7 @@ class TestEquasisGet:
 
         client._login = tracking_login
 
-        with patch("requests.Session", return_value=session_mock):
+        with patch("httpx.Client", return_value=session_mock):
             with patch("app.modules.equasis_client.time.sleep"):
                 with patch.object(settings, "EQUASIS_USERNAME", "u@x.com"):
                     with patch.object(settings, "EQUASIS_PASSWORD", "pw"):
@@ -368,7 +368,7 @@ class TestEquasisGet:
 
         client._login = tracking_login
 
-        with patch("requests.Session", return_value=session_mock):
+        with patch("httpx.Client", return_value=session_mock):
             with patch("app.modules.equasis_client.time.sleep"):
                 with patch.object(settings, "EQUASIS_USERNAME", "u@x.com"):
                     with patch.object(settings, "EQUASIS_PASSWORD", "pw"):
@@ -393,7 +393,7 @@ class TestEquasisSearch:
             with patch.object(settings, "EQUASIS_USERNAME", "u@x.com"):
                 with patch.object(settings, "EQUASIS_PASSWORD", "pw"):
                     client = EquasisClient()
-        client._session = session_mock
+        client._client = session_mock
         return client
 
     def test_search_by_imo_returns_parsed_dict(self):

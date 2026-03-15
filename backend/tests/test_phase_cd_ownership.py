@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.auth import require_auth
 from app.database import get_db
 from app.main import app
 
@@ -34,6 +35,7 @@ def api_client(mock_db):
         yield mock_db
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[require_auth] = lambda: {"analyst_id": 1, "username": "test", "role": "admin"}
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()

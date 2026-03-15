@@ -7,6 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth import require_auth
 from app.config import settings
 from app.database import get_db
 
@@ -18,6 +19,7 @@ router = APIRouter(prefix="/detect", tags=["behavioral-baseline"])
 @router.post("/behavioral-baseline")
 def run_behavioral_baseline_detection(
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Run behavioral baseline computation for all vessels.
 
@@ -35,6 +37,7 @@ def run_behavioral_baseline_detection(
 def get_behavioral_baseline_profile(
     vessel_id: int,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Get the behavioral baseline profile for a vessel."""
     if not getattr(settings, "BEHAVIORAL_BASELINE_ENABLED", False):
@@ -52,6 +55,7 @@ def get_behavioral_baseline_profile(
 def refresh_behavioral_baseline_profile(
     vessel_id: int,
     db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
 ):
     """Refresh the behavioral baseline profile for a single vessel."""
     if not getattr(settings, "BEHAVIORAL_BASELINE_ENABLED", False):
