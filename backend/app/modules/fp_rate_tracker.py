@@ -8,6 +8,8 @@ to reduce alert fatigue in high-FP corridors.
 from __future__ import annotations
 
 import logging
+import re
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -466,8 +468,310 @@ def run_scheduled_calibration(db: Session) -> dict:
         return {"status": "disabled", "suggestions": []}
 
     suggestions = generate_per_signal_suggestions(db)
+    lift_suggestions = generate_lift_based_suggestions(db)
     return {
         "status": "ok",
         "suggestion_count": len(suggestions),
         "suggestions": suggestions,
+        "lift_suggestions": lift_suggestions,
     }
+
+
+# ---------------------------------------------------------------------------
+# Lift-based weight adjustment suggestions
+# ---------------------------------------------------------------------------
+
+# Map signal names (as they appear in risk_breakdown_json) to
+# (yaml_section, yaml_key) tuples in risk_scoring.yaml.
+_SIGNAL_CONFIG_MAP: dict[str, tuple[str, str]] = {
+    # Gap duration
+    "gap_duration_2h_4h": ("gap_duration", "2h_to_4h"),
+    "gap_duration_4h_8h": ("gap_duration", "4h_to_8h"),
+    "gap_duration_8h_12h": ("gap_duration", "8h_to_12h"),
+    "gap_duration_12h_24h": ("gap_duration", "12h_to_24h"),
+    "gap_duration_24h_plus": ("gap_duration", "24h_plus"),
+    "gap_duration_speed_spike_bonus": ("speed_anomaly", "gap_preceded_by_speed_spike_multiplier"),
+    # Speed anomaly
+    "speed_spike_before_gap": ("speed_anomaly", "speed_spike"),
+    "speed_spoof_before_gap": ("speed_anomaly", "speed_spoof"),
+    "speed_impossible": ("speed_anomaly", "speed_impossible"),
+    # Movement envelope
+    "impossible_reappear": ("movement_envelope", "impossible_reappear"),
+    "near_impossible_reappear": ("movement_envelope", "near_impossible_reappear"),
+    # Spoofing
+    "anchor_in_open_ocean": ("spoofing", "anchor_in_open_ocean"),
+    "circle_pattern": ("spoofing", "circle_pattern"),
+    "circle_pattern_stationary": ("spoofing", "circle_pattern_stationary"),
+    "circle_pattern_deliberate": ("spoofing", "circle_pattern_deliberate"),
+    "circle_pattern_equipment": ("spoofing", "circle_pattern_equipment"),
+    "slow_roll": ("spoofing", "slow_roll"),
+    "nav_status_speed_mismatch": ("spoofing", "nav_status_speed_mismatch"),
+    "spoofing_erratic_nav_status": ("spoofing", "erratic_nav_status"),
+    "dual_transmission_candidate": ("spoofing", "dual_transmission_candidate"),
+    # Watchlist
+    "watchlist_ofac": ("watchlist", "vessel_on_ofac_sdn_list"),
+    "watchlist_eu": ("watchlist", "vessel_on_eu_sanctions_list"),
+    "kse_shadow_fleet": ("watchlist", "vessel_on_kse_shadow_fleet_list"),
+    "owner_or_manager_on_sanctions_list": ("watchlist", "owner_or_manager_on_sanctions_list"),
+    # Flag state
+    "flag_high_risk": ("flag_state", "high_risk_registry"),
+    "flag_white_list": ("flag_state", "white_list_flag"),
+    "flag_less_than_2y_AND_high_risk": ("flag_state", "flag_less_than_2y_old_AND_high_risk"),
+    # Metadata / identity changes
+    "flag_and_name_change_48h": ("metadata", "flag_AND_name_change_within_48h"),
+    "flag_change_7d": ("metadata", "flag_change_in_last_7d"),
+    "flag_change_30d": ("metadata", "flag_change_in_last_30d"),
+    "flag_change_single_12m": ("metadata", "single_flag_change_last_12m"),
+    "flag_changes_3plus_90d": ("metadata", "3_plus_flag_changes_in_90d"),
+    "flag_change_high_to_low_12m": ("metadata", "flag_change_from_high_risk_to_low_risk_12m"),
+    "name_change_during_voyage": ("metadata", "name_change_during_active_voyage"),
+    "mmsi_change": ("metadata", "mmsi_change_mapped_same_position"),
+    "callsign_change": ("metadata", "callsign_change"),
+    "no_name_at_all": ("metadata", "no_name_at_all"),
+    "name_all_caps_numbers": ("metadata", "name_all_caps_numbers"),
+    # Vessel age
+    "vessel_age_0_10y": ("vessel_age", "age_0_to_10y"),
+    "vessel_age_10_15y": ("vessel_age", "age_10_to_15y"),
+    "vessel_age_15_20y": ("vessel_age", "age_15_to_20y"),
+    "vessel_age_20_25y": ("vessel_age", "age_20_to_25y"),
+    "vessel_age_25plus": ("vessel_age", "age_25_plus_y"),
+    "vessel_age_25plus_high_risk": ("vessel_age", "age_25_plus_AND_high_risk_flag"),
+    # AIS class
+    "ais_class_mismatch": ("ais_class", "large_tanker_using_class_b"),
+    "class_switching_a_to_b": ("ais_class", "class_switching_a_to_b"),
+    "transmission_frequency_mismatch": ("ais_class", "transmission_frequency_mismatch"),
+    # Dark zone
+    "dark_zone_exit_impossible": ("dark_zone", "vessel_exits_dark_zone_with_impossible_jump"),
+    "dark_zone_entry": ("dark_zone", "gap_immediately_before_dark_zone_entry"),
+    "dark_zone_deduction": ("dark_zone", "gap_in_known_jamming_zone"),
+    "selective_dark_zone_evasion": ("dark_zone", "selective_dark_zone_evasion"),
+    # STS
+    "gap_in_sts_tagged_corridor": ("sts", "gap_in_sts_tagged_corridor"),
+    "one_vessel_dark_during_proximity": ("sts", "one_vessel_dark_during_proximity"),
+    # Behavioral
+    "new_mmsi_first_30d": ("behavioral", "new_mmsi_first_30d"),
+    "new_mmsi_first_60d": ("behavioral", "new_mmsi_first_60d"),
+    "new_mmsi_russian_origin_flag": ("behavioral", "new_mmsi_plus_russian_origin_zone"),
+    "vessel_laid_up_30d": ("behavioral", "vessel_laid_up_30d_plus"),
+    "vessel_laid_up_60d": ("behavioral", "vessel_laid_up_60d_plus"),
+    "vessel_laid_up_in_sts_zone": ("behavioral", "vessel_laid_up_in_sts_zone"),
+    "suspicious_mid": ("behavioral", "suspicious_mid"),
+    "russian_port_recent": ("behavioral", "russian_port_recent"),
+    "russian_port_gap_sts": ("behavioral", "russian_port_gap_sts"),
+    "sts_with_sanctioned_vessel": ("behavioral", "sts_with_sanctioned_vessel"),
+    "sts_with_shadow_fleet_vessel": ("behavioral", "sts_with_shadow_fleet_vessel"),
+    # Legitimacy
+    "legitimacy_gap_free_90d": ("legitimacy", "gap_free_90d_clean"),
+    "legitimacy_ais_class_a_consistent": ("legitimacy", "ais_class_a_consistent"),
+    "legitimacy_white_flag_jurisdiction": ("legitimacy", "white_flag_jurisdiction"),
+    "legitimacy_eu_port_calls": ("legitimacy", "consistent_eu_port_calls"),
+    "legitimacy_psc_clean_record": ("legitimacy", "psc_clean_record"),
+    "legitimacy_ig_pi_club_member": ("legitimacy", "ig_pi_club_member"),
+    "legitimacy_long_trading_history": ("legitimacy", "long_trading_history"),
+    # P&I insurance
+    "pi_coverage_lapsed": ("pi_insurance", "pi_coverage_lapsed"),
+    # PSC detention
+    "psc_detained_last_12m": ("psc_detention", "psc_detained_last_12m"),
+    "psc_major_deficiencies_3_plus": ("psc_detention", "psc_major_deficiencies_3_plus"),
+    "psc_multiple_detentions_2": ("psc_detention", "multiple_detentions_2"),
+    "psc_multiple_detentions_3_plus": ("psc_detention", "multiple_detentions_3_plus"),
+    "psc_detention_in_last_30d": ("psc_detention", "detention_in_last_30d"),
+    "psc_detention_in_last_90d": ("psc_detention", "detention_in_last_90d"),
+    "psc_paris_mou_ban": ("psc_detention", "paris_mou_ban"),
+    "psc_deficiency_count_10_plus": ("psc_detention", "deficiency_count_10_plus"),
+    # STS patterns
+    "repeat_sts_partnership": ("sts_patterns", "repeat_sts_partnership_3plus"),
+    "flag_corridor_coupling": ("sts_patterns", "flag_corridor_coupling"),
+    "invalid_metadata_generic_name": ("sts_patterns", "invalid_metadata_generic_name"),
+    "invalid_metadata_impossible_dwt": ("sts_patterns", "invalid_metadata_impossible_dwt"),
+    # Dark vessel
+    "unmatched_detection_in_corridor": ("dark_vessel", "unmatched_detection_in_corridor"),
+    "unmatched_detection_outside_corridor": ("dark_vessel", "unmatched_detection_outside_corridor"),
+    # Track naturalness
+    "synthetic_track_high": ("track_naturalness", "synthetic_track_high"),
+    "synthetic_track_medium": ("track_naturalness", "synthetic_track_medium"),
+    "synthetic_track_low": ("track_naturalness", "synthetic_track_low"),
+    # Draught
+    "offshore_draught_change_corroboration": ("draught", "offshore_draught_change_corroboration"),
+    "draught_swing_extreme": ("draught", "draught_swing_extreme"),
+    "draught_delta_across_gap": ("draught", "draught_delta_across_gap"),
+    "draught_sts_confirmation": ("draught", "draught_sts_confirmation"),
+    # Identity fraud
+    "stateless_mmsi_tier1": ("identity_fraud", "stateless_mmsi_tier1"),
+    "stateless_mmsi_tier2": ("identity_fraud", "stateless_mmsi_tier2"),
+    "stateless_mmsi_tier3": ("identity_fraud", "stateless_mmsi_tier3"),
+    "flag_hopping_2_in_90d": ("identity_fraud", "flag_hopping_2_in_90d"),
+    "flag_hopping_3_in_90d": ("identity_fraud", "flag_hopping_3_in_90d"),
+    "flag_hopping_5_in_365d": ("identity_fraud", "flag_hopping_5_in_365d"),
+    "imo_simultaneous_use": ("identity_fraud", "imo_simultaneous_use"),
+    # Identity merge
+    "identity_merge_detected": ("identity_merge", "identity_merge_detected"),
+    "imo_scrapped_vessel": ("identity_merge", "imo_scrapped_vessel"),
+    "imo_fabricated": ("identity_merge", "imo_fabricated"),
+}
+
+# Minimum total analyst verdicts before generating any suggestions
+_MIN_TOTAL_VERDICTS = 20
+# Minimum verdicts per individual signal
+_MIN_PER_SIGNAL_VERDICTS = 5
+
+
+def generate_lift_based_suggestions(db: Session) -> list[dict]:
+    """Generate per-signal weight adjustment proposals based on analyst verdict lift scores.
+
+    Calls live_signal_effectiveness() and translates lift values into concrete
+    weight-change proposals. Returns list of suggestion dicts — proposals only,
+    no auto-apply.
+    """
+    from app.modules.scoring_config import load_scoring_config
+    from app.modules.validation_harness import live_signal_effectiveness
+
+    effectiveness = live_signal_effectiveness(db)
+    if not effectiveness:
+        return []
+
+    # Check minimum total verdicts
+    total_verdicts = sum(e["tp_count"] + e["fp_count"] for e in effectiveness)
+    if total_verdicts < _MIN_TOTAL_VERDICTS:
+        return []
+
+    config = load_scoring_config()
+
+    # Group dynamic per-event keys: strip numeric suffixes
+    # e.g. loitering_201 + loitering_202 → loitering
+    grouped: dict[str, dict] = {}
+    for entry in effectiveness:
+        signal_name = entry["signal"]
+
+        # Filter out _-prefixed metadata keys
+        if signal_name.startswith("_"):
+            continue
+
+        # Strip numeric suffix for grouping
+        base_name = re.sub(r"_\d+$", "", signal_name)
+
+        if base_name not in grouped:
+            grouped[base_name] = {
+                "tp_count": 0,
+                "fp_count": 0,
+            }
+        grouped[base_name]["tp_count"] += entry["tp_count"]
+        grouped[base_name]["fp_count"] += entry["fp_count"]
+
+    # Compute lift and generate suggestions
+    total_tp = sum(g["tp_count"] for g in grouped.values())
+    total_fp = sum(g["fp_count"] for g in grouped.values())
+
+    suggestions: list[dict] = []
+    for signal, counts in sorted(grouped.items()):
+        tp_count = counts["tp_count"]
+        fp_count = counts["fp_count"]
+        signal_total = tp_count + fp_count
+
+        # Per-signal minimum
+        if signal_total < _MIN_PER_SIGNAL_VERDICTS:
+            continue
+
+        # Compute lift
+        tp_freq = tp_count / max(1, total_tp)
+        fp_freq = fp_count / max(1, total_fp)
+
+        if fp_freq > 0:
+            lift = tp_freq / fp_freq
+        elif tp_freq > 0:
+            lift = float("inf")
+        else:
+            lift = 0.0
+
+        # Determine if signal is configurable
+        mapping = _SIGNAL_CONFIG_MAP.get(signal)
+        configurable = mapping is not None
+        current_weight = None
+        min_weight_floor = None
+        config_path = None
+
+        if mapping:
+            section_name, key_name = mapping
+            config_path = f"{section_name}.{key_name}"
+            section_data = config.get(section_name, {})
+            if isinstance(section_data, dict):
+                raw_weight = section_data.get(key_name)
+                if isinstance(raw_weight, (int, float)):
+                    current_weight = raw_weight
+                    min_weight_floor = round(current_weight * 0.5)
+
+        # Determine direction and adjustment
+        direction = None
+        suggested_adjustment_pct = None
+        reason = None
+
+        if isinstance(lift, float) and lift < 0.8:
+            direction = "reduce"
+            # Scale reduction: further from 0.8 → larger reduction, capped at 15%
+            raw_pct = min(15.0, round((0.8 - lift) / 0.8 * 30, 1))
+            suggested_adjustment_pct = -raw_pct
+
+            # Check weight floor
+            if current_weight is not None and min_weight_floor is not None:
+                proposed = current_weight * (1 + suggested_adjustment_pct / 100.0)
+                if proposed < min_weight_floor:
+                    # Clamp to floor
+                    suggested_adjustment_pct = round(
+                        (min_weight_floor - current_weight) / current_weight * 100, 1
+                    )
+                    if suggested_adjustment_pct == 0.0:
+                        continue  # Already at floor
+
+            reason = (
+                f"Lift {lift:.2f} < 0.8 — signal fires more on false positives than true positives. "
+                f"Suggest reducing weight by {abs(suggested_adjustment_pct):.1f}%."
+            )
+        elif isinstance(lift, (int, float)) and lift > 2.0:
+            direction = "increase"
+            # Scale increase: further from 2.0 → larger increase, capped at 15%
+            if isinstance(lift, float) and not (lift == float("inf")):
+                raw_pct = min(15.0, round((lift - 2.0) / 2.0 * 15, 1))
+            else:
+                raw_pct = 15.0
+            suggested_adjustment_pct = raw_pct
+
+            reason = (
+                f"Lift {lift:.2f} > 2.0 — signal is highly predictive of true positives. "
+                f"Suggest increasing weight by {suggested_adjustment_pct:.1f}%."
+            )
+        else:
+            # Normal lift range — no suggestion
+            continue
+
+        if not configurable:
+            # Report non-configurable signals without adjustment
+            suggestions.append({
+                "signal": signal,
+                "config_path": None,
+                "lift": round(lift, 2) if isinstance(lift, float) and lift != float("inf") else lift,
+                "direction": direction,
+                "suggested_adjustment_pct": None,
+                "current_weight": None,
+                "min_weight_floor": None,
+                "configurable": False,
+                "reason": f"Signal not mapped to YAML config — manual review needed. Lift={lift:.2f}.",
+                "tp_count": tp_count,
+                "fp_count": fp_count,
+            })
+            continue
+
+        suggestions.append({
+            "signal": signal,
+            "config_path": config_path,
+            "lift": round(lift, 2) if isinstance(lift, float) and lift != float("inf") else lift,
+            "direction": direction,
+            "suggested_adjustment_pct": suggested_adjustment_pct,
+            "current_weight": current_weight,
+            "min_weight_floor": min_weight_floor,
+            "configurable": True,
+            "reason": reason,
+            "tp_count": tp_count,
+            "fp_count": fp_count,
+        })
+
+    return suggestions

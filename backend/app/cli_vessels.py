@@ -684,6 +684,45 @@ def validate(
         db.close()
 
 
+@app.command("calibrate-lift-report")
+def calibrate_lift_report():
+    """Show lift-based signal weight adjustment proposals from analyst verdicts."""
+    from app.database import SessionLocal
+    from app.modules.fp_rate_tracker import generate_lift_based_suggestions
+
+    db = SessionLocal()
+    try:
+        suggestions = generate_lift_based_suggestions(db)
+        if not suggestions:
+            console.print("[dim]No lift-based suggestions (insufficient verdicts or all signals in normal range).[/dim]")
+            return
+
+        console.print(f"\n[bold]Lift-Based Weight Adjustment Proposals ({len(suggestions)} signals)[/bold]\n")
+        console.print(
+            f"  {'Signal':<40s} {'Lift':>6s} {'Direction':>10s} {'Adj%':>7s} {'Weight':>7s} {'Config':>5s}"
+        )
+        console.print("  " + "-" * 80)
+
+        for s in suggestions:
+            lift_str = f"{s['lift']:.2f}" if isinstance(s["lift"], float) else str(s["lift"])
+            adj_str = f"{s['suggested_adjustment_pct']:+.1f}%" if s["suggested_adjustment_pct"] is not None else "n/a"
+            weight_str = str(s["current_weight"]) if s["current_weight"] is not None else "n/a"
+            conf_str = "yes" if s["configurable"] else "no"
+            direction = s["direction"] or ""
+
+            lift_color = "red" if s["direction"] == "reduce" else "green"
+            console.print(
+                f"  [{lift_color}]{s['signal']:<40s} {lift_str:>6s} {direction:>10s} "
+                f"{adj_str:>7s} {weight_str:>7s} {conf_str:>5s}[/{lift_color}]"
+            )
+
+        console.print()
+        for s in suggestions:
+            console.print(f"  [dim]{s['signal']}:[/dim] {s['reason']}")
+    finally:
+        db.close()
+
+
 @app.command("watchlist-update")
 def watchlist_update(
     force: bool = typer.Option(False, "--force", help="Ignore interval checks, update all sources"),
