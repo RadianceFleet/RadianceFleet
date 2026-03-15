@@ -367,6 +367,11 @@ class Settings(BaseSettings):
     VESSEL_SIMILARITY_FINGERPRINT_WEIGHT: float = 0.6
     VESSEL_SIMILARITY_OWNERSHIP_WEIGHT: float = 0.4
 
+    # ── Bulk Satellite Ordering ────────────────────────────────────────────────────
+    SATELLITE_BULK_ORDER_ENABLED: bool = True
+    SATELLITE_BULK_MAX_ITEMS: int = 100
+    SATELLITE_BULK_PROCESS_INTERVAL: int = 3600
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:
