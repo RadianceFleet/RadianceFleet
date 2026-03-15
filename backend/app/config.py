@@ -398,6 +398,11 @@ class Settings(BaseSettings):
     COLLECT_SPIRE_INTERVAL: int = 1800
     SPIRE_LOOKBACK_HOURS: int = 2
 
+    # ── Notification Rules Engine ────────────────────────────────────────────────
+    NOTIFICATION_RULES_ENABLED: bool = False
+    NOTIFICATION_RULES_DEFAULT_THROTTLE_MINUTES: int = 30
+    SLACK_BOT_TOKEN: str | None = None
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:
