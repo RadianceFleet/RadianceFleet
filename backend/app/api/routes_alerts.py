@@ -39,6 +39,7 @@ def list_alerts(
     min_score: int | None = None,
     status: str | None = None,
     assigned_to: int | None = None,
+    group_by: str | None = Query(None, description="Set to 'dedup' for grouped view"),
     sort_by: str = Query(
         "risk_score",
         description="Field to sort by: risk_score|gap_start_utc|duration_minutes|vessel_name",
@@ -53,6 +54,37 @@ def list_alerts(
     from app.models.vessel import Vessel
 
     _validate_date_range(date_from, date_to)
+
+    # Grouped view: return one row per dedup group with primary alert + count
+    if group_by == "dedup":
+        from app.models.alert_group import AlertGroup
+
+        gq = db.query(AlertGroup)
+        if vessel_id is not None:
+            gq = gq.filter(AlertGroup.vessel_id == vessel_id)
+        if corridor_id is not None:
+            gq = gq.filter(AlertGroup.corridor_id == corridor_id)
+        if status:
+            gq = gq.filter(AlertGroup.status == status)
+        if min_score is not None:
+            gq = gq.filter(AlertGroup.max_risk_score >= min_score)
+        gq = gq.order_by(AlertGroup.max_risk_score.desc())
+        total = gq.count()
+        groups = gq.offset(skip).limit(min(limit, settings.MAX_QUERY_LIMIT)).all()
+        items = []
+        for g in groups:
+            items.append({
+                "group_id": g.group_id,
+                "vessel_id": g.vessel_id,
+                "corridor_id": g.corridor_id,
+                "alert_count": g.alert_count,
+                "max_risk_score": g.max_risk_score,
+                "first_seen_utc": g.first_seen_utc,
+                "last_seen_utc": g.last_seen_utc,
+                "status": g.status,
+                "primary_alert_id": g.primary_alert_id,
+            })
+        return {"items": items, "total": total}
 
     limit = min(limit, settings.MAX_QUERY_LIMIT)
 
@@ -1403,3 +1435,207 @@ def get_alert_narrative(
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
     return result
+
+
+# ---------------------------------------------------------------------------
+# Alert Deduplication
+# ---------------------------------------------------------------------------
+
+
+@router.post("/alerts/dedup", tags=["alerts"])
+def run_dedup(
+    request: Request,
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Run alert deduplication pass on all ungrouped alerts."""
+    from app.modules.alert_dedup_engine import run_dedup_pass
+
+    result = run_dedup_pass(db)
+    _audit_log(db, "alert_dedup_run", json.dumps(result), request, _auth)
+    return result
+
+
+@router.get("/alert-groups", tags=["alerts"])
+def list_alert_groups(
+    vessel_id: int | None = None,
+    corridor_id: int | None = None,
+    status: str | None = None,
+    min_score: int | None = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """List alert deduplication groups with filters."""
+    from app.models.alert_group import AlertGroup
+
+    q = db.query(AlertGroup)
+    if vessel_id is not None:
+        q = q.filter(AlertGroup.vessel_id == vessel_id)
+    if corridor_id is not None:
+        q = q.filter(AlertGroup.corridor_id == corridor_id)
+    if status:
+        q = q.filter(AlertGroup.status == status)
+    if min_score is not None:
+        q = q.filter(AlertGroup.max_risk_score >= min_score)
+
+    q = q.order_by(AlertGroup.max_risk_score.desc())
+    total = q.count()
+    groups = q.offset(skip).limit(min(limit, settings.MAX_QUERY_LIMIT)).all()
+    items = []
+    for g in groups:
+        items.append({
+            "group_id": g.group_id,
+            "vessel_id": g.vessel_id,
+            "corridor_id": g.corridor_id,
+            "group_key": g.group_key,
+            "primary_alert_id": g.primary_alert_id,
+            "alert_count": g.alert_count,
+            "first_seen_utc": g.first_seen_utc,
+            "last_seen_utc": g.last_seen_utc,
+            "max_risk_score": g.max_risk_score,
+            "status": g.status,
+            "created_at": g.created_at,
+        })
+    return {"items": items, "total": total}
+
+
+@router.get("/alert-groups/{group_id}", tags=["alerts"])
+def get_alert_group_detail(
+    group_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get alert group detail with member alerts."""
+    from sqlalchemy import text
+
+    from app.models.alert_group import AlertGroup
+
+    group = db.query(AlertGroup).filter(AlertGroup.group_id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Alert group not found")
+
+    # Fetch member alerts using raw SQL (alert_group_id is a migration column)
+    members = db.execute(
+        text(
+            "SELECT gap_event_id, vessel_id, gap_start_utc, gap_end_utc, "
+            "duration_minutes, risk_score, status "
+            "FROM ais_gap_events WHERE alert_group_id = :gid "
+            "ORDER BY risk_score DESC"
+        ),
+        {"gid": group_id},
+    ).fetchall()
+
+    member_list = [
+        {
+            "gap_event_id": m[0],
+            "vessel_id": m[1],
+            "gap_start_utc": m[2],
+            "gap_end_utc": m[3],
+            "duration_minutes": m[4],
+            "risk_score": m[5],
+            "status": m[6],
+        }
+        for m in members
+    ]
+
+    return {
+        "group_id": group.group_id,
+        "vessel_id": group.vessel_id,
+        "corridor_id": group.corridor_id,
+        "group_key": group.group_key,
+        "primary_alert_id": group.primary_alert_id,
+        "alert_count": group.alert_count,
+        "first_seen_utc": group.first_seen_utc,
+        "last_seen_utc": group.last_seen_utc,
+        "max_risk_score": group.max_risk_score,
+        "status": group.status,
+        "created_at": group.created_at,
+        "members": member_list,
+    }
+
+
+@router.post("/alert-groups/{group_id}/dismiss", tags=["alerts"])
+def dismiss_alert_group(
+    group_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Dismiss an entire alert group."""
+    from sqlalchemy import text
+
+    from app.models.alert_group import AlertGroup
+
+    group = db.query(AlertGroup).filter(AlertGroup.group_id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Alert group not found")
+
+    group.status = "dismissed"
+
+    # Also dismiss all member alerts
+    db.execute(
+        text(
+            "UPDATE ais_gap_events SET status = 'dismissed' WHERE alert_group_id = :gid"
+        ),
+        {"gid": group_id},
+    )
+    db.commit()
+
+    _audit_log(db, "alert_group_dismiss", f"group_id={group_id}", request, _auth)
+    return {"status": "dismissed", "group_id": group_id, "alert_count": group.alert_count}
+
+
+@router.post("/alert-groups/{group_id}/verdict", tags=["alerts"])
+def group_verdict(
+    group_id: int,
+    body: dict,
+    request: Request,
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Apply a verdict to all alerts in a group."""
+    from sqlalchemy import text
+
+    from app.models.alert_group import AlertGroup
+
+    group = db.query(AlertGroup).filter(AlertGroup.group_id == group_id).first()
+    if not group:
+        raise HTTPException(status_code=404, detail="Alert group not found")
+
+    verdict = body.get("verdict")
+    if verdict not in ("true_positive", "false_positive"):
+        raise HTTPException(status_code=400, detail="verdict must be 'true_positive' or 'false_positive'")
+
+    is_fp = verdict == "false_positive"
+    reviewed_by = body.get("reviewed_by", _auth.get("username", "unknown"))
+
+    db.execute(
+        text(
+            "UPDATE ais_gap_events SET is_false_positive = :fp, reviewed_by = :rb, "
+            "review_date = :rd WHERE alert_group_id = :gid"
+        ),
+        {
+            "fp": is_fp,
+            "rb": reviewed_by,
+            "rd": datetime.now(UTC),
+            "gid": group_id,
+        },
+    )
+
+    new_status = "resolved" if verdict == "true_positive" else "dismissed"
+    group.status = new_status
+    db.commit()
+
+    _audit_log(
+        db,
+        "alert_group_verdict",
+        f"group_id={group_id} verdict={verdict}",
+        request,
+        _auth,
+    )
+    return {
+        "group_id": group_id,
+        "verdict": verdict,
+        "status": new_status,
+        "alerts_updated": group.alert_count,
+    }
