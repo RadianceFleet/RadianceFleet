@@ -9,34 +9,42 @@ const triangleIcon = L.divIcon({
   iconAnchor: [7, 14],
 });
 
-export function DarkVesselOverlay() {
+interface DarkVesselOverlayProps {
+  excludeViirs?: boolean;
+  excludeSar?: boolean;
+}
+
+export function DarkVesselOverlay({ excludeViirs = false, excludeSar = false }: DarkVesselOverlayProps) {
   const { data } = useDarkVessels({ limit: 200 });
-  const items = data?.items ?? [];
+  const items = (data?.items ?? []).filter((d) => {
+    if (d.detection_lat == null || d.detection_lon == null) return false;
+    if (excludeViirs && d.scene_id?.startsWith("viirs-")) return false;
+    if (excludeSar && d.scene_id?.startsWith("gfw-sar-")) return false;
+    return true;
+  });
 
   return (
     <>
-      {items
-        .filter((d) => d.detection_lat != null && d.detection_lon != null)
-        .map((d) => (
-          <Marker
-            key={d.detection_id}
-            position={[d.detection_lat!, d.detection_lon!]}
-            icon={triangleIcon}
-          >
-            <Popup>
-              <div style={{ fontSize: 13, fontFamily: "monospace" }}>
-                <b>Dark Vessel</b>
-                <br />
-                Detection ID: {d.detection_id}
-                <br />
-                Confidence:{" "}
-                {d.model_confidence != null ? `${(d.model_confidence * 100).toFixed(0)}%` : "-"}
-                <br />
-                Type: {d.vessel_type_inferred ?? "Unknown"}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+      {items.map((d) => (
+        <Marker
+          key={d.detection_id}
+          position={[d.detection_lat!, d.detection_lon!]}
+          icon={triangleIcon}
+        >
+          <Popup>
+            <div style={{ fontSize: 13, fontFamily: "monospace" }}>
+              <b>Dark Vessel</b>
+              <br />
+              Detection ID: {d.detection_id}
+              <br />
+              Confidence:{" "}
+              {d.model_confidence != null ? `${(d.model_confidence * 100).toFixed(0)}%` : "-"}
+              <br />
+              Type: {d.vessel_type_inferred ?? "Unknown"}
+            </div>
+          </Popup>
+        </Marker>
+      ))}
     </>
   );
 }

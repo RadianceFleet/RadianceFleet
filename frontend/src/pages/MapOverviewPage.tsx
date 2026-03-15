@@ -7,6 +7,8 @@ import { CorridorZoneOverlay } from "../components/map/CorridorZoneOverlay";
 import { LoiteringOverlay } from "../components/map/LoiteringOverlay";
 import { DarkVesselOverlay } from "../components/map/DarkVesselOverlay";
 import { CoverageOverlay } from "../components/map/CoverageOverlay";
+import { ViirsOverlay } from "../components/map/ViirsOverlay";
+import { SarOverlay } from "../components/map/SarOverlay";
 import { VesselTrackOverlay } from "../components/map/VesselTrackOverlay";
 import { AlertHeatmapOverlay } from "../components/map/AlertHeatmapOverlay";
 import { Link } from "react-router-dom";
@@ -32,6 +34,8 @@ export function MapOverviewPage() {
   const [showDarkVessels, setShowDarkVessels] = useState(false);
   const [showCoverage, setShowCoverage] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showViirs, setShowViirs] = useState(false);
+  const [showSar, setShowSar] = useState(false);
   const [selectedVesselId, setSelectedVesselId] = useState<number | null>(null);
   const [selectedVesselName, setSelectedVesselName] = useState<string | undefined>(undefined);
 
@@ -118,6 +122,28 @@ export function MapOverviewPage() {
             />
             Alert Heatmap
           </label>
+          <label
+            style={{ cursor: "pointer", color: "var(--text-body)", display: "block", marginTop: 4 }}
+          >
+            <input
+              type="checkbox"
+              checked={showViirs}
+              onChange={(e) => setShowViirs(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            VIIRS Nightlights
+          </label>
+          <label
+            style={{ cursor: "pointer", color: "var(--text-body)", display: "block", marginTop: 4 }}
+          >
+            <input
+              type="checkbox"
+              checked={showSar}
+              onChange={(e) => setShowSar(e.target.checked)}
+              style={{ marginRight: 6 }}
+            />
+            SAR Detections
+          </label>
           {selectedVesselId && (
             <button
               onClick={() => {
@@ -149,7 +175,9 @@ export function MapOverviewPage() {
           <MapLayerControl />
           {showCorridors && <CorridorZoneOverlay />}
           {showLoitering && <LoiteringOverlay />}
-          {showDarkVessels && <DarkVesselOverlay />}
+          {showDarkVessels && <DarkVesselOverlay excludeViirs={showViirs} excludeSar={showSar} />}
+          {showViirs && <ViirsOverlay />}
+          {showSar && <SarOverlay />}
           {showCoverage && <CoverageOverlay />}
           {showHeatmap && <AlertHeatmapOverlay />}
           {selectedVesselId && (

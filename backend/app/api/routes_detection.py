@@ -898,6 +898,52 @@ def list_dark_vessels(
     return {"items": items, "total": total}
 
 
+@router.get("/dark-vessels/by-source", tags=["detection"])
+def list_dark_vessels_by_source(
+    source: str = Query(..., description="viirs or sar"),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    min_confidence: float | None = None,
+    limit: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """List dark vessel detections filtered by source type (VIIRS nightlights or SAR radar)."""
+    from app.models.stubs import DarkVesselDetection
+
+    prefix_map = {"viirs": "viirs-%", "sar": "gfw-sar-%"}
+    if source not in prefix_map:
+        raise HTTPException(status_code=400, detail=f"Invalid source '{source}'. Must be 'viirs' or 'sar'.")
+
+    q = db.query(DarkVesselDetection).filter(
+        DarkVesselDetection.scene_id.like(prefix_map[source])
+    )
+
+    if date_from is not None:
+        q = q.filter(DarkVesselDetection.detection_time_utc >= datetime.combine(date_from, datetime.min.time()))
+    if date_to is not None:
+        q = q.filter(DarkVesselDetection.detection_time_utc <= datetime.combine(date_to, datetime.max.time()))
+    if min_confidence is not None:
+        q = q.filter(DarkVesselDetection.model_confidence >= min_confidence)
+
+    rows = q.order_by(DarkVesselDetection.detection_time_utc.desc()).limit(limit).all()
+
+    return [
+        {
+            "detection_id": r.detection_id,
+            "scene_id": r.scene_id,
+            "latitude": r.detection_lat,
+            "longitude": r.detection_lon,
+            "detection_timestamp_utc": r.detection_time_utc.isoformat() if r.detection_time_utc else None,
+            "estimated_length_m": r.length_estimate_m,
+            "vessel_type_estimate": r.vessel_type_inferred,
+            "confidence": r.model_confidence,
+            "matched_vessel_id": r.matched_vessel_id,
+        }
+        for r in rows
+    ]
+
+
 @router.get("/dark-vessels/{detection_id}", response_model=DarkVesselDetectionRead)
 def get_dark_vessel(detection_id: int, db: Session = Depends(get_db)):
     from app.models.stubs import DarkVesselDetection
