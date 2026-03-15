@@ -573,3 +573,19 @@ sts_hotspot:
   high: 28
   medium: 16
   low: 8
+
+# ADAPTIVE LOITERING THRESHOLDS — per-corridor-type minimum hours
+loitering_by_corridor_type:
+  enabled: true
+  sts_zone:
+    min_hours: 2
+    sustained_hours: 8
+  anchorage_holding:
+    min_hours: 8
+    sustained_hours: 24
+  export_route:
+    min_hours: 4
+    sustained_hours: 12
+  default:
+    min_hours: 4
+    sustained_hours: 12

@@ -58,6 +58,52 @@ from app.config import settings as _settings
 _GAP_LINK_WINDOW_HOURS: int = _settings.LOITER_GAP_LINKAGE_HOURS
 
 _MIN_POINTS: int = 4
+
+
+def _get_min_hours_for_corridor(corridor) -> int:
+    """Return corridor-type-specific minimum loitering hours."""
+    try:
+        from app.modules.scoring_config import load_scoring_config
+
+        cfg = load_scoring_config()
+        loiter_cfg = cfg.get("loitering_by_corridor_type", {})
+        if not loiter_cfg.get("enabled", False):
+            return _MIN_LOITER_HOURS
+
+        # Get corridor type string
+        if corridor is None:
+            return loiter_cfg.get("default", {}).get("min_hours", _MIN_LOITER_HOURS)
+
+        corridor_type_str = str(
+            corridor.corridor_type.value
+            if hasattr(corridor.corridor_type, "value")
+            else corridor.corridor_type
+        )
+
+        type_cfg = loiter_cfg.get(corridor_type_str, loiter_cfg.get("default", {}))
+        return type_cfg.get("min_hours", _MIN_LOITER_HOURS)
+    except Exception:
+        return _MIN_LOITER_HOURS
+
+
+def _get_global_min_hours() -> int:
+    """Return the minimum min_hours across all corridor types (for pre-filtering)."""
+    try:
+        from app.modules.scoring_config import load_scoring_config
+
+        cfg = load_scoring_config()
+        loiter_cfg = cfg.get("loitering_by_corridor_type", {})
+        if not loiter_cfg.get("enabled", False):
+            return _MIN_LOITER_HOURS
+        min_h = _MIN_LOITER_HOURS
+        for key, val in loiter_cfg.items():
+            if key in ("enabled",):
+                continue
+            if isinstance(val, dict) and "min_hours" in val:
+                min_h = min(min_h, val["min_hours"])
+        return min_h
+    except Exception:
+        return _MIN_LOITER_HOURS
 _BBOX_TOLERANCE_DEG: float = _LOITER_CFG.get("laid_up_bbox_deg", 0.033)
 
 _LAID_UP_30D_DAYS: int = _LOITER_CFG.get("laid_up_30d_days", 30)
@@ -258,7 +304,10 @@ def detect_loitering_for_vessel(
         run_end = i  # exclusive
 
         run_length_hours = run_end - run_start
-        if run_length_hours < _MIN_LOITER_HOURS:
+        # Pre-filter: use lowest possible min_hours (2h for sts_zone)
+        # Corridor-specific filtering happens after corridor lookup below
+        _global_min = _get_global_min_hours()
+        if run_length_hours < _global_min:
             continue
 
         # Aggregate run-level statistics
@@ -309,6 +358,11 @@ def detect_loitering_for_vessel(
             matched_corridor = _find_corridor_for_position(mean_lat, mean_lon, corridors)
         except (ValueError, TypeError, AttributeError) as exc:
             logger.warning("Corridor lookup failed for vessel %d: %s", vessel.vessel_id, exc)
+
+        # Apply corridor-specific minimum hours threshold
+        corridor_min_hours = _get_min_hours_for_corridor(matched_corridor)
+        if run_length_hours < corridor_min_hours:
+            continue
 
         # ── 5c. Risk score component ───────────────────────────────────────────
         if (
