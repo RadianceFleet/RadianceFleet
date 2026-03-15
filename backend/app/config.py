@@ -358,6 +358,14 @@ class Settings(BaseSettings):
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
 
+    # ── Spire Maritime AIS ────────────────────────────────────────────────────────
+    SPIRE_AIS_API_KEY: str | None = None
+    SPIRE_AIS_COLLECTION_ENABLED: bool = False
+    SPIRE_AIS_BASE_URL: str = "https://api.spire.com/graphql"
+    SPIRE_MONTHLY_QUOTA: int = 10000
+    COLLECT_SPIRE_INTERVAL: int = 1800
+    SPIRE_LOOKBACK_HOURS: int = 2
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:

@@ -14,8 +14,8 @@ Black Sea:
   geometry: "POLYGON((27.5 40.5, 42.0 40.5, 42.0 47.5, 27.5 47.5, 27.5 40.5))"
   suggested_sources: "Spire Maritime SAT-AIS, Orbcomm, Windward"
 Persian Gulf:
-  quality: NONE
-  description: "No free AIS source; commercial subscription required"
+  quality: COMMERCIAL
+  description: "Spire Maritime satellite AIS — commercial coverage via GraphQL API"
   geometry: "POLYGON((47.0 23.0, 57.0 23.0, 57.0 30.5, 47.0 30.5, 47.0 23.0))"
   suggested_sources: "Spire Maritime, MarineTraffic Premium, Kpler"
 Singapore:
