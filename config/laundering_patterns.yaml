@@ -1,0 +1,84 @@
+# Route Laundering Pattern Templates
+# Configurable multi-hop pattern definitions for route laundering detection.
+# Port categories define country code groupings; patterns reference categories by name.
+# The "intermediary" category is merged at runtime with laundering_intermediaries.yaml.
+
+port_categories:
+  russian:
+    - RU
+  sanctioned:
+    - SY
+    - KP
+    - IR
+    - CU
+  intermediary:
+    # merged with laundering_intermediaries.yaml at runtime
+    - AE
+    - IN
+    - TR
+    - EG
+    - MY
+    - OM
+  eu:
+    - DE
+    - NL
+    - BE
+    - FR
+    - IT
+    - ES
+    - PL
+    - GR
+  asian:
+    - CN
+    - IN
+    - MY
+    - SG
+    - TH
+    - VN
+    - KR
+  caribbean:
+    - BS
+    - KY
+    - BB
+    - TT
+    - JM
+    - AG
+  iranian:
+    - IR
+  venezuelan:
+    - VE
+
+patterns:
+  russian_intermediary_sanctioned:
+    hops: [russian, intermediary, sanctioned]
+    base_score: 35
+    description: "Russia → intermediary → sanctioned destination"
+  russian_intermediary:
+    hops: [russian, intermediary]
+    base_score: 20
+    description: "Russia → intermediary port"
+  sanctioned_intermediary_eu:
+    hops: [sanctioned, intermediary, eu]
+    base_score: 30
+    description: "Sanctioned origin → intermediary → EU destination"
+  iranian_intermediary_asian:
+    hops: [iranian, intermediary, asian]
+    base_score: 30
+    description: "Iran → intermediary → Asian destination"
+  venezuelan_caribbean_us:
+    hops: [venezuelan, caribbean]
+    base_score: 35
+    description: "Venezuela → Caribbean intermediary"
+  russian_multi_hop:
+    hops: [russian, intermediary, intermediary, sanctioned]
+    base_score: 45
+    description: "Russia → 2 intermediaries → sanctioned (4-hop)"
+  russian_5_hop:
+    hops: [russian, intermediary, intermediary, intermediary, sanctioned]
+    base_score: 50
+    description: "Russia → 3 intermediaries → sanctioned (5-hop)"
+
+temporal_bonus:
+  enabled: true
+  threshold_hours: 48
+  bonus_points: 10
