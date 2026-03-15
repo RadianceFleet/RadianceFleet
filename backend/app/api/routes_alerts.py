@@ -1148,10 +1148,20 @@ def acquire_lock(
                 "acquired_at": existing.acquired_at.isoformat(),
                 "expires_at": existing.expires_at.isoformat(),
             }
+        # Both insert and lookup failed — should not happen
+        raise HTTPException(
+            status_code=500,
+            detail="Lock acquisition failed unexpectedly — please retry",
+        )
 
     db.commit()
     # Fetch the newly created lock
     lock = db.query(AlertEditLock).filter(AlertEditLock.alert_id == alert_id).first()
+    if not lock:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to acquire lock — please retry",
+        )
     return {
         "lock_id": lock.lock_id,
         "alert_id": alert_id,

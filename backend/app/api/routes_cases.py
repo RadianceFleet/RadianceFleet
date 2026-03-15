@@ -41,6 +41,7 @@ def _case_to_response(
         try:
             tags = json.loads(case.tags_json)
         except (json.JSONDecodeError, TypeError):
+            logger.warning("Invalid tags_json for case %d", case.case_id)
             tags = []
     return {
         "case_id": case.case_id,
@@ -127,11 +128,11 @@ def create_case(
         tags_json=tags_json,
     )
     db.add(case)
-    db.commit()
-    db.refresh(case)
+    db.flush()
 
     _record_activity(db, case.case_id, auth["analyst_id"], "created")
     db.commit()
+    db.refresh(case)
 
     return _case_to_response(case, 0, None)
 
@@ -199,11 +200,44 @@ def list_cases(
         analysts_list = db.query(Analyst).filter(Analyst.analyst_id.in_(analyst_ids)).all()
         analyst_map = {a.analyst_id: a.username for a in analysts_list}
 
+    # Batch-fetch case analyst memberships (avoid N+1)
+    from app.models.case_analyst import CaseAnalyst
+
+    all_memberships = (
+        db.query(CaseAnalyst).filter(CaseAnalyst.case_id.in_(case_ids)).all()
+    )
+    membership_analyst_ids = {m.analyst_id for m in all_memberships}
+    if membership_analyst_ids:
+        from app.models.analyst import Analyst as AnalystModel
+
+        membership_analysts = (
+            db.query(AnalystModel)
+            .filter(AnalystModel.analyst_id.in_(membership_analyst_ids))
+            .all()
+        )
+        member_name_map = {
+            a.analyst_id: (a.display_name or a.username) for a in membership_analysts
+        }
+    else:
+        member_name_map = {}
+
+    # Group memberships by case_id
+    case_analysts_map: dict[int, list[dict]] = {}
+    for m in all_memberships:
+        case_analysts_map.setdefault(m.case_id, []).append(
+            {
+                "analyst_id": m.analyst_id,
+                "analyst_name": member_name_map.get(m.analyst_id, "unknown"),
+                "role": m.role,
+                "added_at": m.added_at,
+            }
+        )
+
     result = []
     for case in cases:
         alert_count = counts.get(case.case_id, 0)
         assigned_username = analyst_map.get(case.assigned_to) if case.assigned_to else None
-        analysts_data = _get_case_analysts_data(db, case.case_id)
+        analysts_data = case_analysts_map.get(case.case_id, [])
         result.append(_case_to_response(case, alert_count, assigned_username, analysts_data))
     return result
 
@@ -286,10 +320,7 @@ def update_case(
     if body.tags is not None:
         case.tags_json = json.dumps(body.tags)
 
-    db.commit()
-    db.refresh(case)
-
-    # Record status change activity
+    # Record status change activity before commit (single atomic operation)
     if body.status is not None and body.status != old_status:
         _record_activity(
             db,
@@ -298,7 +329,9 @@ def update_case(
             "status_changed",
             {"old_status": old_status, "new_status": body.status},
         )
-        db.commit()
+
+    db.commit()
+    db.refresh(case)
 
     alert_count = (
         db.query(CaseAlert).filter(CaseAlert.case_id == case_id).count()
@@ -652,6 +685,11 @@ def get_case_activity(
             try:
                 details = json.loads(activity.details_json)
             except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "Failed to parse details_json for activity %d on case %d",
+                    activity.activity_id,
+                    case_id,
+                )
                 details = None
         result.append(
             {
@@ -809,11 +847,14 @@ def suggest_grouping(
 
 def _notify_case_analysts(db: Session, case_id: int, action: str) -> None:
     """Emit case_update notifications to all analysts on the case."""
-    from app.models.case_analyst import CaseAnalyst
-    from app.modules.collaboration_notifier import emit_case_update
+    try:
+        from app.models.case_analyst import CaseAnalyst
+        from app.modules.collaboration_notifier import emit_case_update
 
-    memberships = (
-        db.query(CaseAnalyst).filter(CaseAnalyst.case_id == case_id).all()
-    )
-    for m in memberships:
-        emit_case_update(db, m.analyst_id, case_id, action)
+        memberships = (
+            db.query(CaseAnalyst).filter(CaseAnalyst.case_id == case_id).all()
+        )
+        for m in memberships:
+            emit_case_update(db, m.analyst_id, case_id, action)
+    except Exception:
+        logger.warning("Failed to emit case notifications for case %d", case_id, exc_info=True)

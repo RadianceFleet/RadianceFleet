@@ -365,10 +365,13 @@ def compute_region_fp_rate(db: Session, region_id: int) -> CorridorFPRate | None
 
     corridor_ids: list[int] = []
     if region.corridor_ids_json:
-        import contextlib
-
-        with contextlib.suppress(json.JSONDecodeError, TypeError):
+        try:
             corridor_ids = json.loads(region.corridor_ids_json)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                "Invalid corridor_ids_json for region %d, treating as empty",
+                region_id,
+            )
 
     if not corridor_ids:
         return CorridorFPRate(
@@ -404,7 +407,6 @@ def compute_region_fp_rate(db: Session, region_id: int) -> CorridorFPRate | None
 
 def _get_region_corridor_ids(db: Session, region_id: int) -> list[int]:
     """Return corridor IDs belonging to a scoring region."""
-    import contextlib
     import json
 
     from app.models.scoring_region import ScoringRegion
@@ -413,8 +415,13 @@ def _get_region_corridor_ids(db: Session, region_id: int) -> list[int]:
     if not region or not region.corridor_ids_json:
         return []
     corridor_ids: list[int] = []
-    with contextlib.suppress(json.JSONDecodeError, TypeError):
+    try:
         corridor_ids = json.loads(region.corridor_ids_json)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning(
+            "Invalid corridor_ids_json for region %d, treating as empty",
+            region_id,
+        )
     return corridor_ids
 
 
@@ -656,10 +663,13 @@ def create_fp_rate_snapshots(db: Session) -> int:
     for region in regions:
         cids: list[int] = []
         if region.corridor_ids_json:
-            import contextlib
-
-            with contextlib.suppress(json.JSONDecodeError, TypeError):
+            try:
                 cids = json.loads(region.corridor_ids_json)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "Invalid corridor_ids_json for region %d, skipping snapshots",
+                    region.region_id,
+                )
         if not cids:
             continue
 
@@ -703,10 +713,13 @@ def create_fp_rate_snapshots(db: Session) -> int:
         for gap in gaps:
             breakdown = None
             if gap.risk_breakdown_json:
-                import contextlib
-
-                with contextlib.suppress(json.JSONDecodeError, TypeError):
+                try:
                     breakdown = json.loads(gap.risk_breakdown_json) if isinstance(gap.risk_breakdown_json, str) else gap.risk_breakdown_json
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning(
+                        "Invalid risk_breakdown_json for gap %d",
+                        gap.gap_event_id,
+                    )
 
             if not breakdown or not isinstance(breakdown, dict):
                 continue

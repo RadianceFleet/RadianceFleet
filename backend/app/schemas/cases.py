@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -33,7 +35,7 @@ class CaseAnalystAdd(BaseModel):
     """Request body to add an analyst to a case."""
 
     analyst_id: int
-    role: str = "contributor"  # "lead", "contributor", "reviewer"
+    role: Literal["lead", "contributor", "reviewer"] = "contributor"
 
 
 class CaseAnalystResponse(BaseModel):

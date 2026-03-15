@@ -149,8 +149,6 @@ def _load_corridor_overrides(db: Session) -> dict[int, dict]:
     Precedence: per-corridor override > region override > global config.
     Multi-region conflict: lowest region_id wins (deterministic).
     """
-    import contextlib
-
     from app.models.corridor_scoring_override import CorridorScoringOverride
     from app.models.scoring_region import ScoringRegion
 
@@ -188,8 +186,14 @@ def _load_corridor_overrides(db: Session) -> dict[int, dict]:
         # Parse corridor IDs
         corridor_ids: list[int] = []
         if region.corridor_ids_json:
-            with contextlib.suppress(json.JSONDecodeError, TypeError):
+            try:
                 corridor_ids = json.loads(region.corridor_ids_json)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "Invalid corridor_ids_json for region %d (%s), skipping",
+                    region.region_id,
+                    region.name,
+                )
 
         if not corridor_ids:
             continue

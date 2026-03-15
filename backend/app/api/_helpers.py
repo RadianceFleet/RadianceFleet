@@ -204,9 +204,12 @@ def check_edit_lock(db: Session, alert_id: int, analyst_id: int) -> None:
 
     now = datetime.now(UTC)
 
-    # Clean expired locks
-    db.query(AlertEditLock).filter(AlertEditLock.expires_at < now).delete()
-    db.flush()
+    # Clean expired locks (best-effort — should not block primary operation)
+    try:
+        db.query(AlertEditLock).filter(AlertEditLock.expires_at < now).delete()
+        db.flush()
+    except Exception:
+        logger.warning("Failed to clean expired edit locks", exc_info=True)
 
     # Check for active lock by another analyst
     existing = db.query(AlertEditLock).filter(AlertEditLock.alert_id == alert_id).first()

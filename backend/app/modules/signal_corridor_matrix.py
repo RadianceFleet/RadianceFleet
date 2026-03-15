@@ -40,9 +40,11 @@ def _parse_breakdown(raw) -> dict:
             parsed = json.loads(raw)
             return parsed if isinstance(parsed, dict) else {}
         except (json.JSONDecodeError, TypeError):
+            logger.warning("Failed to parse risk_breakdown_json: %.200s", raw)
             return {}
     if isinstance(raw, dict):
         return raw
+    logger.warning("Unexpected risk_breakdown_json type: %s", type(raw).__name__)
     return {}
 
 
