@@ -358,6 +358,11 @@ class Settings(BaseSettings):
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
 
+    # ── Bulk Satellite Ordering ────────────────────────────────────────────────────
+    SATELLITE_BULK_ORDER_ENABLED: bool = True
+    SATELLITE_BULK_MAX_ITEMS: int = 100
+    SATELLITE_BULK_PROCESS_INTERVAL: int = 3600
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:

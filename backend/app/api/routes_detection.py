@@ -1702,3 +1702,221 @@ def get_sanctions_propagation(
 
     results = get_vessel_propagations(db, vessel_id)
     return {"vessel_id": vessel_id, "propagations": results}
+
+
+# ---------------------------------------------------------------------------
+# Bulk Satellite Ordering
+# ---------------------------------------------------------------------------
+
+
+@router.post("/satellite/bulk-orders", tags=["satellite"])
+def create_bulk_order_endpoint(
+    request: Request,
+    name: str = Query(..., description="Name for the bulk order"),
+    priority: int = Query(5, ge=1, le=10, description="Priority 1-10"),
+    budget_cap: float | None = Query(None, description="Budget cap in USD"),
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Create a new bulk satellite order.
+
+    Body should contain JSON array of items with vessel_id and optional
+    alert_id, provider_preference, aoi_wkt, priority_rank.
+    """
+    import json
+
+    from app.modules.bulk_satellite_manager import create_bulk_order
+
+    if not settings.SATELLITE_BULK_ORDER_ENABLED:
+        raise HTTPException(status_code=403, detail="Bulk satellite ordering is disabled")
+
+    try:
+        import asyncio
+
+        body = asyncio.get_event_loop().run_until_complete(request.body())
+        items = json.loads(body) if body else []
+    except Exception:
+        items = []
+
+    if not items:
+        raise HTTPException(status_code=422, detail="Request body must contain a JSON array of items")
+
+    try:
+        analyst_id = _auth.get("analyst_id") if isinstance(_auth, dict) else None
+        bulk_order = create_bulk_order(
+            db, name=name, items=items, priority=priority,
+            budget_cap=budget_cap, requested_by=analyst_id,
+        )
+        return {
+            "bulk_order_id": bulk_order.bulk_order_id,
+            "name": bulk_order.name,
+            "status": bulk_order.status,
+            "total_orders": bulk_order.total_orders,
+            "estimated_total_cost_usd": bulk_order.estimated_total_cost_usd,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.get("/satellite/bulk-orders", tags=["satellite"])
+def list_bulk_orders_endpoint(
+    status: str | None = Query(None, description="Filter by status"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """List bulk satellite orders with optional status filter."""
+    from app.models.satellite_bulk_order import SatelliteBulkOrder
+
+    q = db.query(SatelliteBulkOrder)
+    if status:
+        q = q.filter(SatelliteBulkOrder.status == status)
+    total = q.count()
+    orders = q.order_by(SatelliteBulkOrder.created_at.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "total": total,
+        "orders": [
+            {
+                "bulk_order_id": o.bulk_order_id,
+                "name": o.name,
+                "status": o.status,
+                "priority": o.priority,
+                "total_orders": o.total_orders,
+                "submitted_orders": o.submitted_orders,
+                "delivered_orders": o.delivered_orders,
+                "failed_orders": o.failed_orders,
+                "estimated_total_cost_usd": o.estimated_total_cost_usd,
+                "actual_total_cost_usd": o.actual_total_cost_usd,
+                "budget_cap_usd": o.budget_cap_usd,
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+            }
+            for o in orders
+        ],
+    }
+
+
+@router.get("/satellite/bulk-orders/{bulk_order_id}", tags=["satellite"])
+def get_bulk_order_detail_endpoint(
+    bulk_order_id: int,
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Get details of a bulk satellite order including its items."""
+    from app.models.satellite_bulk_order import SatelliteBulkOrder
+    from app.models.satellite_bulk_order_item import SatelliteBulkOrderItem
+
+    bulk_order = (
+        db.query(SatelliteBulkOrder)
+        .filter(SatelliteBulkOrder.bulk_order_id == bulk_order_id)
+        .first()
+    )
+    if not bulk_order:
+        raise HTTPException(status_code=404, detail="Bulk order not found")
+
+    items = (
+        db.query(SatelliteBulkOrderItem)
+        .filter(SatelliteBulkOrderItem.bulk_order_id == bulk_order_id)
+        .order_by(SatelliteBulkOrderItem.priority_rank.asc())
+        .all()
+    )
+
+    return {
+        "bulk_order_id": bulk_order.bulk_order_id,
+        "name": bulk_order.name,
+        "status": bulk_order.status,
+        "priority": bulk_order.priority,
+        "total_orders": bulk_order.total_orders,
+        "submitted_orders": bulk_order.submitted_orders,
+        "delivered_orders": bulk_order.delivered_orders,
+        "failed_orders": bulk_order.failed_orders,
+        "estimated_total_cost_usd": bulk_order.estimated_total_cost_usd,
+        "actual_total_cost_usd": bulk_order.actual_total_cost_usd,
+        "budget_cap_usd": bulk_order.budget_cap_usd,
+        "requested_by": bulk_order.requested_by,
+        "created_at": bulk_order.created_at.isoformat() if bulk_order.created_at else None,
+        "updated_at": bulk_order.updated_at.isoformat() if bulk_order.updated_at else None,
+        "items": [
+            {
+                "item_id": item.item_id,
+                "priority_rank": item.priority_rank,
+                "vessel_id": item.vessel_id,
+                "alert_id": item.alert_id,
+                "provider_preference": item.provider_preference,
+                "aoi_wkt": item.aoi_wkt,
+                "status": item.status,
+                "skip_reason": item.skip_reason,
+                "satellite_order_id": item.satellite_order_id,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+            }
+            for item in items
+        ],
+    }
+
+
+@router.post("/satellite/bulk-orders/{bulk_order_id}/queue", tags=["satellite"])
+def queue_bulk_order_endpoint(
+    bulk_order_id: int,
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Queue a draft bulk order for processing."""
+    from app.modules.bulk_satellite_manager import queue_bulk_order
+
+    if not settings.SATELLITE_BULK_ORDER_ENABLED:
+        raise HTTPException(status_code=403, detail="Bulk satellite ordering is disabled")
+
+    try:
+        bulk_order = queue_bulk_order(db, bulk_order_id)
+        return {
+            "bulk_order_id": bulk_order.bulk_order_id,
+            "status": bulk_order.status,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/satellite/bulk-orders/{bulk_order_id}/cancel", tags=["satellite"])
+def cancel_bulk_order_endpoint(
+    bulk_order_id: int,
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Cancel a bulk order and cascade to individual orders."""
+    from app.modules.bulk_satellite_manager import cancel_bulk_order
+
+    try:
+        bulk_order = cancel_bulk_order(db, bulk_order_id)
+        return {
+            "bulk_order_id": bulk_order.bulk_order_id,
+            "status": bulk_order.status,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/satellite/bulk-orders/process", tags=["satellite"])
+def process_bulk_orders_endpoint(
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Trigger processing of all queued bulk orders."""
+    from app.modules.bulk_satellite_manager import process_bulk_order_queue
+
+    if not settings.SATELLITE_BULK_ORDER_ENABLED:
+        raise HTTPException(status_code=403, detail="Bulk satellite ordering is disabled")
+
+    result = process_bulk_order_queue(db)
+    return result
+
+
+@router.get("/satellite/budget/dashboard", tags=["satellite"])
+def budget_dashboard_endpoint(
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Extended satellite budget dashboard with burn rate and provider breakdown."""
+    from app.modules.bulk_satellite_manager import get_budget_dashboard
+
+    return get_budget_dashboard(db)
