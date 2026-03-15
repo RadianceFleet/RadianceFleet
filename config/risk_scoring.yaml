@@ -557,6 +557,18 @@ corroboration:
   families_3_bonus: 20
   families_4_bonus: 30
 
+# SIGNAL FAMILY SATURATION CAPS — prevent any single signal family from dominating
+# Applied AFTER non-commercial STS removal, BEFORE multiplier amplification
+family_caps:
+  enabled: true
+  gap_and_speed: 55
+  spoofing_and_position: 60
+  identity_and_ownership: 50
+  voyage_and_sts: 50
+  satellite_and_dark: 45
+  watchlist: 60
+  behavioral: 40
+
 # TRAJECTORY CLUSTERING (Task 2) — DBSCAN trajectory anomaly scoring
 trajectory_clustering:
   noise_point_in_corridor: 25

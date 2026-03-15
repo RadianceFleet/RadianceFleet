@@ -80,6 +80,7 @@ _EXPECTED_SECTIONS = [
     "eez_proximity",
     "kse_profile",
     "corroboration",
+    "family_caps",
     "data_completeness",
     "false_positive_suppression",
     "detection_thresholds",
