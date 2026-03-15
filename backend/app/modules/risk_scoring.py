@@ -3314,6 +3314,47 @@ def compute_gap_score(
         v for v in breakdown.values() if isinstance(v, (int, float)) and v < 0
     )
 
+    # Multiplier gating: suppress amplification on thin signals
+    _gate_cfg = config.get("multiplier_gating", {})
+    if _gate_cfg.get("enabled", False):
+        _min_base = _gate_cfg.get("min_base_score", 25)
+        _min_fams = _gate_cfg.get("min_families_for_multiplier", 2)
+
+        # Count active families (any positive signal)
+        _fam_sets = {
+            "position": _POSITION_PILLAR_KEYS,
+            "identity": _VESSEL_PILLAR_KEYS,
+            "voyage": _VOYAGE_PILLAR_KEYS,
+            "watchlist": _WATCHLIST_PILLAR_KEYS,
+        }
+        _active_fams = sum(
+            1 for keys in _fam_sets.values()
+            if any(breakdown.get(k, 0) > 0 for k in keys)
+        )
+        # Count "other" family (signals not in any pillar set)
+        _all_pillar_keys = _POSITION_PILLAR_KEYS | _VESSEL_PILLAR_KEYS | _VOYAGE_PILLAR_KEYS | _WATCHLIST_PILLAR_KEYS
+        if any(
+            isinstance(v, (int, float)) and v > 0
+            for k, v in breakdown.items()
+            if not k.startswith("_") and k not in _all_pillar_keys
+        ):
+            _active_fams += 1
+
+        _gate_reason = None
+        if risk_signals < _min_base:
+            _gate_reason = "base_score_below_threshold"
+        elif _active_fams < _min_fams:
+            _gate_reason = "insufficient_family_breadth"
+
+        if _gate_reason:
+            # Only suppress amplification (>1.0); dampening multipliers (<1.0)
+            # like legitimate_trade_route: 0.7 are always safe to apply.
+            if corridor_mult > 1.0:
+                corridor_mult = 1.0
+            if vessel_size_mult > 1.0:
+                vessel_size_mult = 1.0
+            breakdown["_multiplier_gating_applied"] = _gate_reason
+
     # Fix 3: cap corridor multiplier at 1.0 for EU/NATO flagged vessels.
     # The ×1.5 transit corridor multiplier was designed for shadow fleet vessels going dark
     # in sensitive zones. For EU/NATO flags it over-amplifies legitimate maritime activity.

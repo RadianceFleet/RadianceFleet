@@ -86,6 +86,7 @@ _EXPECTED_SECTIONS = [
     "detection_thresholds",
     "hunt_scoring",
     "loitering_by_corridor_type",
+    "multiplier_gating",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)
