@@ -1702,3 +1702,30 @@ def get_sanctions_propagation(
 
     results = get_vessel_propagations(db, vessel_id)
     return {"vessel_id": vessel_id, "propagations": results}
+
+
+# ---------------------------------------------------------------------------
+# Vessel Similarity
+# ---------------------------------------------------------------------------
+
+
+@router.post("/detect/vessel-similarity", tags=["detection"])
+def detect_vessel_similarity(
+    vessel_id: int = Query(..., description="Source vessel ID"),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Compute and persist vessel similarity results for a given vessel."""
+    from app.modules.vessel_similarity import find_similar_vessels, persist_similarity_results
+
+    results = find_similar_vessels(db, vessel_id, limit=limit)
+    records = persist_similarity_results(db, results)
+    db.commit()
+
+    return {
+        "status": "ok",
+        "vessel_id": vessel_id,
+        "results_count": len(records),
+        "results": results,
+    }

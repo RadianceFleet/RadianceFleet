@@ -358,6 +358,11 @@ class Settings(BaseSettings):
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
 
+    # ── Vessel Similarity ────────────────────────────────────────────────────────
+    VESSEL_SIMILARITY_ENABLED: bool = True
+    VESSEL_SIMILARITY_FINGERPRINT_WEIGHT: float = 0.6
+    VESSEL_SIMILARITY_OWNERSHIP_WEIGHT: float = 0.4
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:
