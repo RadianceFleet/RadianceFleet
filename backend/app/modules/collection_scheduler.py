@@ -245,6 +245,15 @@ class CollectionScheduler:
 
         db = self._db_factory()
         try:
+            # Archive before delete if enabled
+            if getattr(settings, "ARCHIVE_BEFORE_DELETE", False):
+                try:
+                    from app.modules.ais_archiver import archive_old_points
+
+                    archive_old_points(db, cutoff, source=source_name)
+                except Exception as e:
+                    logger.warning("Archival before pruning failed (continuing with delete): %s", e)
+
             from sqlalchemy import or_, select
 
             from app.models.ais_point import AISPoint

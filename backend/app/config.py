@@ -381,6 +381,15 @@ class Settings(BaseSettings):
     ALERT_DEDUP_TIME_WINDOW_DAYS: int = 7
     ALERT_DEDUP_MIN_GROUP_SIZE: int = 2
 
+    # ── Data Retention & Archival ────────────────────────────────────────────────
+    ARCHIVE_ENABLED: bool = True
+    ARCHIVE_BEFORE_DELETE: bool = True
+    ARCHIVE_RETENTION_DAYS: int = 90
+    ARCHIVE_COMPRESSION: str = "gzip"
+    ARCHIVE_BATCH_SIZE: int = 50000
+    ARCHIVE_STORAGE_DIR: str = "data/archives"
+    ARCHIVE_MAX_AGE_DAYS: int | None = None
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:
