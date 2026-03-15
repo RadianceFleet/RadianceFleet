@@ -37,6 +37,10 @@ def _make_mock_lock(**kwargs):
     }
     for k, v in {**defaults, **kwargs}.items():
         setattr(lock, k, v)
+    # Ensure analyst relationship returns a mock with string username
+    analyst_mock = MagicMock()
+    analyst_mock.username = kwargs.get("analyst_username", "other_analyst")
+    lock.analyst = analyst_mock
     return lock
 
 
@@ -44,22 +48,25 @@ class TestEditLocks:
     @patch.object(settings, "ADMIN_JWT_SECRET", JWT_SECRET)
     def test_acquire_lock(self, api_client, mock_db):
         mock_alert = _make_mock_alert()
+        new_lock = _make_mock_lock(analyst_id=1)
 
-        call_count = {"n": 0}
-
-        def side_effect(model):
-            call_count["n"] += 1
+        def query_side_effect(model):
             q = MagicMock()
             if model.__name__ == "AISGapEvent":
                 q.filter.return_value.first.return_value = mock_alert
             elif model.__name__ == "AlertEditLock":
                 # First call: delete expired (returns count)
                 q.filter.return_value.delete.return_value = 0
-                # Second call: check existing lock
-                q.filter.return_value.first.return_value = None
+                # Final query: fetch the newly created lock
+                q.filter.return_value.first.return_value = new_lock
             return q
 
-        mock_db.query.side_effect = side_effect
+        mock_db.query.side_effect = query_side_effect
+
+        # sqlite_insert uses db.execute() — mock rowcount=1 (insert succeeded)
+        execute_result = MagicMock()
+        execute_result.rowcount = 1
+        mock_db.execute.return_value = execute_result
 
         token = _make_token(analyst_id=1)
         resp = api_client.post(
@@ -77,7 +84,7 @@ class TestEditLocks:
         mock_alert = _make_mock_alert()
         existing_lock = _make_mock_lock(analyst_id=2)  # held by another analyst
 
-        def side_effect(model):
+        def query_side_effect(model):
             q = MagicMock()
             if model.__name__ == "AISGapEvent":
                 q.filter.return_value.first.return_value = mock_alert
@@ -86,7 +93,12 @@ class TestEditLocks:
                 q.filter.return_value.first.return_value = existing_lock
             return q
 
-        mock_db.query.side_effect = side_effect
+        mock_db.query.side_effect = query_side_effect
+
+        # sqlite_insert rowcount=0 (conflict — lock exists)
+        execute_result = MagicMock()
+        execute_result.rowcount = 0
+        mock_db.execute.return_value = execute_result
 
         token = _make_token(analyst_id=1, username="alice")
         resp = api_client.post(
@@ -94,25 +106,33 @@ class TestEditLocks:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 409
-        assert "Lock held" in resp.json()["detail"]
+        detail = resp.json()["detail"]
+        assert detail["error"] == "resource_locked"
+        assert detail["locked_by_analyst_id"] == 2
 
     @patch.object(settings, "ADMIN_JWT_SECRET", JWT_SECRET)
     def test_expired_lock_cleaned(self, api_client, mock_db):
         """Expired locks are cleaned and new lock can be acquired."""
         mock_alert = _make_mock_alert()
+        new_lock = _make_mock_lock(analyst_id=1)
 
-        def side_effect(model):
+        def query_side_effect(model):
             q = MagicMock()
             if model.__name__ == "AISGapEvent":
                 q.filter.return_value.first.return_value = mock_alert
             elif model.__name__ == "AlertEditLock":
                 # Expired lock cleaned
                 q.filter.return_value.delete.return_value = 1
-                # No existing lock after cleanup
-                q.filter.return_value.first.return_value = None
+                # Fetch newly created lock
+                q.filter.return_value.first.return_value = new_lock
             return q
 
-        mock_db.query.side_effect = side_effect
+        mock_db.query.side_effect = query_side_effect
+
+        # sqlite_insert rowcount=1 (insert succeeded after cleanup)
+        execute_result = MagicMock()
+        execute_result.rowcount = 1
+        mock_db.execute.return_value = execute_result
 
         token = _make_token(analyst_id=1, username="test_admin")
         resp = api_client.post(

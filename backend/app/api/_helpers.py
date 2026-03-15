@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -188,4 +188,37 @@ def _check_upload_size(file: UploadFile) -> None:
         raise HTTPException(
             status_code=413,
             detail=f"File too large ({size_mb:.1f} MB). Max: {settings.MAX_UPLOAD_SIZE_MB} MB.",
+        )
+
+
+def check_edit_lock(db: Session, alert_id: int, analyst_id: int) -> None:
+    """Raise 409 if another analyst holds an active edit lock on this alert.
+
+    Short-circuits (no DB queries) when ``settings.ENFORCE_EDIT_LOCKS`` is False.
+    Expired locks are cleaned up as a side effect.
+    """
+    if not settings.ENFORCE_EDIT_LOCKS:
+        return
+
+    from app.models.alert_edit_lock import AlertEditLock
+
+    now = datetime.now(UTC)
+
+    # Clean expired locks
+    db.query(AlertEditLock).filter(AlertEditLock.expires_at < now).delete()
+    db.flush()
+
+    # Check for active lock by another analyst
+    existing = db.query(AlertEditLock).filter(AlertEditLock.alert_id == alert_id).first()
+    if existing and isinstance(existing, AlertEditLock) and existing.analyst_id != analyst_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "resource_locked",
+                "locked_by_analyst_id": existing.analyst_id,
+                "locked_by_username": existing.analyst.username
+                if existing.analyst
+                else "unknown",
+                "expires_at": existing.expires_at.isoformat(),
+            },
         )

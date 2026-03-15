@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     ADMIN_JWT_SECRET: str | None = None  # Generate: openssl rand -hex 32
     ADMIN_PASSWORD: str | None = None  # Strong password for POST /admin/login
     EDIT_LOCK_TTL_SECONDS: int = 300
+    ENFORCE_EDIT_LOCKS: bool = True
     RATE_LIMIT_VIEWER: str = "30/minute"
     RATE_LIMIT_ADMIN: str = "120/minute"
     RATE_LIMIT_DEFAULT: str = "60/minute"

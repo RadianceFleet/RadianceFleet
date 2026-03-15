@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.api._helpers import _audit_log, _validate_date_range, limiter
+from app.api._helpers import _audit_log, _validate_date_range, check_edit_lock, limiter
 from app.auth import require_auth, require_senior_or_admin
 from app.config import settings
 from app.database import get_db
@@ -684,6 +684,8 @@ def update_alert_status(
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
 
+    check_edit_lock(db, alert_id, auth["analyst_id"])
+
     # Optimistic locking check
     if body.version is not None and alert.version != body.version:
         raise HTTPException(status_code=409, detail="Version conflict")
@@ -714,6 +716,16 @@ def update_alert_status(
         analyst_id=auth["analyst_id"],
     )
     db.commit()
+
+    # Auto-release lock after successful mutation
+    from app.models.alert_edit_lock import AlertEditLock
+
+    db.query(AlertEditLock).filter(
+        AlertEditLock.alert_id == alert_id,
+        AlertEditLock.analyst_id == auth["analyst_id"],
+    ).delete()
+    db.commit()
+
     return {"status": "ok", "new_status": body.status}
 
 
@@ -741,6 +753,8 @@ def submit_alert_verdict(
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
+
+    check_edit_lock(db, alert_id, auth["analyst_id"])
 
     # Optimistic locking check
     if body.version is not None and alert.version != body.version:
@@ -770,6 +784,16 @@ def submit_alert_verdict(
         analyst_id=auth["analyst_id"],
     )
     db.commit()
+
+    # Auto-release lock after successful mutation
+    from app.models.alert_edit_lock import AlertEditLock
+
+    db.query(AlertEditLock).filter(
+        AlertEditLock.alert_id == alert_id,
+        AlertEditLock.analyst_id == auth["analyst_id"],
+    ).delete()
+    db.commit()
+
     return {"status": "ok", "verdict": body.verdict, "is_false_positive": alert.is_false_positive}
 
 
@@ -787,6 +811,9 @@ def add_note(
     alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
+
+    check_edit_lock(db, alert_id, auth["analyst_id"])
+
     # Accept both "notes" (frontend) and "text" (legacy) keys
     alert.analyst_notes = body.notes if body.notes is not None else (body.text or "")
     db.commit()
@@ -813,6 +840,29 @@ def bulk_update_alert_status(
             status_code=422,
             detail=f"Invalid status '{new_status}'. Must be one of: {', '.join(sorted(valid_statuses))}",
         )
+
+    # Check edit locks for all alerts in the batch
+    if settings.ENFORCE_EDIT_LOCKS:
+        from app.models.alert_edit_lock import AlertEditLock
+
+        now = datetime.now(UTC)
+        locked = (
+            db.query(AlertEditLock)
+            .filter(
+                AlertEditLock.alert_id.in_(alert_ids),
+                AlertEditLock.analyst_id != auth["analyst_id"],
+                AlertEditLock.expires_at >= now,
+            )
+            .all()
+        )
+        if locked:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "resource_locked",
+                    "locked_alert_ids": [lock.alert_id for lock in locked],
+                },
+            )
 
     updated = (
         db.query(AISGapEvent)
@@ -1045,6 +1095,8 @@ def acquire_lock(
     auth: dict = Depends(require_auth),
 ):
     """Acquire edit lock. Returns 409 if held by another analyst."""
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
     from app.models.alert_edit_lock import AlertEditLock
     from app.models.gap_event import AISGapEvent
 
@@ -1053,35 +1105,53 @@ def acquire_lock(
         raise HTTPException(status_code=404, detail="Alert not found")
 
     now = datetime.now(UTC)
-    # Clean expired locks
+    expires = now + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS)
+
+    # Clean expired locks first
     db.query(AlertEditLock).filter(AlertEditLock.expires_at < now).delete()
+    db.flush()
 
-    existing = db.query(AlertEditLock).filter(AlertEditLock.alert_id == alert_id).first()
-    if existing:
-        if existing.analyst_id != auth["analyst_id"]:
-            raise HTTPException(
-                status_code=409, detail=f"Lock held by analyst {existing.analyst_id}"
-            )
-        # Extend own lock
-        existing.expires_at = now + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS)
-        db.commit()
-        return {
-            "lock_id": existing.lock_id,
-            "alert_id": alert_id,
-            "analyst_id": auth["analyst_id"],
-            "analyst_username": auth["username"],
-            "acquired_at": existing.acquired_at.isoformat(),
-            "expires_at": existing.expires_at.isoformat(),
-        }
-
-    lock = AlertEditLock(
+    # Try atomic insert (avoids TOCTOU race)
+    stmt = sqlite_insert(AlertEditLock.__table__).values(
         alert_id=alert_id,
         analyst_id=auth["analyst_id"],
         acquired_at=now,
-        expires_at=now + timedelta(seconds=settings.EDIT_LOCK_TTL_SECONDS),
+        expires_at=expires,
     )
-    db.add(lock)
+    stmt = stmt.on_conflict_do_nothing(index_elements=["alert_id"])
+    result = db.execute(stmt)
+
+    if result.rowcount == 0:
+        # Conflict — check if it's our own lock (extend) or another analyst's
+        existing = db.query(AlertEditLock).filter(AlertEditLock.alert_id == alert_id).first()
+        if existing and existing.analyst_id != auth["analyst_id"]:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "resource_locked",
+                    "locked_by_analyst_id": existing.analyst_id,
+                    "locked_by_username": existing.analyst.username
+                    if existing.analyst
+                    else "unknown",
+                    "expires_at": existing.expires_at.isoformat(),
+                },
+            )
+        # Our own lock — extend
+        if existing:
+            existing.expires_at = expires
+            db.commit()
+            return {
+                "lock_id": existing.lock_id,
+                "alert_id": alert_id,
+                "analyst_id": auth["analyst_id"],
+                "analyst_username": auth["username"],
+                "acquired_at": existing.acquired_at.isoformat(),
+                "expires_at": existing.expires_at.isoformat(),
+            }
+
     db.commit()
+    # Fetch the newly created lock
+    lock = db.query(AlertEditLock).filter(AlertEditLock.alert_id == alert_id).first()
     return {
         "lock_id": lock.lock_id,
         "alert_id": alert_id,
