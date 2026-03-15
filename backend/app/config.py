@@ -327,6 +327,14 @@ class Settings(BaseSettings):
     FP_TUNING_ENABLED: bool = True
     REGIONAL_FP_TUNING_ENABLED: bool = True
 
+    # ── Flag Risk Scoring V2 ───────────────────────────────────────────
+    FLAG_RISK_SCORING_V2_ENABLED: bool = False
+    FLAG_RISK_PSC_WEIGHT: float = 0.25
+    FLAG_RISK_FP_WEIGHT: float = 0.20
+    FLAG_RISK_FLEET_WEIGHT: float = 0.25
+    FLAG_RISK_HOPPING_WEIGHT: float = 0.15
+    FLAG_RISK_TRANSPARENCY_WEIGHT: float = 0.15
+
     # ── Auto-Calibration ─────────────────────────────────────────────
     AUTO_CALIBRATION_ENABLED: bool = False
     AUTO_CALIBRATION_MAX_ADJUSTMENT_PCT: int = 15

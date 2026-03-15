@@ -613,3 +613,9 @@ multiplier_gating:
   enabled: true
   min_base_score: 25
   min_families_for_multiplier: 2
+
+# FLAG STATE V2 — data-driven per-flag continuous risk scoring
+flag_state_v2:
+  high_risk: 20
+  medium_risk_max: 15
+  minimal_risk: -10

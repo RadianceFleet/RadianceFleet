@@ -22,6 +22,7 @@ from app.models.dark_zone import DarkZone
 from app.models.data_coverage_window import DataCoverageWindow
 from app.models.draught_event import DraughtChangeEvent
 from app.models.evidence_card import EvidenceCard
+from app.models.flag_risk_profile import FlagRiskProfile
 from app.models.fleet_alert import FleetAlert
 from app.models.fp_rate_snapshot import FPRateSnapshot
 from app.models.gap_event import AISGapEvent
@@ -101,6 +102,7 @@ __all__ = [
     "SatelliteTaskingCandidate",
     "OwnerCluster",
     "OwnerClusterMember",
+    "FlagRiskProfile",
     "FleetAlert",
     "FPRateSnapshot",
     "PipelineRun",

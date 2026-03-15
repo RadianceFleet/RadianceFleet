@@ -106,3 +106,42 @@ def satellite_budget() -> None:
 
 
 app.add_typer(satellite_app, name="satellite")
+
+# ---------------------------------------------------------------------------
+# Flag risk profile management
+# ---------------------------------------------------------------------------
+
+flag_risk_app = typer.Typer(
+    name="flag-risk",
+    help="Flag state risk profile management (v2 data-driven scoring).",
+    no_args_is_help=True,
+)
+
+
+@flag_risk_app.command("update")
+def flag_risk_update(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute but don't persist"),
+) -> None:
+    """Recompute all flag risk profiles from current DB data."""
+    from app.database import SessionLocal
+    from app.modules.flag_risk_analyzer import compute_flag_risk_profiles, persist_profiles
+
+    db = SessionLocal()
+    try:
+        profiles = compute_flag_risk_profiles(db)
+        typer.echo(f"Computed {len(profiles)} flag risk profiles")
+        for p in profiles:
+            typer.echo(f"  {p.flag_code}: composite={p.composite_score:.1f} tier={p.risk_tier}")
+        if dry_run:
+            typer.echo("Dry run — not persisted.")
+        else:
+            count = persist_profiles(db, profiles)
+            typer.echo(f"Persisted {count} profiles.")
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from None
+    finally:
+        db.close()
+
+
+app.add_typer(flag_risk_app, name="flag-risk")

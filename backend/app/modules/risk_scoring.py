@@ -1306,19 +1306,38 @@ def compute_gap_score(
         )
         flag_cfg = config.get("flag_state", {})
 
-        # Flag state risk
-        if flag_risk == "low_risk":
-            pts = flag_cfg.get("white_list_flag", -10)
-            if pts != 0:
-                breakdown["flag_white_list"] = pts
-            # Additional false-positive suppression: EU/NATO flag vessels operate under
-            # strict maritime oversight — apply extra discount on top of white_list_flag.
-            fp_cfg = config.get("false_positive_suppression", {})
-            extra_discount = fp_cfg.get("low_risk_flag_extra_discount", -20)
-            if extra_discount != 0:
-                breakdown["flag_low_risk_extra"] = extra_discount
-        elif flag_risk == "high_risk":
-            breakdown["flag_high_risk"] = flag_cfg.get("high_risk_registry", 15)
+        # Flag state risk — v2 (data-driven) or v1 (static tiers)
+        _flag_v2_applied = False
+        if settings.FLAG_RISK_SCORING_V2_ENABLED and db is not None and vessel.flag:
+            from app.modules.flag_risk_analyzer import get_flag_risk_score
+
+            _flag_profile = get_flag_risk_score(db, vessel.flag)
+            if _flag_profile is not None:
+                _flag_v2_applied = True
+                _v2_cfg = config.get("flag_state_v2", {})
+                if _flag_profile.risk_tier == "HIGH":
+                    breakdown["flag_state_v2"] = _v2_cfg.get("high_risk", 20)
+                elif _flag_profile.risk_tier == "MEDIUM":
+                    breakdown["flag_state_v2"] = _v2_cfg.get("medium_risk_max", 15)
+                else:
+                    pts = _v2_cfg.get("minimal_risk", -10)
+                    if pts != 0:
+                        breakdown["flag_state_v2"] = pts
+
+        if not _flag_v2_applied:
+            # v1 fallback: static 3-tier flag classification
+            if flag_risk == "low_risk":
+                pts = flag_cfg.get("white_list_flag", -10)
+                if pts != 0:
+                    breakdown["flag_white_list"] = pts
+                # Additional false-positive suppression: EU/NATO flag vessels operate under
+                # strict maritime oversight — apply extra discount on top of white_list_flag.
+                fp_cfg = config.get("false_positive_suppression", {})
+                extra_discount = fp_cfg.get("low_risk_flag_extra_discount", -20)
+                if extra_discount != 0:
+                    breakdown["flag_low_risk_extra"] = extra_discount
+            elif flag_risk == "high_risk":
+                breakdown["flag_high_risk"] = flag_cfg.get("high_risk_registry", 15)
 
         # Flag + corridor coupling: high-risk flag vessel in geographically suspicious corridor
         if flag_risk == "high_risk" and gap.corridor is not None:

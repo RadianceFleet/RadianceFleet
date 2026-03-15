@@ -88,6 +88,7 @@ _EXPECTED_SECTIONS = [
     "hunt_scoring",
     "loitering_by_corridor_type",
     "multiplier_gating",
+    "flag_state_v2",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)
