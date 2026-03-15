@@ -320,12 +320,27 @@ def status():
 
 
 @app.command("rescore")
-def rescore():
+def rescore(
+    incremental: bool = typer.Option(False, "--incremental", help="Only rescore dirty vessels"),
+):
     """Re-run scoring without re-running detectors."""
     from app.database import SessionLocal
 
     db = SessionLocal()
     try:
+        if incremental:
+            from app.modules.incremental_scorer import incremental_score_alerts
+
+            with console.status("[bold]Incremental re-scoring..."):
+                result = incremental_score_alerts(db)
+            console.print(
+                f"[green]Incremental rescore: scored={result.get('scored', 0)} "
+                f"skipped={result.get('skipped', 0)} "
+                f"config_changed={result.get('config_changed', False)}[/green] "
+                f"(config hash: {result.get('config_hash', '?')})"
+            )
+            return
+
         from app.modules.risk_scoring import rescore_all_alerts
 
         with console.status("[bold]Re-scoring all alerts..."):

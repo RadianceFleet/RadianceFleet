@@ -987,3 +987,77 @@ async def test_webhook(
     if success:
         return {"status": "delivered", "webhook_id": webhook_id}
     raise HTTPException(status_code=502, detail="Webhook delivery failed after 3 attempts")
+
+
+# ---------------------------------------------------------------------------
+# Incremental Scoring State
+# ---------------------------------------------------------------------------
+
+
+class MarkDirtyRequest(BaseModel):
+    vessel_ids: list[int] | None = None
+    all: bool = False
+
+
+@router.get("/admin/scoring-state", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def get_scoring_state(
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: get incremental scoring pipeline stats."""
+    from sqlalchemy import func as sa_func
+
+    from app.models.vessel import Vessel
+    from app.models.vessel_scoring_state import VesselScoringState
+    from app.modules.incremental_scorer import compute_config_hash
+
+    total_vessels = (
+        db.query(sa_func.count(Vessel.vessel_id))
+        .filter(Vessel.merged_into_vessel_id.is_(None))
+        .scalar()
+    )
+    dirty_count = (
+        db.query(sa_func.count(VesselScoringState.vessel_id))
+        .filter(VesselScoringState.dirty.is_(True))
+        .scalar()
+    )
+    last_rescore = (
+        db.query(sa_func.max(VesselScoringState.last_scored_at)).scalar()
+    )
+
+    return {
+        "total_vessels": total_vessels,
+        "dirty_count": dirty_count,
+        "last_rescore_at": last_rescore.isoformat() if last_rescore else None,
+        "config_hash": compute_config_hash()[:8],
+        "incremental_enabled": settings.INCREMENTAL_SCORING_ENABLED,
+    }
+
+
+@router.post("/admin/scoring-state/mark-dirty", tags=["admin"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def mark_dirty(
+    body: MarkDirtyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin_role),
+):
+    """Admin: mark vessels dirty for incremental rescoring."""
+    from app.modules.incremental_scorer import (
+        _mark_all_vessels_dirty,
+        mark_vessels_dirty_bulk,
+    )
+
+    if body.all:
+        count = _mark_all_vessels_dirty(db)
+        db.commit()
+        return {"status": "ok", "marked_dirty": count}
+
+    if not body.vessel_ids:
+        raise HTTPException(status_code=400, detail="Provide vessel_ids or set all=true")
+
+    mark_vessels_dirty_bulk(db, set(body.vessel_ids))
+    db.commit()
+    return {"status": "ok", "marked_dirty": len(body.vessel_ids)}
