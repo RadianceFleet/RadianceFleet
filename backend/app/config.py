@@ -358,6 +358,10 @@ class Settings(BaseSettings):
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
 
+    # ── Evidence Verification Checklist ────────────────────────────────────────────
+    VERIFICATION_CHECKLIST_ENABLED: bool = True
+    VERIFICATION_CHECKLIST_ENFORCE_BEFORE_VERDICT: bool = True
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:
