@@ -659,6 +659,29 @@ def add_corridor_to_region(
     # Verify corridor exists
     _get_corridor_or_404(db, corridor_id)
 
+    # Cross-region uniqueness check
+    from app.models.scoring_region import ScoringRegion
+
+    other_regions = (
+        db.query(ScoringRegion)
+        .filter(
+            ScoringRegion.is_active.is_(True),
+            ScoringRegion.region_id != region_id,
+        )
+        .all()
+    )
+    for other in other_regions:
+        other_corridor_ids: list[int] = []
+        if other.corridor_ids_json:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
+                other_corridor_ids = json.loads(other.corridor_ids_json)
+        if corridor_id in other_corridor_ids:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Corridor {corridor_id} already belongs to active region '{other.name}' (id={other.region_id}). "
+                f"Remove it from that region first, or deactivate the other region.",
+            )
+
     corridor_ids: list[int] = []
     if region.corridor_ids_json:
         with contextlib.suppress(json.JSONDecodeError, TypeError):

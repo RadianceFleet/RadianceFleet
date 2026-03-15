@@ -144,16 +144,24 @@ def _count_gaps_in_window(db: Session, alert: AISGapEvent, days: int) -> int:
 
 
 def _load_corridor_overrides(db: Session) -> dict[int, dict]:
-    """Pre-fetch all active corridor scoring overrides. Single query."""
-    from app.models.corridor_scoring_override import CorridorScoringOverride
+    """Pre-fetch all active corridor and region scoring overrides.
 
-    overrides = (
+    Precedence: per-corridor override > region override > global config.
+    Multi-region conflict: lowest region_id wins (deterministic).
+    """
+    import contextlib
+
+    from app.models.corridor_scoring_override import CorridorScoringOverride
+    from app.models.scoring_region import ScoringRegion
+
+    # 1. Load per-corridor overrides (highest precedence)
+    overrides_raw = (
         db.query(CorridorScoringOverride)
         .filter(CorridorScoringOverride.is_active.is_(True))
         .all()
     )
     result: dict[int, dict] = {}
-    for ov in overrides:
+    for ov in overrides_raw:
         parsed: dict = {}
         if ov.signal_overrides_json:
             try:
@@ -162,7 +170,75 @@ def _load_corridor_overrides(db: Session) -> dict[int, dict]:
                 logger.warning("Invalid signal_overrides_json for corridor %d", ov.corridor_id)
         parsed["_corridor_multiplier_override"] = ov.corridor_multiplier_override
         parsed["_gap_duration_multiplier"] = ov.gap_duration_multiplier
+        parsed["_override_source"] = f"corridor:{ov.corridor_id}"
         result[ov.corridor_id] = parsed
+
+    # 2. Load region overrides (lower precedence)
+    regions = (
+        db.query(ScoringRegion)
+        .filter(ScoringRegion.is_active.is_(True))
+        .order_by(ScoringRegion.region_id.asc())
+        .all()
+    )
+
+    # Track which corridors we've already seen from regions (for conflict detection)
+    corridor_to_region: dict[int, int] = {}
+
+    for region in regions:
+        # Parse corridor IDs
+        corridor_ids: list[int] = []
+        if region.corridor_ids_json:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
+                corridor_ids = json.loads(region.corridor_ids_json)
+
+        if not corridor_ids:
+            continue
+
+        # Parse region signal overrides
+        region_signal_overrides: dict = {}
+        if region.signal_overrides_json:
+            try:
+                region_signal_overrides = json.loads(region.signal_overrides_json)
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "Invalid signal_overrides_json for region %d (%s), skipping signal overrides",
+                    region.region_id,
+                    region.name,
+                )
+
+        for cid in corridor_ids:
+            # Check for multi-region conflict (before direct-override check so we still warn)
+            if cid in corridor_to_region:
+                logger.warning(
+                    "Corridor %d belongs to multiple active regions (%d and %d). "
+                    "Using region %d (lowest region_id).",
+                    cid,
+                    corridor_to_region[cid],
+                    region.region_id,
+                    corridor_to_region[cid],
+                )
+                continue
+
+            # Skip corridors that already have direct overrides (per-corridor wins)
+            if cid in result:
+                continue
+
+            corridor_to_region[cid] = region.region_id
+
+            # Build override entry from region
+            parsed = {}
+            parsed.update(region_signal_overrides)
+
+            # Only set multiplier overrides if region has them
+            if region.corridor_multiplier_override is not None:
+                parsed["_corridor_multiplier_override"] = region.corridor_multiplier_override
+            else:
+                parsed["_corridor_multiplier_override"] = None
+
+            parsed["_gap_duration_multiplier"] = region.gap_duration_multiplier
+            parsed["_override_source"] = f"region:{region.region_id}"
+            result[cid] = parsed
+
     return result
 
 

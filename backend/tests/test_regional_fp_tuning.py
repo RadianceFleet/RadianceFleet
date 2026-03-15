@@ -598,3 +598,342 @@ class TestFPTuningAPI:
             params={"signal_overrides": overrides},
         )
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Region override propagation tests (15)
+# ---------------------------------------------------------------------------
+
+from app.models.scoring_region import ScoringRegion
+
+
+def _make_region(db: Session, name="Test Region", corridor_ids=None, signal_overrides=None, **kwargs):
+    kwargs.setdefault("is_active", True)
+    kwargs.setdefault("gap_duration_multiplier", 1.0)
+    region = ScoringRegion(
+        name=name,
+        corridor_ids_json=json.dumps(corridor_ids) if corridor_ids else None,
+        signal_overrides_json=json.dumps(signal_overrides) if signal_overrides else None,
+        **kwargs,
+    )
+    db.add(region)
+    db.flush()
+    return region
+
+
+class TestRegionOverridePropagation:
+    """Tests for region override propagation into _load_corridor_overrides."""
+
+    def test_region_override_applied_to_corridor(self, db):
+        """Corridor in a region gets the region's signal overrides."""
+        c = _make_corridor(db, "Region Signal Test")
+        _make_region(
+            db,
+            name="Signal Region",
+            corridor_ids=[c.corridor_id],
+            signal_overrides={"gap_duration.12h_plus": 20.0},
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert c.corridor_id in result
+        assert result[c.corridor_id]["gap_duration.12h_plus"] == 20.0
+
+    def test_region_override_multiplier(self, db):
+        """Corridor gets region's corridor_multiplier_override."""
+        c = _make_corridor(db, "Region Multiplier Test")
+        _make_region(
+            db,
+            name="Multiplier Region",
+            corridor_ids=[c.corridor_id],
+            corridor_multiplier_override=1.5,
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert result[c.corridor_id]["_corridor_multiplier_override"] == 1.5
+
+    def test_region_override_gap_duration(self, db):
+        """Corridor gets region's gap_duration_multiplier."""
+        c = _make_corridor(db, "Region Gap Duration Test")
+        _make_region(
+            db,
+            name="Gap Duration Region",
+            corridor_ids=[c.corridor_id],
+            gap_duration_multiplier=2.0,
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert result[c.corridor_id]["_gap_duration_multiplier"] == 2.0
+
+    def test_direct_override_wins_over_region(self, db):
+        """Per-corridor override takes precedence over region override."""
+        c = _make_corridor(db, "Precedence Test")
+        _make_override(
+            db,
+            c.corridor_id,
+            signal_overrides={"gap_duration.12h_plus": 99.0},
+            corridor_multiplier_override=3.0,
+        )
+        _make_region(
+            db,
+            name="Overridden Region",
+            corridor_ids=[c.corridor_id],
+            signal_overrides={"gap_duration.12h_plus": 5.0},
+            corridor_multiplier_override=0.5,
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert result[c.corridor_id]["gap_duration.12h_plus"] == 99.0
+        assert result[c.corridor_id]["_corridor_multiplier_override"] == 3.0
+
+    def test_inactive_region_ignored(self, db):
+        """Inactive region's overrides are not applied."""
+        c = _make_corridor(db, "Inactive Region Test")
+        _make_region(
+            db,
+            name="Inactive Region",
+            corridor_ids=[c.corridor_id],
+            signal_overrides={"gap_duration.12h_plus": 20.0},
+            is_active=False,
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert c.corridor_id not in result
+
+    def test_region_null_corridor_ids(self, db):
+        """Region with null corridor_ids_json is a no-op."""
+        _make_region(
+            db,
+            name="Null Corridors Region",
+            corridor_ids=None,
+            signal_overrides={"gap_duration.12h_plus": 20.0},
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        # No corridors should be affected
+        assert len(result) == 0
+
+    def test_region_empty_corridor_ids(self, db):
+        """Region with empty corridor_ids list is a no-op."""
+        c = _make_corridor(db, "Empty Corridors Test")  # noqa: F841
+        _make_region(
+            db,
+            name="Empty Corridors Region",
+            corridor_ids=[],
+            signal_overrides={"gap_duration.12h_plus": 20.0},
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert len(result) == 0
+
+    def test_region_invalid_signal_overrides_json(self, db):
+        """Bad JSON in signal_overrides_json is skipped with warning."""
+        c = _make_corridor(db, "Bad JSON Region Test")
+        region = ScoringRegion(
+            name="Bad JSON Region",
+            corridor_ids_json=json.dumps([c.corridor_id]),
+            signal_overrides_json="{invalid json}",
+            gap_duration_multiplier=1.0,
+            is_active=True,
+        )
+        db.add(region)
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        # Corridor should still be in result with empty signal overrides
+        assert c.corridor_id in result
+        # Signal overrides should be empty (bad JSON skipped)
+        non_internal = {k: v for k, v in result[c.corridor_id].items() if not k.startswith("_")}
+        assert non_internal == {}
+
+    def test_region_null_multiplier_override(self, db):
+        """Region with None corridor_multiplier_override passes None through."""
+        c = _make_corridor(db, "Null Multiplier Test")
+        _make_region(
+            db,
+            name="Null Multiplier Region",
+            corridor_ids=[c.corridor_id],
+            corridor_multiplier_override=None,
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert result[c.corridor_id]["_corridor_multiplier_override"] is None
+
+    def test_multi_region_conflict_lowest_wins(self, db):
+        """Corridor in two active regions — lowest region_id wins."""
+        c = _make_corridor(db, "Multi-Region Test")
+        r1 = _make_region(
+            db,
+            name="Region A",
+            corridor_ids=[c.corridor_id],
+            signal_overrides={"gap_duration.12h_plus": 10.0},
+        )
+        _make_region(
+            db,
+            name="Region B",
+            corridor_ids=[c.corridor_id],
+            signal_overrides={"gap_duration.12h_plus": 50.0},
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        # Lowest region_id wins
+        assert result[c.corridor_id]["gap_duration.12h_plus"] == 10.0
+        assert result[c.corridor_id]["_override_source"] == f"region:{r1.region_id}"
+
+    def test_multi_region_conflict_logs_warning(self, db):
+        """Warning is logged when a corridor belongs to multiple active regions."""
+        c = _make_corridor(db, "Multi-Region Warning Test")
+        _make_region(
+            db,
+            name="Region W1",
+            corridor_ids=[c.corridor_id],
+        )
+        _make_region(
+            db,
+            name="Region W2",
+            corridor_ids=[c.corridor_id],
+        )
+        db.commit()
+
+        mock_logger = MagicMock()
+        with patch("app.modules.risk_scoring.logger", mock_logger):
+            _load_corridor_overrides(db)
+        warning_calls = [
+            call for call in mock_logger.warning.call_args_list
+            if "multiple active regions" in str(call)
+        ]
+        assert len(warning_calls) == 1
+
+    def test_override_source_tagged_region(self, db):
+        """_override_source is 'region:{id}' for region overrides."""
+        c = _make_corridor(db, "Source Tag Region Test")
+        r = _make_region(
+            db,
+            name="Source Tag Region",
+            corridor_ids=[c.corridor_id],
+        )
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert result[c.corridor_id]["_override_source"] == f"region:{r.region_id}"
+
+    def test_override_source_tagged_corridor(self, db):
+        """_override_source is 'corridor:{id}' for direct overrides."""
+        c = _make_corridor(db, "Source Tag Corridor Test")
+        _make_override(db, c.corridor_id)
+        db.commit()
+
+        result = _load_corridor_overrides(db)
+        assert result[c.corridor_id]["_override_source"] == f"corridor:{c.corridor_id}"
+
+
+class TestCrossRegionCheckAPI:
+    """API tests for cross-region corridor uniqueness check."""
+
+    @pytest.fixture()
+    def mock_db(self):
+        session = MagicMock()
+        session.query.return_value.filter.return_value.first.return_value = None
+        session.query.return_value.filter.return_value.all.return_value = []
+        session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+        session.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+        return session
+
+    @pytest.fixture()
+    def client(self, mock_db):
+        from fastapi.testclient import TestClient
+
+        from app.auth import require_auth, require_senior_or_admin
+        from app.database import get_db
+        from app.main import app
+
+        def override_get_db():
+            yield mock_db
+
+        def override_auth():
+            return {"analyst_id": 1, "username": "test_admin", "role": "admin"}
+
+        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[require_auth] = override_auth
+        app.dependency_overrides[require_senior_or_admin] = override_auth
+        with TestClient(app) as c:
+            yield c
+        app.dependency_overrides.clear()
+
+    def _mock_region(self, region_id=1, name="Test Region", corridor_ids_json=None, **kwargs):
+        r = MagicMock()
+        r.region_id = region_id
+        r.name = name
+        r.description = kwargs.get("description")
+        r.corridor_ids_json = corridor_ids_json
+        r.signal_overrides_json = kwargs.get("signal_overrides_json")
+        r.corridor_multiplier_override = kwargs.get("corridor_multiplier_override")
+        r.gap_duration_multiplier = kwargs.get("gap_duration_multiplier", 1.0)
+        r.is_active = kwargs.get("is_active", True)
+        r.created_by = kwargs.get("created_by")
+        r.created_at = datetime.utcnow()
+        r.updated_at = datetime.utcnow()
+        return r
+
+    def test_cross_region_check_returns_409(self, mock_db, client):
+        """Adding corridor to second active region returns 409."""
+        region = self._mock_region(region_id=1, name="Region A", corridor_ids_json=None)
+        corridor = MagicMock()
+        corridor.corridor_id = 5
+
+        # _get_region_or_404 uses .filter().first() -> region
+        # _get_corridor_or_404 uses .filter().first() -> corridor
+        mock_db.query.return_value.filter.return_value.first.side_effect = [
+            region,    # _get_region_or_404
+            corridor,  # _get_corridor_or_404
+        ]
+
+        # Cross-region check: other_regions query returns a region that already has corridor 5
+        other_region = self._mock_region(
+            region_id=2,
+            name="Region B",
+            corridor_ids_json=json.dumps([5]),
+        )
+        mock_db.query.return_value.filter.return_value.all.return_value = [other_region]
+
+        resp = client.post(
+            "/api/v1/corridors/regions/1/corridors",
+            json={"corridor_id": 5},
+        )
+        assert resp.status_code == 409
+        assert "already belongs to active region" in resp.json()["detail"]
+        assert "Region B" in resp.json()["detail"]
+
+    def test_cross_region_check_inactive_allowed(self, mock_db, client):
+        """Corridor in inactive region can be added to active region."""
+        region = self._mock_region(
+            region_id=1,
+            name="Region A",
+            corridor_ids_json=None,
+        )
+        corridor = MagicMock()
+        corridor.corridor_id = 5
+
+        mock_db.query.return_value.filter.return_value.first.side_effect = [
+            region,    # _get_region_or_404
+            corridor,  # _get_corridor_or_404
+        ]
+
+        # Cross-region check: query filters by is_active=True, so inactive region won't appear
+        # No other active regions have this corridor
+        mock_db.query.return_value.filter.return_value.all.return_value = []
+
+        resp = client.post(
+            "/api/v1/corridors/regions/1/corridors",
+            json={"corridor_id": 5},
+        )
+        # Should succeed (200), not 409
+        assert resp.status_code == 200
