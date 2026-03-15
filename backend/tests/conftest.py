@@ -129,3 +129,28 @@ def make_port():
 @pytest.fixture
 def make_gap():
     return make_mock_gap
+
+
+@pytest.fixture(autouse=True)
+def _disable_new_fp_features():
+    """Disable family_caps and multiplier_gating in scoring config for legacy tests.
+
+    New tests for these features (test_family_saturation_caps.py,
+    test_multiplier_gating.py) use their own config overrides to re-enable them.
+    """
+    from app.modules.scoring_config import load_scoring_config
+
+    config = load_scoring_config()
+    orig_caps = config.get("family_caps")
+    orig_gating = config.get("multiplier_gating")
+    config["family_caps"] = {"enabled": False}
+    config["multiplier_gating"] = {"enabled": False}
+    yield
+    if orig_caps is not None:
+        config["family_caps"] = orig_caps
+    else:
+        config.pop("family_caps", None)
+    if orig_gating is not None:
+        config["multiplier_gating"] = orig_gating
+    else:
+        config.pop("multiplier_gating", None)

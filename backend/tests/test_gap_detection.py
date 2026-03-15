@@ -137,7 +137,7 @@ def test_compute_gap_score_critical_sts_vlcc():
 
     Hand calculation: 55 × 1.5 × 1.3 = 107.25
     """
-    config = load_scoring_config()
+    config = deepcopy(load_scoring_config())
     gap = _make_mock_gap(
         duration_minutes=25 * 60,  # 25 hours
         corridor_type="sts_zone",
