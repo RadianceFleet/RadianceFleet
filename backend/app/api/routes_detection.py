@@ -1586,3 +1586,38 @@ def get_isolation_forest_anomaly(
     if result is None:
         raise HTTPException(status_code=404, detail="No anomaly record for this vessel")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Insurance Gap Timeline Detection
+# ---------------------------------------------------------------------------
+
+
+@router.post("/detect/insurance-gaps", tags=["detection"])
+def detect_insurance_gaps_endpoint(
+    vessel_id: int = Query(..., description="Vessel ID to analyse"),
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Run insurance gap timeline detection for a vessel."""
+    from app.models.vessel import Vessel
+    from app.modules.insurance_gap_detector import detect_insurance_gaps
+
+    vessel = db.query(Vessel).filter(Vessel.vessel_id == vessel_id).first()
+    if not vessel:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    gaps = detect_insurance_gaps(db, vessel_id)
+    return {"status": "ok", "vessel_id": vessel_id, "gaps_found": len(gaps), "gaps": gaps}
+
+
+@router.get("/detect/insurance-gaps/{vessel_id}", tags=["detection"])
+def get_insurance_gaps(
+    vessel_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get insurance gap events for a vessel."""
+    from app.modules.insurance_gap_detector import get_vessel_insurance_gaps
+
+    gaps = get_vessel_insurance_gaps(db, vessel_id)
+    return {"vessel_id": vessel_id, "total": len(gaps), "items": gaps}

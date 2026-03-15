@@ -25,6 +25,7 @@ from app.models.gap_event import AISGapEvent
 from app.models.ground_truth import GroundTruthVessel
 from app.models.handoff_note import HandoffNote
 from app.models.ingestion_status import IngestionStatus
+from app.models.insurance_gap_event import InsuranceGapEvent
 from app.models.investigation_case import InvestigationCase
 from app.models.isolation_forest_anomaly import IsolationForestAnomaly
 from app.models.jamming_zone import JammingZone, JammingZoneGap
@@ -133,5 +134,6 @@ __all__ = [
     "CaseAlert",
     "CalibrationEvent",
     "ScoringRegion",
+    "InsuranceGapEvent",
     "NotificationEvent",
 ]
