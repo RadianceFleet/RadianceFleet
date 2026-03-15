@@ -19,7 +19,7 @@ import json
 import logging
 import math
 import random
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -425,13 +425,7 @@ def detect_trajectory_autoencoder_anomalies(
     ae.train(normalized)
 
     # Score each segment
-    now = datetime.now(datetime.now().astimezone().tzinfo)
-    try:
-        from datetime import UTC
-
-        now = datetime.now(UTC)
-    except ImportError:
-        pass
+    now = datetime.now(UTC)
 
     anomalies: list[TrajectoryAutoencoderAnomaly] = []
 

@@ -106,14 +106,15 @@ def detect_insurance_gaps(db: Session, vessel_id: int) -> list[InsuranceGapEvent
             evidence_json=evidence,
         )
 
-        # Dedup via unique constraint
+        # Dedup via unique constraint — use savepoint so rollback doesn't
+        # discard previously flushed events in the same transaction
         try:
-            db.add(event)
-            db.flush()
+            with db.begin_nested():
+                db.add(event)
+                db.flush()
             events.append(event)
         except IntegrityError:
-            db.rollback()
-            # Already exists — fetch existing
+            # Savepoint rolled back, outer transaction intact
             existing = (
                 db.query(InsuranceGapEvent)
                 .filter(
@@ -222,17 +223,32 @@ def _find_coverage_gaps(timeline: list[dict], min_gap_days: int) -> list[dict]:
                         "next_club": next_club,
                     })
 
-    # Check for ongoing gap: last entry has no end_date replacement
-    # If last timeline entry ended (end_date set) and there's no next club
+    # Check for ongoing gap: vessel currently without insurance
     if timeline:
         last = timeline[-1]
         if last["end_date"] is not None and last["club_name"] is not None:
-            # Check if there's nothing after it
-            # This means the club ended but nothing replaced it
-            pass
+            # Club ended but nothing replaced it — ongoing gap
+            gap_days = (now - last["end_date"]).days
+            if gap_days >= min_gap_days:
+                gaps.append({
+                    "gap_start": last["end_date"],
+                    "gap_end": None,  # ongoing
+                    "gap_days": gap_days,
+                    "previous_club": last["club_name"],
+                    "next_club": None,
+                })
         elif last["club_name"] is None and last.get("end_date") is None:
-            # Club was removed — ongoing gap
-            pass
+            # Club was explicitly removed — ongoing gap from start_date
+            if last.get("start_date") is not None:
+                gap_days = (now - last["start_date"]).days
+                if gap_days >= min_gap_days:
+                    gaps.append({
+                        "gap_start": last["start_date"],
+                        "gap_end": None,  # ongoing
+                        "gap_days": gap_days,
+                        "previous_club": None,
+                        "next_club": None,
+                    })
 
     # Also detect gaps from NULL new_value transitions (club removed)
     # These create gaps from the removal date until the next club appears

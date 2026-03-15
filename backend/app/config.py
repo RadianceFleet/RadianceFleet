@@ -293,16 +293,16 @@ class Settings(BaseSettings):
     OPENCORPORATES_MONTHLY_QUOTA: int = 500
 
     # ── Insurance Gap Detection ────────────────────────────────────────
-    INSURANCE_GAP_DETECTION_ENABLED: bool = False
-    INSURANCE_GAP_SCORING_ENABLED: bool = False
+    INSURANCE_GAP_DETECTION_ENABLED: bool = True
+    INSURANCE_GAP_SCORING_ENABLED: bool = True
     INSURANCE_GAP_MIN_DAYS: int = 7
 
     # ── Ownership Transparency Scoring ────────────────────────────────
     OWNERSHIP_TRANSPARENCY_SCORING_ENABLED: bool = True
 
     # ── Sanctions Propagation Engine ─────────────────────────────────
-    SANCTIONS_PROPAGATION_ENABLED: bool = False
-    SANCTIONS_PROPAGATION_SCORING_ENABLED: bool = False
+    SANCTIONS_PROPAGATION_ENABLED: bool = True
+    SANCTIONS_PROPAGATION_SCORING_ENABLED: bool = True
     SANCTIONS_PROPAGATION_MAX_DEPTH: int = 3
 
     # ── Analyst Collaboration ──────────────────────────────────────────────
@@ -311,8 +311,8 @@ class Settings(BaseSettings):
     AUTO_ASSIGN_MIN_SCORE: int = 51
 
     # ── Trajectory Autoencoder Anomaly Detection ────────────────────────────
-    TRAJECTORY_AUTOENCODER_ENABLED: bool = False
-    TRAJECTORY_AUTOENCODER_SCORING_ENABLED: bool = False
+    TRAJECTORY_AUTOENCODER_ENABLED: bool = True
+    TRAJECTORY_AUTOENCODER_SCORING_ENABLED: bool = True
     TRAJECTORY_AUTOENCODER_EPOCHS: int = 200
     TRAJECTORY_AUTOENCODER_LEARNING_RATE: float = 0.1
 
@@ -340,7 +340,7 @@ class Settings(BaseSettings):
     REGIONAL_FP_TUNING_ENABLED: bool = True
 
     # ── Flag Risk Scoring V2 ───────────────────────────────────────────
-    FLAG_RISK_SCORING_V2_ENABLED: bool = False
+    FLAG_RISK_SCORING_V2_ENABLED: bool = True
     FLAG_RISK_PSC_WEIGHT: float = 0.25
     FLAG_RISK_FP_WEIGHT: float = 0.20
     FLAG_RISK_FLEET_WEIGHT: float = 0.25

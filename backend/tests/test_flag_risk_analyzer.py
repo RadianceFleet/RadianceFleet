@@ -486,7 +486,7 @@ class TestRiskScoringIntegration:
         """Config has FLAG_RISK_SCORING_V2_ENABLED and weight settings."""
         from app.config import Settings
         s = Settings()
-        assert s.FLAG_RISK_SCORING_V2_ENABLED is False
+        assert s.FLAG_RISK_SCORING_V2_ENABLED is True
         assert s.FLAG_RISK_PSC_WEIGHT == 0.25
         assert s.FLAG_RISK_FP_WEIGHT == 0.20
         assert s.FLAG_RISK_FLEET_WEIGHT == 0.25

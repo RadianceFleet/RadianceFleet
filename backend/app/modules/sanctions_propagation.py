@@ -15,6 +15,7 @@ import json
 import logging
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -88,32 +89,34 @@ def _find_shared_manager_vessels(
 
     results: list[tuple[int, str]] = []
 
+    all_exclude = exclude_ids | {vessel_id}
+
     if manager_type == "shared_ism_manager":
-        # ISM manager is stored as a column on VesselOwner
+        # ISM manager is stored as a column on VesselOwner — filter in SQL
         owners = (
             db.query(VesselOwner)
-            .filter(VesselOwner.ism_manager.isnot(None))
+            .filter(
+                func.upper(func.trim(VesselOwner.ism_manager)) == normalized,
+                VesselOwner.vessel_id.notin_(all_exclude),
+            )
             .all()
         )
         for owner in owners:
-            if owner.vessel_id in exclude_ids or owner.vessel_id == vessel_id:
-                continue
-            if _normalize_name(owner.ism_manager) == normalized:
-                results.append((owner.vessel_id, owner.ism_manager))
+            results.append((owner.vessel_id, owner.ism_manager))
     else:
         # Ship manager, DOC company, registered owner — stored as ownership_type rows
-        # Extract the actual ownership_type from the key (e.g. "shared_ship_manager" -> "ship_manager")
         otype = manager_type.replace("shared_", "", 1)
         owners = (
             db.query(VesselOwner)
-            .filter(VesselOwner.ownership_type == otype)
+            .filter(
+                VesselOwner.ownership_type == otype,
+                func.upper(func.trim(VesselOwner.owner_name)) == normalized,
+                VesselOwner.vessel_id.notin_(all_exclude),
+            )
             .all()
         )
         for owner in owners:
-            if owner.vessel_id in exclude_ids or owner.vessel_id == vessel_id:
-                continue
-            if _normalize_name(owner.owner_name) == normalized:
-                results.append((owner.vessel_id, owner.owner_name))
+            results.append((owner.vessel_id, owner.owner_name))
 
     return results
 
