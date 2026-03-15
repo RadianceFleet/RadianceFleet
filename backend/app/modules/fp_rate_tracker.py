@@ -53,6 +53,37 @@ class CalibrationSuggestion:
     fp_rate: float
 
 
+@dataclass
+class MonthlyFPRate:
+    """FP rate for a single calendar month."""
+
+    year: int
+    month: int
+    total: int
+    fp_count: int
+    fp_rate: float
+
+
+@dataclass
+class WatchFPRate:
+    """FP rate for a 4-hour watch bucket."""
+
+    watch_start_hour: int  # 0, 4, 8, 12, 16, 20
+    total: int
+    fp_count: int
+    fp_rate: float
+
+
+@dataclass
+class WeekdayFPRate:
+    """FP rate for a day of the week."""
+
+    weekday: int  # 0=Monday to 6=Sunday
+    total: int
+    fp_count: int
+    fp_rate: float
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -364,6 +395,386 @@ def compute_region_fp_rate(db: Session, region_id: int) -> CorridorFPRate | None
         fp_rate=round(fp_rate, 4),
     )
 
+
+
+# ---------------------------------------------------------------------------
+# Region helper
+# ---------------------------------------------------------------------------
+
+
+def _get_region_corridor_ids(db: Session, region_id: int) -> list[int]:
+    """Return corridor IDs belonging to a scoring region."""
+    import contextlib
+    import json
+
+    from app.models.scoring_region import ScoringRegion
+
+    region = db.query(ScoringRegion).filter(ScoringRegion.region_id == region_id).first()
+    if not region or not region.corridor_ids_json:
+        return []
+    corridor_ids: list[int] = []
+    with contextlib.suppress(json.JSONDecodeError, TypeError):
+        corridor_ids = json.loads(region.corridor_ids_json)
+    return corridor_ids
+
+
+# ---------------------------------------------------------------------------
+# Temporal FP analysis
+# ---------------------------------------------------------------------------
+
+
+def _temporal_base_query(db: Session, corridor_id: int | None = None, region_id: int | None = None):
+    """Build base query for reviewed gap events, filtered by corridor or region."""
+    q = db.query(AISGapEvent).filter(AISGapEvent.is_false_positive.isnot(None))
+    if corridor_id is not None:
+        q = q.filter(AISGapEvent.corridor_id == corridor_id)
+    elif region_id is not None:
+        corridor_ids = _get_region_corridor_ids(db, region_id)
+        if corridor_ids:
+            q = q.filter(AISGapEvent.corridor_id.in_(corridor_ids))
+        else:
+            # Region has no corridors — return query that matches nothing
+            q = q.filter(AISGapEvent.corridor_id == -1)
+    return q
+
+
+def compute_fp_rates_by_month(
+    db: Session, corridor_id: int | None = None, region_id: int | None = None
+) -> list[MonthlyFPRate]:
+    """Compute FP rates grouped by calendar month.
+
+    Requires min 30 observations per cell.
+    """
+    year_col = func.strftime("%Y", AISGapEvent.gap_start_utc).label("yr")
+    month_col = func.strftime("%m", AISGapEvent.gap_start_utc).label("mo")
+
+    filters = [AISGapEvent.is_false_positive.isnot(None)]
+    if corridor_id is not None:
+        filters.append(AISGapEvent.corridor_id == corridor_id)
+    elif region_id is not None:
+        corridor_ids = _get_region_corridor_ids(db, region_id)
+        if corridor_ids:
+            filters.append(AISGapEvent.corridor_id.in_(corridor_ids))
+        else:
+            return []
+
+    rows = (
+        db.query(
+            year_col,
+            month_col,
+            func.count(AISGapEvent.gap_event_id).label("total"),
+            func.sum(func.cast(AISGapEvent.is_false_positive, Integer)).label("fp_count"),
+        )
+        .filter(and_(*filters))
+        .group_by("yr", "mo")
+        .all()
+    )
+
+    results: list[MonthlyFPRate] = []
+    for row in rows:
+        total = row.total or 0
+        fp_count = row.fp_count or 0
+        if total < 30:
+            continue
+        results.append(
+            MonthlyFPRate(
+                year=int(row.yr),
+                month=int(row.mo),
+                total=total,
+                fp_count=fp_count,
+                fp_rate=round(fp_count / total, 4) if total > 0 else 0.0,
+            )
+        )
+
+    results.sort(key=lambda r: (r.year, r.month))
+    return results
+
+
+def compute_fp_rates_by_watch(
+    db: Session, corridor_id: int | None = None, region_id: int | None = None
+) -> list[WatchFPRate]:
+    """Compute FP rates grouped by 4-hour watch buckets.
+
+    Requires min 5 observations per bucket.
+    """
+    hour_col = func.strftime("%H", AISGapEvent.gap_start_utc).label("hr")
+
+    filters = [AISGapEvent.is_false_positive.isnot(None)]
+    if corridor_id is not None:
+        filters.append(AISGapEvent.corridor_id == corridor_id)
+    elif region_id is not None:
+        corridor_ids = _get_region_corridor_ids(db, region_id)
+        if corridor_ids:
+            filters.append(AISGapEvent.corridor_id.in_(corridor_ids))
+        else:
+            return []
+
+    rows = (
+        db.query(
+            hour_col,
+            func.count(AISGapEvent.gap_event_id).label("total"),
+            func.sum(func.cast(AISGapEvent.is_false_positive, Integer)).label("fp_count"),
+        )
+        .filter(and_(*filters))
+        .group_by("hr")
+        .all()
+    )
+
+    # Aggregate into 4-hour watch buckets
+    buckets: dict[int, dict] = {}
+    for row in rows:
+        hour = int(row.hr)
+        watch_start = (hour // 4) * 4
+        if watch_start not in buckets:
+            buckets[watch_start] = {"total": 0, "fp_count": 0}
+        buckets[watch_start]["total"] += row.total or 0
+        buckets[watch_start]["fp_count"] += row.fp_count or 0
+
+    results: list[WatchFPRate] = []
+    for watch_start in sorted(buckets):
+        total = buckets[watch_start]["total"]
+        fp_count = buckets[watch_start]["fp_count"]
+        if total < 5:
+            continue
+        results.append(
+            WatchFPRate(
+                watch_start_hour=watch_start,
+                total=total,
+                fp_count=fp_count,
+                fp_rate=round(fp_count / total, 4) if total > 0 else 0.0,
+            )
+        )
+
+    return results
+
+
+def compute_fp_rates_by_weekday(
+    db: Session, corridor_id: int | None = None, region_id: int | None = None
+) -> list[WeekdayFPRate]:
+    """Compute FP rates grouped by day-of-week.
+
+    SQLite strftime('%w') returns 0=Sunday..6=Saturday.
+    We convert to Python convention: 0=Monday..6=Sunday.
+    Requires min 5 observations per day.
+    """
+    dow_col = func.strftime("%w", AISGapEvent.gap_start_utc).label("dow")
+
+    filters = [AISGapEvent.is_false_positive.isnot(None)]
+    if corridor_id is not None:
+        filters.append(AISGapEvent.corridor_id == corridor_id)
+    elif region_id is not None:
+        corridor_ids = _get_region_corridor_ids(db, region_id)
+        if corridor_ids:
+            filters.append(AISGapEvent.corridor_id.in_(corridor_ids))
+        else:
+            return []
+
+    rows = (
+        db.query(
+            dow_col,
+            func.count(AISGapEvent.gap_event_id).label("total"),
+            func.sum(func.cast(AISGapEvent.is_false_positive, Integer)).label("fp_count"),
+        )
+        .filter(and_(*filters))
+        .group_by("dow")
+        .all()
+    )
+
+    results: list[WeekdayFPRate] = []
+    for row in rows:
+        sqlite_dow = int(row.dow)  # 0=Sunday, 1=Monday, ..., 6=Saturday
+        # Convert to Python: 0=Monday, ..., 6=Sunday
+        python_weekday = (sqlite_dow - 1) % 7
+        total = row.total or 0
+        fp_count = row.fp_count or 0
+        if total < 5:
+            continue
+        results.append(
+            WeekdayFPRate(
+                weekday=python_weekday,
+                total=total,
+                fp_count=fp_count,
+                fp_rate=round(fp_count / total, 4) if total > 0 else 0.0,
+            )
+        )
+
+    results.sort(key=lambda r: r.weekday)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# FP Rate Snapshots
+# ---------------------------------------------------------------------------
+
+
+def create_fp_rate_snapshots(db: Session) -> int:
+    """Create FP rate snapshot rows for corridors, regions, and signal-corridor combos.
+
+    Returns count of snapshots created.
+    """
+    import json
+
+    from app.config import settings
+    from app.models.fp_rate_snapshot import FPRateSnapshot
+    from app.models.scoring_region import ScoringRegion
+
+    min_verdicts = getattr(settings, "FP_SNAPSHOT_MIN_VERDICTS", 5)
+    now = datetime.now(UTC)
+    since = now - timedelta(days=30)
+    created = 0
+
+    # 1. Per-corridor snapshots
+    corridor_ids = (
+        db.query(AISGapEvent.corridor_id)
+        .filter(
+            AISGapEvent.corridor_id.isnot(None),
+            AISGapEvent.is_false_positive.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+
+    for (cid,) in corridor_ids:
+        total, fp_count, rate = _fp_rate_for_window(db, cid, since=since)
+        if total < min_verdicts:
+            continue
+        snap = FPRateSnapshot(
+            corridor_id=cid,
+            region_id=None,
+            signal_name=None,
+            snapshot_date=now,
+            period_days=30,
+            total_reviewed=total,
+            false_positives=fp_count,
+            fp_rate=round(rate, 4),
+        )
+        db.add(snap)
+        created += 1
+
+    # 2. Per-region snapshots
+    regions = db.query(ScoringRegion).filter(ScoringRegion.is_active.is_(True)).all()
+    for region in regions:
+        cids: list[int] = []
+        if region.corridor_ids_json:
+            import contextlib
+
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
+                cids = json.loads(region.corridor_ids_json)
+        if not cids:
+            continue
+
+        total_reviewed = 0
+        total_fp = 0
+        for cid in cids:
+            t, fp, _ = _fp_rate_for_window(db, cid, since=since)
+            total_reviewed += t
+            total_fp += fp
+
+        if total_reviewed < min_verdicts:
+            continue
+        rate = total_fp / total_reviewed if total_reviewed > 0 else 0.0
+        snap = FPRateSnapshot(
+            corridor_id=None,
+            region_id=region.region_id,
+            signal_name=None,
+            snapshot_date=now,
+            period_days=30,
+            total_reviewed=total_reviewed,
+            false_positives=total_fp,
+            fp_rate=round(rate, 4),
+        )
+        db.add(snap)
+        created += 1
+
+    # 3. Per-signal per-corridor snapshots
+    for (cid,) in corridor_ids:
+        # Get reviewed gaps with risk_breakdown for this corridor in the window
+        gaps = (
+            db.query(AISGapEvent)
+            .filter(
+                AISGapEvent.corridor_id == cid,
+                AISGapEvent.is_false_positive.isnot(None),
+                AISGapEvent.review_date >= since,
+            )
+            .all()
+        )
+
+        signal_counts: dict[str, dict] = defaultdict(lambda: {"total": 0, "fp": 0})
+        for gap in gaps:
+            breakdown = None
+            if gap.risk_breakdown_json:
+                import contextlib
+
+                with contextlib.suppress(json.JSONDecodeError, TypeError):
+                    breakdown = json.loads(gap.risk_breakdown_json) if isinstance(gap.risk_breakdown_json, str) else gap.risk_breakdown_json
+
+            if not breakdown or not isinstance(breakdown, dict):
+                continue
+
+            for signal_name in breakdown:
+                if signal_name.startswith("_"):
+                    continue
+                signal_counts[signal_name]["total"] += 1
+                if gap.is_false_positive:
+                    signal_counts[signal_name]["fp"] += 1
+
+        for signal_name, counts in signal_counts.items():
+            if counts["total"] < min_verdicts:
+                continue
+            rate = counts["fp"] / counts["total"] if counts["total"] > 0 else 0.0
+            snap = FPRateSnapshot(
+                corridor_id=cid,
+                region_id=None,
+                signal_name=signal_name,
+                snapshot_date=now,
+                period_days=30,
+                total_reviewed=counts["total"],
+                false_positives=counts["fp"],
+                fp_rate=round(rate, 4),
+            )
+            db.add(snap)
+            created += 1
+
+    db.flush()
+    return created
+
+
+def get_fp_rate_trend(
+    db: Session,
+    corridor_id: int | None = None,
+    region_id: int | None = None,
+    signal_name: str | None = None,
+    lookback_days: int = 180,
+) -> list[dict]:
+    """Query stored FP rate snapshots for trend analysis.
+
+    Returns list of dicts sorted by date ascending.
+    """
+    from app.models.fp_rate_snapshot import FPRateSnapshot
+
+    cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
+
+    q = db.query(FPRateSnapshot).filter(FPRateSnapshot.snapshot_date >= cutoff)
+
+    if corridor_id is not None:
+        q = q.filter(FPRateSnapshot.corridor_id == corridor_id)
+    if region_id is not None:
+        q = q.filter(FPRateSnapshot.region_id == region_id)
+    if signal_name is not None:
+        q = q.filter(FPRateSnapshot.signal_name == signal_name)
+
+    q = q.order_by(FPRateSnapshot.snapshot_date.asc())
+    rows = q.all()
+
+    return [
+        {
+            "date": row.snapshot_date.isoformat() if row.snapshot_date else None,
+            "fp_rate": row.fp_rate,
+            "total": row.total_reviewed,
+            "false_positives": row.false_positives,
+        }
+        for row in rows
+    ]
 
 
 # ---------------------------------------------------------------------------

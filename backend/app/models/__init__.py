@@ -23,6 +23,7 @@ from app.models.data_coverage_window import DataCoverageWindow
 from app.models.draught_event import DraughtChangeEvent
 from app.models.evidence_card import EvidenceCard
 from app.models.fleet_alert import FleetAlert
+from app.models.fp_rate_snapshot import FPRateSnapshot
 from app.models.gap_event import AISGapEvent
 from app.models.ground_truth import GroundTruthVessel
 from app.models.handoff_note import HandoffNote
@@ -100,6 +101,7 @@ __all__ = [
     "OwnerCluster",
     "OwnerClusterMember",
     "FleetAlert",
+    "FPRateSnapshot",
     "PipelineRun",
     "MergeChain",
     "VesselFingerprint",
