@@ -577,6 +577,11 @@ trajectory_clustering:
   high_deviation: 30
   moderate_deviation: 15
 
+trajectory_autoencoder:
+  high: 30
+  medium: 18
+  low: 8
+
 trajectory_pca:
   high: 30
   medium: 18

@@ -297,6 +297,12 @@ class Settings(BaseSettings):
     WORKLOAD_PRIORITY_WEIGHTING_ENABLED: bool = True
     AUTO_ASSIGN_MIN_SCORE: int = 51
 
+    # ── Trajectory Autoencoder Anomaly Detection ────────────────────────────
+    TRAJECTORY_AUTOENCODER_ENABLED: bool = False
+    TRAJECTORY_AUTOENCODER_SCORING_ENABLED: bool = False
+    TRAJECTORY_AUTOENCODER_EPOCHS: int = 200
+    TRAJECTORY_AUTOENCODER_LEARNING_RATE: float = 0.1
+
     # --- v4.2: Trajectory PCA ---
     TRAJECTORY_PCA_ENABLED: bool = True
     TRAJECTORY_PCA_SCORING_ENABLED: bool = True

@@ -72,6 +72,7 @@ _EXPECTED_SECTIONS = [
     "trajectory_clustering",
     "ais_reporting_anomaly",
     "ownership_transparency",
+    "trajectory_autoencoder",
     "trajectory_pca",
     "behavioral_baseline",
     "sts_hotspot",
