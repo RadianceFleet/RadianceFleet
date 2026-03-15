@@ -56,6 +56,7 @@ from app.models.sts_transfer import StsTransferEvent
 from app.models.stubs import DarkVesselDetection, HuntCandidate, SearchMission, VesselTargetProfile
 from app.models.tip_submission import TipSubmission
 from app.models.trajectory_cluster import TrajectoryCluster
+from app.models.trajectory_autoencoder_anomaly import TrajectoryAutoencoderAnomaly
 from app.models.trajectory_cluster_member import TrajectoryClusterMember
 from app.models.trajectory_pca_anomaly import TrajectoryPcaAnomaly
 from app.models.verification_log import VerificationLog
@@ -140,4 +141,5 @@ __all__ = [
     "CalibrationEvent",
     "ScoringRegion",
     "NotificationEvent",
+    "TrajectoryAutoencoderAnomaly",
 ]

@@ -1586,3 +1586,46 @@ def get_isolation_forest_anomaly(
     if result is None:
         raise HTTPException(status_code=404, detail="No anomaly record for this vessel")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Trajectory Autoencoder Anomaly Detection
+# ---------------------------------------------------------------------------
+
+
+@router.post("/detect/trajectory-autoencoder", tags=["detection"])
+def detect_trajectory_autoencoder(
+    vessel_id: int = Query(..., description="Vessel ID to run detection for"),
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Run trajectory autoencoder anomaly detection for a specific vessel."""
+    from app.modules.trajectory_autoencoder_detector import detect_trajectory_autoencoder_anomalies
+
+    anomalies = detect_trajectory_autoencoder_anomalies(db, vessel_id)
+    return {
+        "vessel_id": vessel_id,
+        "anomalies_found": len(anomalies),
+        "anomalies": [
+            {
+                "id": a.id,
+                "segment_start": a.segment_start.isoformat() if a.segment_start else None,
+                "segment_end": a.segment_end.isoformat() if a.segment_end else None,
+                "reconstruction_error": a.reconstruction_error,
+                "tier": a.tier,
+            }
+            for a in anomalies
+        ],
+    }
+
+
+@router.get("/detect/trajectory-autoencoder/{vessel_id}", tags=["detection"])
+def get_trajectory_autoencoder_anomalies(
+    vessel_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get trajectory autoencoder anomaly results for a specific vessel."""
+    from app.modules.trajectory_autoencoder_detector import get_vessel_autoencoder_anomalies
+
+    results = get_vessel_autoencoder_anomalies(db, vessel_id)
+    return {"vessel_id": vessel_id, "items": results, "total": len(results)}
