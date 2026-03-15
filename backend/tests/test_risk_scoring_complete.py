@@ -151,6 +151,7 @@ def test_gap_frequency_subsumption_7d_only():
 def test_gap_frequency_values_match_config():
     """Frequency signal point values match risk_scoring.yaml definitions."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
 
     # Test each window individually by providing counts that trigger only one
     gap = _make_gap(duration_minutes=6 * 60)
@@ -754,6 +755,7 @@ def _make_history(field_changed: str, days_before_gap: int) -> MagicMock:
 def test_flag_change_7d_supersedes_30d():
     """Flag change within 7d → flag_change_7d (+35) fires; flag_change_30d must NOT also fire."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(duration_minutes=6 * 60)
     flag_change_5d = _make_history("flag", days_before_gap=5)
 
@@ -768,6 +770,7 @@ def test_flag_change_7d_supersedes_30d():
 def test_flag_change_30d_fires_when_outside_7d():
     """Flag change 20d before gap (within 30d, outside 7d) → flag_change_30d (+25), not 7d."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(duration_minutes=6 * 60)
     flag_change_20d = _make_history("flag", days_before_gap=20)
 
@@ -782,6 +785,7 @@ def test_flag_change_30d_fires_when_outside_7d():
 def test_name_change_7d_fires_active_voyage():
     """Name change 5d before gap → name_change_during_voyage (+30)."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(duration_minutes=6 * 60)
     name_change_5d = _make_history("name", days_before_gap=5)
 
@@ -825,6 +829,7 @@ def test_mmsi_change_adds_45():
 def test_sts_pairwise_dedup_3_vessel_cluster():
     """3-vessel cluster creates 2 STS events per vessel — only max score counts."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(duration_minutes=6 * 60)
 
     # Simulate 2 STS events (vessel is in A-B and A-C pairs) with different scores
@@ -861,6 +866,7 @@ def test_sts_pairwise_dedup_3_vessel_cluster():
 def test_loiter_gap_loiter_full_cycle_25():
     """Loitering event with BOTH preceding and following gap → full cycle (+25)."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(duration_minutes=6 * 60)
 
     le = MagicMock()
@@ -1231,6 +1237,7 @@ def test_vessel_laid_up_30d_score():
 def test_vessel_laid_up_60d_score():
     """Vessel laid up 60+ days → +25 pts (overrides 30d)."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(duration_minutes=6 * 60, vessel_laid_up_60d=True, vessel_laid_up_30d=True)
     db = _make_mock_db_empty()
     _, bd = compute_gap_score(gap, config, db=db)
@@ -1241,6 +1248,7 @@ def test_vessel_laid_up_60d_score():
 def test_vessel_laid_up_in_sts_zone_score():
     """Vessel laid up in STS zone → +30 pts (overrides 30d and 60d)."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(
         duration_minutes=6 * 60,
         vessel_laid_up_in_sts_zone=True,
@@ -1288,6 +1296,7 @@ def test_speed_impossible_no_duration_bonus():
     Only speed_spike and speed_spoof should get the duration bonus.
     """
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(duration_minutes=24 * 60, deadweight=100_000)  # 24h gap → 55pts duration
     _, bd = compute_gap_score(gap, config, pre_gap_sog=35.0)
 
@@ -1361,6 +1370,7 @@ def test_loitering_12h_export_route_scores_8():
 def test_loitering_12h_sts_zone_scores_20():
     """Bug 0.2 positive case: 12h+ loitering in STS zone → +20."""
     config = load_scoring_config()
+    config["family_caps"] = {"enabled": False}
     gap = _make_gap(duration_minutes=6 * 60)
 
     loiter = MagicMock()

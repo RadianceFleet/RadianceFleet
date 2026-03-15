@@ -680,6 +680,229 @@ def _corroboration_bonus(breakdown: dict, config: dict) -> int:
     return 0
 
 
+# ── Signal family saturation cap sets ─────────────────────────────────────────
+# Each signal belongs to exactly one cap family. These are separate from the
+# 4 pillar frozensets above (which remain unchanged for corroboration bonus).
+# Dynamic-suffix signals (loitering_*, sts_event_*, etc.) are matched by prefix.
+
+_CAP_FAMILY_GAP_AND_SPEED = frozenset({
+    # gap_duration signals
+    "gap_duration_2h_4h", "gap_duration_4h_8h", "gap_duration_8h_12h",
+    "gap_duration_12h_24h", "gap_duration_24h_plus",
+    # speed signals
+    "speed_spike_before_gap", "speed_spoof_before_gap", "speed_impossible",
+    "gap_duration_speed_spike_bonus",
+    # gap frequency
+    "gap_frequency_2_in_7d", "gap_frequency_3_in_14d", "gap_frequency_3_in_30d",
+    "gap_frequency_4_in_30d", "gap_frequency_5_in_30d",
+    # movement envelope
+    "impossible_reappear", "near_impossible_reappear",
+    # gap-SAR validation (confirmed dark transit)
+    "gap_sar_confirmed_dark", "gap_sar_detection_bonus",
+    # gap reactivation
+    "gap_reactivation_in_jamming_zone",
+})
+
+_CAP_FAMILY_SPOOFING_AND_POSITION = frozenset({
+    # spoofing signals (exact keys from SpoofingAnomaly via spoofing_<type>)
+    "spoofing_anchor_spoof", "spoofing_circle_spoof",
+    "spoofing_circle_spoof_stationary", "spoofing_circle_spoof_deliberate",
+    "spoofing_circle_spoof_equipment", "spoofing_slow_roll",
+    "spoofing_mmsi_reuse", "spoofing_nav_status_mismatch",
+    "spoofing_erratic_nav_status", "spoofing_dual_transmission",
+    "spoofing_cross_receiver_disagreement", "spoofing_identity_swap",
+    "spoofing_fake_port_call",
+    # track naturalness
+    "track_naturalness_high", "track_naturalness_medium", "track_naturalness_low",
+    # transmission frequency
+    "transmission_frequency_mismatch",
+    # sparse transmission
+    "sparse_transmission",
+    # stale AIS and destination (from spoofing anomaly records)
+    "spoofing_stale_ais_data", "spoofing_destination_deviation",
+    # track replay
+    "track_replay",
+    # EEZ boundary proximity
+    "eez_boundary_proximity_5nm", "eez_boundary_proximity_20nm",
+    # suspicious MID
+    "suspicious_mid",
+    # new MMSI signals
+    "new_mmsi_first_30d", "new_mmsi_first_60d", "new_mmsi_russian_origin_flag",
+    # MMSI change signals
+    "mmsi_change", "mmsi_change_different_position",
+})
+
+_CAP_FAMILY_IDENTITY_AND_OWNERSHIP = frozenset({
+    # vessel age
+    "vessel_age_15_20y", "vessel_age_20_25y", "vessel_age_25plus",
+    "vessel_age_25plus_high_risk",
+    # flag signals
+    "flag_high_risk", "flag_hopping", "flag_changes_3plus_90d",
+    "flag_change_30d", "flag_change_7d", "flag_and_name_change_48h",
+    "flag_change_high_to_low_12m", "flag_change_single_12m",
+    "flag_less_than_2y_AND_high_risk", "flag_corridor_coupling",
+    # P&I insurance
+    "pi_coverage_lapsed", "pi_known_fraudulent", "pi_unknown_insurer",
+    "pi_no_insurer", "pi_equasis_not_found",
+    "pi_cycling",
+    # PSC detention
+    "psc_detained_last_12m", "psc_major_deficiencies_3_plus",
+    "psc_multiple_detentions_3_plus", "psc_multiple_detentions_2",
+    "psc_detention_in_last_30d", "psc_detention_in_last_90d",
+    "psc_paris_mou_ban", "psc_deficiency_count_10_plus",
+    # owner/sanctions
+    "owner_or_manager_on_sanctions_list",
+    # identity signals
+    "callsign_change", "identity_merge_detected",
+    "imo_fabricated", "stateless_mmsi",
+    "name_change_during_voyage",
+    # AIS class
+    "ais_class_mismatch", "class_switching_a_to_b",
+    # rename velocity
+    "rename_velocity_2_365d", "rename_velocity_3_365d",
+    # invalid metadata
+    "invalid_metadata_generic_name", "invalid_metadata_impossible_dwt",
+    "no_name_at_all", "name_all_caps_numbers",
+    # KSE profile
+    "kse_shadow_profile_match", "kse_shadow_profile_strong",
+    # ISM/P&I continuity
+    "ism_manager_persistent_across_owners", "pi_club_persistent_across_owners",
+    # ownership transparency
+    "ownership_spv", "ownership_secrecy_jurisdiction",
+    "ownership_recent_incorporation", "ownership_nominee_director",
+    "ownership_spv_shell_compound", "ownership_jurisdiction_hopping",
+    # ownership graph
+    "ownership_shell_chain", "ownership_circular",
+    "ownership_reshuffling", "ownership_shared_address_sanctioned",
+    "ownership_cluster_sanctioned",
+    # fraudulent registry
+    "fraudulent_registry_tier_0", "fraudulent_registry_tier_1",
+    # IMO fraud (dynamic suffix but known patterns)
+    "imo_fraud_simultaneous", "imo_fraud_near_miss",
+    # scrapped
+    "scrapped_imo_reuse", "scrapped_imo_in_chain",
+    # merge chains
+    "merge_chain_4plus", "merge_chain_3",
+    # vessel type consistency
+    "vessel_type_consistency",
+})
+
+_CAP_FAMILY_VOYAGE_AND_STS = frozenset({
+    # sanctioned port
+    "sanctioned_port_visit_confirmed", "sanctioned_port_proximity_10nm",
+    "crea_sanctioned_destination",
+    # russian port
+    "russian_port_recent", "russian_port_gap_sts",
+    # voyage pattern
+    "voyage_cycle_pattern",
+    # at-sea operations
+    "at_sea_no_port_call_90d", "at_sea_no_port_call_180d", "at_sea_no_port_call_365d",
+    # route
+    "route_deviation_toward_sts", "route_laundering",
+    "laden_from_russian_terminal_sts",
+    # STS chains
+    "sts_chain_3", "sts_chain_4_plus", "sts_intermediary",
+    "sts_with_sanctioned_vessel", "sts_with_shadow_fleet_vessel",
+    # draught
+    "draught_sts_confirmation", "draught_swing_extreme", "draught_offshore_change",
+    # STS corridor
+    "gap_in_sts_tagged_corridor",
+    # repeat STS
+    "repeat_sts_partnership",
+    # vessel laid up
+    "vessel_laid_up_in_sts_zone", "vessel_laid_up_60d", "vessel_laid_up_30d",
+})
+
+_CAP_FAMILY_SATELLITE_AND_DARK = frozenset({
+    # dark zone
+    "dark_zone_entry", "dark_zone_exit_impossible",
+    "selective_dark_zone_evasion",
+    # dark vessel detection
+    "dark_vessel_unmatched", "dark_vessel_unmatched_in_corridor",
+    # VIIRS signals
+    "viirs_ais_gap_match", "viirs_unmatched_in_corridor", "viirs_unmatched",
+    # gap-SAR partial/outage (confirmed is in gap_and_speed)
+})
+
+_CAP_FAMILY_WATCHLIST = frozenset({
+    # watchlist signals (dynamic: watchlist_OFAC_SDN, watchlist_EU_COUNCIL, etc.)
+    "watchlist_stub_score",
+    # scrapped/zombie
+    "mmsi_zombie_reuse", "mmsi_zombie_different_imo",
+})
+
+_CAP_FAMILY_BEHAVIORAL = frozenset({
+    # behavioral deviation
+    "behavioral_deviation_3sigma", "behavioral_deviation_2sigma",
+    # AIS reporting anomaly
+    "ais_reporting_anomaly",
+})
+
+# Prefixes for dynamic-suffix signals that belong to each family.
+# Keys generated at runtime with numeric IDs (loitering_42, sts_event_7, etc.)
+# are matched by prefix.
+_CAP_DYNAMIC_PREFIXES: dict[str, tuple[str, ...]] = {
+    "voyage_and_sts": ("loiter", "sts_event_", "repeat_sts"),
+    "watchlist": ("watchlist_",),
+    "spoofing_and_position": ("spoofing_",),
+    "satellite_and_dark": ("viirs_",),
+    "identity_and_ownership": ("fleet_", "imo_fraud_", "convoy_"),
+}
+
+
+def _apply_family_caps(breakdown: dict, config: dict) -> None:
+    """Apply per-family saturation caps to prevent any signal family from dominating.
+
+    Proportionally scales down all positive signals in a family if the family total
+    exceeds its configured cap. Modifies breakdown in-place.
+    """
+    caps_cfg = config.get("family_caps", {})
+    if not caps_cfg.get("enabled", False):
+        return
+
+    families: dict[str, tuple[frozenset, int]] = {
+        "gap_and_speed": (_CAP_FAMILY_GAP_AND_SPEED, caps_cfg.get("gap_and_speed", 55)),
+        "spoofing_and_position": (_CAP_FAMILY_SPOOFING_AND_POSITION, caps_cfg.get("spoofing_and_position", 60)),
+        "identity_and_ownership": (_CAP_FAMILY_IDENTITY_AND_OWNERSHIP, caps_cfg.get("identity_and_ownership", 50)),
+        "voyage_and_sts": (_CAP_FAMILY_VOYAGE_AND_STS, caps_cfg.get("voyage_and_sts", 50)),
+        "satellite_and_dark": (_CAP_FAMILY_SATELLITE_AND_DARK, caps_cfg.get("satellite_and_dark", 45)),
+        "watchlist": (_CAP_FAMILY_WATCHLIST, caps_cfg.get("watchlist", 60)),
+        "behavioral": (_CAP_FAMILY_BEHAVIORAL, caps_cfg.get("behavioral", 40)),
+    }
+
+    for family_name, (family_keys, cap) in families.items():
+        # Collect positive signals in this family
+        family_signals: dict[str, float] = {}
+        dynamic_prefixes = _CAP_DYNAMIC_PREFIXES.get(family_name, ())
+
+        for k, v in breakdown.items():
+            if k.startswith("_"):
+                continue
+            if not isinstance(v, (int, float)) or v <= 0:
+                continue
+            # Check exact membership first
+            if k in family_keys:
+                family_signals[k] = v
+            # Then check dynamic prefix matching
+            elif dynamic_prefixes and any(k.startswith(p) for p in dynamic_prefixes):
+                family_signals[k] = v
+
+        family_total = sum(family_signals.values())
+        if family_total <= cap:
+            continue
+
+        # Proportionally scale down
+        scale = cap / family_total
+        for k in family_signals:
+            breakdown[k] = round(breakdown[k] * scale)
+
+        # Add traceability metadata
+        breakdown[f"_family_cap_applied_{family_name}"] = {
+            "original": round(family_total),
+            "capped_to": cap,
+        }
+
+
 # ── Main scoring function ─────────────────────────────────────────────────────
 
 
@@ -3081,6 +3304,14 @@ def compute_gap_score(
         legitimacy_signals = sum(
             v for v in breakdown.values() if isinstance(v, (int, float)) and v < 0
         )
+
+    # Apply family saturation caps before multiplier amplification
+    _apply_family_caps(breakdown, config)
+    # Recalculate after caps
+    risk_signals = sum(v for v in breakdown.values() if isinstance(v, (int, float)) and v > 0)
+    legitimacy_signals = sum(
+        v for v in breakdown.values() if isinstance(v, (int, float)) and v < 0
+    )
 
     # Fix 3: cap corridor multiplier at 1.0 for EU/NATO flagged vessels.
     # The ×1.5 transit corridor multiplier was designed for shadow fleet vessels going dark
