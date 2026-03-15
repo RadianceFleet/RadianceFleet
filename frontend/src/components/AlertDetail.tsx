@@ -12,6 +12,7 @@ import { ScoreBadge } from "./ui/ScoreBadge";
 import { AlertStatusPanel } from "./AlertStatusPanel";
 import { AlertExportPanel } from "./AlertExportPanel";
 import { NarrativePanel } from "./NarrativePanel";
+import { VerificationChecklist } from "./VerificationChecklist";
 import { useAuth } from "../hooks/useAuth";
 import {
   sectionHead,
@@ -274,6 +275,9 @@ export function AlertDetail() {
         verdictMutation={verdictMutation}
         readOnly={!isAuthenticated}
       />
+
+      {/* Evidence Verification Checklist */}
+      <VerificationChecklist alertId={id!} readOnly={!isAuthenticated} />
 
       {/* Investigation Narrative */}
       <NarrativePanel alertId={id!} />

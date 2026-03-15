@@ -744,6 +744,12 @@ def submit_alert_verdict(
 
     body = AlertVerdictRequest(**body)
 
+    # Enforce checklist completion before verdict if enabled
+    if settings.VERIFICATION_CHECKLIST_ENABLED and settings.VERIFICATION_CHECKLIST_ENFORCE_BEFORE_VERDICT:
+        from app.modules.verification_checklist import enforce_checklist_before_verdict
+
+        enforce_checklist_before_verdict(db, alert_id)
+
     valid_verdicts = {"confirmed_tp", "confirmed_fp"}
     if body.verdict not in valid_verdicts:
         raise HTTPException(
@@ -1402,4 +1408,83 @@ def get_alert_narrative(
     result = generate_narrative(alert_id, db, output_format=format)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Evidence Verification Checklist
+# ---------------------------------------------------------------------------
+
+
+@router.post("/alerts/{alert_id}/checklist", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def create_checklist(
+    request: Request,
+    alert_id: int,
+    body: dict | None = None,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Create a verification checklist for an alert (auto-detect or specify template)."""
+    from app.models.gap_event import AISGapEvent
+    from app.modules.verification_checklist import (
+        create_checklist_for_alert,
+        get_checklist_template,
+    )
+
+    if not settings.VERIFICATION_CHECKLIST_ENABLED:
+        raise HTTPException(status_code=400, detail="Verification checklist feature is disabled")
+
+    alert = db.query(AISGapEvent).filter(AISGapEvent.gap_event_id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    template = (body or {}).get("template") or get_checklist_template(alert)
+
+    result = create_checklist_for_alert(db, alert_id, template, auth["analyst_id"])
+    db.commit()
+    return result
+
+
+@router.get("/alerts/{alert_id}/checklist", tags=["alerts"])
+def get_checklist(
+    alert_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get the current checklist state for an alert."""
+    from app.modules.verification_checklist import get_checklist_for_alert
+
+    if not settings.VERIFICATION_CHECKLIST_ENABLED:
+        raise HTTPException(status_code=400, detail="Verification checklist feature is disabled")
+
+    result = get_checklist_for_alert(db, alert_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No checklist found for this alert")
+    return result
+
+
+@router.patch("/alerts/{alert_id}/checklist/items/{item_id}", tags=["alerts"])
+@limiter.limit(settings.RATE_LIMIT_ADMIN)
+def toggle_checklist_item(
+    request: Request,
+    alert_id: int,
+    item_id: int,
+    body: dict,
+    db: Session = Depends(get_db),
+    auth: dict = Depends(require_auth),
+):
+    """Toggle a checklist item's checked state, optionally with notes."""
+    from app.modules.verification_checklist import check_item, uncheck_item
+
+    if not settings.VERIFICATION_CHECKLIST_ENABLED:
+        raise HTTPException(status_code=400, detail="Verification checklist feature is disabled")
+
+    is_checked = body.get("is_checked", True)
+    notes = body.get("notes")
+
+    if is_checked:
+        result = check_item(db, item_id, auth["analyst_id"], notes=notes)
+    else:
+        result = uncheck_item(db, item_id)
+    db.commit()
     return result
