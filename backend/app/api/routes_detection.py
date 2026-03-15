@@ -1664,3 +1664,41 @@ def get_insurance_gaps(
 
     gaps = get_vessel_insurance_gaps(db, vessel_id)
     return {"vessel_id": vessel_id, "total": len(gaps), "items": gaps}
+
+
+# ---------------------------------------------------------------------------
+# Sanctions Propagation Engine
+# ---------------------------------------------------------------------------
+
+
+@router.post("/detect/propagate-sanctions", tags=["detection"])
+def propagate_sanctions_endpoint(
+    vessel_id: int | None = None,
+    db: Session = Depends(get_db),
+    _auth: dict = Depends(require_auth),
+):
+    """Run multi-hop sanctions propagation through shared infrastructure.
+
+    Optionally pass vessel_id to propagate from a specific sanctioned vessel.
+    Otherwise propagates from all vessels with active watchlist hits.
+    """
+    from app.modules.sanctions_propagation import propagate_sanctions_multi_hop
+
+    records = propagate_sanctions_multi_hop(db, vessel_id=vessel_id)
+    return {
+        "status": "ok",
+        "records_created": len(records),
+        "vessel_ids_affected": list({r.vessel_id for r in records}),
+    }
+
+
+@router.get("/detect/sanctions-propagation/{vessel_id}", tags=["detection"])
+def get_sanctions_propagation(
+    vessel_id: int,
+    db: Session = Depends(get_db),
+):
+    """Get sanctions propagation results for a specific vessel."""
+    from app.modules.sanctions_propagation import get_vessel_propagations
+
+    results = get_vessel_propagations(db, vessel_id)
+    return {"vessel_id": vessel_id, "propagations": results}

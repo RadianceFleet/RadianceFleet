@@ -90,6 +90,7 @@ _EXPECTED_SECTIONS = [
     "multiplier_gating",
     "flag_state_v2",
     "insurance_gap",
+    "sanctions_propagation",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)

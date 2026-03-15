@@ -3121,6 +3121,36 @@ def compute_gap_score(
                 e,
             )
 
+    # ── Sanctions Propagation scoring ────────────────────────────────────
+    if (
+        getattr(_scoring_settings, "SANCTIONS_PROPAGATION_SCORING_ENABLED", False)
+        and db is not None
+        and vessel is not None
+    ):
+        try:
+            from app.models.sanctions_propagation import SanctionsPropagation as _SP
+
+            sp_records = (
+                db.query(_SP)
+                .filter(
+                    _SP.vessel_id == vessel.vessel_id,
+                    _SP.is_active == True,  # noqa: E712
+                )
+                .all()
+            )
+            if sp_records:
+                sp_cfg = config.get("sanctions_propagation", {})
+                sp_max = sp_cfg.get("max_score", 50)
+                sp_total = min(sum(r.risk_score_component for r in sp_records), sp_max)
+                if sp_total > 0:
+                    breakdown["sanctions_propagation"] = sp_total
+        except Exception as e:
+            logger.debug(
+                "Sanctions propagation scoring failed for vessel %s: %s",
+                vessel.vessel_id,
+                e,
+            )
+
     # ── Stage 5-C: Voyage prediction + cargo inference + weather scoring ────
     if _scoring_settings.VOYAGE_SCORING_ENABLED and db is not None and vessel is not None:
         voyage_cfg = config.get("voyage", {})

@@ -300,6 +300,11 @@ class Settings(BaseSettings):
     # ── Ownership Transparency Scoring ────────────────────────────────
     OWNERSHIP_TRANSPARENCY_SCORING_ENABLED: bool = True
 
+    # ── Sanctions Propagation Engine ─────────────────────────────────
+    SANCTIONS_PROPAGATION_ENABLED: bool = False
+    SANCTIONS_PROPAGATION_SCORING_ENABLED: bool = False
+    SANCTIONS_PROPAGATION_MAX_DEPTH: int = 3
+
     # ── Analyst Collaboration ──────────────────────────────────────────────
     AUTO_ASSIGNMENT_ENABLED: bool = False
     WORKLOAD_PRIORITY_WEIGHTING_ENABLED: bool = True
