@@ -9,6 +9,8 @@ from app.models.api_key import ApiKey
 from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.calibration_event import CalibrationEvent
+from app.models.case_activity import CaseActivity
+from app.models.case_analyst import CaseAnalyst
 from app.models.case_alert import CaseAlert
 from app.models.collection_run import CollectionRun
 from app.models.convoy_event import ConvoyEvent
@@ -130,6 +132,8 @@ __all__ = [
     "HandoffNote",
     "CorridorScoringOverride",
     "InvestigationCase",
+    "CaseActivity",
+    "CaseAnalyst",
     "CaseAlert",
     "CalibrationEvent",
     "ScoringRegion",

@@ -29,6 +29,43 @@ class CaseUpdate(BaseModel):
     tags: list[str] | None = None
 
 
+class CaseAnalystAdd(BaseModel):
+    """Request body to add an analyst to a case."""
+
+    analyst_id: int
+    role: str = "contributor"  # "lead", "contributor", "reviewer"
+
+
+class CaseAnalystResponse(BaseModel):
+    """Response for a case analyst membership."""
+
+    analyst_id: int
+    analyst_name: str
+    role: str
+    added_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CaseActivityResponse(BaseModel):
+    """Response for a case activity entry."""
+
+    activity_id: int
+    analyst_name: str | None = None
+    action: str
+    details: dict | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CaseHandoffRequest(BaseModel):
+    """Request body for case-level handoff."""
+
+    to_analyst_id: int
+    notes: str | None = None
+
+
 class CaseResponse(BaseModel):
     """Full investigation case response."""
 
@@ -44,6 +81,7 @@ class CaseResponse(BaseModel):
     corridor_id: int | None = None
     tags: list[str] = Field(default_factory=list)
     alert_count: int = 0
+    analysts: list[CaseAnalystResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
