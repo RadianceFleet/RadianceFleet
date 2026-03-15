@@ -358,6 +358,11 @@ class Settings(BaseSettings):
     # ── Operations ───────────────────────────────────────────────────────
     PROMETHEUS_ENABLED: bool = False
 
+    # ── Notification Rules Engine ────────────────────────────────────────────────
+    NOTIFICATION_RULES_ENABLED: bool = False
+    NOTIFICATION_RULES_DEFAULT_THROTTLE_MINUTES: int = 30
+    SLACK_BOT_TOKEN: str | None = None
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:

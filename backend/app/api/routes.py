@@ -29,6 +29,7 @@ from app.api.routes_sse import router as sse_router
 from app.api.routes_sse_unified import router as sse_unified_router
 from app.api.routes_sts_hotspots import router as sts_hotspots_router
 from app.api.routes_trajectory_pca import router as trajectory_pca_router
+from app.api.routes_notification_rules import router as notification_rules_router
 from app.api.routes_vessels import router as vessels_router
 
 router = APIRouter()
@@ -50,3 +51,4 @@ router.include_router(fp_tuning_router)
 router.include_router(public_router)
 router.include_router(embed_router)
 router.include_router(cases_router)
+router.include_router(notification_rules_router)
