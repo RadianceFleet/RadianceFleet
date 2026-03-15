@@ -19,6 +19,7 @@ from app.api.routes_behavioral_baseline import router as behavioral_baseline_rou
 from app.api.routes_collaboration import router as collaboration_router
 from app.api.routes_detection import router as detection_router
 from app.api.routes_embed import router as embed_router
+from app.api.routes_exports import router as exports_router
 from app.api.routes_explainability import router as explainability_router
 from app.api.routes_fp_tuning import router as fp_tuning_router
 from app.api.routes_health import router as health_router
@@ -57,3 +58,4 @@ from app.api.routes_archival import router as archival_router
 router.include_router(archival_router)
 router.include_router(spire_router)
 router.include_router(notification_rules_router)
+router.include_router(exports_router)
