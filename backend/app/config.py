@@ -372,6 +372,10 @@ class Settings(BaseSettings):
     SATELLITE_BULK_MAX_ITEMS: int = 100
     SATELLITE_BULK_PROCESS_INTERVAL: int = 3600
 
+    # ── Incremental Scoring Pipeline ────────────────────────────────────────────
+    INCREMENTAL_SCORING_ENABLED: bool = True
+    INCREMENTAL_SCORING_BATCH_SIZE: int = 500
+
     @model_validator(mode="after")
     def _check_admin_auth_consistency(self) -> "Settings":
         if self.ADMIN_PASSWORD and not self.ADMIN_JWT_SECRET:

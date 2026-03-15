@@ -123,9 +123,22 @@ def run_gap_detection(
     vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
     total_gaps = 0
 
+    dirty_vessel_ids: set[int] = set()
     for vessel in vessels:
         gaps = detect_gaps_for_vessel(db, vessel, date_from=date_from, date_to=date_to)
         total_gaps += gaps
+        if gaps > 0:
+            dirty_vessel_ids.add(vessel.vessel_id)
+
+    # Mark vessels with new gaps as dirty for incremental scoring
+    if dirty_vessel_ids:
+        try:
+            from app.modules.incremental_scorer import mark_vessels_dirty_bulk
+
+            mark_vessels_dirty_bulk(db, dirty_vessel_ids)
+            db.commit()
+        except ImportError:
+            pass  # incremental scorer not available
 
     logger.info("Gap detection complete: %d gaps found across %d vessels", total_gaps, len(vessels))
     return {"gaps_detected": total_gaps, "vessels_processed": len(vessels)}

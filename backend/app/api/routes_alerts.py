@@ -1235,7 +1235,13 @@ def release_lock(
 @router.post("/score-alerts", tags=["scoring"])
 @limiter.limit(settings.RATE_LIMIT_ADMIN)
 def score_alerts(request: Request, db: Session = Depends(get_db)):
-    """Score all unscored gap events."""
+    """Score all unscored gap events. Uses incremental scoring when enabled."""
+    if settings.INCREMENTAL_SCORING_ENABLED:
+        from app.modules.incremental_scorer import incremental_score_alerts
+
+        result = incremental_score_alerts(db)
+        return result
+
     from app.modules.risk_scoring import score_all_alerts
 
     return score_all_alerts(db)

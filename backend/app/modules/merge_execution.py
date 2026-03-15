@@ -496,6 +496,18 @@ def execute_merge(
     # 13. Rescore canonical vessel's gap events
     _rescore_vessel(db, canonical_id, commit=commit)
 
+    # 14. Mark both vessels dirty for incremental scoring
+    try:
+        from app.modules.incremental_scorer import mark_vessels_dirty_bulk
+
+        mark_vessels_dirty_bulk(db, {canonical_id, absorbed_id})
+        if commit:
+            db.commit()
+        else:
+            db.flush()
+    except ImportError:
+        pass  # incremental scorer not available
+
     logger.info(
         "Merged vessel %s (MMSI %s) into %s (MMSI %s) — op %s",
         absorbed_id,
