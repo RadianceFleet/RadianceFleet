@@ -145,3 +145,63 @@ def flag_risk_update(
 
 
 app.add_typer(flag_risk_app, name="flag-risk")
+
+# ---------------------------------------------------------------------------
+# Spire Maritime AIS management
+# ---------------------------------------------------------------------------
+
+spire_app = typer.Typer(
+    name="spire",
+    help="Spire Maritime satellite AIS management (Persian Gulf).",
+    no_args_is_help=True,
+)
+
+
+@spire_app.command("status")
+def spire_status() -> None:
+    """Show Spire AIS quota and circuit breaker state."""
+    from app.config import settings
+    from app.modules.circuit_breakers import breakers
+
+    typer.echo("Spire Maritime AIS Status")
+    typer.echo(f"  API key configured: {bool(settings.SPIRE_AIS_API_KEY)}")
+    typer.echo(f"  Collection enabled: {settings.SPIRE_AIS_COLLECTION_ENABLED}")
+    typer.echo(f"  Monthly quota: {settings.SPIRE_MONTHLY_QUOTA}")
+    typer.echo(f"  Lookback hours: {settings.SPIRE_LOOKBACK_HOURS}")
+    typer.echo(f"  Collection interval: {settings.COLLECT_SPIRE_INTERVAL}s")
+
+    cb = breakers.get("spire_ais")
+    if cb:
+        typer.echo(f"  Circuit breaker: {cb.current_state} (fails: {cb.fail_counter})")
+
+    # Show quota usage from DB
+    try:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            from app.modules.spire_ais_collector import _get_quota_used_this_month
+
+            used = _get_quota_used_this_month(db)
+            typer.echo(f"  Quota used this month: {used}/{settings.SPIRE_MONTHLY_QUOTA}")
+        finally:
+            db.close()
+    except Exception:
+        typer.echo("  Quota usage: unable to query DB")
+
+
+@spire_app.command("test-connection")
+def spire_test_connection() -> None:
+    """Test Spire Maritime API connectivity."""
+    from app.modules.spire_ais_client import SpireAisClient
+
+    client = SpireAisClient()
+    result = client.test_connection()
+    if result["status"] == "ok":
+        typer.echo(f"Connection OK: {result['detail']}")
+    else:
+        typer.echo(f"Connection FAILED: {result['detail']}", err=True)
+        raise typer.Exit(1)
+
+
+app.add_typer(spire_app, name="spire")

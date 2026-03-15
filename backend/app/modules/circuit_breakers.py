@@ -94,6 +94,10 @@ breakers = {
     "opencorporates": pybreaker.CircuitBreaker(
         fail_max=5, reset_timeout=60, name="opencorporates", listeners=[_listener]
     ),
+    # -- Spire Maritime satellite AIS --
+    "spire_ais": pybreaker.CircuitBreaker(
+        fail_max=5, reset_timeout=60, name="spire_ais", listeners=[_listener]
+    ),
 }
 
 

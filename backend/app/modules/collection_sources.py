@@ -100,6 +100,13 @@ def _collect_viirs(db: Session, duration_seconds: int = 300) -> dict:
     }
 
 
+def _collect_spire(db: Session, duration_seconds: int = 300) -> dict:
+    """Collect satellite AIS from Spire Maritime (Persian Gulf)."""
+    from app.modules.spire_ais_collector import collect_spire_gulf_ais
+
+    return collect_spire_gulf_ais(db, duration_seconds=duration_seconds)
+
+
 # Registry of all known sources
 _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
     "digitraffic": lambda: SourceInfo(
@@ -151,6 +158,14 @@ _SOURCE_REGISTRY: dict[str, Callable[[], SourceInfo]] = {
         interval_seconds=getattr(settings, "COLLECT_VIIRS_INTERVAL", 86400),
         enabled=getattr(settings, "VIIRS_ENABLED", False),
         collector=_collect_viirs,
+    ),
+    "spire": lambda: SourceInfo(
+        name="spire",
+        description="Spire Maritime satellite AIS (Persian Gulf)",
+        interval_seconds=getattr(settings, "COLLECT_SPIRE_INTERVAL", 1800),
+        enabled=bool(getattr(settings, "SPIRE_AIS_API_KEY", None))
+        and getattr(settings, "SPIRE_AIS_COLLECTION_ENABLED", False),
+        collector=_collect_spire,
     ),
 }
 
