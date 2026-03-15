@@ -573,3 +573,9 @@ sts_hotspot:
   high: 28
   medium: 16
   low: 8
+
+# MULTIPLIER GATING — suppress corridor/vessel-size amplification on thin signals
+multiplier_gating:
+  enabled: true
+  min_base_score: 25
+  min_families_for_multiplier: 2

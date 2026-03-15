@@ -84,6 +84,7 @@ _EXPECTED_SECTIONS = [
     "false_positive_suppression",
     "detection_thresholds",
     "hunt_scoring",
+    "multiplier_gating",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)
