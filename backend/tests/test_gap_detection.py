@@ -3,6 +3,7 @@
 Tests are calibrated against known shadow fleet behavior patterns (PRD §7.4, §7.5).
 """
 
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -183,7 +184,8 @@ def test_compute_gap_score_dark_zone_reduces_score():
 
 def test_compute_gap_score_speed_spike_bonus():
     """Speed spike preceding gap increases gap_duration sub-score by 40%."""
-    config = load_scoring_config()
+    config = deepcopy(load_scoring_config())
+    config["speed_anomaly"]["speed_spike_gap_multiplier_enabled"] = True
 
     gap_no_spike = _make_mock_gap(duration_minutes=25 * 60)
     gap_with_spike = _make_mock_gap(duration_minutes=25 * 60)

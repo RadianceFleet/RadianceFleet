@@ -44,6 +44,7 @@ speed_anomaly:
   speed_spoof: 25            # > class spoof threshold
   speed_impossible: 40       # > 30 knots (any tanker)
   gap_preceded_by_speed_spike_multiplier: 1.4
+  speed_spike_gap_multiplier_enabled: false
 
 # MOVEMENT ENVELOPE PLAUSIBILITY
 movement_envelope:

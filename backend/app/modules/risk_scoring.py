@@ -804,7 +804,8 @@ def compute_gap_score(
         _speed_spike_triggered = True
 
     # Speed spike bonus: gap_duration sub-score ×1.4 if preceded by speed spike/spoof
-    if _speed_spike_triggered and gap_duration_pts > 0:
+    _spike_mult_enabled = speed_cfg.get("speed_spike_gap_multiplier_enabled", True)
+    if _spike_mult_enabled and _speed_spike_triggered and gap_duration_pts > 0:
         spike_mult = speed_cfg.get("gap_preceded_by_speed_spike_multiplier", 1.4)
         bonus = round(gap_duration_pts * (spike_mult - 1.0))
         if bonus > 0:

@@ -13,6 +13,7 @@ Tests cover:
 All tests are unit-level: no database required.
 """
 
+from copy import deepcopy
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -669,7 +670,8 @@ def test_gap_in_sts_corridor_adds_30_then_multiplied():
 
 def test_speed_spoof_supersedes_spike():
     """Speed above spoof threshold → speed_spoof_before_gap (+25) fires; speed_spike_before_gap must NOT."""
-    config = load_scoring_config()
+    config = deepcopy(load_scoring_config())
+    config["speed_anomaly"]["speed_spike_gap_multiplier_enabled"] = True
     # Aframax (80–120k DWT): spoof_threshold=24 kn
     gap = _make_gap(duration_minutes=6 * 60, deadweight=100_000)
     # SOG above spoof threshold (24 kn) for Aframax
@@ -686,7 +688,8 @@ def test_speed_spoof_supersedes_spike():
 
 def test_speed_spike_adds_8_with_multiplier_bonus():
     """Speed between spike and spoof thresholds → speed_spike_before_gap (+8) fires, spoof absent."""
-    config = load_scoring_config()
+    config = deepcopy(load_scoring_config())
+    config["speed_anomaly"]["speed_spike_gap_multiplier_enabled"] = True
     # Aframax: spike=20 kn, spoof=24 kn → 21 kn is between spike and spoof
     gap = _make_gap(duration_minutes=6 * 60, deadweight=100_000)
     _, breakdown = compute_gap_score(gap, config, pre_gap_sog=21.0)
@@ -1300,7 +1303,8 @@ def test_speed_impossible_no_duration_bonus():
 
 def test_speed_spoof_still_gets_duration_bonus():
     """Verify speed_spoof (below 30kn but above spoof threshold) still gets 1.4× bonus."""
-    config = load_scoring_config()
+    config = deepcopy(load_scoring_config())
+    config["speed_anomaly"]["speed_spike_gap_multiplier_enabled"] = True
     # Aframax spoof threshold = 24kn; 25kn triggers spoof
     gap = _make_gap(duration_minutes=6 * 60, deadweight=100_000)
     _, bd = compute_gap_score(gap, config, pre_gap_sog=25.0)
