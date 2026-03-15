@@ -89,6 +89,7 @@ _EXPECTED_SECTIONS = [
     "loitering_by_corridor_type",
     "multiplier_gating",
     "flag_state_v2",
+    "insurance_gap",
 ]
 
 # Module-level watchlist key mapping (shared by compute_gap_score and score_watchlist_stubs)

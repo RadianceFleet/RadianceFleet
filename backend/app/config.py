@@ -292,6 +292,11 @@ class Settings(BaseSettings):
     OPENCORPORATES_RATE_LIMIT_S: float = 2.0
     OPENCORPORATES_MONTHLY_QUOTA: int = 500
 
+    # ── Insurance Gap Detection ────────────────────────────────────────
+    INSURANCE_GAP_DETECTION_ENABLED: bool = False
+    INSURANCE_GAP_SCORING_ENABLED: bool = False
+    INSURANCE_GAP_MIN_DAYS: int = 7
+
     # ── Ownership Transparency Scoring ────────────────────────────────
     OWNERSHIP_TRANSPARENCY_SCORING_ENABLED: bool = True
 

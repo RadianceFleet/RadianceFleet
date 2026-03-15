@@ -825,6 +825,7 @@ _CAP_FAMILY_IDENTITY_AND_OWNERSHIP = frozenset({
     "pi_coverage_lapsed", "pi_known_fraudulent", "pi_unknown_insurer",
     "pi_no_insurer", "pi_equasis_not_found",
     "pi_cycling",
+    "insurance_gap",
     # PSC detention
     "psc_detained_last_12m", "psc_major_deficiencies_3_plus",
     "psc_multiple_detentions_3_plus", "psc_multiple_detentions_2",
@@ -1594,6 +1595,8 @@ def compute_gap_score(
             _shadow_excluded_types.add("route_laundering")
         if not _scoring_settings.PI_CYCLING_SCORING_ENABLED:
             _shadow_excluded_types.add("pi_cycling")
+        if not getattr(_scoring_settings, "INSURANCE_GAP_SCORING_ENABLED", False):
+            _shadow_excluded_types.add("insurance_gap")
         if not _scoring_settings.SPARSE_TRANSMISSION_SCORING_ENABLED:
             _shadow_excluded_types.add("sparse_transmission")
         if not _scoring_settings.TYPE_CONSISTENCY_SCORING_ENABLED:
@@ -3219,6 +3222,31 @@ def compute_gap_score(
             else:
                 pts = pic_cfg.get("rapid_change_90d", 20)
             breakdown["pi_cycling"] = pts
+
+    # ── Insurance gap scoring ─────────────────────────────────────────
+    if (
+        getattr(_scoring_settings, "INSURANCE_GAP_SCORING_ENABLED", False)
+        and db is not None
+        and vessel is not None
+    ):
+        from app.models.insurance_gap_event import InsuranceGapEvent
+
+        ig_cfg = config.get("insurance_gap", {})
+        ig_events = (
+            db.query(InsuranceGapEvent)
+            .filter(InsuranceGapEvent.vessel_id == vessel.vessel_id)
+            .all()
+        )
+        if ig_events:
+            ig_total = sum(e.risk_score_component for e in ig_events)
+            # Cap at section max (use gap_90d_plus + all bonuses as practical max)
+            ig_max = (
+                ig_cfg.get("gap_90d_plus", 35)
+                + ig_cfg.get("non_ig_transition", 5)
+                + ig_cfg.get("coinciding_flag_change", 10)
+                + ig_cfg.get("coinciding_ownership_change", 10)
+            )
+            breakdown["insurance_gap"] = min(ig_total, ig_max)
 
     # ── Stage C: Sparse transmission scoring ──────────────────────────────
     if (

@@ -619,3 +619,12 @@ flag_state_v2:
   high_risk: 20
   medium_risk_max: 15
   minimal_risk: -10
+
+# INSURANCE GAP — P&I club coverage gap timeline detection
+insurance_gap:
+  gap_30d: 15
+  gap_60d: 25
+  gap_90d_plus: 35
+  non_ig_transition: 5
+  coinciding_flag_change: 10
+  coinciding_ownership_change: 10
