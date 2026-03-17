@@ -300,10 +300,16 @@ def _get_or_create_vessel(db: Session, row: dict) -> Vessel | None:
 
 
 def _try_parse_ts(value) -> datetime | None:
-    """Try to parse a timestamp value, returning None on failure."""
+    """Try to parse a timestamp value, returning None on failure.
+
+    Returns naive UTC datetimes for DB consistency.
+    """
     from app.modules.normalize import parse_timestamp_flexible
 
-    return parse_timestamp_flexible(value)
+    result = parse_timestamp_flexible(value)
+    if result is not None and result.tzinfo is not None:
+        result = result.astimezone(UTC).replace(tzinfo=None)
+    return result
 
 
 def _parse_timestamp(row: dict) -> datetime | None:
@@ -311,6 +317,9 @@ def _parse_timestamp(row: dict) -> datetime | None:
 
     1.3: No longer falls back to datetime.now() — returns None instead.
     1.6: Supports Unix epoch and common strftime formats via parse_timestamp_flexible.
+
+    Always returns naive UTC datetimes for DB consistency (SQLite stores
+    datetimes without timezone info).
     """
     from app.modules.normalize import parse_timestamp_flexible
 
@@ -318,6 +327,12 @@ def _parse_timestamp(row: dict) -> datetime | None:
     result = parse_timestamp_flexible(ts)
     if result is None:
         logger.warning("Unparseable timestamp: %r", ts)
+        return None
+    # Normalize to naive UTC — the DB convention in this project.
+    # parse_timestamp_flexible always returns UTC-based datetimes, so
+    # stripping tzinfo is safe after converting to UTC.
+    if result.tzinfo is not None:
+        result = result.astimezone(UTC).replace(tzinfo=None)
     return result
 
 
