@@ -108,12 +108,16 @@ class TestCollectionScheduler:
     def test_scheduler_retention_pruning(self):
         """Old points are deleted during pruning."""
         db = MagicMock(spec=Session)
+        db.query.return_value.filter.return_value.filter.return_value.delete.return_value = 5
         db.query.return_value.filter.return_value.delete.return_value = 5
+        db.execute.return_value.fetchall.return_value = []
 
         from app.modules.collection_scheduler import CollectionScheduler
 
         with patch("app.modules.collection_scheduler.settings") as mock_settings:
             mock_settings.COLLECT_RETENTION_DAYS = 90
+            mock_settings.RETENTION_DAYS_REALTIME = None
+            mock_settings.ARCHIVE_BEFORE_DELETE = False
             scheduler = CollectionScheduler(db_factory=lambda: db)
             scheduler._prune_old_points("test")
             # Should have called delete

@@ -78,7 +78,7 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-p no:xdist -p no:randomly --timeout=60"
+addopts = "-p no:xdist -p no:randomly --timeout=30"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
