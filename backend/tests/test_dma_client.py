@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
 
+from tests.conftest import SafeSessionMock
+
 
 def _make_mock_httpx_client(mock_response):
     """Create a mock httpx.Client that returns the given response."""
@@ -140,7 +142,7 @@ class TestDMAClient:
 
     def test_dma_unknown_imo_skipped(self):
         """Rows with IMO='Unknown' should not store an IMO on the vessel."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         db.query.return_value.filter.return_value.first.return_value = None
 
         row = self._make_dma_row(imo="Unknown")
@@ -163,7 +165,7 @@ class TestDMAClient:
 
     def test_dma_feature_flag_disabled(self):
         """Returns early when DMA_ENABLED=False."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         with patch("app.modules.dma_client.settings") as mock_settings:
             mock_settings.DMA_ENABLED = False
             from app.modules.dma_client import fetch_and_import_dma
@@ -174,7 +176,7 @@ class TestDMAClient:
 
     def test_dma_vessel_type_filter(self):
         """Only tankers imported when vessel_types filter is set."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         db.query.return_value.filter.return_value.first.return_value = None
 
         tanker_row = self._make_dma_row(mmsi="219000001", ship_type="Tanker")
@@ -198,7 +200,7 @@ class TestDMAClient:
 
     def test_dma_network_error(self):
         """Graceful handling of network errors."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -216,7 +218,7 @@ class TestDMAClient:
 
     def test_dma_gzip_support(self):
         """Gzipped DMA files are handled correctly."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         db.query.return_value.filter.return_value.first.return_value = None
 
         row = self._make_dma_row()
@@ -234,7 +236,7 @@ class TestDMAClient:
 
     def test_dma_stats_returned(self):
         """Stats dict has all expected keys."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         with patch("app.modules.dma_client.settings") as mock_settings:
             mock_settings.DMA_ENABLED = False
             from app.modules.dma_client import fetch_and_import_dma
@@ -251,7 +253,7 @@ class TestDMAClient:
 
     def test_dma_date_range(self):
         """Multi-day import processes each day."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         call_count = [0]
 
         def counting_client(*args, **kwargs):
@@ -274,7 +276,7 @@ class TestDMAClient:
 
     def test_dma_dedup(self):
         """Duplicate rows are not re-imported."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         mock_vessel = MagicMock()
         mock_vessel.vessel_id = 1

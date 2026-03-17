@@ -8,10 +8,12 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
 
+from tests.conftest import SafeSessionMock
+
 
 def _mock_db_factory():
     """Create a mock SessionLocal factory."""
-    db = MagicMock(spec=Session)
+    db = SafeSessionMock(spec=Session)
     db.query.return_value.filter.return_value.delete.return_value = 0
     return db
 
@@ -107,7 +109,7 @@ class TestCollectionScheduler:
 
     def test_scheduler_retention_pruning(self):
         """Old points are deleted during pruning."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         db.query.return_value.filter.return_value.filter.return_value.delete.return_value = 5
         db.query.return_value.filter.return_value.delete.return_value = 5
         db.execute.return_value.fetchall.return_value = []
@@ -125,7 +127,7 @@ class TestCollectionScheduler:
 
     def test_scheduler_records_collection_run(self):
         """A CollectionRun record is created for each cycle."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         from app.modules.collection_scheduler import CollectionScheduler
 
         with patch("app.modules.collection_scheduler.settings"):
@@ -242,7 +244,7 @@ class TestCollectionScheduler:
 
     def test_scheduler_finish_collection_run(self):
         """Collection run status is updated on completion."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         from app.modules.collection_scheduler import CollectionScheduler
 
         with patch("app.modules.collection_scheduler.settings"):
@@ -256,7 +258,7 @@ class TestCollectionScheduler:
 
     def test_scheduler_fail_collection_run(self):
         """Collection run marked as failed on error."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         from app.modules.collection_scheduler import CollectionScheduler
 
         with patch("app.modules.collection_scheduler.settings"):
@@ -267,7 +269,7 @@ class TestCollectionScheduler:
 
     def test_scheduler_none_run_handling(self):
         """Finishing or failing a None run does not error."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         from app.modules.collection_scheduler import CollectionScheduler
 
         with patch("app.modules.collection_scheduler.settings"):

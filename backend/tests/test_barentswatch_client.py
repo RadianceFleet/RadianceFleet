@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy.orm import Session
 
+from tests.conftest import SafeSessionMock
+
 
 class TestBarentsWatchClient:
     """Tests for barentswatch_client.py."""
@@ -63,7 +65,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_track_fetch(self):
         """GeoJSON features are parsed and ingested correctly."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         db.query.return_value.filter.return_value.first.return_value = None
 
         features = [self._make_geojson_feature()]
@@ -92,7 +94,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_14day_limit(self):
         """Dates older than 14 days are clamped."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         mock_response = MagicMock()
         mock_response.json.return_value = {"features": []}
@@ -122,7 +124,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_feature_flag(self):
         """Disabled returns early."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         with patch("app.modules.barentswatch_client.settings") as mock_settings:
             mock_settings.BARENTSWATCH_ENABLED = False
             from app.modules.barentswatch_client import fetch_barentswatch_tracks
@@ -133,7 +135,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_auth_failure(self):
         """401 handled gracefully."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         with patch("app.modules.barentswatch_client.settings") as mock_settings:
             mock_settings.BARENTSWATCH_ENABLED = True
             mock_settings.BARENTSWATCH_CLIENT_ID = ""
@@ -147,7 +149,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_empty_response(self):
         """No tracks returns empty stats."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         mock_response = MagicMock()
         mock_response.json.return_value = {"features": []}
@@ -172,7 +174,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_mmsi_filter(self):
         """Only requested MMSIs are queried."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         db.query.return_value.filter.return_value.first.return_value = None
 
         features = [self._make_geojson_feature(mmsi="257000001")]
@@ -203,7 +205,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_vessel_upsert(self):
         """New vessels are created when not found."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         db.query.return_value.filter.return_value.first.return_value = None
         db.query.return_value.filter.return_value.filter.return_value.first.return_value = None
 
@@ -231,7 +233,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_dedup(self):
         """Duplicate points are skipped."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         mock_vessel = MagicMock()
         mock_vessel.vessel_id = 1
@@ -277,7 +279,7 @@ class TestBarentsWatchClient:
 
     def test_barentswatch_stats(self):
         """Stats dict has all expected keys."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         with patch("app.modules.barentswatch_client.settings") as mock_settings:
             mock_settings.BARENTSWATCH_ENABLED = False
             from app.modules.barentswatch_client import fetch_barentswatch_tracks

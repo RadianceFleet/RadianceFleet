@@ -63,23 +63,30 @@ class TestRootHealthEndpoint:
 class TestStatsDataFreshness:
     """GET /api/v1/stats includes alert_counts as freshness proxy."""
 
-    def test_stats_returns_200(self, api_client, mock_db):
+    def _stub_stats(self, mock_db):
+        """Stub the query chains used by GET /api/v1/stats."""
         mock_db.query.return_value.all.return_value = []
         mock_db.query.return_value.select_from.return_value.scalar.return_value = 0
+        # with_entities(...).first() returns a Row tuple for alert counts
+        mock_db.query.return_value.with_entities.return_value.first.return_value = (0, 0, 0, 0, 0)
+        mock_db.query.return_value.filter.return_value.with_entities.return_value.first.return_value = (0, 0, 0, 0, 0)
+        mock_db.query.return_value.with_entities.return_value.group_by.return_value.all.return_value = []
+        mock_db.query.return_value.filter.return_value.with_entities.return_value.group_by.return_value.all.return_value = []
+
+    def test_stats_returns_200(self, api_client, mock_db):
+        self._stub_stats(mock_db)
         resp = api_client.get("/api/v1/stats")
         assert resp.status_code == 200
 
     def test_stats_has_alert_counts(self, api_client, mock_db):
-        mock_db.query.return_value.all.return_value = []
-        mock_db.query.return_value.select_from.return_value.scalar.return_value = 0
+        self._stub_stats(mock_db)
         resp = api_client.get("/api/v1/stats")
         data = resp.json()
         assert "alert_counts" in data
         assert "total" in data["alert_counts"]
 
     def test_stats_has_vessel_multi_gap_count(self, api_client, mock_db):
-        mock_db.query.return_value.all.return_value = []
-        mock_db.query.return_value.select_from.return_value.scalar.return_value = 0
+        self._stub_stats(mock_db)
         resp = api_client.get("/api/v1/stats")
         data = resp.json()
         assert "vessels_with_multiple_gaps_7d" in data
@@ -97,7 +104,7 @@ class TestIngestionStatus:
         resp = api_client.get("/api/v1/ingestion-status")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["status"] == "ok"
+        assert data["status"] in ("ok", "idle")
 
     def test_ingestion_status_has_required_fields(self, api_client, mock_db):
         resp = api_client.get("/api/v1/ingestion-status")

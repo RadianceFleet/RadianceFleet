@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy.orm import Session
 
+from tests.conftest import SafeSessionMock
+
 
 class TestCollectionSources:
     """Tests for collection_sources.py."""
@@ -48,7 +50,7 @@ class TestCollectionSources:
 
     def test_collect_from_source_dispatch(self):
         """collect_from_source calls the correct collector."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         with patch("app.modules.collection_sources.settings") as mock_settings:
             mock_settings.DIGITRAFFIC_ENABLED = True
@@ -66,7 +68,7 @@ class TestCollectionSources:
 
     def test_unknown_source_raises(self):
         """Unknown source name raises ValueError."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         from app.modules.collection_sources import collect_from_source
 
@@ -95,7 +97,7 @@ class TestCollectionSources:
 
     def test_collect_disabled_source_returns_skipped(self):
         """Collecting from a disabled source returns skipped stats."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         with patch("app.modules.collection_sources.settings") as mock_settings:
             mock_settings.DIGITRAFFIC_ENABLED = False
@@ -129,7 +131,7 @@ class TestCollectionSources:
 
     def test_collect_digitraffic_wrapper(self):
         """Digitraffic wrapper calls fetch_digitraffic_ais."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         with patch("app.modules.digitraffic_client.fetch_digitraffic_ais") as mock_fetch:
             mock_fetch.return_value = {"points_ingested": 10, "vessels_seen": 3, "errors": 0}
             from app.modules.collection_sources import _collect_digitraffic
@@ -139,7 +141,7 @@ class TestCollectionSources:
 
     def test_collect_kystverket_wrapper(self):
         """Kystverket wrapper calls stream_kystverket."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         with patch("app.modules.kystverket_client.stream_kystverket") as mock_stream:
             mock_stream.return_value = {"points_ingested": 20, "vessels_seen": 5, "errors": 0}
             from app.modules.collection_sources import _collect_kystverket
@@ -150,7 +152,7 @@ class TestCollectionSources:
 
     def test_collect_barentswatch_wrapper(self):
         """BarentsWatch wrapper calls fetch_barentswatch_tracks."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         with patch("app.modules.barentswatch_client.fetch_barentswatch_tracks") as mock_fetch:
             mock_fetch.return_value = {
                 "points_imported": 15,
@@ -197,7 +199,7 @@ class TestCollectionSources:
 
     def test_collect_dma_dispatch(self):
         """collect_from_source calls DMA collector."""
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         with patch("app.modules.collection_sources.settings") as mock_settings:
             mock_settings.DMA_ENABLED = True

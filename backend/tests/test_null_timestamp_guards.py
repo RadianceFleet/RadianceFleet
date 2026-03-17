@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 from sqlalchemy.orm import Session
 
+from tests.conftest import SafeSessionMock
+
 
 class TestNullTimestampGuards:
     """Verify detector modules handle NULL timestamps gracefully."""
@@ -15,7 +17,7 @@ class TestNullTimestampGuards:
         """_write_ais_observation returns early when ts is None."""
         from app.modules.ingest import _write_ais_observation
 
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         vessel = MagicMock()
         row = {"mmsi": "123456789", "lat": 59.0, "lon": 10.0}
 
@@ -29,7 +31,7 @@ class TestNullTimestampGuards:
         """cross_receiver_detector filters out NULL timestamp observations."""
         from app.modules.cross_receiver_detector import detect_cross_receiver_anomalies
 
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
         # Query returns observations with NULL timestamps
         mock_obs = MagicMock()
         mock_obs.mmsi = "123456789"
@@ -59,7 +61,7 @@ class TestNullTimestampGuards:
         """auto_hunt_dark_vessels skips gaps with NULL timestamps."""
         from app.modules.dark_vessel_discovery import auto_hunt_dark_vessels
 
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         # Create a gap with NULL gap_end_utc
         mock_gap = MagicMock()
@@ -86,7 +88,7 @@ class TestNullTimestampGuards:
         """auto_hunt_dark_vessels handles STS events with NULL end_time_utc."""
         from app.modules.dark_vessel_discovery import auto_hunt_dark_vessels
 
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock(spec=Session)
 
         # No gaps to hunt
         gap_query = MagicMock()

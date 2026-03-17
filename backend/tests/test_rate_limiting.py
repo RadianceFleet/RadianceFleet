@@ -45,9 +45,7 @@ class TestCustomRateLimitHandler:
         exc = MagicMock()
         exc.retry_after = 42
 
-        response = asyncio.get_event_loop().run_until_complete(
-            custom_rate_limit_handler(request, exc)
-        )
+        response = asyncio.run(custom_rate_limit_handler(request, exc))
 
         assert response.status_code == 429
         assert response.headers["Retry-After"] == "42"
@@ -58,9 +56,7 @@ class TestCustomRateLimitHandler:
         request = MagicMock()
         exc = MagicMock(spec=[])
 
-        response = asyncio.get_event_loop().run_until_complete(
-            custom_rate_limit_handler(request, exc)
-        )
+        response = asyncio.run(custom_rate_limit_handler(request, exc))
 
         assert response.status_code == 429
         assert response.headers["Retry-After"] == "60"
@@ -72,9 +68,7 @@ class TestCustomRateLimitHandler:
         exc = MagicMock()
         exc.retry_after = 30
 
-        response = asyncio.get_event_loop().run_until_complete(
-            custom_rate_limit_handler(request, exc)
-        )
+        response = asyncio.run(custom_rate_limit_handler(request, exc))
 
         body = json.loads(response.body.decode())
         assert body["error"] == "Rate limit exceeded"

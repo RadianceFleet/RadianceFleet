@@ -11,13 +11,34 @@ from app.database import get_db
 from app.main import app
 
 
+class SafeSessionMock(MagicMock):
+    """MagicMock that returns falsy defaults for SQLAlchemy terminal methods.
+
+    Prevents infinite loops when production code checks truthiness of
+    unmocked .all()/.fetchall() results (MagicMock is always truthy).
+    Works at any chain depth: db.query().filter().order_by().limit().all() → []
+    """
+
+    _TERMINAL_EMPTY_LIST = frozenset({"all", "fetchall"})
+    _TERMINAL_NONE = frozenset({"first", "one_or_none", "scalar", "scalar_one_or_none"})
+    _TERMINAL_ZERO = frozenset({"count"})
+
+    def _get_child_mock(self, /, **kw):
+        child = super()._get_child_mock(**kw)
+        name = kw.get("name", "")
+        if name in self._TERMINAL_EMPTY_LIST:
+            child.return_value = []
+        elif name in self._TERMINAL_NONE:
+            child.return_value = None
+        elif name in self._TERMINAL_ZERO:
+            child.return_value = 0
+        return child
+
+
 def _make_mock_db():
-    """Create a fresh MagicMock database session with default stubs."""
-    session = MagicMock()
-    session.query.return_value.filter.return_value.first.return_value = None
-    session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
-    session.query.return_value.filter.return_value.all.return_value = []
-    session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+    """Create a SafeSessionMock with default stubs."""
+    session = SafeSessionMock()
+    # options() is a chaining method, not terminal — pass through to self
     session.query.return_value.options.return_value = session.query.return_value
     return session
 

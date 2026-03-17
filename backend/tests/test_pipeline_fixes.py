@@ -852,9 +852,9 @@ class TestFix3AISStreamDiagnostics:
         """BarentsWatch returns empty FeatureCollection — handled gracefully."""
         from unittest.mock import MagicMock, patch
 
-        from sqlalchemy.orm import Session
+        from tests.conftest import SafeSessionMock
 
-        db = MagicMock(spec=Session)
+        db = SafeSessionMock()
 
         mock_response = MagicMock()
         mock_response.json.return_value = {"type": "FeatureCollection", "features": []}
