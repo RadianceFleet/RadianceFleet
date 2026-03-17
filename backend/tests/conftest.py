@@ -51,12 +51,16 @@ def _shared_client():
 def api_client(mock_db, _shared_client):
     """Per-test api_client backed by the session-scoped TestClient.
 
-    Uses a closure to capture the per-test mock_db, avoiding global state.
+    Re-sets all overrides each test because other test files may call
+    app.dependency_overrides.clear() in their own fixture teardowns.
     """
     def _override_get_db():
         yield mock_db
 
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[require_auth] = _auth_override
+    app.dependency_overrides[require_senior_or_admin] = _auth_override
+    app.dependency_overrides[require_admin] = _auth_override
     return _shared_client
 
 
