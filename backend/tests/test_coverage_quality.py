@@ -7,9 +7,9 @@ class TestCoverageQuality:
     def test_baltic_returns_good(self):
         assert _get_coverage_quality("Baltic Export Gate") == "GOOD"
 
-    def test_fujairah_returns_none(self):
-        # "fujairah" matches Persian Gulf, quality=NONE
-        assert _get_coverage_quality("Fujairah Anchorage (UAE)") == "NONE"
+    def test_fujairah_returns_commercial(self):
+        # "fujairah" matches Persian Gulf, quality=COMMERCIAL
+        assert _get_coverage_quality("Fujairah Anchorage (UAE)") == "COMMERCIAL"
 
     def test_cape_verde_returns_unknown(self):
         # No matching keyword for "Cape Verde"
