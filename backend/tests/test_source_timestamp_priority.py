@@ -6,7 +6,7 @@ Ensures satellite AIS (30-60min old) never overwrites newer terrestrial position
 from __future__ import annotations
 
 import io
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import MagicMock
 
 
