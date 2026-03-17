@@ -9,9 +9,9 @@ PASS_COUNT=0
 FAIL_COUNT=0
 WARN_COUNT=0
 
-pass()  { echo "  PASS: $1"; ((PASS_COUNT++)); }
-fail()  { echo "  FAIL: $1"; ((FAIL_COUNT++)); }
-warn()  { echo "  WARN: $1"; ((WARN_COUNT++)); }
+pass()  { echo "  PASS: $1"; ((PASS_COUNT++)) || true; }
+fail()  { echo "  FAIL: $1"; ((FAIL_COUNT++)) || true; }
+warn()  { echo "  WARN: $1"; ((WARN_COUNT++)) || true; }
 
 echo "=== RadianceFleet Journalist Opsec Check ==="
 echo ""
