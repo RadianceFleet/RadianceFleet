@@ -29,6 +29,7 @@ def db():
     session = Session()
     yield session
     session.close()
+    engine.dispose()
 
 
 def test_create_satellite_order(db):

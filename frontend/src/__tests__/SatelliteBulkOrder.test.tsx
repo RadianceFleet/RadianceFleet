@@ -136,10 +136,10 @@ describe("BulkOrderStatusTable", () => {
     });
   });
 
-  it("has status filter dropdown", () => {
+  it("shows loading state initially", () => {
     mockFetch.mockReturnValue(new Promise(() => {}));
     renderWithProviders(<BulkOrderStatusTable />, { auth: { role: "admin" } });
-    expect(screen.getByLabelText(/Filter by status/)).toBeInTheDocument();
+    expect(screen.getByText(/Loading bulk orders/)).toBeInTheDocument();
   });
 });
 

@@ -11,37 +11,52 @@ from app.database import get_db
 from app.main import app
 
 
-@pytest.fixture
-def mock_db():
-    """MagicMock database session — returns None for all queries by default."""
+def _make_mock_db():
+    """Create a fresh MagicMock database session with default stubs."""
     session = MagicMock()
-    # Default: query().filter().first() returns None (not found)
     session.query.return_value.filter.return_value.first.return_value = None
     session.query.return_value.filter.return_value.filter.return_value.all.return_value = []
     session.query.return_value.filter.return_value.all.return_value = []
     session.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
-    # Support .options() chaining (e.g. joinedload)
     session.query.return_value.options.return_value = session.query.return_value
     return session
 
 
 @pytest.fixture
-def api_client(mock_db):
-    """TestClient with DB dependency overridden to use a MagicMock session."""
+def mock_db():
+    """MagicMock database session — returns None for all queries by default."""
+    return _make_mock_db()
 
-    def override_get_db():
-        yield mock_db
 
-    def override_auth():
-        return {"analyst_id": 1, "username": "test_admin", "role": "admin"}
+# ── Session-scoped TestClient (ONE per entire test run) ──────────────────────
+# This avoids creating ~900 TestClient instances (each spins up ASGI).
+# The mock_db is swapped per-test via a closure in api_client.
 
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[require_auth] = override_auth
-    app.dependency_overrides[require_senior_or_admin] = override_auth
-    app.dependency_overrides[require_admin] = override_auth
+_auth_override = lambda: {"analyst_id": 1, "username": "test_admin", "role": "admin"}
+
+
+@pytest.fixture(scope="session")
+def _shared_client():
+    """Single TestClient for the entire test session — saves ~4GB of memory."""
+    app.dependency_overrides[require_auth] = _auth_override
+    app.dependency_overrides[require_senior_or_admin] = _auth_override
+    app.dependency_overrides[require_admin] = _auth_override
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def api_client(mock_db, _shared_client):
+    """Per-test api_client backed by the session-scoped TestClient.
+
+    Uses a closure to capture the per-test mock_db, avoiding global state.
+    """
+    def _override_get_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = _override_get_db
+    return _shared_client
 
 
 # ── Shared mock factories ────────────────────────────────────────────────────

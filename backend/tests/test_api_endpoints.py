@@ -87,7 +87,8 @@ class TestStsDetection:
 
 class TestScoring:
     def test_score_alerts_returns_200(self, api_client, mock_db):
-        with patch("app.modules.risk_scoring.score_all_alerts", return_value={"scored": 10}):
+        with patch("app.config.settings.INCREMENTAL_SCORING_ENABLED", False), \
+             patch("app.modules.risk_scoring.score_all_alerts", return_value={"scored": 10}):
             resp = api_client.post("/api/v1/score-alerts")
             assert resp.status_code == 200
             assert resp.json()["scored"] == 10

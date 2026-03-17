@@ -472,6 +472,7 @@ def db():
     session = _Session()
     yield session
     session.close()
+    engine.dispose()
 
 
 # All feature-gated settings used by discover_dark_vessels

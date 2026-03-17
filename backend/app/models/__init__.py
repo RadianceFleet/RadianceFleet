@@ -1,8 +1,10 @@
 """Import all models to register them with SQLAlchemy metadata."""
 
+from app.models.ais_archive_batch import AisArchiveBatch
 from app.models.ais_observation import AISObservation
 from app.models.ais_point import AISPoint
 from app.models.alert_edit_lock import AlertEditLock
+from app.models.alert_group import AlertGroup
 from app.models.alert_subscription import AlertSubscription
 from app.models.analyst import Analyst
 from app.models.api_key import ApiKey
@@ -22,6 +24,8 @@ from app.models.dark_zone import DarkZone
 from app.models.data_coverage_window import DataCoverageWindow
 from app.models.draught_event import DraughtChangeEvent
 from app.models.evidence_card import EvidenceCard
+from app.models.export_run import ExportRun
+from app.models.export_subscription import ExportSubscription
 from app.models.flag_risk_profile import FlagRiskProfile
 from app.models.fleet_alert import FleetAlert
 from app.models.fp_rate_snapshot import FPRateSnapshot
@@ -35,10 +39,12 @@ from app.models.isolation_forest_anomaly import IsolationForestAnomaly
 from app.models.jamming_zone import JammingZone, JammingZoneGap
 from app.models.loitering_event import LoiteringEvent
 from app.models.merge_candidate import MergeCandidate
-from app.models.notification_event import NotificationEvent
 from app.models.merge_chain import MergeChain
 from app.models.merge_operation import MergeOperation
 from app.models.movement_envelope import MovementEnvelope
+from app.models.notification_event import NotificationEvent
+from app.models.notification_rule import NotificationRule
+from app.models.notification_rule_log import NotificationRuleLog
 from app.models.owner_cluster import OwnerCluster
 from app.models.owner_cluster_member import OwnerClusterMember
 from app.models.pipeline_run import PipelineRun
@@ -47,6 +53,8 @@ from app.models.port_call import PortCall
 from app.models.psc_detention import PscDetention
 from app.models.route_template import RouteTemplate
 from app.models.sanctions_propagation import SanctionsPropagation
+from app.models.satellite_bulk_order import SatelliteBulkOrder
+from app.models.satellite_bulk_order_item import SatelliteBulkOrderItem
 from app.models.satellite_check import SatelliteCheck
 from app.models.satellite_order import SatelliteOrder
 from app.models.satellite_order_log import SatelliteOrderLog
@@ -62,12 +70,16 @@ from app.models.trajectory_cluster import TrajectoryCluster
 from app.models.trajectory_autoencoder_anomaly import TrajectoryAutoencoderAnomaly
 from app.models.trajectory_cluster_member import TrajectoryClusterMember
 from app.models.trajectory_pca_anomaly import TrajectoryPcaAnomaly
+from app.models.verification_checklist import VerificationChecklist
+from app.models.verification_checklist_item import VerificationChecklistItem
 from app.models.verification_log import VerificationLog
 from app.models.vessel import Vessel
 from app.models.vessel_behavioral_profile import VesselBehavioralProfile
 from app.models.vessel_fingerprint import VesselFingerprint
 from app.models.vessel_history import VesselHistory
 from app.models.vessel_owner import VesselOwner
+from app.models.vessel_scoring_state import VesselScoringState
+from app.models.vessel_similarity_result import VesselSimilarityResult
 from app.models.vessel_watchlist import VesselWatchlist
 from app.models.webhook import Webhook
 from app.models.worker_heartbeat import WorkerHeartbeat
@@ -148,4 +160,17 @@ __all__ = [
     "NotificationEvent",
     "TrajectoryAutoencoderAnomaly",
     "SanctionsPropagation",
+    # v4.3
+    "AisArchiveBatch",
+    "AlertGroup",
+    "ExportRun",
+    "ExportSubscription",
+    "NotificationRule",
+    "NotificationRuleLog",
+    "SatelliteBulkOrder",
+    "SatelliteBulkOrderItem",
+    "VerificationChecklist",
+    "VerificationChecklistItem",
+    "VesselScoringState",
+    "VesselSimilarityResult",
 ]

@@ -35,6 +35,7 @@ def db():
     session = SessionLocal()
     yield session
     session.close()
+    engine.dispose()
 
 
 @pytest.fixture

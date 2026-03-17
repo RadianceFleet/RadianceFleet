@@ -27,6 +27,7 @@ def db():
     session = sessionmaker(bind=engine)()
     yield session
     session.close()
+    engine.dispose()
 
 
 @pytest.fixture
@@ -571,6 +572,7 @@ class TestAPI:
 
         yield TestClient(app)
         app.dependency_overrides.clear()
+        _engine.dispose()
 
     @pytest.fixture
     def _enable_config(self):

@@ -26,6 +26,7 @@ class TestUpsertHeartbeat:
         session = Session()
         yield session
         session.close()
+        engine.dispose()
 
     def test_insert_new_heartbeat(self, db):
         upsert_heartbeat(db, "ws-worker", status="starting")

@@ -26,6 +26,7 @@ def db():
     session = sessionmaker(bind=engine)()
     yield session
     session.close()
+    engine.dispose()
 
 
 def _make_vessel(db: Session, vessel_id: int = 1) -> MagicMock:

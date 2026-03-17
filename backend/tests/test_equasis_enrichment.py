@@ -101,6 +101,7 @@ def db():
     session = Session()
     yield session
     session.close()
+    engine.dispose()
 
 
 def _make_vessel(db, mmsi="211456789", name="TEST VESSEL", **kwargs):

@@ -38,6 +38,7 @@ def db():
     session = sessionmaker(bind=engine)()
     yield session
     session.close()
+    engine.dispose()
 
 
 def _make_vessel(db: Session, mmsi: str, flag: str, max_gap_score: int | None = None) -> Vessel:

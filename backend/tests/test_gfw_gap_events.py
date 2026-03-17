@@ -197,6 +197,7 @@ def db_real():
     session = Session()
     yield session
     session.close()
+    engine.dispose()
 
 
 def _make_real_vessel(db, mmsi="636017000", name="TEST SHIP"):

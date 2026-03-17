@@ -18,18 +18,21 @@ from app.models.owner_cluster_member import OwnerClusterMember  # noqa: F401
 from app.models.vessel import Vessel
 from app.models.vessel_owner import VesselOwner
 
-# Shared in-memory engine for all tests
-_engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-Base.metadata.create_all(bind=_engine)
-_TestSession = sessionmaker(bind=_engine)
+@pytest.fixture(scope="module")
+def _engine():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(bind=engine)
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture()
-def db():
+def db(_engine):
+    _TestSession = sessionmaker(bind=_engine)
     session = _TestSession()
     try:
         yield session

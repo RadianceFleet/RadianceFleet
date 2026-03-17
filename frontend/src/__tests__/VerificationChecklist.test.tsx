@@ -1,10 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "./testUtils";
+import type { Checklist } from "../hooks/useVerificationChecklist";
 
 // Default: checklist exists with items
-const mockChecklist = {
+const mockChecklist: Checklist = {
   checklist_id: 1,
   alert_id: 1,
   checklist_template: "standard",
@@ -37,7 +38,7 @@ const mockChecklist = {
 };
 
 const mockMutate = vi.fn();
-let mockChecklistData: typeof mockChecklist | undefined = mockChecklist;
+let mockChecklistData: Checklist | undefined = mockChecklist;
 let mockChecklistError: Error | null = null;
 let mockChecklistLoading = false;
 

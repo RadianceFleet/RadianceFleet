@@ -46,6 +46,7 @@ def db_session(db_engine):
     session = TestSession()
     yield session
     session.close()
+    db_engine.dispose()
 
 
 @pytest.fixture

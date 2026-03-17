@@ -7,22 +7,28 @@ const mockDetentions = [
   {
     psc_detention_id: 1,
     detention_date: '2025-06-15',
+    release_date: '2025-06-20',
     mou_source: 'Paris MOU',
     port_name: 'Rotterdam',
     port_country: 'Netherlands',
     deficiency_count: 5,
     major_deficiency_count: 2,
     detention_reason: 'Fire safety deficiencies',
+    authority_name: 'ILENT',
+    flag_at_detention: 'PA',
   },
   {
     psc_detention_id: 2,
     detention_date: '2024-11-20',
+    release_date: null,
     mou_source: 'Tokyo MOU',
     port_name: null,
     port_country: null,
     deficiency_count: 3,
     major_deficiency_count: 0,
     detention_reason: null,
+    authority_name: null,
+    flag_at_detention: null,
   },
 ]
 

@@ -46,6 +46,7 @@ def db():
     session = Session()
     yield session
     session.close()
+    engine.dispose()
 
 
 # -- Helper factories --

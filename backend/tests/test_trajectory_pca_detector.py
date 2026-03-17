@@ -8,10 +8,6 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-
-from app.models.base import Base
 from app.models.trajectory_pca_anomaly import TrajectoryPcaAnomaly
 from app.modules.trajectory_pca_detector import (
     FEATURE_NAMES,
@@ -59,14 +55,6 @@ def _make_segment(
     seg.window_start = datetime(2026, 1, 1, 0, 0, 0)
     seg.window_end = datetime(2026, 1, 2, 0, 0, 0)
     return seg
-
-
-def _make_test_db():
-    """Create an in-memory SQLite DB with the PCA anomaly table."""
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session_factory = sessionmaker(bind=engine)
-    return session_factory()
 
 
 # ── Z-score normalization tests ──────────────────────────────────────────────

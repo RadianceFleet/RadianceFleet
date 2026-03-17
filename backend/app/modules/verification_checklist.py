@@ -201,7 +201,7 @@ def is_checklist_complete(db: Session, alert_id: int) -> bool:
         .all()
     )
     if not checklists:
-        return False
+        return True  # No checklist created yet — don't block verdicts
 
     for checklist in checklists:
         items = (

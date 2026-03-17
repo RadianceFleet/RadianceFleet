@@ -264,10 +264,11 @@ class TestIsChecklistComplete:
         ]
         assert is_checklist_complete(db, alert_id=1) is False
 
-    def test_incomplete_when_no_checklist(self):
+    def test_complete_when_no_checklist(self):
+        """No checklist created yet — should not block verdicts."""
         db = MagicMock()
         db.query.return_value.filter.return_value.all.return_value = []
-        assert is_checklist_complete(db, alert_id=1) is False
+        assert is_checklist_complete(db, alert_id=1) is True
 
     def test_incomplete_when_no_items(self):
         db = MagicMock()
@@ -286,8 +287,14 @@ class TestIsChecklistComplete:
 
 class TestEnforceChecklistBeforeVerdict:
     def test_raises_when_incomplete(self):
+        """Checklist exists but has unchecked items — verdict blocked."""
         db = MagicMock()
-        db.query.return_value.filter.return_value.all.return_value = []
+        checklist = _make_checklist()
+        items = [_make_item(item_id=1, is_checked=False)]
+        db.query.return_value.filter.return_value.all.side_effect = [
+            [checklist],  # checklists query
+            items,        # items query (unchecked)
+        ]
         with pytest.raises(HTTPException) as exc_info:
             enforce_checklist_before_verdict(db, alert_id=1)
         assert exc_info.value.status_code == 400

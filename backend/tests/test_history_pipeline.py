@@ -53,6 +53,7 @@ def db():
     session = Session()
     yield session
     session.close()
+    engine.dispose()
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +85,7 @@ def real_api_db():
     session = Session()
     yield session
     session.close()
+    engine.dispose()
 
 
 @pytest.fixture

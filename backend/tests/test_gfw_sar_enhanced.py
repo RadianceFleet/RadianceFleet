@@ -22,6 +22,7 @@ def db():
     session = sessionmaker(bind=engine)()
     yield session
     session.close()
+    engine.dispose()
 
 
 def _make_corridor(db: Session, corridor_id: int = 1, name: str = "Test Corridor") -> Corridor:

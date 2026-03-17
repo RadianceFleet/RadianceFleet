@@ -33,6 +33,7 @@ class TestCircuitBreakerModule:
             "viirs",
             "yente",
             "opencorporates",
+            "spire_ais",
         }
         assert set(breakers.keys()) == expected
 
@@ -44,7 +45,7 @@ class TestCircuitBreakerModule:
 
     def test_get_circuit_states_all_closed(self):
         states = get_circuit_states()
-        assert len(states) == 19
+        assert len(states) == 20
         for name, info in states.items():
             assert info["state"] == "closed"
             assert info["fail_count"] == 0
@@ -132,4 +133,4 @@ class TestHealthEndpointIncludesBreakers:
         assert "gfw" in data["circuit_breakers"]
         assert data["circuit_breakers"]["gfw"]["state"] == "closed"
         assert data["circuit_breakers"]["gfw"]["fail_count"] == 0
-        assert len(data["circuit_breakers"]) == 19
+        assert len(data["circuit_breakers"]) == 20

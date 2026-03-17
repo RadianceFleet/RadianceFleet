@@ -97,6 +97,7 @@ def db(tmp_path):
     session.commit()
     yield session
     session.close()
+    engine.dispose()
 
 
 class TestShouldUpdate:

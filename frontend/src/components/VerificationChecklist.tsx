@@ -59,7 +59,7 @@ export function VerificationChecklist({
               No checklist has been created for this alert yet.
             </p>
             <button
-              onClick={() => createMutation.mutate()}
+              onClick={() => createMutation.mutate(undefined)}
               disabled={createMutation.isPending}
               style={btnStyle}
             >
