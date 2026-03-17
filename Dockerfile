@@ -10,7 +10,7 @@ RUN npm run build
 # === Stage 2: Backend ===
 FROM ghcr.io/astral-sh/uv:0.6.6-python3.12-bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/backend
 

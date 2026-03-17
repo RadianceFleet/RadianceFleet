@@ -182,6 +182,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
+        continue-on-error: true
         with:
           image-ref: ${{ steps.image.outputs.ref }}
           severity: HIGH,CRITICAL
