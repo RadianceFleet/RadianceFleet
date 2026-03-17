@@ -12,7 +12,6 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import update as sa_update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
@@ -131,11 +130,10 @@ def score_vessel_alerts(
         scored += 1
 
     # After rescoring a vessel's alerts, update group max_score if Task 43 is integrated
-    try:
-        from app.modules.alert_dedup_engine import update_group_max_score
+    import contextlib
+    with contextlib.suppress(ImportError):
+        from app.modules.alert_dedup_engine import update_group_max_score  # noqa: F401
         # update_group_max_score would be called here for affected groups
-    except ImportError:
-        pass  # Task 43 not yet integrated
 
     return scored
 

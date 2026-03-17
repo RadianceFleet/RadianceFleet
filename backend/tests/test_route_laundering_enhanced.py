@@ -35,7 +35,6 @@ from app.models.port_call import PortCall
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────
 
 

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -588,7 +586,6 @@ class TestSpireEndpoints:
         mock_db.query.return_value.filter.return_value.scalar.return_value = 0
 
         from app.database import get_db
-
         from app.main import app
 
         app.dependency_overrides[get_db] = lambda: mock_db

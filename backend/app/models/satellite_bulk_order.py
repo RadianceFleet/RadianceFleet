@@ -33,6 +33,6 @@ class SatelliteBulkOrder(Base):
         DateTime, nullable=True, onupdate=func.now()
     )
 
-    items: Mapped[list["SatelliteBulkOrderItem"]] = relationship(
+    items: Mapped[list[SatelliteBulkOrderItem]] = relationship(
         "SatelliteBulkOrderItem", back_populates="bulk_order", cascade="all, delete-orphan"
     )

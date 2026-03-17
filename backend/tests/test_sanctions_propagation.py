@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.base import Base
@@ -390,7 +390,7 @@ class TestDepth3Propagation:
         _create_vessel(db, 2)
         _create_vessel(db, 3)
         # Vessel 1 (sanctioned) shares ISM with vessel 2
-        o1 = _create_owner(db, 1, "Owner A", ism_manager="ISM Corp")
+        _create_owner(db, 1, "Owner A", ism_manager="ISM Corp")
         o2 = _create_owner(db, 2, "Owner B", ism_manager="ISM Corp")
         # Vessel 3 is connected via owner cluster
         o3 = _create_owner(db, 3, "Owner C")
@@ -416,7 +416,7 @@ class TestDepth3Propagation:
         _create_vessel(db, 1)
         _create_vessel(db, 2)
         _create_vessel(db, 3)
-        o1 = _create_owner(db, 1, "Owner A", ism_manager="ISM Corp")
+        _create_owner(db, 1, "Owner A", ism_manager="ISM Corp")
         o2 = _create_owner(db, 2, "Owner B", ism_manager="ISM Corp")
         o3 = _create_owner(db, 3, "Owner C")
         cluster = OwnerCluster(canonical_name="GROUP", vessel_count=2)
@@ -655,6 +655,7 @@ class TestWatchlistIntegration:
     def test_watchlist_trigger_calls_propagation(self):
         """Verify watchlist scheduler has the sanctions propagation trigger."""
         import inspect
+
         from app.modules import watchlist_scheduler
 
         source = inspect.getsource(watchlist_scheduler.update_source)

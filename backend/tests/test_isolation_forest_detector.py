@@ -6,12 +6,9 @@ import math
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.modules.isolation_forest_detector import (
     ALL_FEATURES,
     AUGMENTED_FEATURES,
-    FINGERPRINT_FEATURES,
     IsolationForest,
     _average_path_length,
     _build_feature_vector,
@@ -22,7 +19,6 @@ from app.modules.isolation_forest_detector import (
     get_vessel_anomaly,
     run_isolation_forest_detection,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 

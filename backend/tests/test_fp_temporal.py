@@ -14,14 +14,10 @@ from app.models.corridor import Corridor
 from app.models.gap_event import AISGapEvent
 from app.models.scoring_region import ScoringRegion
 from app.modules.fp_rate_tracker import (
-    MonthlyFPRate,
-    WatchFPRate,
-    WeekdayFPRate,
     compute_fp_rates_by_month,
     compute_fp_rates_by_watch,
     compute_fp_rates_by_weekday,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

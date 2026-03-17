@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import json
-import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-from app.models.trajectory_pca_anomaly import TrajectoryPcaAnomaly
 from app.modules.trajectory_pca_detector import (
-    FEATURE_NAMES,
     _TIER_HIGH_PERCENTILE,
     _TIER_LOW_PERCENTILE,
     _TIER_MEDIUM_PERCENTILE,
+    FEATURE_NAMES,
     assign_tier,
     compute_covariance_matrix,
     compute_spe,
@@ -25,7 +22,6 @@ from app.modules.trajectory_pca_detector import (
     segment_to_feature_vector,
     zscore_normalize,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -362,7 +358,6 @@ class TestTopErrorFeatures:
 
     def test_returns_top_n(self):
         """Should return n_top features."""
-        eigenvectors = [[1.0, 0.0], [0.0, 1.0]]
         # Extend to 8 features for FEATURE_NAMES compat
         ev_8 = [[0.0] * 8 for _ in range(8)]
         for i in range(8):

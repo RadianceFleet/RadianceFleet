@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml

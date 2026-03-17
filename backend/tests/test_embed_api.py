@@ -1,13 +1,14 @@
 """Tests for embeddable widget API endpoints (/embed/*)."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.routes_embed import _require_embed_api_key, _risk_tier, router as embed_router
+from app.api.routes_embed import _require_embed_api_key, _risk_tier
+from app.api.routes_embed import router as embed_router
 from app.database import get_db
 from tests.conftest import make_mock_gap, make_mock_point, make_mock_vessel
 

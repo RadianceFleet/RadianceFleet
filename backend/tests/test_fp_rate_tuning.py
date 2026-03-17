@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.base import Base, CorridorTypeEnum
@@ -14,16 +14,12 @@ from app.models.corridor import Corridor
 from app.models.corridor_scoring_override import CorridorScoringOverride
 from app.models.gap_event import AISGapEvent
 from app.modules.fp_rate_tracker import (
-    CalibrationSuggestion,
-    CorridorFPRate,
     _compute_trend,
-    _fp_rate_for_window,
     _get_corridor_multiplier,
     compute_fp_rate,
     compute_fp_rates,
     generate_calibration_suggestions,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -439,7 +435,7 @@ class TestOverrideModel:
 
         o2 = CorridorScoringOverride(corridor_id=c.corridor_id, corridor_multiplier_override=1.5)
         db.add(o2)
-        with pytest.raises(Exception):  # IntegrityError
+        with pytest.raises(IntegrityError):
             db.commit()
         db.rollback()
 

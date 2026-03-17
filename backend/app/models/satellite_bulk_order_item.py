@@ -34,6 +34,6 @@ class SatelliteBulkOrderItem(Base):
     skip_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=func.now())
 
-    bulk_order: Mapped["SatelliteBulkOrder"] = relationship(
+    bulk_order: Mapped[SatelliteBulkOrder] = relationship(
         "SatelliteBulkOrder", back_populates="items"
     )

@@ -16,7 +16,6 @@ from app.models import Base
 from app.models.analyst import Analyst
 from app.models.notification_event import NotificationEvent
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -234,7 +233,7 @@ class TestMarkRead:
 
 class TestCleanup:
     def test_deletes_old_records(self, db, analyst):
-        from app.modules.collaboration_notifier import emit_event, cleanup_old_events
+        from app.modules.collaboration_notifier import cleanup_old_events, emit_event
 
         emit_event(db, analyst.analyst_id, "assignment")
         db.commit()

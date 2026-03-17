@@ -23,4 +23,4 @@ class VesselScoringState(Base):
     scoring_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     dirty: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    vessel: Mapped["Vessel"] = relationship("Vessel")
+    vessel: Mapped[Vessel] = relationship("Vessel")

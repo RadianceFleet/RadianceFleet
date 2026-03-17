@@ -28,6 +28,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.gap_event import AISGapEvent
 from app.modules.scoring_config import *  # noqa: F401,F403
 from app.modules.scoring_config import (
@@ -962,10 +963,7 @@ def _apply_family_caps(breakdown: dict, config: dict) -> None:
             if not isinstance(v, (int, float)) or v <= 0:
                 continue
             # Check exact membership first
-            if k in family_keys:
-                family_signals[k] = v
-            # Then check dynamic prefix matching
-            elif dynamic_prefixes and any(k.startswith(p) for p in dynamic_prefixes):
+            if k in family_keys or dynamic_prefixes and any(k.startswith(p) for p in dynamic_prefixes):
                 family_signals[k] = v
 
         family_total = sum(family_signals.values())
@@ -2972,7 +2970,7 @@ def compute_gap_score(
 
     # ── Stage 5-B: Convoy scoring ────────────────────────────────────────────
     if _scoring_settings.CONVOY_SCORING_ENABLED and db is not None and vessel is not None:
-        convoy_cfg = config.get("convoy", {})
+        config.get("convoy", {})
         try:
             from sqlalchemy import or_ as _or_convoy
 

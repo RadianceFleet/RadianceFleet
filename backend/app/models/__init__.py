@@ -12,8 +12,8 @@ from app.models.audit_log import AuditLog
 from app.models.base import Base
 from app.models.calibration_event import CalibrationEvent
 from app.models.case_activity import CaseActivity
-from app.models.case_analyst import CaseAnalyst
 from app.models.case_alert import CaseAlert
+from app.models.case_analyst import CaseAnalyst
 from app.models.collection_run import CollectionRun
 from app.models.convoy_event import ConvoyEvent
 from app.models.corridor import Corridor
@@ -66,8 +66,8 @@ from app.models.sts_hotspot import StsHotspot
 from app.models.sts_transfer import StsTransferEvent
 from app.models.stubs import DarkVesselDetection, HuntCandidate, SearchMission, VesselTargetProfile
 from app.models.tip_submission import TipSubmission
-from app.models.trajectory_cluster import TrajectoryCluster
 from app.models.trajectory_autoencoder_anomaly import TrajectoryAutoencoderAnomaly
+from app.models.trajectory_cluster import TrajectoryCluster
 from app.models.trajectory_cluster_member import TrajectoryClusterMember
 from app.models.trajectory_pca_anomaly import TrajectoryPcaAnomaly
 from app.models.verification_checklist import VerificationChecklist

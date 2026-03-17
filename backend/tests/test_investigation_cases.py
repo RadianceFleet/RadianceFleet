@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine
@@ -19,7 +19,6 @@ from app.models.sts_transfer import StsTransferEvent
 from app.models.vessel import Vessel
 from app.modules.case_grouper import suggest_case_grouping
 from app.schemas.cases import CaseCreate, CaseResponse, CaseSuggestion, CaseUpdate
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -203,7 +202,6 @@ class TestCaseAPI:
         mock_db.commit = MagicMock()
 
         # After commit+refresh the route uses the case object directly
-        original_add = mock_db.add
 
         def capture_add(obj):
             # Copy mock_case attributes to the added object won't work easily,

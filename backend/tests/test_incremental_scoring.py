@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 from app.models.vessel_scoring_state import VesselScoringState
-
 
 # ---------------------------------------------------------------------------
 # Helpers

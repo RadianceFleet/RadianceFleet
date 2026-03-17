@@ -9,6 +9,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.alert_group import AlertGroup
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ def compute_group_key(alert, config=None) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:64]
 
 
-def assign_to_group(db: Session, alert) -> "AlertGroup":
+def assign_to_group(db: Session, alert) -> AlertGroup:
     """Assign an alert to an existing or new dedup group.
 
     1. Compute group key
@@ -55,10 +56,8 @@ def assign_to_group(db: Session, alert) -> "AlertGroup":
 
     gap_start = alert.gap_start_utc
     risk_score = alert.risk_score or 0
-    is_new = False
 
     if group is None:
-        is_new = True
         group = AlertGroup(
             vessel_id=alert.vessel_id,
             corridor_id=getattr(alert, "corridor_id", None),
@@ -149,7 +148,7 @@ def run_dedup_pass(db: Session) -> dict:
     }
 
 
-def merge_groups(db: Session, group_ids: list[int]) -> "AlertGroup":
+def merge_groups(db: Session, group_ids: list[int]) -> AlertGroup:
     """Merge multiple groups into one (the first in the list).
 
     The surviving group absorbs all member alerts from the dissolved groups.
@@ -220,7 +219,7 @@ def update_group_max_score(db: Session, group_id: int) -> None:
     db.commit()
 
 
-def _recalculate_group_stats(db: Session, group: "AlertGroup") -> None:
+def _recalculate_group_stats(db: Session, group: AlertGroup) -> None:
     """Recalculate group statistics from its member alerts."""
     from sqlalchemy import text
 

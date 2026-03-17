@@ -1153,7 +1153,7 @@ def generate_lift_based_suggestions(db: Session) -> list[dict]:
         elif isinstance(lift, (int, float)) and lift > 2.0:
             direction = "increase"
             # Scale increase: further from 2.0 → larger increase, capped at 15%
-            if isinstance(lift, float) and not (lift == float("inf")):
+            if isinstance(lift, float) and lift != float("inf"):
                 raw_pct = min(15.0, round((lift - 2.0) / 2.0 * 15, 1))
             else:
                 raw_pct = 15.0

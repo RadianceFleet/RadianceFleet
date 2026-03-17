@@ -32,7 +32,8 @@ def mock_db():
 # This avoids creating ~900 TestClient instances (each spins up ASGI).
 # The mock_db is swapped per-test via a closure in api_client.
 
-_auth_override = lambda: {"analyst_id": 1, "username": "test_admin", "role": "admin"}
+def _auth_override():
+    return {"analyst_id": 1, "username": "test_admin", "role": "admin"}
 
 
 @pytest.fixture(scope="session")

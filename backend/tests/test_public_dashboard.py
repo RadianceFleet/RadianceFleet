@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -13,7 +12,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from app.api._helpers import limiter
-from app.api.routes_public import _clear_cache, router as public_router
+from app.api.routes_public import _clear_cache
+from app.api.routes_public import router as public_router
 from app.database import get_db
 
 # Build a lightweight test app that includes only the public router.

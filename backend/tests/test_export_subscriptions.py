@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
-from pathlib import Path
-from unittest.mock import MagicMock, patch, PropertyMock
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.export_subscription import ExportSubscription
 from app.models.export_run import ExportRun
-
+from app.models.export_subscription import ExportSubscription
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -401,9 +399,8 @@ class TestS3Delivery:
             assert result["bucket"] == "my-bucket"
 
     def test_boto3_not_installed(self):
-        from app.modules.export_delivery import deliver_via_s3
 
-        import sys
+        from app.modules.export_delivery import deliver_via_s3
         # Temporarily remove boto3 from imports if present
         with patch.dict("sys.modules", {"boto3": None}):
             with patch("app.modules.export_delivery.settings") as mock_settings:
@@ -609,30 +606,34 @@ class TestRoutesValidation:
         _validate_subscription_fields("daily", "alerts", "csv", "email")
 
     def test_validate_fields_invalid_schedule(self):
-        from app.api.routes_exports import _validate_subscription_fields
         from fastapi import HTTPException
+
+        from app.api.routes_exports import _validate_subscription_fields
 
         with pytest.raises(HTTPException) as exc_info:
             _validate_subscription_fields("biweekly", None, None, None)
         assert exc_info.value.status_code == 400
 
     def test_validate_fields_invalid_export_type(self):
-        from app.api.routes_exports import _validate_subscription_fields
         from fastapi import HTTPException
+
+        from app.api.routes_exports import _validate_subscription_fields
 
         with pytest.raises(HTTPException):
             _validate_subscription_fields(None, "users", None, None)
 
     def test_validate_fields_invalid_format(self):
-        from app.api.routes_exports import _validate_subscription_fields
         from fastapi import HTTPException
+
+        from app.api.routes_exports import _validate_subscription_fields
 
         with pytest.raises(HTTPException):
             _validate_subscription_fields(None, None, "xlsx", None)
 
     def test_validate_fields_invalid_delivery(self):
-        from app.api.routes_exports import _validate_subscription_fields
         from fastapi import HTTPException
+
+        from app.api.routes_exports import _validate_subscription_fields
 
         with pytest.raises(HTTPException):
             _validate_subscription_fields(None, None, None, "ftp")

@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from app.models.owner_cluster_member import OwnerClusterMember
 from app.models.vessel_owner import VesselOwner
@@ -19,7 +16,6 @@ from app.modules.vessel_similarity import (
     find_similar_vessels,
     persist_similarity_results,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

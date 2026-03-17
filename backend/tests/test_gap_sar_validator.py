@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from app.modules.gap_sar_validator import _interpolate_position, validate_gaps_with_sar
 

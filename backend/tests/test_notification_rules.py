@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from app.models.base import Base
+from app.models.corridor import Corridor
+from app.models.gap_event import AISGapEvent
 from app.models.notification_rule import NotificationRule
 from app.models.notification_rule_log import NotificationRuleLog
-from app.models.gap_event import AISGapEvent
 from app.models.vessel import Vessel
-from app.models.analyst import Analyst
-from app.models.corridor import Corridor
 
 
 @pytest.fixture

@@ -8,6 +8,7 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -17,12 +18,10 @@ from app.main import app
 from app.models.analyst import Analyst
 from app.models.base import Base
 from app.models.case_activity import CaseActivity
-from app.models.case_alert import CaseAlert
 from app.models.case_analyst import CaseAnalyst
 from app.models.gap_event import AISGapEvent
 from app.models.investigation_case import InvestigationCase
 from app.models.vessel import Vessel
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -162,7 +161,7 @@ def test_case_analyst_unique_constraint(db_session: Session, seed_data):
 
     ca2 = CaseAnalyst(case_id=1, analyst_id=2, role="reviewer")
     db_session.add(ca2)
-    with pytest.raises(Exception):  # IntegrityError
+    with pytest.raises(IntegrityError):
         db_session.commit()
     db_session.rollback()
 

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-import os
-import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import polars as pl
 import pytest
@@ -15,7 +13,6 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.base import Base
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

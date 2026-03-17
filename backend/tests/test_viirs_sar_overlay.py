@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
-from unittest.mock import MagicMock, patch
-
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 from app.models.stubs import DarkVesselDetection
 

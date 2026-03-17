@@ -8,27 +8,20 @@ and edge cases.
 from __future__ import annotations
 
 import json
-import math
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.base import Base
-from app.models.jamming_zone import JammingZone, JammingZoneGap
 from app.models.gap_event import AISGapEvent
+from app.models.jamming_zone import JammingZone, JammingZoneGap
 from app.modules.jamming_zone_detector import (
-    CONVEX_HULL_BUFFER_DEG,
-    DECAY_FACTOR_PER_DAY,
-    DECAY_START_DAYS,
-    EXPIRE_DAYS,
-    GapPoint,
-    IOU_MERGE_THRESHOLD,
-    MIN_VESSELS,
     SPATIAL_EPS_DEG,
     TEMPORAL_EPS_HOURS,
+    GapPoint,
     _compute_convex_hull_wkt,
     _compute_iou,
     _compute_radius_nm,
@@ -42,7 +35,6 @@ from app.modules.jamming_zone_detector import (
     run_jamming_detection,
     st_dbscan,
 )
-
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -176,7 +168,7 @@ def test_st_dbscan_noise_when_too_few():
         _make_gap_point(2, 2, 60.1, 25.1, 0.5),
     ]
     labels = st_dbscan(points, spatial_eps=SPATIAL_EPS_DEG, temporal_eps=TEMPORAL_EPS_HOURS, min_points=3)
-    assert all(l == -1 for l in labels)
+    assert all(lbl == -1 for lbl in labels)
 
 
 def test_st_dbscan_two_clusters():
@@ -206,7 +198,7 @@ def test_st_dbscan_temporal_separation():
     ]
     labels = st_dbscan(points, spatial_eps=SPATIAL_EPS_DEG, temporal_eps=TEMPORAL_EPS_HOURS, min_points=3)
     # Should all be noise since the third point is too far temporally
-    assert all(l == -1 for l in labels)
+    assert all(lbl == -1 for lbl in labels)
 
 
 # ── Convex hull tests ────────────────────────────────────────────────────────
@@ -478,7 +470,6 @@ def _make_api_test_app():
     from sqlalchemy.pool import StaticPool
 
     from app.api.routes_jamming_zones import router
-    from app.models.jamming_zone import JammingZone, JammingZoneGap  # noqa: F811 ensure registered
 
     app = FastAPI()
     app.include_router(router)

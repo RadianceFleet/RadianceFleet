@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.modules.behavioral_baseline_detector import (
-    BASELINE_DAYS,
-    CURRENT_WINDOW_DAYS,
     GAP_FREQUENCY_CAP,
-    MULTI_SIGNAL_BONUS,
-    MULTI_SIGNAL_MIN_COUNT,
-    PORT_NOVELTY_THRESHOLD,
     TIER_HIGH_THRESHOLD,
     TIER_MEDIUM_THRESHOLD,
+    _score_to_tier,
     _z_score_threshold,
     build_vessel_profile,
     compute_deviation_score,
@@ -31,9 +27,7 @@ from app.modules.behavioral_baseline_detector import (
     get_vessel_profile,
     refresh_vessel_profile,
     run_behavioral_baseline,
-    _score_to_tier,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,7 +36,7 @@ def _make_ais_point(sog=12.0, timestamp=None, corridor_id=None):
     """Create a mock AIS point."""
     pt = MagicMock()
     pt.sog = sog
-    pt.timestamp_utc = timestamp or datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    pt.timestamp_utc = timestamp or datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
     pt.corridor_id = corridor_id
     return pt
 
@@ -52,7 +46,7 @@ def _make_gap_event(duration_minutes=120, corridor_id=None):
     ge = MagicMock()
     ge.duration_minutes = duration_minutes
     ge.corridor_id = corridor_id
-    ge.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    ge.gap_start_utc = datetime(2026, 1, 15, 12, 0, 0, tzinfo=UTC)
     return ge
 
 
@@ -108,8 +102,8 @@ class TestPortPattern:
 
     def test_basic_port_pattern(self):
         """Extract visited ports and dwell times."""
-        t1 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-        t2 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+        t2 = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         calls = [_make_port_call(1, t1, t2), _make_port_call(2, t1, t2)]
         pattern = compute_port_pattern(calls)
         assert sorted(pattern["visited_ports"]) == [1, 2]
@@ -124,14 +118,14 @@ class TestPortPattern:
 
     def test_null_port_id_skipped(self):
         """Port calls with null port_id are skipped."""
-        t1 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
         calls = [_make_port_call(None, t1, t1 + timedelta(hours=6))]
         pattern = compute_port_pattern(calls)
         assert pattern["visited_ports"] == []
 
     def test_no_departure_skips_dwell(self):
         """Port call without departure time has no dwell time computed."""
-        t1 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
         calls = [_make_port_call(5, t1, None)]
         pattern = compute_port_pattern(calls)
         assert 5 in pattern["visited_ports"]
@@ -570,10 +564,11 @@ class TestAPIEndpoints:
     """Tests for behavioral baseline API endpoints."""
 
     def _make_client(self):
+        from fastapi import FastAPI
         from fastapi.testclient import TestClient
+
         from app.api.routes_behavioral_baseline import router
         from app.auth import require_auth
-        from fastapi import FastAPI
 
         app = FastAPI()
         app.include_router(router)

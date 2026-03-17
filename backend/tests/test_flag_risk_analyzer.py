@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -17,7 +17,6 @@ from app.models.psc_detention import PscDetention
 from app.models.vessel import Vessel
 from app.models.vessel_history import VesselHistory
 from app.modules.flag_risk_analyzer import (
-    TRANSPARENCY_INDEX,
     _assign_tier,
     _compute_flag_hopping_score,
     _compute_fleet_composition_score,
@@ -394,6 +393,7 @@ class TestCLICommand:
     def test_flag_risk_update_runs(self, db):
         """Test CLI command can be imported and invoked."""
         from typer.testing import CliRunner
+
         from app.cli_app import app
 
         runner = CliRunner()
@@ -409,6 +409,7 @@ class TestCLICommand:
         db.commit()
 
         from typer.testing import CliRunner
+
         from app.cli_app import app
 
         runner = CliRunner()

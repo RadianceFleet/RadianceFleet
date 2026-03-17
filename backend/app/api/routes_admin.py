@@ -26,7 +26,12 @@ from app.auth import (
 )
 from app.config import settings
 from app.database import get_db
-from app.schemas.analyst import AnalystCreate, AnalystLoginRequest, AnalystPasswordReset, AnalystUpdate
+from app.schemas.analyst import (
+    AnalystCreate,
+    AnalystLoginRequest,
+    AnalystPasswordReset,
+    AnalystUpdate,
+)
 
 logger = logging.getLogger(__name__)
 

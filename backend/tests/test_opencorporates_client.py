@@ -6,8 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pybreaker
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers

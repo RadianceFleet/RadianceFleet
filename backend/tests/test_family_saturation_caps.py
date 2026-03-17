@@ -6,16 +6,9 @@ dominating the score, while leaving other families untouched.
 
 from __future__ import annotations
 
-import pytest
-
 from app.modules.risk_scoring import (
     _CAP_FAMILY_BEHAVIORAL,
     _CAP_FAMILY_GAP_AND_SPEED,
-    _CAP_FAMILY_IDENTITY_AND_OWNERSHIP,
-    _CAP_FAMILY_SATELLITE_AND_DARK,
-    _CAP_FAMILY_SPOOFING_AND_POSITION,
-    _CAP_FAMILY_VOYAGE_AND_STS,
-    _CAP_FAMILY_WATCHLIST,
     _apply_family_caps,
 )
 
@@ -46,7 +39,7 @@ class TestFamilyCapApplied:
             "gap_frequency_5_in_30d": 50,
         }
         config = _base_config()
-        original_total = 55 + 40 + 50  # 145
+        55 + 40 + 50  # 145
         _apply_family_caps(breakdown, config)
 
         capped_total = sum(

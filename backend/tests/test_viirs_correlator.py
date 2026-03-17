@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from unittest.mock import MagicMock, PropertyMock, patch
-
-import pytest
+from datetime import datetime
+from unittest.mock import MagicMock
 
 
 def _make_detection(

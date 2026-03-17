@@ -5,10 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from tests.conftest import make_mock_vessel
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -61,7 +58,7 @@ def _setup_db_mock(points, corridors=None, existing_event=None):
 
     def query_side_effect(model):
         call_count[0] += 1
-        mock = MagicMock()
+        MagicMock()
 
         model_name = getattr(model, "__name__", str(model))
 
@@ -157,7 +154,7 @@ class TestAdaptiveLoiteringThresholds:
         ):
             min_h = _get_min_hours_for_corridor(corridor)
             assert min_h == 8
-            assert 6 < min_h  # 6h loitering would NOT trigger
+            assert min_h > 6  # 6h loitering would NOT trigger
 
     def test_no_corridor_uses_default(self):
         """No corridor match uses default thresholds (4h)."""

@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from app.models.ais_point import AISPoint
 from app.models.base import Base, SpoofingTypeEnum
-from app.models.gap_event import AISGapEvent
 from app.models.spoofing_anomaly import SpoofingAnomaly
 from app.models.vessel import Vessel
 from app.modules.ais_reporting_anomaly_detector import (
@@ -352,7 +351,7 @@ class TestIntegration:
 
         with patch("app.modules.ais_reporting_anomaly_detector.settings") as mock_settings:
             mock_settings.AIS_REPORTING_ANOMALY_ENABLED = True
-            result = run_reporting_anomaly_detection(db)
+            run_reporting_anomaly_detection(db)
 
         # Should not create new anomaly due to dedup
         anomaly_count = (

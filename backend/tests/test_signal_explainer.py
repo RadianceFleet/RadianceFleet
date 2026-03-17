@@ -4,14 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from app.modules.signal_explainer import (
     ExplainabilityResponse,
     SignalExplanation,
-    WaterfallEntry,
     _analyst_category,
     _categorize_key,
     _compute_waterfall,
@@ -21,7 +18,6 @@ from app.modules.signal_explainer import (
     _key_to_label,
     explain_alert,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -335,11 +331,10 @@ class TestHelpers:
 class TestAPIEndpoint:
     def test_get_explain_404(self):
         """Test that a missing alert returns 404."""
+        from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
         from app.api.routes_explainability import router
-
-        from fastapi import FastAPI
 
         app = FastAPI()
         app.include_router(router, prefix="/api/v1")
@@ -361,11 +356,10 @@ class TestAPIEndpoint:
 
     def test_get_explain_success(self):
         """Test successful explanation response."""
+        from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
         from app.api.routes_explainability import router
-
-        from fastapi import FastAPI
 
         app = FastAPI()
         app.include_router(router, prefix="/api/v1")

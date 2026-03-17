@@ -13,6 +13,7 @@ from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models.ais_archive_batch import AisArchiveBatch
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def archive_old_points(
     db: Session,
     cutoff_date: datetime,
     source: str | None = None,
-) -> "AisArchiveBatch":
+) -> AisArchiveBatch:
     """Archive AIS points older than cutoff_date to compressed Parquet.
 
     Args:
@@ -362,7 +363,7 @@ def get_retention_stats(db: Session) -> dict:
             page_size = db.execute(text("PRAGMA page_size")).scalar()
             if result and page_size:
                 db_size = result * page_size
-    except Exception:
+    except Exception:  # noqa: S110
         pass
 
     return {

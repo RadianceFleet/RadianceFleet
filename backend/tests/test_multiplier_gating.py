@@ -350,7 +350,7 @@ class TestMultiplierGatingMetadata:
         score, breakdown = _score(vessel, corridor=corridor, duration_minutes=300, config=cfg)
 
         assert "_multiplier_gating_applied" in breakdown, (
-            f"Gating should fire with impossibly high threshold"
+            "Gating should fire with impossibly high threshold"
         )
         reason = breakdown["_multiplier_gating_applied"]
         assert reason in ("base_score_below_threshold", "insufficient_family_breadth"), (

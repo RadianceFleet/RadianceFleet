@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -21,7 +21,6 @@ from app.schemas.collaboration import (
     PresenceInfo,
     WorkloadSummary,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

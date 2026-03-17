@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -15,10 +15,9 @@ from app.models.base import Base, CorridorTypeEnum
 from app.models.corridor import Corridor
 from app.models.gap_event import AISGapEvent
 from app.models.scoring_region import ScoringRegion
-from app.modules.fp_rate_tracker import CorridorFPRate, compute_region_fp_rate
+from app.modules.fp_rate_tracker import compute_region_fp_rate
 from app.modules.risk_scoring import _score_band
 from app.modules.shadow_scorer import shadow_score
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

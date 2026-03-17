@@ -247,7 +247,7 @@ class Autoencoder:
         effective_batch = min(self.batch_size, n)
         epoch_losses: list[float] = []
 
-        for epoch in range(self.epochs):
+        for _epoch in range(self.epochs):
             # Shuffle data
             indices = list(range(n))
             self.rng.shuffle(indices)

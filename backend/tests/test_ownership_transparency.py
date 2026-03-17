@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.base import Base
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

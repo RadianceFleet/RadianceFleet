@@ -1827,7 +1827,7 @@ def create_bulk_order_endpoint(
             "estimated_total_cost_usd": bulk_order.estimated_total_cost_usd,
         }
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.get("/satellite/bulk-orders", tags=["satellite"])
@@ -1946,7 +1946,7 @@ def queue_bulk_order_endpoint(
             "status": bulk_order.status,
         }
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.post("/satellite/bulk-orders/{bulk_order_id}/cancel", tags=["satellite"])
@@ -1965,7 +1965,7 @@ def cancel_bulk_order_endpoint(
             "status": bulk_order.status,
         }
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 @router.post("/satellite/bulk-orders/process", tags=["satellite"])

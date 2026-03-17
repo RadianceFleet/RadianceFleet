@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,7 +17,6 @@ from app.modules.alert_dedup_engine import (
     run_dedup_pass,
     update_group_max_score,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

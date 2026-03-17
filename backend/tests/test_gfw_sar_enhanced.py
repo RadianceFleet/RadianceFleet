@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -92,7 +92,7 @@ def test_incremental_sweep_skips_recently_swept(mock_get_sar, db):
 @patch("app.modules.gfw_client.get_sar_detections")
 def test_confidence_filtering_at_threshold(mock_get_sar, mock_import, db):
     """Detections with confidence below threshold should be filtered out."""
-    corridor = _make_corridor(db)
+    _make_corridor(db)
 
     mock_get_sar.return_value = [
         {
@@ -162,7 +162,7 @@ def test_compound_dedup_key(mock_get_sar, mock_import, db):
 
         from app.modules.gfw_client import sweep_corridors_sar_incremental
 
-        result = sweep_corridors_sar_incremental(db, "2026-01-01", "2026-01-31", token="fake")
+        sweep_corridors_sar_incremental(db, "2026-01-01", "2026-01-31", token="fake")
 
     # The duplicate should not be imported
     mock_import.assert_not_called()
@@ -234,7 +234,7 @@ def test_all_corridors_recently_swept(mock_get_sar, db):
 @patch("app.modules.gfw_client.get_sar_detections")
 def test_confidence_below_threshold_filtered(mock_get_sar, mock_import, db):
     """All detections below confidence threshold should be filtered."""
-    corridor = _make_corridor(db)
+    _make_corridor(db)
 
     mock_get_sar.return_value = [
         {

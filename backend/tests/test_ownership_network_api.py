@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.routes_ownership_network import router
@@ -17,6 +17,7 @@ from app.models.owner_cluster import OwnerCluster  # noqa: F401
 from app.models.owner_cluster_member import OwnerClusterMember  # noqa: F401
 from app.models.vessel import Vessel
 from app.models.vessel_owner import VesselOwner
+
 
 @pytest.fixture(scope="module")
 def _engine():

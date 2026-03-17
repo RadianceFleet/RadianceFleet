@@ -219,9 +219,7 @@ def process_bulk_order_queue(db: Session) -> dict:
         # Determine final status
         submitted = bulk_order.submitted_orders or 0
         failed = bulk_order.failed_orders or 0
-        if submitted + failed >= bulk_order.total_orders:
-            bulk_order.status = "completed"
-        elif budget_exhausted:
+        if submitted + failed >= bulk_order.total_orders or budget_exhausted:
             bulk_order.status = "completed"
 
         db.flush()

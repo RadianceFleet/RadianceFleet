@@ -13,7 +13,6 @@ from app.models.vessel import Vessel
 from app.models.vessel_owner import VesselOwner
 from app.modules.network_graph_builder import (
     _find_sanctions_paths,
-    _walk_parents_bfs,
     build_ownership_network,
 )
 

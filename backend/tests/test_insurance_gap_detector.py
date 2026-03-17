@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from app.models.insurance_gap_event import InsuranceGapEvent
 from app.models.vessel_history import VesselHistory
@@ -18,7 +15,6 @@ from app.modules.insurance_gap_detector import (
     detect_insurance_gaps,
     get_vessel_insurance_gaps,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -363,7 +359,7 @@ class TestInsuranceGapEventModel:
         assert "uq_insurance_gap_vessel_start" in constraints
 
     def test_default_values(self):
-        event = InsuranceGapEvent.__new__(InsuranceGapEvent)
+        InsuranceGapEvent.__new__(InsuranceGapEvent)
         # Check column defaults are defined
         cols = {c.name: c for c in InsuranceGapEvent.__table__.columns}
         assert cols["previous_club_is_ig"].default.arg is False

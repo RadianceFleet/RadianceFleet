@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine, event
@@ -554,7 +553,7 @@ def test_process_disabled(db, mock_settings):
 
 def test_cancel_draft_order(db, vessel, mock_settings):
     """cancel_bulk_order cancels a draft order and skips items."""
-    from app.modules.bulk_satellite_manager import create_bulk_order, cancel_bulk_order
+    from app.modules.bulk_satellite_manager import cancel_bulk_order, create_bulk_order
 
     order = create_bulk_order(db, name="Cancel Me", items=[{"vessel_id": vessel.vessel_id}])
 
@@ -571,7 +570,7 @@ def test_cancel_draft_order(db, vessel, mock_settings):
 
 def test_cancel_queued_order(db, vessel, mock_settings):
     """cancel_bulk_order cancels a queued order."""
-    from app.modules.bulk_satellite_manager import create_bulk_order, cancel_bulk_order
+    from app.modules.bulk_satellite_manager import cancel_bulk_order, create_bulk_order
 
     order = create_bulk_order(db, name="Queued Cancel", items=[{"vessel_id": vessel.vessel_id}])
     order.status = "queued"
@@ -589,7 +588,7 @@ def test_cancel_queued_order(db, vessel, mock_settings):
 
 def test_cancel_already_cancelled_fails(db, vessel, mock_settings):
     """cancel_bulk_order raises for already cancelled order."""
-    from app.modules.bulk_satellite_manager import create_bulk_order, cancel_bulk_order
+    from app.modules.bulk_satellite_manager import cancel_bulk_order, create_bulk_order
 
     order = create_bulk_order(db, name="Already Done", items=[{"vessel_id": vessel.vessel_id}])
     order.status = "cancelled"
@@ -601,7 +600,7 @@ def test_cancel_already_cancelled_fails(db, vessel, mock_settings):
 
 def test_cancel_completed_fails(db, vessel, mock_settings):
     """cancel_bulk_order raises for completed order."""
-    from app.modules.bulk_satellite_manager import create_bulk_order, cancel_bulk_order
+    from app.modules.bulk_satellite_manager import cancel_bulk_order, create_bulk_order
 
     order = create_bulk_order(db, name="Completed", items=[{"vessel_id": vessel.vessel_id}])
     order.status = "completed"
@@ -621,7 +620,7 @@ def test_cancel_not_found(db, mock_settings):
 
 def test_cancel_cascades_to_submitted_satellite_orders(db, vessel, mock_settings):
     """cancel_bulk_order attempts to cancel linked satellite orders."""
-    from app.modules.bulk_satellite_manager import create_bulk_order, cancel_bulk_order
+    from app.modules.bulk_satellite_manager import cancel_bulk_order, create_bulk_order
 
     order = create_bulk_order(db, name="With Sat Orders", items=[{"vessel_id": vessel.vessel_id}])
 
@@ -754,8 +753,8 @@ def test_full_lifecycle(db, vessel, mock_settings):
     """Full lifecycle: draft -> queued -> processing -> completed."""
     from app.modules.bulk_satellite_manager import (
         create_bulk_order,
-        queue_bulk_order,
         process_bulk_order_queue,
+        queue_bulk_order,
     )
 
     order = create_bulk_order(db, name="Lifecycle", items=[{"vessel_id": vessel.vessel_id}])

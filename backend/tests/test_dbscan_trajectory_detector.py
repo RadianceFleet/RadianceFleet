@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -27,7 +26,6 @@ from app.modules.dbscan_trajectory_detector import (
     run_trajectory_clustering,
     segment_distance,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -210,7 +208,7 @@ class TestSegmentExtraction:
         """Vessels with <3 points produce no segments."""
         base = datetime(2026, 1, 10, 0, 0, 0)
         wps = _make_waypoints(base, [60.0, 60.1], [25.0, 25.1])
-        seg = TrajectorySegment(1, base, base + timedelta(hours=24), wps)
+        TrajectorySegment(1, base, base + timedelta(hours=24), wps)
         # Should still create a segment (>=2 waypoints), but extract_segments
         # requires >=3 points before windowing
         db = MagicMock()

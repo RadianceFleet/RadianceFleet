@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
-
-import pytest
+from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 from app.modules.narrative_generator import (
     DISCLAIMER,
@@ -13,16 +11,15 @@ from app.modules.narrative_generator import (
     _build_executive_summary,
     _build_timeline,
     _build_vessel_background,
+    _completeness_warnings,
     _compute_enrichment_completeness,
     _compute_narrative_strength,
-    _completeness_warnings,
     _group_signals_by_category,
     _key_to_label,
     _recommended_actions,
     _render_signal,
     generate_narrative,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,8 +43,8 @@ def _make_gap(**overrides):
         },
     )
     gap.status = overrides.get("status", "under_review")
-    gap.analyst_notes = overrides.get("analyst_notes", None)
-    gap.corridor_id = overrides.get("corridor_id", None)
+    gap.analyst_notes = overrides.get("analyst_notes")
+    gap.corridor_id = overrides.get("corridor_id")
     return gap
 
 
@@ -66,7 +63,7 @@ def _make_vessel(**overrides):
     vessel.psc_detained_last_12m = overrides.get("psc_detained_last_12m", False)
     vessel.psc_major_deficiencies_last_12m = overrides.get("psc_major_deficiencies_last_12m", 0)
     vessel.dark_fleet_confidence = overrides.get("dark_fleet_confidence", "HIGH")
-    vessel.callsign = overrides.get("callsign", None)
+    vessel.callsign = overrides.get("callsign")
     return vessel
 
 

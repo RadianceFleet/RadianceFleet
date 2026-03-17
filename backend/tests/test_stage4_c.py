@@ -425,8 +425,8 @@ class TestFeatureFlags:
         assert hasattr(s, "SAR_CORRELATION_ENABLED")
         assert s.SAR_CORRELATION_ENABLED is True
 
-    def test_config_has_sar_correlation_enabled(self):
-        """Config class should have SAR_CORRELATION_ENABLED field."""
+    def test_config_sar_correlation_enabled_default_true(self):
+        """SAR_CORRELATION_ENABLED should default to True."""
         from app.config import Settings
 
         s = Settings(DATABASE_URL="sqlite:///test.db")

@@ -16,8 +16,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.modules.sts_hotspot_detector import (
-    DEFAULT_EPS_NM,
-    DEFAULT_MIN_SAMPLES,
     SCORE_BASE,
     SCORE_CORRIDOR_BONUS,
     SCORE_GROWING_BONUS,
@@ -34,7 +32,6 @@ from app.modules.sts_hotspot_detector import (
     run_hotspot_detection,
 )
 from app.utils.geo import _EARTH_RADIUS_NM as EARTH_RADIUS_NM
-
 
 # ── Haversine tests ──────────────────────────────────────────────────────────
 

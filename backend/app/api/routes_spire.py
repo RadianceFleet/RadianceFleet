@@ -124,7 +124,6 @@ def spire_coverage(
     )
 
     # Distinct vessels
-    from app.models.vessel import Vessel
 
     vessel_count = (
         db.query(func.count(func.distinct(AISPoint.vessel_id)))

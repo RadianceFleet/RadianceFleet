@@ -158,7 +158,7 @@ def compute_signal_corridor_matrix(
         global_fp_rates[signal] = counts["fp"] / total if total > 0 else 0.0
 
     # Collect corridor IDs for batch name lookup
-    corridor_ids = {cid for _, cid in cell_counts.keys()}
+    corridor_ids = {cid for _, cid in cell_counts}
     corridor_names = _fetch_corridor_names(db, corridor_ids)
 
     results: list[SignalCorridorCell] = []

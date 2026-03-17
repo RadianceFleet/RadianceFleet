@@ -8,7 +8,6 @@ import pytest
 
 from app.modules.equasis_client import _parse_company_history
 
-
 # ── HTML parsing tests ──────────────────────────────────────────────────────
 
 SAMPLE_COMPANY_HTML = """

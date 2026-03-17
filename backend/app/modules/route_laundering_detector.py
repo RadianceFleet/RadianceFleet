@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 from sqlalchemy.orm import Session
@@ -207,7 +207,7 @@ def _match_pattern_template(
     pattern_name: str,
     pattern: dict,
     categories: dict[str, list[str]],
-) -> Optional[dict]:
+) -> dict | None:
     """Greedy forward scan matching port sequence against template hop list.
 
     Returns match info dict with matched_ports, pattern_name, base_score,
@@ -305,7 +305,7 @@ def run_route_laundering_detection(db: Session) -> dict:
     all_ports = {p.port_id: p for p in db.query(Port).all()}
 
     # Also build intermediary countries/names for is_russian_oil_terminal fallback
-    intermediary_countries = frozenset(categories.get("intermediary", []))
+    frozenset(categories.get("intermediary", []))
 
     vessels = db.query(Vessel).filter(Vessel.merged_into_vessel_id.is_(None)).all()
     anomalies_created = 0

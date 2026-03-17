@@ -13,12 +13,7 @@ import pytest
 from app.modules.trajectory_autoencoder_detector import (
     ARCHITECTURE,
     DEFAULT_HIGH_SCORE,
-    DEFAULT_LOW_SCORE,
-    DEFAULT_MEDIUM_SCORE,
     MIN_SEGMENTS,
-    TIER_HIGH_THRESHOLD,
-    TIER_LOW_THRESHOLD,
-    TIER_MEDIUM_THRESHOLD,
     Autoencoder,
     assign_tier,
     compute_min_max,
@@ -30,7 +25,6 @@ from app.modules.trajectory_autoencoder_detector import (
     transpose,
     xavier_init,
 )
-
 
 # ── Matrix operations ────────────────────────────────────────────────────────
 
@@ -391,7 +385,9 @@ class TestDetectAnomalies:
     @patch("app.modules.trajectory_autoencoder_detector.settings")
     def test_disabled_returns_empty(self, mock_settings):
         mock_settings.TRAJECTORY_AUTOENCODER_ENABLED = False
-        from app.modules.trajectory_autoencoder_detector import detect_trajectory_autoencoder_anomalies
+        from app.modules.trajectory_autoencoder_detector import (
+            detect_trajectory_autoencoder_anomalies,
+        )
         db = MagicMock()
         result = detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
         assert result == []
@@ -402,7 +398,9 @@ class TestDetectAnomalies:
         mock_settings.TRAJECTORY_AUTOENCODER_ENABLED = True
         mock_extract.return_value = [_make_segment(1, start_offset_days=i) for i in range(5)]
 
-        from app.modules.trajectory_autoencoder_detector import detect_trajectory_autoencoder_anomalies
+        from app.modules.trajectory_autoencoder_detector import (
+            detect_trajectory_autoencoder_anomalies,
+        )
         db = MagicMock()
         result = detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
         assert result == []
@@ -429,8 +427,10 @@ class TestDetectAnomalies:
         # Mock the delete query
         db.query.return_value.filter.return_value.delete.return_value = 0
 
-        from app.modules.trajectory_autoencoder_detector import detect_trajectory_autoencoder_anomalies
-        result = detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
+        from app.modules.trajectory_autoencoder_detector import (
+            detect_trajectory_autoencoder_anomalies,
+        )
+        detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
 
         # Should have called db.add for anomalies and db.commit
         assert db.commit.called
@@ -443,7 +443,9 @@ class TestDetectAnomalies:
         mock_extract.return_value = []
         mock_config.return_value = {}
 
-        from app.modules.trajectory_autoencoder_detector import detect_trajectory_autoencoder_anomalies
+        from app.modules.trajectory_autoencoder_detector import (
+            detect_trajectory_autoencoder_anomalies,
+        )
         db = MagicMock()
         result = detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
         assert result == []
@@ -464,8 +466,10 @@ class TestDetectAnomalies:
         db = MagicMock()
         db.query.return_value.filter.return_value.delete.return_value = 0
 
-        from app.modules.trajectory_autoencoder_detector import detect_trajectory_autoencoder_anomalies
-        result = detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
+        from app.modules.trajectory_autoencoder_detector import (
+            detect_trajectory_autoencoder_anomalies,
+        )
+        detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
 
         # All identical => all normalized to 0.5 => low reconstruction error
         # Should have few or no anomalies
@@ -479,7 +483,9 @@ class TestDetectAnomalies:
         mock_extract.return_value = [_make_segment(1)]
         mock_config.return_value = {}
 
-        from app.modules.trajectory_autoencoder_detector import detect_trajectory_autoencoder_anomalies
+        from app.modules.trajectory_autoencoder_detector import (
+            detect_trajectory_autoencoder_anomalies,
+        )
         db = MagicMock()
         result = detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
         assert result == []
@@ -530,7 +536,9 @@ class TestAPIEndpoints:
     @patch("app.modules.trajectory_autoencoder_detector.settings")
     def test_post_endpoint_disabled(self, mock_settings):
         mock_settings.TRAJECTORY_AUTOENCODER_ENABLED = False
-        from app.modules.trajectory_autoencoder_detector import detect_trajectory_autoencoder_anomalies
+        from app.modules.trajectory_autoencoder_detector import (
+            detect_trajectory_autoencoder_anomalies,
+        )
         db = MagicMock()
         result = detect_trajectory_autoencoder_anomalies(db, vessel_id=1)
         assert result == []
@@ -550,7 +558,7 @@ class TestAPIEndpoints:
 class TestArchitecture:
     def test_architecture_is_symmetric(self):
         assert ARCHITECTURE == [7, 4, 3, 4, 7]
-        assert ARCHITECTURE == list(reversed(ARCHITECTURE))
+        assert list(reversed(ARCHITECTURE)) == ARCHITECTURE
 
     def test_bottleneck_is_smallest(self):
         assert min(ARCHITECTURE) == 3

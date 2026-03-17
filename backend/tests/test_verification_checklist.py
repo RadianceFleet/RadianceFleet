@@ -19,7 +19,6 @@ from app.modules.verification_checklist import (
     uncheck_item,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -195,7 +194,7 @@ class TestCheckItem:
         db.query.return_value.filter.return_value.first.return_value = item
         db.query.return_value.filter.return_value.all.return_value = [item]
 
-        result = check_item(db, item_id=1, analyst_id=5, notes="Verified")
+        check_item(db, item_id=1, analyst_id=5, notes="Verified")
         assert item.is_checked is True
         assert item.checked_by == 5
         assert item.notes == "Verified"
@@ -215,7 +214,7 @@ class TestCheckItem:
         item.checked_at = datetime(2026, 3, 15, tzinfo=UTC)
         db.query.return_value.filter.return_value.first.return_value = item
 
-        result = uncheck_item(db, item_id=1)
+        uncheck_item(db, item_id=1)
         assert item.is_checked is False
         assert item.checked_by is None
         assert item.checked_at is None

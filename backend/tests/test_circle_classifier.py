@@ -11,8 +11,8 @@ import pytest
 
 from app.modules.circle_classifier import (
     CLASSIFICATION_SCORES,
-    classify_circle_pattern,
     check_multi_vessel_coherence,
+    classify_circle_pattern,
     compute_centroid_movement,
     compute_radius_stats,
     compute_sog_stats,
@@ -126,10 +126,7 @@ def test_equipment_very_high_radius_cv():
     points = []
     for i in range(12):
         # Wildly varying radii but staying near center
-        if i % 2 == 0:
-            r = 0.015  # larger radius
-        else:
-            r = 0.001  # tiny radius
+        r = 0.015 if i % 2 == 0 else 0.001  # larger radius on even, tiny on odd
         angle = i * math.pi / 6
         lat = center_lat + r * math.cos(angle)
         lon = center_lon + r * math.sin(angle)

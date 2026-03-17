@@ -287,10 +287,7 @@ class IsolationForest:
 
         self.trees = []
         for _ in range(self.n_trees):
-            if n <= actual_sample_size:
-                sample = list(data)
-            else:
-                sample = rng.sample(data, actual_sample_size)
+            sample = list(data) if n <= actual_sample_size else rng.sample(data, actual_sample_size)
             tree = _build_tree(sample, height_limit, 0, rng)
             self.trees.append(tree)
 
@@ -415,10 +412,7 @@ def _identify_top_features(
         variance = sum((x - mean) ** 2 for x in col_vals) / len(col_vals)
         std = math.sqrt(variance) if variance > 0 else 0.0
 
-        if std > 1e-12:
-            z = abs(feature_vector[f_idx] - mean) / std
-        else:
-            z = 0.0
+        z = abs(feature_vector[f_idx] - mean) / std if std > 1e-12 else 0.0
 
         feature_scores.append((f_idx, z))
 
@@ -547,7 +541,7 @@ def run_isolation_forest_detection(db: Session) -> dict[str, Any]:
 
     now = datetime.datetime.now(datetime.UTC)
 
-    for i, (vid, score, avg_path) in enumerate(zip(vessel_ids, scores, path_lengths)):
+    for i, (vid, score, avg_path) in enumerate(zip(vessel_ids, scores, path_lengths, strict=False)):
         stats["vessels_processed"] += 1
 
         tier, risk_component = _score_tier(score)

@@ -42,12 +42,10 @@ def _matches_rule(rule, alert, vessel) -> bool:
     """Check all conditions on a rule (AND logic). Nullable conditions match any."""
     # Score range
     risk_score = getattr(alert, "risk_score", None)
-    if rule.min_score is not None and risk_score is not None:
-        if risk_score < rule.min_score:
-            return False
-    if rule.max_score is not None and risk_score is not None:
-        if risk_score > rule.max_score:
-            return False
+    if rule.min_score is not None and risk_score is not None and risk_score < rule.min_score:
+        return False
+    if rule.max_score is not None and risk_score is not None and risk_score > rule.max_score:
+        return False
 
     # Corridor
     if rule.corridor_ids_json:
@@ -93,9 +91,7 @@ def _matches_rule(rule, alert, vessel) -> bool:
             breakdown_signals = set()
             if isinstance(breakdown, dict):
                 for key, val in breakdown.items():
-                    if isinstance(val, dict) and val.get("score", 0) > 0:
-                        breakdown_signals.add(key)
-                    elif isinstance(val, (int, float)) and val > 0:
+                    if isinstance(val, dict) and val.get("score", 0) > 0 or isinstance(val, (int, float)) and val > 0:
                         breakdown_signals.add(key)
             if not any(s in breakdown_signals for s in signals):
                 return False
@@ -258,7 +254,7 @@ def fire_matching_rules(db, alert) -> list[dict]:
             group = db.query(AlertGroup).get(alert.alert_group_id)
             if group and alert.gap_event_id != group.primary_alert_id:
                 return []  # only fire for primary alert in group
-    except (ImportError, Exception):
+    except (ImportError, Exception):  # noqa: S110
         pass  # Task 43 not yet integrated
 
     matched_rules = evaluate_rules(db, alert)

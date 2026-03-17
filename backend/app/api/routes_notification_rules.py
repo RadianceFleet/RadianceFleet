@@ -272,4 +272,4 @@ def get_notification_rule_logs(
     query = db.query(NotificationRuleLog).filter(NotificationRuleLog.rule_id == rule_id)
     total = query.count()
     logs = query.order_by(NotificationRuleLog.sent_at.desc()).offset(offset).limit(limit).all()
-    return {"logs": [_log_to_dict(l) for l in logs], "total": total}
+    return {"logs": [_log_to_dict(rule_log) for rule_log in logs], "total": total}

@@ -233,10 +233,7 @@ def _to_parquet(rows: list[dict]) -> bytes:
     """Convert rows to Parquet bytes using Polars."""
     import polars as pl
 
-    if not rows:
-        df = pl.DataFrame()
-    else:
-        df = pl.DataFrame(rows)
+    df = pl.DataFrame() if not rows else pl.DataFrame(rows)
     buf = io.BytesIO()
     df.write_parquet(buf, compression="gzip")
     return buf.getvalue()
