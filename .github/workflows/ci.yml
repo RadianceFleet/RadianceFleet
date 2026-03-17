@@ -176,9 +176,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Lowercase image name
+        id: image
+        run: echo "ref=ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: "ghcr.io/${{ github.repository }}:sha-${{ github.sha }}"
+          image-ref: ${{ steps.image.outputs.ref }}
           severity: HIGH,CRITICAL
           exit-code: "1"
