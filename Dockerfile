@@ -31,6 +31,12 @@ COPY --from=frontend-build /app/backend/static ./static
 EXPOSE 8000
 
 RUN adduser --disabled-password --gecos '' --no-create-home appuser
+
+# uv tries to write to ~/.cache/uv at runtime; appuser has no home dir.
+# Dependencies are already installed, so disable the cache and freeze the
+# environment so uv run doesn't attempt to sync/install into the root-owned .venv.
+ENV UV_NO_CACHE=1 UV_NO_SYNC=1
+
 USER appuser
 
 CMD ["bash", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers"]
