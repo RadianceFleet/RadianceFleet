@@ -203,7 +203,7 @@ class TestScoringEndpoints:
     """POST /api/v1/score-alerts and /api/v1/rescore-all-alerts."""
 
     def test_score_alerts_returns_200(self, api_client, mock_db):
-        with patch("app.modules.risk_scoring.score_all_alerts", return_value={"scored": 10}):
+        with patch("app.modules.incremental_scorer.incremental_score_alerts", return_value={"scored": 10}):
             resp = api_client.post("/api/v1/score-alerts")
             assert resp.status_code == 200
             assert resp.json()["scored"] == 10
